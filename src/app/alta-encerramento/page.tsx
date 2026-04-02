@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Search,
@@ -24,30 +24,71 @@ import {
   Stethoscope,
   Plus,
   Info,
+  Loader2,
+  SendHorizonal,
+  Trash2,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
-import {
-  MOCK_ENCERRAMENTOS,
-  type MotivoEncerramento,
-  type StatusEncerramento,
-  type EncerramentoItem,
-} from '@/core/mocks/encerramento.mock';
+import { useToast } from '@/shared/components/toast/Toast';
+import { listarEncerramentos, criarEncerramento, atualizarEncerramento, excluirEncerramento, listarSolicitacoesParaEncerramento } from '@/services/encerramentos.service';
+import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import { useLookup } from '@/shared/hooks/useLookup';
+import DevolverModal from '@/shared/components/devolver-modal/DevolverModal';
+import { useDevolucoesPendentes } from '@/shared/hooks/useDevolucoesPendentes';
+
+/* -------------------------------------------------- */
+/*  Local types (previously from mock)                 */
+/* -------------------------------------------------- */
+
+type MotivoEncerramento = 'ALTA_MEDICA' | 'TRANSFERENCIA' | 'DESISTENCIA' | 'ABANDONO' | 'OBITO';
+type StatusEncerramento = 'PENDENTE' | 'CONCLUIDO';
+
+interface ConciliacaoDetail {
+  passagemIda: boolean;
+  embarqueConfirmado: boolean;
+  passagemRetornoEmitida: boolean;
+  diariasPagas: boolean;
+  diariasPendentes: number;
+  complementosConciliados: boolean;
+  complementosPendentes: number;
+  documentosAnexados: boolean;
+}
+
+interface EncerramentoItem {
+  id: string;
+  solicitacaoId: string;
+  numeroProcesso: string;
+  pacienteNome: string;
+  cidCodigo: string;
+  cidDescricao: string;
+  motivo: MotivoEncerramento;
+  dataAlta: string;
+  status: StatusEncerramento;
+  solicitacaoStatus: string;
+  passagemRetorno: 'EMITIDA' | 'PENDENTE' | 'NAO_APLICAVEL';
+  diarias: 'CONCILIADA' | 'PENDENTE';
+  documentosAlta: 'ANEXADO' | 'PENDENTE';
+  complementosPendentes: number;
+  observacoes?: string | null;
+  conciliacao: ConciliacaoDetail;
+}
 
 /* -------------------------------------------------- */
 /*  Tab config                                         */
 /* -------------------------------------------------- */
 
-type TabKey = 'TODOS' | 'PENDENTE' | 'ALTA_MEDICA' | 'CONCLUIDO';
+type TabKey = 'DISPONIVEIS' | 'ALTA_MEDICA' | 'TRANSFERENCIA' | 'DESISTENCIA' | 'ABANDONO' | 'OBITO';
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'TODOS', label: 'Todos' },
-  { key: 'PENDENTE', label: 'Pendentes' },
+  { key: 'DISPONIVEIS', label: 'Disponíveis' },
   { key: 'ALTA_MEDICA', label: 'Alta Médica' },
-  { key: 'CONCLUIDO', label: 'Encerrados' },
+  { key: 'TRANSFERENCIA', label: 'Transferência' },
+  { key: 'DESISTENCIA', label: 'Desistência' },
+  { key: 'ABANDONO', label: 'Abandono' },
+  { key: 'OBITO', label: 'Óbito' },
 ];
 
 /* -------------------------------------------------- */
@@ -76,7 +117,11 @@ const statusStyleMap: Record<StatusEncerramento, { bg: string; text: string; lab
 /* -------------------------------------------------- */
 
 function formatDate(iso: string): string {
-  const [year, month, day] = iso.split('-');
+  if (!iso) return '—';
+  // Handle ISO datetime (with T) or plain date (YYYY-MM-DD)
+  const datePart = iso.includes('T') ? iso.split('T')[0] : iso;
+  const [year, month, day] = datePart.split('-');
+  if (!year || !month || !day) return iso;
   return `${day}/${month}/${year}`;
 }
 
@@ -105,15 +150,41 @@ function canArchive(enc: EncerramentoItem): boolean {
 /* -------------------------------------------------- */
 
 export default function AltaEncerramentoPage() {
+  const toast = useToast();
   const { options: motivoEncOptions, loading: motivoEncLoading } = useLookup('motivo_encerramento');
 
-  const [activeTab, setActiveTab] = useState<TabKey>('TODOS');
+  const [activeTab, setActiveTab] = useState<TabKey>('DISPONIVEIS');
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  /* ---- Disponíveis: solicitações EM_PERMANENCIA sem encerramento ---- */
+  const [disponiveis, setDisponiveis] = useState<any[]>([]);
+  const [disponiveisLoading, setDisponiveisLoading] = useState(false);
+
+  async function refreshDisp() {
+    setDisponiveisLoading(true);
+    const { data } = await listarSolicitacoesParaEncerramento();
+    setDisponiveis(data ?? []);
+    setDisponiveisLoading(false);
+  }
+
+  useEffect(() => { refreshDisp(); }, []);
+
+  /** Opens drawer for a new encerramento from a "disponível" card */
+  function handleOpenNew(sol: any) {
+    resetDrawerForm();
+    setSolicitacaoId(sol.id);
+    setNumProcesso(sol.numero_processo ?? '');
+    setPacienteNome(sol.pacientes?.nome_completo ?? '');
+    setDrawerOpen(true);
+  }
+
   /* ---- Drawer state ---- */
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [numSolicitacao, setNumSolicitacao] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [solicitacaoId, setSolicitacaoId] = useState('');
+  const [numProcesso, setNumProcesso] = useState('');
+  const [pacienteNome, setPacienteNome] = useState('');
   const [motivo, setMotivo] = useState('');
   const [dataAlta, setDataAlta] = useState('');
   const [observacoes, setObservacoes] = useState('');
@@ -121,14 +192,27 @@ export default function AltaEncerramentoPage() {
   const [certidaoObito, setCertidaoObito] = useState<File | null>(null);
   const [localObito, setLocalObito] = useState('');
 
+  /* ---- Delete confirm state ---- */
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState('');
+
+  /* ---- Devolver state ---- */
+  const [devolverItem, setDevolverItem] = useState<any>(null);
+
+  /* ---- Devoluções pendentes ---- */
+  const { mapa: devolucoesEnviadas, labelDestino, refresh: refreshDevolucoes } = useDevolucoesPendentes('ENCERRAMENTO');
+
   const resetDrawerForm = () => {
-    setNumSolicitacao('');
+    setSolicitacaoId('');
+    setNumProcesso('');
+    setPacienteNome('');
     setMotivo('');
     setDataAlta('');
     setObservacoes('');
     setRelatorioAlta(null);
     setCertidaoObito(null);
     setLocalObito('');
+    setEditingId(null);
   };
 
   const handleCloseDrawer = () => {
@@ -136,72 +220,177 @@ export default function AltaEncerramentoPage() {
     resetDrawerForm();
   };
 
-  const handleSubmitEncerramento = () => {
-    alert('Encerramento registrado com sucesso!');
-    handleCloseDrawer();
-  };
+  /* ---- Fetch real data from Supabase ---- */
+  const fetchEncerramentos = useCallback(
+    () => listarEncerramentos({ search }),
+    [search],
+  );
 
-  /* ---- Filtered data ---- */
+  const { data: encerramentosRaw, loading, refresh } = useSupabaseData(
+    fetchEncerramentos,
+    [search],
+  );
+
+  function refreshAll() {
+    refresh();
+    refreshDisp();
+  }
+
+  /* ---- Map Supabase rows to display format ---- */
+  const items = useMemo<EncerramentoItem[]>(() => {
+    return encerramentosRaw.map((enc: any) => ({
+      id: enc.id,
+      solicitacaoId: enc.solicitacao_id,
+      numeroProcesso: enc.solicitacoes?.numero_processo ?? '—',
+      pacienteNome: enc.solicitacoes?.pacientes?.nome_completo ?? '—',
+      motivo: (enc.motivo ?? 'ALTA_MEDICA') as MotivoEncerramento,
+      status: (enc.relatorio_alta_doc_id ? 'CONCLUIDO' : 'PENDENTE') as StatusEncerramento,
+      solicitacaoStatus: enc.solicitacoes?.status ?? 'CONCLUIDO',
+      dataAlta: enc.data_encerramento ?? enc.created_at?.split('T')[0] ?? '',
+      cidCodigo: '—',
+      cidDescricao: '',
+      observacoes: enc.observacoes ?? null,
+      passagemRetorno: 'PENDENTE' as const,
+      diarias: 'PENDENTE' as const,
+      documentosAlta: enc.relatorio_alta_doc_id ? 'ANEXADO' as const : 'PENDENTE' as const,
+      complementosPendentes: 0,
+      conciliacao: {
+        passagemIda: false,
+        embarqueConfirmado: false,
+        passagemRetornoEmitida: false,
+        diariasPagas: false,
+        diariasPendentes: 0,
+        complementosConciliados: false,
+        complementosPendentes: 0,
+        documentosAnexados: !!enc.relatorio_alta_doc_id,
+      },
+    }));
+  }, [encerramentosRaw]);
+
+  /* ---- Filter by tab (client-side) ---- */
   const filtered = useMemo(() => {
-    return MOCK_ENCERRAMENTOS.filter((e) => {
-      let matchesTab = false;
-      switch (activeTab) {
-        case 'TODOS':
-          matchesTab = true;
-          break;
-        case 'PENDENTE':
-          matchesTab = e.status === 'PENDENTE';
-          break;
-        case 'ALTA_MEDICA':
-          matchesTab = e.motivo === 'ALTA_MEDICA';
-          break;
-        case 'CONCLUIDO':
-          matchesTab = e.status === 'CONCLUIDO';
-          break;
-      }
+    // DISPONIVEIS tab shows the disponíveis cards, not the encerramentos list
+    if (activeTab === 'DISPONIVEIS') return [];
+    // Other tabs filter encerramentos by motivo
+    return items.filter((e) => {
+      const matchesTab = e.motivo === activeTab;
       const matchesSearch =
         search === '' ||
         e.pacienteNome.toLowerCase().includes(search.toLowerCase()) ||
         e.numeroProcesso.toLowerCase().includes(search.toLowerCase()) ||
-        e.cidCodigo.toLowerCase().includes(search.toLowerCase());
+        (e.cidCodigo ?? '').toLowerCase().includes(search.toLowerCase());
       return matchesTab && matchesSearch;
     });
-  }, [activeTab, search]);
+  }, [items, activeTab, search]);
+
+  /* ---- Filter disponíveis by search ---- */
+  const filteredDisp = useMemo(() => {
+    if (activeTab !== 'DISPONIVEIS') return [];
+    if (!search) return disponiveis;
+    const s = search.toLowerCase();
+    return disponiveis.filter((sol: any) =>
+      (sol.numero_processo ?? '').toLowerCase().includes(s) ||
+      (sol.pacientes?.nome_completo ?? '').toLowerCase().includes(s)
+    );
+  }, [disponiveis, activeTab, search]);
 
   /* ---- Summary counters ---- */
   const counts = useMemo(() => {
-    const all = MOCK_ENCERRAMENTOS;
     return {
-      altaMedica: all.filter((e) => e.motivo === 'ALTA_MEDICA').length,
-      transferencia: all.filter((e) => e.motivo === 'TRANSFERENCIA').length,
-      desistencia: all.filter((e) => e.motivo === 'DESISTENCIA').length,
-      abandono: all.filter((e) => e.motivo === 'ABANDONO').length,
-      obito: all.filter((e) => e.motivo === 'OBITO').length,
+      altaMedica: items.filter((e) => e.motivo === 'ALTA_MEDICA').length,
+      transferencia: items.filter((e) => e.motivo === 'TRANSFERENCIA').length,
+      desistencia: items.filter((e) => e.motivo === 'DESISTENCIA').length,
+      abandono: items.filter((e) => e.motivo === 'ABANDONO').length,
+      obito: items.filter((e) => e.motivo === 'OBITO').length,
     };
-  }, []);
+  }, [items]);
 
   /* ---- Tab counts ---- */
-  const tabCounts = useMemo(() => {
-    const all = MOCK_ENCERRAMENTOS;
+  const tabCounts = useMemo<Record<TabKey, number>>(() => {
     return {
-      TODOS: all.length,
-      PENDENTE: all.filter((e) => e.status === 'PENDENTE').length,
-      ALTA_MEDICA: all.filter((e) => e.motivo === 'ALTA_MEDICA').length,
-      CONCLUIDO: all.filter((e) => e.status === 'CONCLUIDO').length,
+      DISPONIVEIS: disponiveis.length,
+      ALTA_MEDICA: items.filter((e) => e.motivo === 'ALTA_MEDICA').length,
+      TRANSFERENCIA: items.filter((e) => e.motivo === 'TRANSFERENCIA').length,
+      DESISTENCIA: items.filter((e) => e.motivo === 'DESISTENCIA').length,
+      ABANDONO: items.filter((e) => e.motivo === 'ABANDONO').length,
+      OBITO: items.filter((e) => e.motivo === 'OBITO').length,
     };
-  }, []);
+  }, [items, disponiveis]);
+
+  /* ---- Edit / Delete handlers ---- */
+  function handleOpenEdit(enc: EncerramentoItem) {
+    setEditingId(enc.id);
+    setSolicitacaoId(enc.solicitacaoId);
+    setNumProcesso(enc.numeroProcesso);
+    setPacienteNome(enc.pacienteNome);
+    setMotivo(enc.motivo);
+    setDataAlta(enc.dataAlta);
+    setObservacoes(enc.observacoes ?? '');
+    setRelatorioAlta(null);
+    setCertidaoObito(null);
+    setLocalObito('');
+    setDrawerOpen(true);
+  }
+
+  function handleOpenDelete(enc: EncerramentoItem) {
+    setDeleteConfirmId(enc.id);
+    setDeleteConfirmName(enc.pacienteNome);
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteConfirmId) return;
+    const { error } = await excluirEncerramento(deleteConfirmId);
+    if (error) {
+      toast.error('Erro ao excluir', (error as any).message);
+    } else {
+      toast.success('Encerramento excluído', 'O registro foi removido.');
+      refreshAll();
+    }
+    setDeleteConfirmId(null);
+    setDeleteConfirmName('');
+  }
+
+  /* ---- Form submission ---- */
+  async function handleSubmitEncerramento() {
+    if (!solicitacaoId) {
+      toast.warning('Campo obrigatório', 'Selecione o paciente.');
+      return;
+    }
+    const payload = {
+      solicitacao_id: solicitacaoId,
+      motivo: (motivo as any) || 'ALTA_MEDICA',
+      data_encerramento: dataAlta,
+      observacoes: observacoes || null,
+    } as any;
+
+    try {
+      const result = editingId
+        ? await atualizarEncerramento(editingId, payload)
+        : await criarEncerramento(payload);
+      if (result.error) {
+        toast.error(
+          editingId ? 'Erro ao atualizar' : 'Erro ao registrar',
+          (result.error as any).message,
+        );
+        return;
+      }
+      toast.success(
+        editingId ? 'Encerramento atualizado!' : 'Encerramento registrado!',
+        editingId ? 'As alterações foram salvas.' : 'O processo foi encerrado.',
+      );
+      handleCloseDrawer();
+      refreshAll();
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      toast.error('Erro inesperado', e.message ?? 'Tente novamente');
+    }
+  }
 
   return (
     <>
       <PageHeader
         title="Alta e Encerramento"
         subtitle="Gestão de altas, encerramentos e conciliação de processos TFD"
-        actions={
-          <button className="tfd-btn tfd-btn-primary" onClick={() => setDrawerOpen(true)}>
-            <Plus size={16} />
-            Registrar Alta
-          </button>
-        }
       />
 
       {/* ========== Summary Cards ========== */}
@@ -310,12 +499,12 @@ export default function AltaEncerramentoPage() {
         <div className="relative flex-1 max-w-xs min-w-[200px]">
           <Search
             size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+            className="tfd-input-leading-icon"
             style={{ color: 'var(--tfd-text-muted)' }}
           />
           <input
             type="text"
-            className="tfd-input tfd-input--sm pl-9"
+            className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
             placeholder="Buscar paciente, processo ou CID..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -323,9 +512,73 @@ export default function AltaEncerramentoPage() {
         </div>
       </div>
 
-      {/* ========== Card List ========== */}
+      {/* ========== Content by tab ========== */}
       <div className="space-y-3">
-        {filtered.length === 0 ? (
+        {(loading || disponiveisLoading) ? (
+          <div className="tfd-card">
+            <div className="flex flex-col items-center gap-2 py-12">
+              <Loader2 size={32} className="animate-spin" style={{ color: 'var(--tfd-text-muted)' }} />
+              <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
+                Carregando...
+              </p>
+            </div>
+          </div>
+        ) : activeTab === 'DISPONIVEIS' ? (
+          /* ===== Tab: Disponíveis — cards de processos ativos ===== */
+          filteredDisp.length === 0 ? (
+            <div className="tfd-card">
+              <div className="flex flex-col items-center gap-2 py-12">
+                <Archive size={32} style={{ color: 'var(--tfd-text-muted)' }} />
+                <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
+                  Nenhum processo disponível para encerramento
+                </p>
+              </div>
+            </div>
+          ) : (
+            filteredDisp.map((sol: any) => (
+              <div
+                key={sol.id}
+                className="tfd-card cursor-pointer"
+                style={{ borderLeft: '3px solid var(--tfd-primary-500)' }}
+                onClick={() => handleOpenNew(sol)}
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                      <Link
+                        href={`/solicitacoes/${sol.id}`}
+                        className="font-medium text-sm hover:underline"
+                        style={{ color: 'var(--tfd-primary-500)' }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {sol.numero_processo}
+                      </Link>
+                      <span
+                        className="tfd-tag tfd-tag--rounded"
+                        style={{ backgroundColor: 'var(--tfd-surface-100)', color: 'var(--tfd-text-secondary)', fontSize: '0.625rem' }}
+                      >
+                        {sol.status?.replace(/_/g, ' ') ?? 'Ativo'}
+                      </span>
+                    </div>
+                    <p className="font-semibold text-base" style={{ color: 'var(--tfd-text-primary)' }}>
+                      {sol.pacientes?.nome_completo ?? '—'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Link
+                      href={`/solicitacoes/${sol.id}`}
+                      className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                      title="Ver processo"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Eye size={15} />
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ))
+          )
+        ) : filtered.length === 0 ? (
           <div className="tfd-card">
             <div className="flex flex-col items-center gap-2 py-12">
               <Archive size={32} style={{ color: 'var(--tfd-text-muted)' }} />
@@ -342,9 +595,10 @@ export default function AltaEncerramentoPage() {
             const retornoNA = enc.motivo === 'OBITO' || enc.motivo === 'TRANSFERENCIA';
             const c = enc.conciliacao;
             const archivable = canArchive(enc);
+            const aguardandoRetorno = labelDestino(enc.solicitacaoId);
 
             return (
-              <div key={enc.id} className="tfd-card">
+              <div key={enc.id} className={`tfd-card ${aguardandoRetorno ? '' : 'cursor-pointer'}`} style={{ opacity: aguardandoRetorno ? 0.5 : undefined, pointerEvents: aguardandoRetorno ? 'none' : undefined }} onClick={aguardandoRetorno ? undefined : () => handleOpenEdit(enc)}>
                 {/* ---- Header row ---- */}
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
@@ -368,6 +622,14 @@ export default function AltaEncerramentoPage() {
                       >
                         {status.label}
                       </span>
+                      {aguardandoRetorno && (
+                        <span
+                          className="tfd-tag tfd-tag--rounded"
+                          style={{ backgroundColor: '#FEF3C7', color: '#92400E', fontSize: '0.625rem' }}
+                        >
+                          Ag. retorno — {aguardandoRetorno}
+                        </span>
+                      )}
                     </div>
                     <p className="font-semibold text-base" style={{ color: 'var(--tfd-text-primary)' }}>
                       {enc.pacienteNome}
@@ -377,15 +639,32 @@ export default function AltaEncerramentoPage() {
                   <div className="flex items-center gap-2 shrink-0">
                     <Link
                       href={`/solicitacoes/${enc.solicitacaoId}`}
-                      className="tfd-btn tfd-btn--text tfd-btn-primary tfd-btn--sm tfd-btn--icon-only"
+                      className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
                       title="Ver processo completo"
+                      onClick={(e) => e.stopPropagation()}
                     >
                       <Eye size={16} />
                     </Link>
                     <button
+                      type="button"
+                      className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                      title="Devolver"
+                      onClick={(e) => { e.stopPropagation(); setDevolverItem(enc); }}
+                    >
+                      <SendHorizonal size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      className="tfd-btn tfd-btn-danger tfd-btn--icon-only"
+                      title="Excluir encerramento"
+                      onClick={(e) => { e.stopPropagation(); handleOpenDelete(enc); }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                    <button
                       className="tfd-btn tfd-btn--text tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
                       title={isExpanded ? 'Recolher' : 'Expandir'}
-                      onClick={() => setExpandedId(isExpanded ? null : enc.id)}
+                      onClick={(e) => { e.stopPropagation(); setExpandedId(isExpanded ? null : enc.id); }}
                     >
                       {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                     </button>
@@ -627,8 +906,8 @@ export default function AltaEncerramentoPage() {
       <Drawer
         open={drawerOpen}
         onClose={handleCloseDrawer}
-        title="Registrar Alta"
-        subtitle="Registrar alta ou encerramento de processo TFD"
+        title={editingId ? 'Editar Encerramento' : 'Registrar Alta'}
+        subtitle={editingId ? `Editando ${numProcesso}` : 'Registrar alta ou encerramento de processo TFD'}
         width="480px"
         footer={
           <>
@@ -639,22 +918,19 @@ export default function AltaEncerramentoPage() {
               className={`tfd-btn ${motivo === 'OBITO' ? 'tfd-btn-danger' : 'tfd-btn-primary'}`}
               onClick={handleSubmitEncerramento}
             >
-              Confirmar Encerramento
+              {editingId ? 'Salvar Alterações' : 'Confirmar Encerramento'}
             </button>
           </>
         }
       >
-        {/* Section: Processo */}
-        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Processo</h3>
-        <FormField label="Nº da Solicitação" required>
-          <input
-            type="text"
-            className="tfd-input"
-            placeholder="TFD-2026-..."
-            value={numSolicitacao}
-            onChange={(e) => setNumSolicitacao(e.target.value)}
-          />
-        </FormField>
+        {/* Section: Paciente (read-only info card) */}
+        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Paciente</h3>
+        <div className="rounded-lg p-3 mb-3" style={{ background: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}>
+          <p className="font-semibold text-sm" style={{ color: 'var(--tfd-text-primary)' }}>{pacienteNome || '—'}</p>
+          {numProcesso && (
+            <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>Processo: <span className="font-semibold" style={{ color: 'var(--tfd-primary-600)' }}>{numProcesso}</span></p>
+          )}
+        </div>
 
         <hr className="tfd-divider" />
 
@@ -746,6 +1022,50 @@ export default function AltaEncerramentoPage() {
           </>
         )}
       </Drawer>
+
+      {/* ========== Modal de Confirmação de Exclusão ========== */}
+      {deleteConfirmId && (
+        <>
+          <div className="tfd-overlay-backdrop" onClick={() => setDeleteConfirmId(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="tfd-dialog" style={{ maxWidth: '400px' }}>
+              <div className="tfd-dialog-header">
+                <div className="flex items-center gap-2">
+                  <Trash2 size={18} style={{ color: '#EF4444' }} />
+                  <span className="font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+                    Excluir Encerramento
+                  </span>
+                </div>
+              </div>
+              <div className="tfd-dialog-content">
+                <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
+                  Tem certeza que deseja excluir o encerramento de <strong>{deleteConfirmName}</strong>? Esta ação não pode ser desfeita.
+                </p>
+              </div>
+              <div className="tfd-dialog-footer">
+                <button className="tfd-btn tfd-btn-secondary" onClick={() => setDeleteConfirmId(null)}>
+                  Cancelar
+                </button>
+                <button className="tfd-btn" style={{ background: '#EF4444', color: 'white' }} onClick={handleConfirmDelete}>
+                  <Trash2 size={14} />
+                  Excluir
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ========== Modal de Devolução ========== */}
+      <DevolverModal
+        open={!!devolverItem}
+        onClose={() => setDevolverItem(null)}
+        setorAtual="ENCERRAMENTO"
+        solicitacaoId={devolverItem?.solicitacaoId ?? ''}
+        statusAtual={devolverItem?.solicitacaoStatus ?? 'CONCLUIDO'}
+        label={`${devolverItem?.numeroProcesso ?? ''} — ${devolverItem?.pacienteNome ?? 'Paciente'}`}
+        onSuccess={() => { refreshAll(); refreshDevolucoes(); toast.success('Solicitação devolvida', 'A solicitação foi encaminhada ao setor selecionado.'); }}
+      />
     </>
   );
 }

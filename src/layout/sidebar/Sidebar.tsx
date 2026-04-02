@@ -18,12 +18,17 @@ import {
   Users,
   ScrollText,
   X,
+  Stethoscope,
+  ChevronsLeft,
+  ChevronsRight,
+  ChevronUp,
+  Microscope,
+  FileSignature,
   type LucideIcon,
 } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
 
-/* -------------------------------------------------- */
-/*  Navigation config                                  */
-/* -------------------------------------------------- */
+/* ── Nav config ──────────────────────────────────── */
 
 interface NavItem {
   icon: LucideIcon;
@@ -41,30 +46,36 @@ const navSections: NavSection[] = [
   {
     items: [
       { icon: LayoutDashboard, label: 'Painel', href: '/dashboard' },
-      { icon: FileText, label: 'Solicita\u00e7\u00f5es', href: '/solicitacoes', badge: 12 },
-      { icon: ClipboardCheck, label: 'Regula\u00e7\u00e3o', href: '/regulacao', badge: 5 },
-      { icon: MapPin, label: 'Agendamentos', href: '/atendimento-destino' },
-      { icon: Plane, label: 'Viagens', href: '/viagens' },
-      { icon: Wallet, label: 'Ajuda de Custo', href: '/ajuda-custo' },
-      { icon: CalendarClock, label: 'Perman\u00eancia', href: '/permanencia' },
-      { icon: LogOut, label: 'Altas', href: '/alta-encerramento' },
-      { icon: BarChart3, label: 'Relat\u00f3rios', href: '/relatorios' },
     ],
   },
   {
-    title: 'SISTEMA',
+    title: 'FLUXO DO PROCESSO',
     items: [
-      { icon: Settings, label: 'Configura\u00e7\u00f5es', href: '/sistema/configuracoes' },
-      { icon: Shield, label: 'Permiss\u00f5es', href: '/sistema/papeis' },
-      { icon: Users, label: 'Usu\u00e1rios', href: '/sistema/usuarios' },
+      { icon: FileText, label: 'Solicitações', href: '/solicitacoes' },
+      { icon: FileSignature, label: 'Termo de Compromisso', href: '/termo-compromisso' },
+      { icon: Microscope, label: 'Diagnóstico Clínico', href: '/diagnostico-clinico' },
+      { icon: Stethoscope, label: 'Parecer Médico', href: '/parecer-medico' },
+      { icon: ClipboardCheck, label: 'Regulação', href: '/regulacao' },
+      { icon: MapPin, label: 'Agendamentos', href: '/atendimento-destino' },
+      { icon: Plane, label: 'Viagens', href: '/viagens' },
+      { icon: Wallet, label: 'Ajuda de Custo', href: '/ajuda-custo' },
+      { icon: CalendarClock, label: 'Permanência', href: '/permanencia' },
+      { icon: LogOut, label: 'Alta / Encerramento', href: '/alta-encerramento' },
+    ],
+  },
+  {
+    title: 'GESTÃO',
+    items: [
+      { icon: BarChart3, label: 'Relatórios', href: '/relatorios' },
+      { icon: Settings, label: 'Configurações', href: '/sistema/configuracoes' },
+      { icon: Shield, label: 'Permissões', href: '/sistema/papeis' },
+      { icon: Users, label: 'Usuários', href: '/sistema/usuarios' },
       { icon: ScrollText, label: 'Logs', href: '/sistema/logs' },
     ],
   },
 ];
 
-/* -------------------------------------------------- */
-/*  Types                                              */
-/* -------------------------------------------------- */
+/* ── Props ───────────────────────────────────────── */
 
 interface SidebarProps {
   collapsed: boolean;
@@ -73,9 +84,7 @@ interface SidebarProps {
   onMobileClose: () => void;
 }
 
-/* -------------------------------------------------- */
-/*  Component                                          */
-/* -------------------------------------------------- */
+/* ── Component ───────────────────────────────────── */
 
 export default function Sidebar({
   collapsed,
@@ -84,231 +93,312 @@ export default function Sidebar({
   onMobileClose,
 }: SidebarProps) {
   const pathname = usePathname();
-
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + '/');
 
-  /* ---- Sidebar inner content ---- */
-  const sidebarContent = (
-    <div className="flex flex-col h-full">
-      {/* Logo area */}
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const content = (
+    <div className="flex flex-col h-full select-none">
+      {/* ── Logo ────────────────────────────────── */}
       <div
         className={clsx(
-          'flex items-center gap-3 border-b border-white/10 px-4',
-          collapsed ? 'justify-center py-4' : 'py-5',
+          'flex items-center shrink-0 px-5',
+          collapsed ? 'justify-center' : 'gap-3',
         )}
+        style={{ height: 'var(--tfd-header-h)' }}
       >
-        {/* Icon mark */}
-        <div
-          className="flex items-center justify-center shrink-0"
+        <span
+          className="flex items-center justify-center shrink-0 text-white font-bold text-[11px] tracking-[0.08em] uppercase"
           style={{
             width: 36,
             height: 36,
-            background: 'var(--tfd-primary-500)',
+            background: 'var(--tfd-blue)',
             borderRadius: 'var(--tfd-radius-md)',
           }}
         >
-          <span className="text-white font-bold text-sm leading-none">TFD</span>
-        </div>
+          TFD
+        </span>
 
         {!collapsed && (
-          <div className="flex flex-col overflow-hidden">
-            <span className="text-white font-semibold text-sm leading-tight truncate">
-              SES-MA
-            </span>
-            <span
-              className="text-xs leading-tight truncate"
-              style={{ color: 'var(--tfd-text-muted)' }}
-            >
-              Tratamento Fora do Domic\u00edlio
-            </span>
+          <div className="overflow-hidden">
+            <p className="text-[13px] font-semibold leading-tight tracking-tight truncate" style={{ color: '#1A1D2B' }}>
+              SES Maranhão
+            </p>
+            <p className="text-[11px] leading-tight truncate" style={{ color: '#9CA3AF' }}>
+              Tratamento Fora do Domicílio
+            </p>
           </div>
         )}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2">
-        {navSections.map((section, sIdx) => (
-          <div key={sIdx} className={sIdx > 0 ? 'mt-4 pt-4 border-t border-white/10' : ''}>
+      {/* ── Nav ─────────────────────────────────── */}
+      <nav className="flex-1 overflow-y-auto pt-4 pb-2 px-3">
+        {navSections.map((section, si) => (
+          <div key={si} className={si > 0 ? 'mt-6' : ''}>
             {section.title && !collapsed && (
-              <p className="px-3 mb-2 text-[10px] font-bold tracking-widest uppercase" style={{ color: 'var(--tfd-text-muted)' }}>
+              <p className="px-3 mb-2 text-[10px] font-semibold tracking-[0.12em] uppercase" style={{ color: '#9CA3AF' }}>
                 {section.title}
               </p>
             )}
             {section.title && collapsed && (
-              <hr className="mx-3 mb-2 border-white/10" />
+              <div className="mx-3 mb-3" style={{ borderTop: '1px solid #E8ECF4' }} />
             )}
-            <ul className="flex flex-col gap-1">
-          {section.items.map((item) => {
-            const Icon = item.icon;
-            const active = isActive(item.href);
 
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  onClick={onMobileClose}
-                  title={collapsed ? item.label : undefined}
-                  className={clsx(
-                    'group relative flex items-center gap-3 px-3 py-2.5 text-sm font-medium',
-                    collapsed && 'justify-center',
-                    !active && 'hover:bg-white/5',
-                  )}
-                  style={{
-                    color: active
-                      ? 'var(--tfd-text-on-primary)'
-                      : 'var(--tfd-text-on-dark)',
-                    backgroundColor: active ? 'rgba(59,130,246,0.15)' : undefined,
-                    borderRadius: 'var(--tfd-radius-md)',
-                    transition: `color var(--tfd-transition-duration) var(--tfd-transition-timing),
-                                 background-color var(--tfd-transition-duration) var(--tfd-transition-timing)`,
-                  }}
-                >
-                  {/* Active indicator */}
-                  {active && (
-                    <span
-                      className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r"
-                      style={{
-                        height: 20,
-                        backgroundColor: 'var(--tfd-primary-500)',
-                      }}
-                    />
-                  )}
+            <ul className="flex flex-col gap-px">
+              {section.items.map((item) => {
+                const Icon = item.icon;
+                const active = isActive(item.href);
 
-                  <Icon className="shrink-0" size={20} />
-
-                  {!collapsed && (
-                    <>
-                      <span className="truncate">{item.label}</span>
-
-                      {item.badge != null && (
-                        <span
-                          className="ml-auto flex items-center justify-center text-xs font-semibold text-white"
-                          style={{
-                            minWidth: 22,
-                            height: 20,
-                            padding: '0 6px',
-                            borderRadius: 9999,
-                            backgroundColor: 'var(--tfd-primary-500)',
-                          }}
-                        >
-                          {item.badge}
-                        </span>
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      onClick={onMobileClose}
+                      title={collapsed ? item.label : undefined}
+                      className={clsx(
+                        'group relative flex items-center gap-3 py-[9px] text-[13px] font-medium transition-all duration-150',
+                        collapsed ? 'justify-center px-0' : 'px-3',
                       )}
-                    </>
-                  )}
-
-                  {/* Tooltip for collapsed state */}
-                  {collapsed && (
-                    <span
-                      className="pointer-events-none absolute left-full ml-2 whitespace-nowrap px-2 py-1 text-xs font-medium text-white opacity-0 group-hover:opacity-100"
                       style={{
-                        backgroundColor: 'var(--tfd-surface-sidebar)',
-                        boxShadow: 'var(--tfd-shadow-overlay)',
+                        color: active ? '#4361EE' : '#6B7280',
+                        background: active ? '#EBF0FF' : undefined,
                         borderRadius: 'var(--tfd-radius-md)',
-                        transition: `opacity var(--tfd-transition-duration) var(--tfd-transition-timing)`,
-                        zIndex: 60,
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!active) {
+                          e.currentTarget.style.background = '#F5F7FA';
+                          e.currentTarget.style.color = '#1A1D2B';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!active) {
+                          e.currentTarget.style.background = '';
+                          e.currentTarget.style.color = '#6B7280';
+                        }
                       }}
                     >
-                      {item.label}
-                      {item.badge != null && (
+                      {active && (
                         <span
-                          className="ml-1.5 inline-flex items-center justify-center text-[10px] font-semibold text-white"
-                          style={{
-                            minWidth: 18,
-                            height: 16,
-                            padding: '0 4px',
-                            borderRadius: 9999,
-                            backgroundColor: 'var(--tfd-primary-500)',
-                          }}
-                        >
-                          {item.badge}
+                          className="absolute left-0 top-1/2 -translate-y-1/2 w-[2.5px] rounded-r-full"
+                          style={{ height: 18, background: '#4361EE' }}
+                        />
+                      )}
+
+                      <Icon
+                        size={18}
+                        strokeWidth={active ? 2 : 1.5}
+                        className="shrink-0"
+                        style={{ color: active ? '#4361EE' : undefined }}
+                      />
+
+                      {!collapsed && (
+                        <>
+                          <span className="truncate">{item.label}</span>
+
+                          {item.badge != null && (
+                            <span
+                              className="ml-auto flex items-center justify-center text-[10px] font-bold min-w-[18px] h-[17px] px-[5px] rounded-full"
+                              style={{
+                                background: active ? '#4361EE' : '#EBF0FF',
+                                color: active ? 'white' : '#4361EE',
+                              }}
+                            >
+                              {item.badge}
+                            </span>
+                          )}
+                        </>
+                      )}
+
+                      {collapsed && (
+                        <span className="pointer-events-none absolute left-full ml-3 whitespace-nowrap px-2.5 py-1.5 text-[11px] font-medium text-white bg-[#1A1D2B] rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-[60]">
+                          {item.label}
                         </span>
                       )}
-                    </span>
-                  )}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         ))}
       </nav>
 
-      {/* Version info */}
-      <div
-        className={clsx(
-          'border-t border-white/10 px-4 py-3 text-xs',
-          collapsed && 'text-center',
-        )}
-        style={{ color: 'var(--tfd-text-muted)' }}
-      >
-        {collapsed ? 'v1' : 'v1.0.0'}
+      {/* ── Collapse toggle (desktop only) ────── */}
+      <div className="hidden md:flex items-center justify-center px-3 py-2">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex items-center justify-center p-2 rounded-md transition-colors duration-150"
+          style={{ color: '#9CA3AF' }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = '#F5F7FA'; e.currentTarget.style.color = '#6B7280'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = ''; e.currentTarget.style.color = '#9CA3AF'; }}
+          aria-label={collapsed ? 'Expandir' : 'Recolher'}
+        >
+          {collapsed ? <ChevronsRight size={15} /> : <ChevronsLeft size={15} />}
+        </button>
+      </div>
+
+      {/* ── User profile ─────────────────────── */}
+      <div style={{ borderTop: '1px solid #E8ECF4' }}>
+        {/* User profile card */}
+        <div ref={userMenuRef} className="relative" style={{ borderTop: '1px solid #E8ECF4' }}>
+          <button
+            type="button"
+            onClick={() => setUserMenuOpen((p) => !p)}
+            className={clsx(
+              'w-full flex items-center gap-3 transition-colors duration-150',
+              collapsed ? 'justify-center px-2 py-3' : 'px-4 py-3',
+            )}
+            onMouseEnter={(e) => { e.currentTarget.style.background = '#F5F7FA'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
+          >
+            {/* Avatar */}
+            <div
+              className="flex items-center justify-center shrink-0 text-white text-[11px] font-semibold rounded-full"
+              style={{
+                width: 32,
+                height: 32,
+                background: '#4361EE',
+                border: '2px solid white',
+                boxShadow: '0 0 0 1px #E8ECF4',
+              }}
+            >
+              MS
+            </div>
+
+            {!collapsed && (
+              <>
+                <div className="flex-1 min-w-0 text-left">
+                  <p className="text-[12px] font-semibold truncate" style={{ color: '#1A1D2B' }}>
+                    Maria Silva
+                  </p>
+                  <p className="text-[10px] truncate" style={{ color: '#9CA3AF' }}>
+                    Coordenação Estadual
+                  </p>
+                </div>
+                <ChevronUp
+                  size={14}
+                  className={clsx(
+                    'shrink-0 transition-transform duration-150',
+                    !userMenuOpen && 'rotate-180',
+                  )}
+                  style={{ color: '#9CA3AF' }}
+                />
+              </>
+            )}
+          </button>
+
+          {/* User popup menu */}
+          {userMenuOpen && (
+            <div
+              className={clsx(
+                'absolute z-50 overflow-hidden bg-white rounded-xl shadow-lg',
+                collapsed ? 'left-full bottom-0 ml-2 w-52' : 'left-4 right-4 bottom-full mb-1',
+              )}
+              style={{
+                border: '1px solid #E8ECF4',
+                animation: 'tfd-scale-in 150ms var(--tfd-ease) both',
+              }}
+            >
+              {collapsed && (
+                <div className="px-4 py-3" style={{ borderBottom: '1px solid #E8ECF4' }}>
+                  <p className="text-[13px] font-semibold" style={{ color: '#1A1D2B' }}>Maria Silva</p>
+                  <p className="text-[11px] mt-0.5" style={{ color: '#9CA3AF' }}>Coordenação Estadual</p>
+                </div>
+              )}
+              <div className="py-1">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-[13px] transition-colors duration-150"
+                  style={{ color: '#6B7280' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#F5F7FA'; e.currentTarget.style.color = '#1A1D2B'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = ''; e.currentTarget.style.color = '#6B7280'; }}
+                  onClick={() => setUserMenuOpen(false)}
+                >
+                  <Users size={14} style={{ color: '#9CA3AF' }} />
+                  Meu Perfil
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-[13px] transition-colors duration-150"
+                  style={{ color: '#EF4444' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#FEF2F2'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
+                  onClick={() => setUserMenuOpen(false)}
+                >
+                  <LogOut size={14} />
+                  Sair do sistema
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 
   return (
     <>
-      {/* ===== Desktop / Tablet sidebar ===== */}
+      {/* Desktop sidebar */}
       <aside
         className="fixed inset-y-0 left-0 z-40 hidden md:flex flex-col"
         style={{
-          width: collapsed
-            ? 'var(--tfd-sidebar-width-collapsed)'
-            : 'var(--tfd-sidebar-width-expanded)',
-          backgroundColor: 'var(--tfd-surface-sidebar)',
-          transition: `width var(--tfd-transition-duration) var(--tfd-transition-timing)`,
+          width: collapsed ? 'var(--tfd-sidebar-w-sm)' : 'var(--tfd-sidebar-w)',
+          background: 'var(--tfd-surface-sidebar)',
+          borderRight: '1px solid #E8ECF4',
+          transition: 'width 250ms var(--tfd-ease)',
         }}
       >
-        {sidebarContent}
+        {content}
       </aside>
 
-      {/* ===== Mobile overlay ===== */}
-      {/* Backdrop */}
+      {/* Mobile backdrop */}
       <div
         className={clsx(
-          'fixed inset-0 z-50 bg-black/50 md:hidden',
-          mobileOpen
-            ? 'opacity-100 pointer-events-auto'
-            : 'opacity-0 pointer-events-none',
+          'fixed inset-0 z-50 md:hidden transition-opacity duration-200',
+          mobileOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
         )}
-        style={{
-          transition: `opacity var(--tfd-transition-duration) var(--tfd-transition-timing)`,
-        }}
+        style={{ background: 'rgba(26, 29, 43, 0.2)', backdropFilter: 'blur(4px)' }}
         onClick={onMobileClose}
         aria-hidden="true"
       />
 
-      {/* Drawer */}
+      {/* Mobile drawer */}
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 z-50 flex flex-col md:hidden',
+          'fixed inset-y-0 left-0 z-50 flex flex-col md:hidden transition-transform duration-250',
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
         )}
         style={{
-          width: 'var(--tfd-sidebar-width-expanded)',
-          backgroundColor: 'var(--tfd-surface-sidebar)',
-          transition: `transform var(--tfd-transition-duration) var(--tfd-transition-timing)`,
+          width: 'var(--tfd-sidebar-w)',
+          background: 'var(--tfd-surface-sidebar)',
+          borderRight: '1px solid #E8ECF4',
+          transitionTimingFunction: 'var(--tfd-ease)',
         }}
       >
-        {/* Close button */}
         <button
           type="button"
           onClick={onMobileClose}
-          className="absolute top-3 right-3 flex items-center justify-center p-1.5 text-white/60 hover:text-white hover:bg-white/10"
-          style={{
-            borderRadius: 'var(--tfd-radius-md)',
-            transition: `color var(--tfd-transition-duration) var(--tfd-transition-timing),
-                         background-color var(--tfd-transition-duration) var(--tfd-transition-timing)`,
-          }}
-          aria-label="Fechar menu"
+          className="absolute top-4 right-3 p-1.5 rounded-md transition-colors duration-150"
+          style={{ color: '#9CA3AF' }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = '#F5F7FA'; e.currentTarget.style.color = '#6B7280'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = ''; e.currentTarget.style.color = '#9CA3AF'; }}
+          aria-label="Fechar"
         >
-          <X size={20} />
+          <X size={16} />
         </button>
-
-        {sidebarContent}
+        {content}
       </aside>
     </>
   );

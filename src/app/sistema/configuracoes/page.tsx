@@ -26,6 +26,7 @@ import {
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
+import { useToast } from '@/shared/components/toast/Toast';
 import {
   listarPorCategoriaAdmin,
   criarItemAuxiliar,
@@ -44,6 +45,7 @@ import {
   type CompanhiaTransporte,
 } from '@/services/tabelas-auxiliares.service';
 import { useLookup, invalidateCache } from '@/shared/hooks/useLookup';
+import { maskCNPJ, maskPhone } from '@/shared/pipes/formatters';
 
 /* -------------------------------------------------- */
 /*  Tab config                                         */
@@ -115,6 +117,7 @@ const CATEGORIAS: CategoriaConfig[] = [
 /* -------------------------------------------------- */
 
 function ParametrosPanel() {
+  const toast = useToast();
   const [parametros, setParametros] = useState<import('@/services/parametros.service').Parametro[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingParam, setEditingParam] = useState<import('@/services/parametros.service').Parametro | null>(null);
@@ -153,6 +156,7 @@ function ParametrosPanel() {
     const { invalidateParametrosCache } = await import('@/shared/hooks/useParametros');
     await atualizarParametro(editingParam.id, editValue);
     invalidateParametrosCache();
+    toast.success('Parâmetro salvo!', 'O valor foi atualizado no sistema.');
     setSaving(false);
     setDrawerOpen(false);
     setEditingParam(null);
@@ -174,6 +178,7 @@ function ParametrosPanel() {
       ordem: parametros.filter(p => p.grupo === newGrupo).length + 1,
     });
     invalidateParametrosCache();
+    toast.success('Parâmetro criado!', 'O novo parâmetro está disponível.');
     setSaving(false);
     setAddDrawerOpen(false);
     setNewChave(''); setNewLabel(''); setNewValor(''); setNewDescricao('');
@@ -186,6 +191,7 @@ function ParametrosPanel() {
     const { invalidateParametrosCache } = await import('@/shared/hooks/useParametros');
     await excluirParametro(param.id);
     invalidateParametrosCache();
+    toast.success('Parâmetro excluído!');
     await loadParametros();
   };
 
@@ -477,6 +483,7 @@ function ParametrosPanel() {
 /* -------------------------------------------------- */
 
 function CadastrosPanel() {
+  const toast = useToast();
   const [selectedKey, setSelectedKey] = useState(CATEGORIAS[0].key);
   const [items, setItems] = useState<TabelaAuxiliar[]>([]);
   const [unidades, setUnidades] = useState<UnidadeDestino[]>([]);
@@ -676,6 +683,12 @@ function CadastrosPanel() {
         }
         invalidateCache('_companhias');
       }
+      const isEditing = !!(editingItem || editingUnidade || editingCompanhia);
+      if (isEditing) {
+        toast.success('Item atualizado!', 'As alterações foram salvas.');
+      } else {
+        toast.success('Item criado!', 'O novo registro foi salvo com sucesso.');
+      }
       setDrawerOpen(false);
       resetForm();
       await loadItems(selectedKey);
@@ -693,6 +706,7 @@ function CadastrosPanel() {
     const { error } = await excluirItemAuxiliar(item.id);
     if (error) { setErrorMsg(`Erro ao excluir: ${error.message}`); return; }
     invalidateCache(selectedKey);
+    toast.success('Item excluído!', 'O registro foi removido.');
     await loadItems(selectedKey);
   };
 
@@ -701,6 +715,7 @@ function CadastrosPanel() {
     const { error } = await excluirUnidadeDestino(u.id);
     if (error) { setErrorMsg(`Erro ao excluir: ${error.message}`); return; }
     invalidateCache('_unidades_destino');
+    toast.success('Item excluído!', 'O registro foi removido.');
     await loadItems(selectedKey);
   };
 
@@ -709,6 +724,7 @@ function CadastrosPanel() {
     const { error } = await excluirCompanhia(c.id);
     if (error) { setErrorMsg(`Erro ao excluir: ${error.message}`); return; }
     invalidateCache('_companhias');
+    toast.success('Item excluído!', 'O registro foi removido.');
     await loadItems(selectedKey);
   };
 
@@ -993,7 +1009,7 @@ function CadastrosPanel() {
         <input type="text" className="tfd-input" placeholder="Nome" value={fUContatoNome} onChange={(e) => setFUContatoNome(e.target.value)} />
       </FormField>
       <FormField label="Telefone">
-        <input type="text" className="tfd-input" placeholder="(00) 00000-0000" value={fUContatoTel} onChange={(e) => setFUContatoTel(e.target.value)} />
+        <input type="text" className="tfd-input" placeholder="(00) 00000-0000" value={fUContatoTel} onChange={(e) => setFUContatoTel(maskPhone(e.target.value))} />
       </FormField>
       <FormField label="E-mail">
         <input type="email" className="tfd-input" placeholder="contato@unidade.com" value={fUContatoEmail} onChange={(e) => setFUContatoEmail(e.target.value)} />
@@ -1026,7 +1042,7 @@ function CadastrosPanel() {
         </select>
       </FormField>
       <FormField label="CNPJ">
-        <input type="text" className="tfd-input" placeholder="00.000.000/0000-00" value={fCCnpj} onChange={(e) => setFCCnpj(e.target.value)} />
+        <input type="text" className="tfd-input" placeholder="00.000.000/0000-00" value={fCCnpj} onChange={(e) => setFCCnpj(maskCNPJ(e.target.value))} />
       </FormField>
       <FormField label="Contato">
         <input type="text" className="tfd-input" placeholder="Telefone ou e-mail" value={fCContato} onChange={(e) => setFCContato(e.target.value)} />

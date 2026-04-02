@@ -19,6 +19,7 @@ import PageHeader from '@/shared/components/page-header/PageHeader';
 import EmptyState from '@/shared/components/empty-state/EmptyState';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
+import { useToast } from '@/shared/components/toast/Toast';
 import {
   listarPapeis,
   listarTelas,
@@ -97,6 +98,8 @@ function IndeterminateCheckbox({
 /* -------------------------------------------------- */
 
 export default function PapeisPage() {
+  const toast = useToast();
+
   /* ---- Data state ---- */
   const [papeis, setPapeis] = useState<Papel[]>([]);
   const [telas, setTelas] = useState<TelaSistema[]>([]);
@@ -251,6 +254,7 @@ export default function PapeisPage() {
           cor: formCor,
         });
         await salvarTelasDoPapel(editingPapel.id, formTelas);
+        toast.success('Papel atualizado!', 'As permissões foram salvas.');
       } else {
         const res = await criarPapel({
           nome: formNome.trim(),
@@ -261,6 +265,7 @@ export default function PapeisPage() {
         if (newPapel?.id) {
           await salvarTelasDoPapel(newPapel.id, formTelas);
         }
+        toast.success('Papel criado!', 'O novo papel de acesso está disponível.');
       }
       handleCloseDrawer();
       await loadData();
@@ -284,6 +289,7 @@ export default function PapeisPage() {
         setExpandedId(null);
         setExpandedTelas([]);
       }
+      toast.success('Papel excluído!', 'O papel foi removido do sistema.');
       await loadData();
     } catch {
       // Silently handle

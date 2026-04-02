@@ -1,37 +1,28 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { usePathname } from 'next/navigation';
 import Sidebar from '@/layout/sidebar/Sidebar';
-import Header from '@/layout/header/Header';
+import { Menu } from 'lucide-react';
 
-/* -------------------------------------------------- */
-/*  Breakpoints (matches Tailwind defaults)            */
-/* -------------------------------------------------- */
+const BP_MD = 768;
+const BP_XL = 1280;
 
-const BP_MD = 768;   // md  -- tablet
-const BP_XL = 1280;  // xl  -- desktop
-
-/* -------------------------------------------------- */
-/*  Types                                              */
-/* -------------------------------------------------- */
+const AUTH_ROUTES = ['/login', '/criar-conta', '/recuperar-senha'];
 
 interface AppLayoutProps {
   children: React.ReactNode;
 }
 
-/* -------------------------------------------------- */
-/*  Component                                          */
-/* -------------------------------------------------- */
-
 export default function AppLayout({ children }: AppLayoutProps) {
+  const pathname = usePathname();
+  const isAuthPage = AUTH_ROUTES.some((r) => pathname.startsWith(r));
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
-  /* ---- Respond to viewport changes ---- */
   const handleResize = useCallback(() => {
     const w = window.innerWidth;
-
     if (w < BP_MD) {
       setIsMobile(true);
       setCollapsed(false);
@@ -53,57 +44,53 @@ export default function AppLayout({ children }: AppLayoutProps) {
     return () => window.removeEventListener('resize', handleResize);
   }, [handleResize]);
 
-  /* ---- Toggle handlers ---- */
-  const handleMenuToggle = useCallback(() => {
-    if (isMobile) {
-      setMobileOpen((prev) => !prev);
-    } else {
-      setCollapsed((prev) => !prev);
-    }
-  }, [isMobile]);
-
-  const handleMobileClose = useCallback(() => {
-    setMobileOpen(false);
-  }, []);
-
-  /* ---- Compute sidebar width for content offset ---- */
   const sidebarWidth = isMobile
     ? 0
     : collapsed
-      ? 'var(--tfd-sidebar-width-collapsed)'
-      : 'var(--tfd-sidebar-width-expanded)';
+      ? 'var(--tfd-sidebar-w-sm)'
+      : 'var(--tfd-sidebar-w)';
+
+  // Auth pages render without sidebar/header
+  if (isAuthPage) return <>{children}</>;
 
   return (
-    <div
-      className="min-h-screen"
-      style={{ backgroundColor: 'var(--tfd-surface-ground)' }}
-    >
-      {/* Sidebar */}
+    <div className="min-h-screen" style={{ background: 'var(--tfd-surface-ground)' }}>
       <Sidebar
         collapsed={collapsed}
-        onToggle={() => setCollapsed((prev) => !prev)}
+        onToggle={() => setCollapsed((p) => !p)}
         mobileOpen={mobileOpen}
-        onMobileClose={handleMobileClose}
+        onMobileClose={() => setMobileOpen(false)}
       />
 
-      {/* Main area */}
       <div
         style={{
           marginLeft: sidebarWidth,
-          transition: `margin-left var(--tfd-transition-duration) var(--tfd-transition-timing)`,
+          transition: 'margin-left 250ms var(--tfd-ease)',
         }}
       >
-        {/* Header */}
-        <Header
-          onMenuToggle={handleMenuToggle}
-          sidebarCollapsed={collapsed || isMobile}
-          sidebarWidth={sidebarWidth}
-        />
+        {/* Mobile menu button — only visible when sidebar is hidden */}
+        {isMobile && (
+          <div className="sticky top-0 z-30 flex items-center px-5 py-3 md:hidden"
+            style={{ background: 'var(--tfd-surface-ground)' }}
+          >
+            <button
+              type="button"
+              onClick={() => setMobileOpen(true)}
+              className="flex items-center justify-center p-2 rounded-lg transition-colors duration-150"
+              style={{ color: '#9CA3AF' }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#E8ECF4'; e.currentTarget.style.color = '#1A1D2B'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = ''; e.currentTarget.style.color = '#9CA3AF'; }}
+              aria-label="Abrir menu"
+            >
+              <Menu size={20} />
+            </button>
+          </div>
+        )}
 
-        {/* Content */}
         <main
+          className="px-5 pb-8 sm:px-8"
           style={{
-            padding: `calc(var(--tfd-header-height) + var(--tfd-content-padding)) var(--tfd-content-padding) var(--tfd-content-padding)`,
+            paddingTop: isMobile ? '0.5rem' : '2rem',
             minHeight: '100vh',
           }}
         >

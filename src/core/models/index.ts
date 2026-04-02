@@ -6,3 +6,6 @@ export * from './agendamento.model';
 export * from './regulacao.model';
 export * from './usuario.model';
 export * from './navigation.model';
+export * from './faturamento.model';
+export * from './teto-financeiro.model';
+export * from './termo-compromisso.model';

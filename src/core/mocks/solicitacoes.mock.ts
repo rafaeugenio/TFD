@@ -6,8 +6,24 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
   {
     id: 'sol-001',
     numero: 'TFD-2026-000112',
+    numeroProtocolo: 'TFD-PAC-0001',
+    numeroCiclo: 1,
+    tipoSolicitacao: 'PRIMEIRO_ATENDIMENTO',
     status: 'NOVO',
     paciente: MOCK_PACIENTES[0], // Maria das Gracas - Sao Luis
+    acompanhantesElegiveis: [
+      {
+        id: 'ae-001',
+        solicitacaoId: 'sol-001',
+        nome: 'João Carlos Santos',
+        cpf: '98765432100',
+        dataNascimento: '1980-05-10',
+        parentesco: 'CONJUGE',
+        telefone: '(98) 99876-5432',
+        principal: true,
+        ativo: true,
+      },
+    ],
     diagnostico: {
       cid: 'C50.9',
       descricao: 'Neoplasia maligna da mama, nao especificada',
@@ -15,6 +31,13 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       justificativa:
         'Paciente diagnosticada com carcinoma ductal invasivo grau III, necessitando de tratamento quimioterapico nao disponivel na rede estadual do Maranhao.',
       procedimentoSolicitado: 'Quimioterapia neoadjuvante com Trastuzumabe',
+      origemLaudo: 'ESTADUAL',
+      dataLaudo: '2026-03-10',
+      dataValidadeLaudo: '2027-03-10',
+      medicoSolicitanteNome: 'Dr. Roberto Mendes',
+      medicoSolicitanteCRM: '12345',
+      medicoSolicitanteUF: 'MA',
+      caracterAtendimento: 'AMBULATORIAL',
     },
     documentos: [
       {
@@ -26,20 +49,28 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       },
       {
         id: 'doc-002',
-        tipo: 'EXAME',
+        tipo: 'EXAME_COMPLEMENTAR',
         nome: 'Biopsia_Mama_Resultado.pdf',
         url: '/uploads/doc-002.pdf',
         dataUpload: '2026-03-15',
       },
       {
         id: 'doc-003',
-        tipo: 'CARTAO_SUS',
+        tipo: 'CNS',
         nome: 'CNS_Maria_Santos.pdf',
         url: '/uploads/doc-003.pdf',
         dataUpload: '2026-03-15',
       },
+      {
+        id: 'doc-030',
+        tipo: 'TERMO_COMPROMISSO',
+        nome: 'Termo_Compromisso_Maria_Santos.pdf',
+        url: '/uploads/doc-030.pdf',
+        dataUpload: '2026-03-15',
+      },
     ],
     viagens: [],
+    procedimentos: [],
     dataCriacao: '2026-03-15',
     dataAtualizacao: '2026-03-15',
     criadoPor: 'usr-001',
@@ -49,8 +80,24 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
   {
     id: 'sol-002',
     numero: 'TFD-2026-000098',
+    numeroProtocolo: 'TFD-PAC-0002',
+    numeroCiclo: 2,
+    tipoSolicitacao: 'CONTINUIDADE',
     status: 'EM_ANALISE',
     paciente: MOCK_PACIENTES[1], // Jose Ribamar - Imperatriz
+    acompanhantesElegiveis: [
+      {
+        id: 'ae-002',
+        solicitacaoId: 'sol-002',
+        nome: 'Ana Maria Oliveira Costa',
+        cpf: '11122233344',
+        dataNascimento: '1975-08-22',
+        parentesco: 'CONJUGE',
+        telefone: '(99) 99111-2233',
+        principal: true,
+        ativo: true,
+      },
+    ],
     diagnostico: {
       cid: 'I25.1',
       descricao: 'Doenca aterosclerotica do coracao',
@@ -59,6 +106,14 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
         'Paciente com estenose coronariana severa em tres vasos, indicacao de cirurgia de revascularizacao miocardica. Procedimento de alta complexidade nao realizado em Imperatriz.',
       procedimentoSolicitado:
         'Cirurgia de revascularizacao do miocardio com CEC',
+      origemLaudo: 'ESTADUAL',
+      dataLaudo: '2026-03-05',
+      dataValidadeLaudo: '2027-03-05',
+      medicoSolicitanteNome: 'Dra. Fernanda Lima',
+      medicoSolicitanteCRM: '23456',
+      medicoSolicitanteUF: 'MA',
+      codigoProcedimentoSUS: '0406010064',
+      caracterAtendimento: 'HOSPITALAR',
     },
     documentos: [
       {
@@ -70,14 +125,14 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       },
       {
         id: 'doc-005',
-        tipo: 'EXAME',
+        tipo: 'EXAME_COMPLEMENTAR',
         nome: 'Cateterismo_Cardiaco.pdf',
         url: '/uploads/doc-005.pdf',
         dataUpload: '2026-03-10',
       },
       {
         id: 'doc-006',
-        tipo: 'DOCUMENTO_PESSOAL',
+        tipo: 'RG',
         nome: 'RG_CPF_Jose_Costa.pdf',
         url: '/uploads/doc-006.pdf',
         dataUpload: '2026-03-10',
@@ -89,8 +144,34 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
         url: '/uploads/doc-007.pdf',
         dataUpload: '2026-03-10',
       },
+      {
+        id: 'doc-031',
+        tipo: 'TERMO_COMPROMISSO',
+        nome: 'Termo_Compromisso_Jose_Costa.pdf',
+        url: '/uploads/doc-031.pdf',
+        dataUpload: '2026-03-10',
+      },
+      {
+        id: 'doc-032',
+        tipo: 'DECLARACAO_RENDIMENTOS',
+        nome: 'Declaracao_Rendimentos_Jose_Costa.pdf',
+        url: '/uploads/doc-032.pdf',
+        dataUpload: '2026-03-10',
+      },
     ],
     viagens: [],
+    procedimentos: [
+      {
+        id: 'proc-001',
+        solicitacaoId: 'sol-002',
+        tipo: 'CIRURGIA',
+        descricao: 'Cirurgia de revascularização do miocárdio com CEC',
+        codigoProcedimentoSUS: '0406010064',
+        dataProcedimento: '2026-03-25',
+        unidadeDestino: 'InCor - Hospital das Clínicas, Goiânia',
+        medicoResponsavel: 'Dr. Carlos Eduardo Souza',
+      },
+    ],
     dataCriacao: '2026-03-10',
     dataAtualizacao: '2026-03-12',
     criadoPor: 'usr-001',
@@ -100,8 +181,12 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
   {
     id: 'sol-003',
     numero: 'TFD-2026-000085',
+    numeroProtocolo: 'TFD-PAC-0003',
+    numeroCiclo: 1,
+    tipoSolicitacao: 'PRIMEIRO_ATENDIMENTO',
     status: 'EXIGENCIA',
     paciente: MOCK_PACIENTES[2], // Francisca - Caxias
+    acompanhantesElegiveis: [],
     diagnostico: {
       cid: 'H33.0',
       descricao: 'Descolamento da retina com ruptura',
@@ -109,6 +194,13 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       justificativa:
         'Descolamento de retina olho direito com perda progressiva de visao. Necessita cirurgia vitreorretiniana de urgencia.',
       procedimentoSolicitado: 'Vitrectomia posterior via pars plana',
+      origemLaudo: 'ESTADUAL',
+      dataLaudo: '2026-02-25',
+      dataValidadeLaudo: '2027-02-25',
+      medicoSolicitanteNome: 'Dr. Antônio Sérgio Barros',
+      medicoSolicitanteCRM: '34567',
+      medicoSolicitanteUF: 'MA',
+      caracterAtendimento: 'HOSPITALAR',
     },
     documentos: [
       {
@@ -120,7 +212,7 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       },
       {
         id: 'doc-009',
-        tipo: 'EXAME',
+        tipo: 'EXAME_COMPLEMENTAR',
         nome: 'OCT_Retina.pdf',
         url: '/uploads/doc-009.pdf',
         dataUpload: '2026-03-05',
@@ -137,6 +229,7 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       dataParecer: '2026-03-08',
     },
     viagens: [],
+    procedimentos: [],
     dataCriacao: '2026-03-05',
     dataAtualizacao: '2026-03-08',
     criadoPor: 'usr-001',
@@ -148,8 +241,12 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
   {
     id: 'sol-004',
     numero: 'TFD-2026-000071',
+    numeroProtocolo: 'TFD-PAC-0004',
+    numeroCiclo: 1,
+    tipoSolicitacao: 'PRIMEIRO_ATENDIMENTO',
     status: 'AGUARDANDO_REGULACAO',
     paciente: MOCK_PACIENTES[3], // Antonio Carlos - Timon
+    acompanhantesElegiveis: [],
     acompanhante: {
       id: 'acomp-001',
       nome: 'Maria de Fatima Sousa Lima',
@@ -166,6 +263,13 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       justificativa:
         'Coxartrose avancada em quadril direito com limitacao funcional severa. Indicada artroplastia total de quadril. Fila de espera no Maranhao superior a 12 meses.',
       procedimentoSolicitado: 'Artroplastia total do quadril',
+      origemLaudo: 'ESTADUAL',
+      dataLaudo: '2026-02-10',
+      dataValidadeLaudo: '2027-02-10',
+      medicoSolicitanteNome: 'Dr. Henrique Machado Costa',
+      medicoSolicitanteCRM: '45678',
+      medicoSolicitanteUF: 'MA',
+      caracterAtendimento: 'AMBULATORIAL',
     },
     documentos: [
       {
@@ -177,14 +281,14 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       },
       {
         id: 'doc-011',
-        tipo: 'EXAME',
+        tipo: 'EXAME_COMPLEMENTAR',
         nome: 'RX_Quadril_Bilateral.pdf',
         url: '/uploads/doc-011.pdf',
         dataUpload: '2026-02-20',
       },
       {
         id: 'doc-012',
-        tipo: 'ENCAMINHAMENTO',
+        tipo: 'DOCUMENTO_ENCAMINHAMENTO',
         nome: 'Encaminhamento_UBS_Timon.pdf',
         url: '/uploads/doc-012.pdf',
         dataUpload: '2026-02-20',
@@ -218,6 +322,7 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       ],
     },
     viagens: [],
+    procedimentos: [],
     dataCriacao: '2026-02-20',
     dataAtualizacao: '2026-03-01',
     criadoPor: 'usr-001',
@@ -227,8 +332,12 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
   {
     id: 'sol-005',
     numero: 'TFD-2026-000063',
+    numeroProtocolo: 'TFD-PAC-0005',
+    numeroCiclo: 3,
+    tipoSolicitacao: 'CONTINUIDADE',
     status: 'AGUARDANDO_AGENDAMENTO',
     paciente: MOCK_PACIENTES[4], // Raimunda - Codo
+    acompanhantesElegiveis: [],
     diagnostico: {
       cid: 'E11.4',
       descricao:
@@ -238,6 +347,13 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
         'Neuropatia diabetica severa com ulcera em pe direito nao cicatrizante. Necessita avaliacao especializada em centro de referencia para pe diabetico.',
       procedimentoSolicitado:
         'Avaliacao multidisciplinar em centro de referencia para pe diabetico',
+      origemLaudo: 'ESTADUAL',
+      dataLaudo: '2026-01-28',
+      dataValidadeLaudo: '2027-01-28',
+      medicoSolicitanteNome: 'Dra. Marília Rodrigues Pinto',
+      medicoSolicitanteCRM: '56789',
+      medicoSolicitanteUF: 'MA',
+      caracterAtendimento: 'AMBULATORIAL',
     },
     documentos: [
       {
@@ -249,7 +365,7 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       },
       {
         id: 'doc-014',
-        tipo: 'EXAME',
+        tipo: 'EXAME_COMPLEMENTAR',
         nome: 'Eletroneuromiografia.pdf',
         url: '/uploads/doc-014.pdf',
         dataUpload: '2026-02-10',
@@ -285,6 +401,7 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       ],
     },
     viagens: [],
+    procedimentos: [],
     dataCriacao: '2026-02-10',
     dataAtualizacao: '2026-02-22',
     criadoPor: 'usr-001',
@@ -294,8 +411,12 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
   {
     id: 'sol-006',
     numero: 'TFD-2026-000054',
+    numeroProtocolo: 'TFD-PAC-0006',
+    numeroCiclo: 1,
+    tipoSolicitacao: 'PRIMEIRO_ATENDIMENTO',
     status: 'AGUARDANDO_EMISSAO',
     paciente: MOCK_PACIENTES[5], // Pedro Henrique - Acailandia (menor)
+    acompanhantesElegiveis: [],
     acompanhante: {
       id: 'acomp-002',
       nome: 'Claudia Barbosa Mendes',
@@ -312,6 +433,13 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
         'CIA tipo ostium secundum com repercussao hemodinamica significativa (Qp/Qs 2.5:1). Indicado fechamento percutaneo com dispositivo Amplatzer.',
       procedimentoSolicitado:
         'Fechamento percutaneo de comunicacao interatrial',
+      origemLaudo: 'ESTADUAL',
+      dataLaudo: '2026-01-15',
+      dataValidadeLaudo: '2027-01-15',
+      medicoSolicitanteNome: 'Dra. Cláudia Ferreira Lopes',
+      medicoSolicitanteCRM: '67890',
+      medicoSolicitanteUF: 'MA',
+      caracterAtendimento: 'HOSPITALAR',
     },
     documentos: [
       {
@@ -323,14 +451,14 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       },
       {
         id: 'doc-016',
-        tipo: 'EXAME',
+        tipo: 'EXAME_COMPLEMENTAR',
         nome: 'Ecocardiograma_Transtoracico.pdf',
         url: '/uploads/doc-016.pdf',
         dataUpload: '2026-01-28',
       },
       {
         id: 'doc-017',
-        tipo: 'DOCUMENTO_PESSOAL',
+        tipo: 'RG',
         nome: 'Certidao_Nascimento_Pedro.pdf',
         url: '/uploads/doc-017.pdf',
         dataUpload: '2026-01-28',
@@ -370,6 +498,7 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
         'Internacao prevista para o dia anterior (19/03). Jejum de 8h.',
     },
     viagens: [],
+    procedimentos: [],
     dataCriacao: '2026-01-28',
     dataAtualizacao: '2026-03-10',
     criadoPor: 'usr-001',
@@ -379,8 +508,12 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
   {
     id: 'sol-007',
     numero: 'TFD-2026-000045',
+    numeroProtocolo: 'TFD-PAC-0007',
+    numeroCiclo: 2,
+    tipoSolicitacao: 'CONTINUIDADE',
     status: 'EMITIDA',
     paciente: MOCK_PACIENTES[6], // Ana Lucia - Bacabal
+    acompanhantesElegiveis: [],
     diagnostico: {
       cid: 'C73',
       descricao: 'Neoplasia maligna da glandula tireoide',
@@ -389,6 +522,13 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
         'Carcinoma papilifero da tireoide com extensao extratiroidiana. Indicada tireoidectomia total com esvaziamento cervical.',
       procedimentoSolicitado:
         'Tireoidectomia total com esvaziamento cervical bilateral',
+      origemLaudo: 'ESTADUAL',
+      dataLaudo: '2026-01-10',
+      dataValidadeLaudo: '2027-01-10',
+      medicoSolicitanteNome: 'Dr. Paulo Ricardo Almeida',
+      medicoSolicitanteCRM: '78901',
+      medicoSolicitanteUF: 'MA',
+      caracterAtendimento: 'AMBULATORIAL',
     },
     documentos: [
       {
@@ -400,14 +540,14 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       },
       {
         id: 'doc-019',
-        tipo: 'EXAME',
+        tipo: 'EXAME_COMPLEMENTAR',
         nome: 'PAAF_Tireoide_Bethesda_VI.pdf',
         url: '/uploads/doc-019.pdf',
         dataUpload: '2026-01-20',
       },
       {
         id: 'doc-020',
-        tipo: 'EXAME',
+        tipo: 'EXAME_COMPLEMENTAR',
         nome: 'USG_Cervical.pdf',
         url: '/uploads/doc-020.pdf',
         dataUpload: '2026-01-20',
@@ -471,17 +611,19 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
         valorPassagem: 892.5,
       },
     ],
+    procedimentos: [],
     ajudaDeCusto: {
       id: 'ac-001',
       solicitacaoId: 'sol-007',
-      status: 'APROVADO',
+      tipo: 'PACIENTE',
+      tipoAjudaCusto: 'COM_PERNOITE',
+      status: 'APROVADA',
       dataInicio: '2026-03-23',
       dataFim: '2026-04-02',
-      diasCompletos: 9,
-      diaRetorno: true,
-      valorDiariaCompleta: 24.75,
-      valorDiariaRetorno: 8.4,
-      valorTotal: 231.15, // (9 * 24.75) + 8.40
+      diasInternacao: 0,
+      diasElegiveis: 10,
+      valorDiaria: 24.75,
+      valorTotal: 247.50,
       comprovantes: [],
       observacoes: 'Valor calculado para paciente. Acompanhante nao autorizado.',
     },
@@ -494,8 +636,12 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
   {
     id: 'sol-008',
     numero: 'TFD-2026-000038',
+    numeroProtocolo: 'TFD-PAC-0008',
+    numeroCiclo: 1,
+    tipoSolicitacao: 'PRIMEIRO_ATENDIMENTO',
     status: 'EM_VIAGEM',
     paciente: MOCK_PACIENTES[7], // Francisco - Balsas
+    acompanhantesElegiveis: [],
     acompanhante: {
       id: 'acomp-003',
       nome: 'Josefa Maria Ribeiro',
@@ -512,6 +658,13 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       justificativa:
         'DRC estagio 5 em hemodialise ha 3 anos. Paciente em lista de transplante renal com doador vivo compativel (filha). Hospital de referencia em Sao Paulo.',
       procedimentoSolicitado: 'Transplante renal com doador vivo',
+      origemLaudo: 'ESTADUAL',
+      dataLaudo: '2025-12-20',
+      dataValidadeLaudo: '2026-12-20',
+      medicoSolicitanteNome: 'Dr. Marcos Vinícius Teixeira',
+      medicoSolicitanteCRM: '89012',
+      medicoSolicitanteUF: 'MA',
+      caracterAtendimento: 'HOSPITALAR',
     },
     documentos: [
       {
@@ -523,14 +676,14 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       },
       {
         id: 'doc-022',
-        tipo: 'EXAME',
+        tipo: 'EXAME_COMPLEMENTAR',
         nome: 'Crossmatch_Compatibilidade.pdf',
         url: '/uploads/doc-022.pdf',
         dataUpload: '2026-01-10',
       },
       {
         id: 'doc-023',
-        tipo: 'ENCAMINHAMENTO',
+        tipo: 'DOCUMENTO_ENCAMINHAMENTO',
         nome: 'Inscricao_Lista_Transplante.pdf',
         url: '/uploads/doc-023.pdf',
         dataUpload: '2026-01-10',
@@ -604,17 +757,19 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
         observacoes: 'Data de retorno estimada. Sera confirmada apos alta medica.',
       },
     ],
+    procedimentos: [],
     ajudaDeCusto: {
       id: 'ac-002',
       solicitacaoId: 'sol-008',
-      status: 'APROVADO',
+      tipo: 'PACIENTE',
+      tipoAjudaCusto: 'COM_PERNOITE',
+      status: 'APROVADA',
       dataInicio: '2026-03-19',
       dataFim: '2026-04-20',
-      diasCompletos: 31,
-      diaRetorno: true,
-      valorDiariaCompleta: 24.75,
-      valorDiariaRetorno: 8.4,
-      valorTotal: 775.65, // (31 * 24.75) + 8.40
+      diasInternacao: 3,
+      diasElegiveis: 29,
+      valorDiaria: 24.75,
+      valorTotal: 717.75,
       comprovantes: [],
       observacoes: 'Valor para paciente + acompanhante. Diaria dupla autorizada.',
     },
@@ -636,8 +791,12 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
   {
     id: 'sol-009',
     numero: 'TFD-2026-000025',
+    numeroProtocolo: 'TFD-PAC-0009',
+    numeroCiclo: 1,
+    tipoSolicitacao: 'PRIMEIRO_ATENDIMENTO',
     status: 'EM_PERMANENCIA',
     paciente: MOCK_PACIENTES[0], // Maria das Gracas (segunda solicitacao)
+    acompanhantesElegiveis: [],
     diagnostico: {
       cid: 'G35',
       descricao: 'Esclerose multipla',
@@ -646,6 +805,13 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
         'Esclerose multipla remitente-recorrente com falha terapeutica ao interferon beta. Necessita avaliacao para inicio de Natalizumabe em centro de referencia.',
       procedimentoSolicitado:
         'Avaliacao neurologica e infusao de Natalizumabe',
+      origemLaudo: 'ESTADUAL',
+      dataLaudo: '2025-12-15',
+      dataValidadeLaudo: '2026-12-15',
+      medicoSolicitanteNome: 'Dra. Renata Bezerra Santos',
+      medicoSolicitanteCRM: '90123',
+      medicoSolicitanteUF: 'MA',
+      caracterAtendimento: 'AMBULATORIAL',
     },
     documentos: [
       {
@@ -657,7 +823,7 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       },
       {
         id: 'doc-025',
-        tipo: 'EXAME',
+        tipo: 'EXAME_COMPLEMENTAR',
         nome: 'RNM_Encefalo_Medula.pdf',
         url: '/uploads/doc-025.pdf',
         dataUpload: '2026-01-05',
@@ -720,17 +886,19 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
         valorPassagem: 815.0,
       },
     ],
+    procedimentos: [],
     ajudaDeCusto: {
       id: 'ac-003',
       solicitacaoId: 'sol-009',
-      status: 'PAGO',
+      tipo: 'PACIENTE',
+      tipoAjudaCusto: 'COM_PERNOITE',
+      status: 'CONCLUIDA',
       dataInicio: '2026-03-04',
       dataFim: '2026-03-28',
-      diasCompletos: 23,
-      diaRetorno: true,
-      valorDiariaCompleta: 24.75,
-      valorDiariaRetorno: 8.4,
-      valorTotal: 577.65, // (23 * 24.75) + 8.40
+      diasInternacao: 0,
+      diasElegiveis: 24,
+      valorDiaria: 24.75,
+      valorTotal: 594.00,
       comprovantes: [],
     },
     permanencia: {
@@ -761,8 +929,12 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
   {
     id: 'sol-010',
     numero: 'TFD-2026-000012',
+    numeroProtocolo: 'TFD-PAC-0010',
+    numeroCiclo: 4,
+    tipoSolicitacao: 'CONTINUIDADE',
     status: 'CONCLUIDO',
     paciente: MOCK_PACIENTES[3], // Antonio Carlos - Timon (segunda solicitacao)
+    acompanhantesElegiveis: [],
     diagnostico: {
       cid: 'H25.1',
       descricao: 'Catarata senil nuclear',
@@ -771,6 +943,13 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
         'Catarata nuclear bilateral avancada com acuidade visual 20/200 em ambos os olhos. Fila de espera para facectomia no Maranhao superior a 18 meses.',
       procedimentoSolicitado:
         'Facoemulsificacao com implante de lente intraocular bilateral',
+      origemLaudo: 'ESTADUAL',
+      dataLaudo: '2025-10-20',
+      dataValidadeLaudo: '2026-10-20',
+      medicoSolicitanteNome: 'Dr. Luciano Andrade Moreira',
+      medicoSolicitanteCRM: '01234',
+      medicoSolicitanteUF: 'MA',
+      caracterAtendimento: 'HOSPITALAR',
     },
     documentos: [
       {
@@ -782,7 +961,7 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       },
       {
         id: 'doc-027',
-        tipo: 'EXAME',
+        tipo: 'EXAME_COMPLEMENTAR',
         nome: 'Biometria_Ocular.pdf',
         url: '/uploads/doc-027.pdf',
         dataUpload: '2025-11-15',
@@ -846,21 +1025,23 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
         valorPassagem: 0,
       },
     ],
+    procedimentos: [],
     ajudaDeCusto: {
       id: 'ac-004',
       solicitacaoId: 'sol-010',
-      status: 'PAGO',
+      tipo: 'PACIENTE',
+      tipoAjudaCusto: 'SEM_PERNOITE',
+      status: 'CONCLUIDA',
       dataInicio: '2026-01-14',
       dataFim: '2026-01-16',
-      diasCompletos: 1,
-      diaRetorno: true,
-      valorDiariaCompleta: 24.75,
-      valorDiariaRetorno: 8.4,
-      valorTotal: 33.15,
+      diasInternacao: 0,
+      diasElegiveis: 2,
+      valorDiaria: 24.75,
+      valorTotal: 49.50,
       comprovantes: [
         {
           id: 'doc-028',
-          tipo: 'OUTROS',
+          tipo: 'COMPROVANTE_PAGAMENTO',
           nome: 'Comprovante_Pagamento_Diaria.pdf',
           url: '/uploads/doc-028.pdf',
           dataUpload: '2026-01-20',
@@ -907,7 +1088,7 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       },
       {
         id: 'doc-030',
-        tipo: 'EXAME',
+        tipo: 'EXAME_COMPLEMENTAR',
         nome: 'RNM_Coluna_Lombar.pdf',
         url: '/uploads/doc-030.pdf',
         dataUpload: '2026-03-01',
@@ -956,7 +1137,7 @@ export const MOCK_SOLICITACOES: SolicitacaoTFD[] = [
       },
       {
         id: 'doc-032',
-        tipo: 'EXAME',
+        tipo: 'EXAME_COMPLEMENTAR',
         nome: 'USG_Abdomen_Total.pdf',
         url: '/uploads/doc-032.pdf',
         dataUpload: '2026-02-15',

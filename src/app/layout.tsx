@@ -1,14 +1,14 @@
 import type { Metadata } from 'next';
-import { Inter, Geist } from 'next/font/google';
+import { Inter } from 'next/font/google';
 import './globals.css';
 import AppLayout from '@/layout/AppLayout';
-import { cn } from "@/lib/utils";
-
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
+import { ToastProvider } from '@/shared/components/toast/Toast';
 
 const inter = Inter({
   subsets: ['latin'],
   display: 'swap',
+  variable: '--font-inter',
+  weight: ['300', '400', '500', '600', '700'],
 });
 
 export const metadata: Metadata = {
@@ -23,9 +23,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR" className={cn("h-full", "antialiased", inter.className, "font-sans", geist.variable)}>
-      <body className="min-h-full">
-        <AppLayout>{children}</AppLayout>
+    <html lang="pt-BR" className={`${inter.variable} h-full antialiased`}>
+      <body className="min-h-full font-sans">
+        <ToastProvider>
+          <AppLayout>{children}</AppLayout>
+        </ToastProvider>
       </body>
     </html>
   );

@@ -16,6 +16,11 @@ interface StatusStyle {
 }
 
 const statusMap: Record<StatusSolicitacao, StatusStyle> = {
+  PENDENTE_DIAGNOSTICO: {
+    bg: '#FFF7ED',
+    text: '#C2410C',
+    label: 'Pend. Diagnóstico',
+  },
   NOVO: {
     bg: 'var(--tfd-surface-100)',
     text: 'var(--tfd-surface-700)',
@@ -35,6 +40,26 @@ const statusMap: Record<StatusSolicitacao, StatusStyle> = {
     bg: '#EDE9FE',
     text: '#6D28D9',
     label: 'Ag. Regulação',
+  },
+  AGUARDANDO_CNRAC: {
+    bg: '#F5F3FF',
+    text: '#7C3AED',
+    label: 'Ag. CNRAC',
+  },
+  AGUARDANDO_SETI: {
+    bg: '#F5F3FF',
+    text: '#7C3AED',
+    label: 'Ag. SETI',
+  },
+  AGUARDANDO_RESPOSTA_EXTERNA: {
+    bg: '#FFF7ED',
+    text: '#C2410C',
+    label: 'Ag. Resposta Externa',
+  },
+  ENCAMINHADO_SERVICO_SOCIAL: {
+    bg: '#ECFDF5',
+    text: '#047857',
+    label: 'Serviço Social',
   },
   AGUARDANDO_AGENDAMENTO: {
     bg: '#CFFAFE',
@@ -60,6 +85,16 @@ const statusMap: Record<StatusSolicitacao, StatusStyle> = {
     bg: '#FFEDD5',
     text: '#C2410C',
     label: 'Em Permanência',
+  },
+  REMARCACAO: {
+    bg: '#E0E7FF',
+    text: '#4338CA',
+    label: 'Remarcação',
+  },
+  EM_PAGAMENTO: {
+    bg: '#DBEAFE',
+    text: '#1D4ED8',
+    label: 'Em Pagamento',
   },
   CONCLUIDO: {
     bg: '#DCFCE7',

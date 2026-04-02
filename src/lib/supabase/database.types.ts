@@ -8,6 +8,7 @@
 // ─── Enums ───────────────────────────────────────────────────────────────────
 
 export type StatusSolicitacao =
+  | 'PENDENTE_DIAGNOSTICO'
   | 'NOVO'
   | 'EM_ANALISE'
   | 'EXIGENCIA'
@@ -24,7 +25,8 @@ export type StatusSolicitacao =
   | 'REMARCACAO'
   | 'EM_PAGAMENTO'
   | 'CONCLUIDO'
-  | 'INDEFERIDO';
+  | 'INDEFERIDO'
+  | 'CANCELADO';
 
 export type Prioridade = 'NORMAL' | 'URGENTE' | 'EMERGENCIAL';
 
@@ -155,7 +157,12 @@ export type TipoAtendimento =
   | 'CONSULTA'
   | 'CIRURGIA'
   | 'EXAME'
-  | 'TRATAMENTO_CONTINUO';
+  | 'TRATAMENTO_CONTINUO'
+  | 'QUIMIOTERAPIA'
+  | 'RADIOTERAPIA'
+  | 'HEMODIALISE'
+  | 'REABILITACAO'
+  | 'OUTROS';
 
 export type OrigemAgendamento =
   | 'CNRAC'
@@ -189,7 +196,26 @@ export type AcaoAuditoria =
   | 'TRANSICAO_FORCADA'
   | 'OBSERVACAO_REGISTRADA'
   | 'ROTA_DEFINIDA'
-  | 'COBRANCA_ENVIADA';
+  | 'COBRANCA_ENVIADA'
+  | 'PROCESSO_CANCELADO'
+  | 'DEVOLUCAO_CRIADA'
+  | 'DEVOLUCAO_RESOLVIDA'
+  | 'PAPEL_ATRIBUIDO';
+
+export type SetorTFD =
+  | 'SOLICITACOES'
+  | 'DIAGNOSTICO_CLINICO'
+  | 'PARECER_MEDICO'
+  | 'REGULACAO'
+  | 'AGENDAMENTO'
+  | 'PASSAGENS'
+  | 'AJUDA_CUSTO'
+  | 'PERMANENCIA'
+  | 'ENCERRAMENTO';
+
+export type StatusDevolucao = 'PENDENTE' | 'RECEBIDA' | 'RESOLVIDA';
+
+export type UrgenciaDevolucao = 'NORMAL' | 'URGENTE';
 
 // ─── Database Definition ─────────────────────────────────────────────────────
 
@@ -414,6 +440,7 @@ export type Database = {
           cid10_principal: string;
           cid10_secundario: string | null;
           tipo_procedimento: string;
+          especialidade: string | null;
           descricao_diagnostico: string;
           justificativa_tfd: string;
           necessidade_acompanhante: boolean;
@@ -441,6 +468,7 @@ export type Database = {
           cid10_principal: string;
           cid10_secundario?: string | null;
           tipo_procedimento: string;
+          especialidade?: string | null;
           descricao_diagnostico: string;
           justificativa_tfd: string;
           necessidade_acompanhante: boolean;
@@ -468,6 +496,7 @@ export type Database = {
           cid10_principal?: string;
           cid10_secundario?: string | null;
           tipo_procedimento?: string;
+          especialidade?: string | null;
           descricao_diagnostico?: string;
           justificativa_tfd?: string;
           necessidade_acompanhante?: boolean;
@@ -601,11 +630,10 @@ export type Database = {
         Row: {
           id: string;
           solicitacao_id: string;
-          responsavel_id: string;
+          responsavel_id: string | null;
           tipo_rota: TipoRota;
           justificativa: string | null;
           lembrete: string | null;
-          data_hora_rota: string;
           data_retorno_previsto: string | null;
           status_espera: StatusEspera | null;
           created_at: string;
@@ -613,11 +641,10 @@ export type Database = {
         Insert: {
           id?: string;
           solicitacao_id: string;
-          responsavel_id: string;
+          responsavel_id?: string;
           tipo_rota: TipoRota;
           justificativa?: string | null;
           lembrete?: string | null;
-          data_hora_rota?: string;
           data_retorno_previsto?: string | null;
           status_espera?: StatusEspera | null;
           created_at?: string;
@@ -629,7 +656,6 @@ export type Database = {
           tipo_rota?: TipoRota;
           justificativa?: string | null;
           lembrete?: string | null;
-          data_hora_rota?: string;
           data_retorno_previsto?: string | null;
           status_espera?: StatusEspera | null;
           created_at?: string;
@@ -644,7 +670,9 @@ export type Database = {
           rota_regulacao_id: string;
           destinatario: string;
           canal: CanalCobranca;
+          contato_canal: string | null;
           data_envio: string;
+          conteudo_envio: string | null;
           data_resposta: string | null;
           conteudo_resposta: string | null;
           status_cobranca: StatusCobranca;
@@ -656,7 +684,9 @@ export type Database = {
           rota_regulacao_id: string;
           destinatario: string;
           canal: CanalCobranca;
+          contato_canal?: string | null;
           data_envio?: string;
+          conteudo_envio?: string | null;
           data_resposta?: string | null;
           conteudo_resposta?: string | null;
           status_cobranca?: StatusCobranca;
@@ -668,7 +698,9 @@ export type Database = {
           rota_regulacao_id?: string;
           destinatario?: string;
           canal?: CanalCobranca;
+          contato_canal?: string | null;
           data_envio?: string;
+          conteudo_envio?: string | null;
           data_resposta?: string | null;
           conteudo_resposta?: string | null;
           status_cobranca?: StatusCobranca;
@@ -1485,11 +1517,6 @@ export type Database = {
         };
         Relationships: [];
       };
-    };
-
-    Views: Record<string, never>;
-
-    Functions: Record<string, never>;
 
       // ── RBAC (Migration 004) ──────────────────────────────
       telas_sistema: {
@@ -1519,7 +1546,67 @@ export type Database = {
         Update: { id?: string; codigo?: string; ativo?: boolean; created_at?: string };
         Relationships: [];
       };
+
+      // ── Devoluções (retorno não-linear entre setores) ────
+      devolucoes: {
+        Row: {
+          id: string;
+          solicitacao_id: string;
+          setor_origem: SetorTFD;
+          setor_destino: SetorTFD;
+          motivo: string;
+          urgencia: UrgenciaDevolucao;
+          status_devolucao: StatusDevolucao;
+          devolvido_por: string | null;
+          recebido_por: string | null;
+          resolvido_por: string | null;
+          resolvido_em: string | null;
+          observacao_resolucao: string | null;
+          /** Status da solicitação no momento da devolução — usado para retorno direto */
+          status_retorno: StatusSolicitacao;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          solicitacao_id: string;
+          setor_origem: SetorTFD;
+          setor_destino: SetorTFD;
+          motivo: string;
+          urgencia?: UrgenciaDevolucao;
+          status_devolucao?: StatusDevolucao;
+          devolvido_por?: string | null;
+          recebido_por?: string | null;
+          resolvido_por?: string | null;
+          resolvido_em?: string | null;
+          observacao_resolucao?: string | null;
+          status_retorno: StatusSolicitacao;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          solicitacao_id?: string;
+          setor_origem?: SetorTFD;
+          setor_destino?: SetorTFD;
+          motivo?: string;
+          urgencia?: UrgenciaDevolucao;
+          status_devolucao?: StatusDevolucao;
+          devolvido_por?: string | null;
+          recebido_por?: string | null;
+          resolvido_por?: string | null;
+          resolvido_em?: string | null;
+          observacao_resolucao?: string | null;
+          status_retorno?: StatusSolicitacao;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
+
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
 
     Enums: {
       status_solicitacao: StatusSolicitacao;
@@ -1556,6 +1643,9 @@ export type Database = {
       origem_agendamento: OrigemAgendamento;
       status_agendamento: StatusAgendamento;
       acao_auditoria: AcaoAuditoria;
+      setor_tfd: SetorTFD;
+      status_devolucao: StatusDevolucao;
+      urgencia_devolucao: UrgenciaDevolucao;
     };
   };
 };

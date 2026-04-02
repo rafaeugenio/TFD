@@ -1,17 +1,18 @@
 import { createClient } from '@/lib/supabase/client';
 import type { InsertDTO, StatusSolicitacao } from '@/lib/supabase/database.types';
+import { buscarDevolucaoAtiva, resolverDevolucao } from './devolucoes.service';
 
 function getSupabase() {
   return createClient();
 }
 
-/** Maps TipoRota to the resulting StatusSolicitacao for the parent process. */
+/** All routing decisions now advance directly to agendamento. */
 const ROTA_STATUS_MAP: Record<string, string> = {
   APROVADO_DIRETO: 'AGUARDANDO_AGENDAMENTO',
-  CNRAC: 'AGUARDANDO_CNRAC',
-  SETI: 'AGUARDANDO_SETI',
-  RESPOSTA_EXTERNA: 'AGUARDANDO_RESPOSTA_EXTERNA',
-  SERVICO_SOCIAL: 'ENCAMINHADO_SERVICO_SOCIAL',
+  CNRAC: 'AGUARDANDO_AGENDAMENTO',
+  SETI: 'AGUARDANDO_AGENDAMENTO',
+  RESPOSTA_EXTERNA: 'AGUARDANDO_AGENDAMENTO',
+  SERVICO_SOCIAL: 'AGUARDANDO_AGENDAMENTO',
 };
 
 export async function listarFilaRegulacao(filters?: {
@@ -25,13 +26,7 @@ export async function listarFilaRegulacao(filters?: {
   let query = supabase
     .from('solicitacoes')
     .select('*, pacientes(nome_completo, cpf)', { count: 'exact' })
-    .in('status', [
-      'AGUARDANDO_REGULACAO',
-      'AGUARDANDO_CNRAC',
-      'AGUARDANDO_SETI',
-      'AGUARDANDO_RESPOSTA_EXTERNA',
-      'ENCAMINHADO_SERVICO_SOCIAL',
-    ])
+    .eq('status', 'AGUARDANDO_REGULACAO')
     .order('prioridade', { ascending: true })
     .order('created_at', { ascending: true });
 
@@ -66,19 +61,42 @@ export async function criarRotaRegulacao(
 
   if (rotaResult.error) return rotaResult;
 
-  // Update the parent solicitacao status based on the route type
-  const novoStatus = ROTA_STATUS_MAP[data.tipo_rota] as StatusSolicitacao | undefined;
-  if (novoStatus) {
-    await supabase
-      .from('solicitacoes')
-      .update({
-        status: novoStatus,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', data.solicitacao_id);
+  // Verificar se existe devolução ativa para REGULACAO
+  const devolucao = await buscarDevolucaoAtiva(data.solicitacao_id, 'REGULACAO');
+
+  let novoStatus: StatusSolicitacao;
+  if (devolucao.data) {
+    // Retorno direto: volta ao status do setor que originou a devolução
+    novoStatus = devolucao.data.status_retorno as StatusSolicitacao;
+    await resolverDevolucao(
+      devolucao.data.id,
+      `Rota de regulação definida (${data.tipo_rota}). Retorno direto ao setor de origem.`,
+    );
+  } else {
+    // Fluxo normal
+    novoStatus = (ROTA_STATUS_MAP[data.tipo_rota] as StatusSolicitacao) ?? 'AGUARDANDO_AGENDAMENTO';
   }
 
+  await supabase
+    .from('solicitacoes')
+    .update({
+      status: novoStatus,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', data.solicitacao_id);
+
   return rotaResult;
+}
+
+export async function buscarUltimaRota(solicitacaoId: string) {
+  const supabase = getSupabase();
+  return supabase
+    .from('rotas_regulacao')
+    .select('id')
+    .eq('solicitacao_id', solicitacaoId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 }
 
 export async function criarCobrancaExterna(
@@ -111,4 +129,41 @@ export async function criarValidacaoRPB(
 ) {
   const supabase = getSupabase();
   return supabase.from('validacoes_rpb').insert(data).select().single();
+}
+
+/**
+ * Confirma a conclusão de uma etapa externa (CNRAC, SETI, Serviço Social, etc.)
+ * e avança a solicitação para AGUARDANDO_AGENDAMENTO.
+ *
+ * O usuário retorna ao sistema, informa que o processo externo foi concluído
+ * e anexa documentos comprobatórios (feitos via uploadDocumento separadamente).
+ */
+export async function confirmarRetornoExterno(
+  solicitacaoId: string,
+  observacoes: string,
+) {
+  const supabase = getSupabase();
+
+  // Atualizar a rota com a confirmação (usa campo lembrete para registrar observações de retorno)
+  const ultimaRota = await buscarUltimaRota(solicitacaoId);
+  if (ultimaRota.data) {
+    await supabase
+      .from('rotas_regulacao')
+      .update({
+        lembrete: observacoes,
+        status_espera: 'CONCLUIDO',
+      } as any)
+      .eq('id', ultimaRota.data.id);
+  }
+
+  // Avançar a solicitação para agendamento
+  return supabase
+    .from('solicitacoes')
+    .update({
+      status: 'AGUARDANDO_AGENDAMENTO' as StatusSolicitacao,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', solicitacaoId)
+    .select()
+    .single();
 }

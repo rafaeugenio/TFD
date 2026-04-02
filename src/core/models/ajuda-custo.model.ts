@@ -1,20 +1,71 @@
 import { Documento } from './solicitacao.model';
 
-export type StatusAjudaCusto = 'PENDENTE' | 'APROVADO' | 'PAGO' | 'CANCELADO';
+// Corrigido: alinhado com DB CHECK constraint
+export type StatusAjudaCusto =
+  | 'EM_ANALISE'
+  | 'APROVADA'
+  | 'EM_PAGAMENTO'
+  | 'CONCLUIDA'
+  | 'GLOSADA';
+
+// B17 (Onda 1) — preservado aqui para completude
+export type TipoAjudaCusto = 'COM_PERNOITE' | 'SEM_PERNOITE';
 
 export interface AjudaDeCusto {
   id: string;
   solicitacaoId: string;
+  tipo: 'PACIENTE' | 'ACOMPANHANTE';
+  tipoAjudaCusto: TipoAjudaCusto;
   status: StatusAjudaCusto;
   dataInicio: string;
-  dataFim: string;
-  diasCompletos: number;
-  diaRetorno: boolean; // ultimo dia = valor reduzido
-  valorDiariaCompleta: number; // R$ 24,75
-  valorDiariaRetorno: number; // R$ 8,40
-  valorTotal: number;
+  dataFim?: string;
+  diasInternacao: number;
+  diasElegiveis: number; // calculado: (dataFim - dataInicio) - diasInternacao
+  valorDiaria: number; // valor da portaria vigente
+  valorTotal: number; // calculado: diasElegiveis × valorDiaria
+  sacador?: Sacador; // B18
   comprovantes: Documento[];
   observacoes?: string;
+}
+
+// B18 — Pessoa que recebe pagamento em nome do paciente
+export type VinculoSacador =
+  | 'CONJUGE'
+  | 'FILHO'
+  | 'PAI_MAE'
+  | 'RESPONSAVEL_LEGAL'
+  | 'PROCURADOR'
+  | 'OUTRO';
+
+export interface Sacador {
+  id: string;
+  ajudaCustoId: string;
+  nome: string;
+  cpf: string;
+  rg?: string;
+  vinculo: VinculoSacador;
+  vinculoDescricao?: string; // obrigatório quando vinculo = OUTRO
+  telefone?: string;
+  documentoAutorizacao?: string; // URL do documento de autorização
+}
+
+// B19 — Movimentação financeira entre ciclos (estorno/crédito)
+export type TipoMovimentacao = 'CREDITO' | 'DEBITO' | 'ESTORNO';
+export type StatusMovimentacao = 'PENDENTE' | 'APLICADO' | 'CANCELADO';
+
+export interface MovimentacaoFinanceira {
+  id: string;
+  solicitacaoOrigemId: string;
+  solicitacaoDestinoId?: string;
+  tipo: TipoMovimentacao;
+  valor: number;
+  motivo: string;
+  status: StatusMovimentacao;
+  referenciaAjudaCustoId?: string;
+  criadoPor: string;
+  dataCriacao: string;
+  aplicadoPor?: string;
+  aplicadoEm?: string;
 }
 
 export interface Permanencia {

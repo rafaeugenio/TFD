@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import { useToast } from '@/shared/components/toast/Toast';
 import { formatDateTime } from '@/shared/pipes/formatters';
 
 /* -------------------------------------------------- */
@@ -581,6 +582,7 @@ const PAGE_SIZE = 20;
 /* -------------------------------------------------- */
 
 export default function LogsAuditoriaPage() {
+  const toast = useToast();
   const [search, setSearch] = useState('');
   const [filterAcao, setFilterAcao] = useState('ALL');
   const [filterModulo, setFilterModulo] = useState('ALL');
@@ -628,7 +630,11 @@ export default function LogsAuditoriaPage() {
   /* ---- Refresh simulation ---- */
   const handleRefresh = useCallback(() => {
     setLoading(true);
-    setTimeout(() => setLoading(false), 800);
+    setTimeout(() => {
+      setLoading(false);
+      toast.info('Logs atualizados', 'Os dados foram recarregados.');
+    }, 800);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ---- CSV Export ---- */
@@ -665,6 +671,8 @@ export default function LogsAuditoriaPage() {
     a.download = 'logs-tfd.csv';
     a.click();
     URL.revokeObjectURL(url);
+    toast.success('CSV exportado!', 'O arquivo de logs foi gerado com sucesso.');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtered]);
 
   return (
@@ -692,12 +700,12 @@ export default function LogsAuditoriaPage() {
         <div className="relative flex-1 min-w-[220px] max-w-sm">
           <Search
             size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+            className="tfd-input-leading-icon"
             style={{ color: 'var(--tfd-text-muted)' }}
           />
           <input
             type="text"
-            className="tfd-input tfd-input--sm pl-9"
+            className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
             placeholder="Buscar por usuário, descrição..."
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}

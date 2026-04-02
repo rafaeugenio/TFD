@@ -1,35 +1,33 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import clsx from 'clsx';
-import { Menu, Bell, ChevronDown, User, LogOut } from 'lucide-react';
+import { Menu, Bell, Search, ChevronDown, User, LogOut } from 'lucide-react';
+import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
+import { createClient } from '@/lib/supabase/client';
 
-/* -------------------------------------------------- */
-/*  Page title mapping                                 */
-/* -------------------------------------------------- */
+/* ── Title map ───────────────────────────────────── */
 
-const pageTitleMap: Record<string, string> = {
+const titles: Record<string, string> = {
   '/dashboard': 'Painel',
-  '/solicitacoes': 'Solicita\u00e7\u00f5es',
-  '/regulacao': 'Regula\u00e7\u00e3o',
+  '/solicitacoes': 'Solicitações',
+  '/diagnostico-clinico': 'Diagnóstico Clínico',
+  '/regulacao': 'Regulação',
   '/viagens': 'Viagens',
   '/ajuda-custo': 'Ajuda de Custo',
-  '/permanencia': 'Perman\u00eancia',
-  '/relatorios': 'Relat\u00f3rios',
-  '/configuracoes': 'Configura\u00e7\u00f5es',
+  '/permanencia': 'Permanência',
+  '/relatorios': 'Relatórios',
+  '/configuracoes': 'Configurações',
+  '/atendimento-destino': 'Agendamentos',
+  '/alta-encerramento': 'Altas',
 };
 
-function getPageTitle(pathname: string): string {
-  if (pageTitleMap[pathname]) return pageTitleMap[pathname];
-
-  const segment = '/' + pathname.split('/').filter(Boolean)[0];
-  return pageTitleMap[segment] ?? 'TFD';
+function getTitle(p: string) {
+  return titles[p] ?? titles['/' + p.split('/').filter(Boolean)[0]] ?? 'TFD';
 }
 
-/* -------------------------------------------------- */
-/*  Types                                              */
-/* -------------------------------------------------- */
+/* ── Props ───────────────────────────────────────── */
 
 interface HeaderProps {
   onMenuToggle: () => void;
@@ -37,219 +35,142 @@ interface HeaderProps {
   sidebarWidth: number | string;
 }
 
-/* -------------------------------------------------- */
-/*  Component                                          */
-/* -------------------------------------------------- */
+/* ── Component ───────────────────────────────────── */
 
 export default function Header({
   onMenuToggle,
-  sidebarCollapsed,
   sidebarWidth,
 }: HeaderProps) {
   const pathname = usePathname();
-  const pageTitle = getPageTitle(pathname);
+  const router = useRouter();
+  const title = getTitle(pathname);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const count = 3;
+  const { user } = useCurrentUser();
 
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const displayName = user?.nome ?? 'Usuário';
+  const displayInitials = user?.iniciais ?? 'U';
+  const displayPerfil = user?.perfil?.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c: string) => c.toUpperCase()) ?? '';
 
-  const notificationCount = 3;
+  async function handleLogout() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push('/login');
+    router.refresh();
+  }
 
-  /* Close dropdown on outside click */
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setUserMenuOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
   }, []);
 
   return (
     <header
-      className="fixed top-0 right-0 z-30 flex items-center justify-between px-4 sm:px-6"
+      className="fixed top-0 right-0 z-30 flex items-center justify-between px-5 sm:px-8"
       style={{
-        height: 'var(--tfd-header-height)',
-        backgroundColor: 'var(--tfd-surface-header)',
-        borderBottom: '1px solid var(--tfd-surface-border)',
-        boxShadow: 'var(--tfd-shadow-sm)',
+        height: 'var(--tfd-header-h)',
+        background: 'var(--tfd-surface-header)',
+        borderBottom: '1px solid var(--tfd-200)',
         left: sidebarWidth,
-        transition: `left var(--tfd-transition-duration) var(--tfd-transition-timing)`,
+        transition: 'left 250ms var(--tfd-ease)',
       }}
     >
-      {/* ---- Left side ---- */}
+      {/* Left */}
       <div className="flex items-center gap-3">
-        {/* Hamburger */}
         <button
           type="button"
           onClick={onMenuToggle}
-          className="flex items-center justify-center p-2 hover:bg-slate-100"
-          style={{
-            borderRadius: 'var(--tfd-radius-md)',
-            transition: `background-color var(--tfd-transition-duration) var(--tfd-transition-timing)`,
-            color: 'var(--tfd-text-secondary)',
-          }}
-          aria-label="Alternar menu lateral"
+          className="flex items-center justify-center p-2 text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9] rounded-lg transition-colors duration-150"
+          aria-label="Menu"
         >
-          <Menu size={20} />
+          <Menu size={18} />
         </button>
 
-        {/* Page title */}
-        <h1
-          className="text-lg font-semibold leading-tight"
-          style={{ color: 'var(--tfd-text-primary)' }}
-        >
-          {pageTitle}
+        <h1 className="text-[15px] font-semibold text-[#0F172A]" style={{ letterSpacing: '-0.02em' }}>
+          {title}
         </h1>
       </div>
 
-      {/* ---- Right side ---- */}
-      <div className="flex items-center gap-2">
-        {/* Notifications */}
+      {/* Right */}
+      <div className="flex items-center gap-1">
+        {/* Search */}
         <button
           type="button"
-          className="relative flex items-center justify-center p-2 hover:bg-slate-100"
-          style={{
-            borderRadius: 'var(--tfd-radius-md)',
-            transition: `background-color var(--tfd-transition-duration) var(--tfd-transition-timing)`,
-            color: 'var(--tfd-text-secondary)',
-          }}
-          aria-label={`Notifica\u00e7\u00f5es (${notificationCount})`}
+          className="flex items-center justify-center p-2 text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9] rounded-lg transition-colors duration-150"
+          aria-label="Buscar"
         >
-          <Bell size={20} />
-          {notificationCount > 0 && (
-            <span
-              className="absolute flex items-center justify-center text-[10px] font-bold text-white"
-              style={{
-                top: 4,
-                right: 4,
-                minWidth: 16,
-                height: 16,
-                padding: '0 4px',
-                borderRadius: 9999,
-                backgroundColor: 'var(--tfd-status-danger)',
-              }}
-            >
-              {notificationCount}
+          <Search size={17} />
+        </button>
+
+        {/* Bell */}
+        <button
+          type="button"
+          className="relative flex items-center justify-center p-2 text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9] rounded-lg transition-colors duration-150"
+          aria-label={`Notificações (${count})`}
+        >
+          <Bell size={17} />
+          {count > 0 && (
+            <span className="absolute top-1.5 right-1.5 flex items-center justify-center text-[8px] font-bold text-white bg-[#EF4444] min-w-[14px] h-[14px] px-[3px] rounded-full border-[1.5px] border-white">
+              {count}
             </span>
           )}
         </button>
 
-        {/* User menu */}
-        <div ref={menuRef} className="relative">
+        {/* Divider */}
+        <div className="hidden sm:block w-px h-5 bg-[#E2E8F0] mx-2" />
+
+        {/* User */}
+        <div ref={ref} className="relative">
           <button
             type="button"
-            onClick={() => setUserMenuOpen((prev) => !prev)}
-            className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100"
-            style={{
-              borderRadius: 'var(--tfd-radius-md)',
-              transition: `background-color var(--tfd-transition-duration) var(--tfd-transition-timing)`,
-            }}
+            onClick={() => setOpen((p) => !p)}
+            className="flex items-center gap-2.5 px-2 py-1.5 hover:bg-[#F1F5F9] rounded-lg transition-colors duration-150"
           >
-            {/* Avatar */}
-            <div
-              className="flex items-center justify-center rounded-full shrink-0 text-sm font-semibold text-white"
-              style={{
-                width: 32,
-                height: 32,
-                backgroundColor: 'var(--tfd-primary-500)',
-              }}
-            >
-              MS
+            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[#2563EB] text-white text-[11px] font-semibold shrink-0">
+              {displayInitials}
             </div>
-
-            {/* Name (hidden on small screens) */}
-            <span
-              className="hidden sm:block text-sm font-medium truncate max-w-[120px]"
-              style={{ color: 'var(--tfd-text-primary)' }}
-            >
-              Maria Silva
-            </span>
-
+            <div className="hidden sm:flex flex-col items-start">
+              <span className="text-[12px] font-medium text-[#0F172A] leading-tight">{displayName}</span>
+              <span className="text-[10px] text-[#94A3B8] leading-tight">{displayPerfil}</span>
+            </div>
             <ChevronDown
-              size={16}
+              size={13}
               className={clsx(
-                'hidden sm:block shrink-0',
-                userMenuOpen && 'rotate-180',
+                'hidden sm:block text-[#94A3B8] transition-transform duration-150',
+                open && 'rotate-180',
               )}
-              style={{
-                color: 'var(--tfd-text-muted)',
-                transition: `transform var(--tfd-transition-duration) var(--tfd-transition-timing)`,
-              }}
             />
           </button>
 
           {/* Dropdown */}
-          {userMenuOpen && (
+          {open && (
             <div
-              className="absolute right-0 mt-1 w-56 overflow-hidden"
-              style={{
-                top: '100%',
-                backgroundColor: 'var(--tfd-surface-card)',
-                borderRadius: 'var(--tfd-radius-xl)',
-                border: '1px solid var(--tfd-surface-border)',
-                boxShadow: 'var(--tfd-shadow-overlay)',
-                zIndex: 50,
-              }}
+              className="absolute right-0 mt-1.5 w-52 overflow-hidden bg-white rounded-xl shadow-lg border border-[#F1F5F9] z-50"
+              style={{ animation: 'tfd-scale-in 150ms var(--tfd-ease) both' }}
             >
-              {/* User info */}
-              <div
-                className="px-4 py-3"
-                style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}
-              >
-                <p
-                  className="text-sm font-semibold truncate"
-                  style={{ color: 'var(--tfd-text-primary)' }}
-                >
-                  Maria Silva
-                </p>
-                <p
-                  className="text-xs truncate mt-0.5"
-                  style={{ color: 'var(--tfd-text-secondary)' }}
-                >
-                  Coordena\u00e7\u00e3o Estadual
-                </p>
+              <div className="px-4 py-3 border-b border-[#F1F5F9]">
+                <p className="text-[13px] font-semibold text-[#0F172A]">{displayName}</p>
+                <p className="text-[11px] text-[#94A3B8] mt-0.5">{displayPerfil}</p>
               </div>
-
-              {/* Menu items */}
               <div className="py-1">
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2.5 px-4 py-2 text-sm"
-                  style={{
-                    color: 'var(--tfd-text-primary)',
-                    transition: `background-color var(--tfd-transition-duration) var(--tfd-transition-timing)`,
-                  }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.backgroundColor =
-                      'var(--tfd-surface-hover)')
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.backgroundColor = 'transparent')
-                  }
-                  onClick={() => setUserMenuOpen(false)}
+                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-[13px] text-[#475569] hover:bg-[#F8FAFC] transition-colors duration-150"
+                  onClick={() => setOpen(false)}
                 >
-                  <User size={16} style={{ color: 'var(--tfd-text-secondary)' }} />
+                  <User size={14} className="text-[#94A3B8]" />
                   Meu Perfil
                 </button>
-
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2.5 px-4 py-2 text-sm"
-                  style={{
-                    color: 'var(--tfd-status-danger)',
-                    transition: `background-color var(--tfd-transition-duration) var(--tfd-transition-timing)`,
-                  }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.backgroundColor =
-                      'var(--tfd-status-danger-bg)')
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.backgroundColor = 'transparent')
-                  }
-                  onClick={() => setUserMenuOpen(false)}
+                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-[13px] text-[#EF4444] hover:bg-[#FEF2F2] transition-colors duration-150"
+                  onClick={handleLogout}
                 >
-                  <LogOut size={16} />
+                  <LogOut size={14} />
                   Sair
                 </button>
               </div>

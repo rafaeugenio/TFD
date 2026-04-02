@@ -23,6 +23,7 @@ import {
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import EmptyState from '@/shared/components/empty-state/EmptyState';
+import { useToast } from '@/shared/components/toast/Toast';
 import { MOCK_USUARIOS } from '@/core/mocks/usuarios.mock';
 import {
   listarUsuarios,
@@ -136,6 +137,8 @@ const MODULOS = [
 /* -------------------------------------------------- */
 
 export default function UsuariosPage() {
+  const toast = useToast();
+
   /* ---- State ---- */
   const [usuarios, setUsuarios] = useState<UsuarioRow[]>([]);
   const [papeis, setPapeis] = useState<Papel[]>([]);
@@ -272,9 +275,24 @@ export default function UsuariosPage() {
     setExpandedId((prev) => (prev === id ? null : id));
   };
 
+  const isRealUUID = (id: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
   const handlePapelChange = async (userId: string, newPapelId: string) => {
     setSavingPapelFor(userId);
     setErrorMsg(null);
+
+    // Mock users (non-UUID IDs) — update only local state
+    if (!isRealUUID(userId)) {
+      setUsuarios((prev) =>
+        prev.map((u) =>
+          u.id === userId ? { ...u, papel_id: newPapelId || null } : u,
+        ),
+      );
+      toast.success('Papel alterado!', 'O papel do usuário foi atualizado.');
+      setSavingPapelFor(null);
+      return;
+    }
 
     const { error } = await atualizarUsuario(userId, {
       papel_id: newPapelId || null,
@@ -288,6 +306,7 @@ export default function UsuariosPage() {
           u.id === userId ? { ...u, papel_id: newPapelId || null } : u,
         ),
       );
+      toast.success('Papel alterado!', 'O papel do usuário foi atualizado.');
     }
     setSavingPapelFor(null);
   };
@@ -300,12 +319,20 @@ export default function UsuariosPage() {
     )
       return;
 
+    // Mock users — just remove from local state
+    if (!isRealUUID(user.id)) {
+      setUsuarios((prev) => prev.filter((u) => u.id !== user.id));
+      toast.success('Usuário removido!', 'O usuário foi desvinculado do sistema.');
+      return;
+    }
+
     const { error } = await desativarUsuario(user.id);
     if (error) {
       setErrorMsg(`Erro ao desativar: ${error.message}`);
       return;
     }
     setUsuarios((prev) => prev.filter((u) => u.id !== user.id));
+    toast.success('Usuário removido!', 'O usuário foi desvinculado do sistema.');
   };
 
   /* ---- Invite code handlers ---- */
@@ -321,6 +348,7 @@ export default function UsuariosPage() {
     try {
       await navigator.clipboard.writeText(inviteCode.codigo);
       setCodeCopied(true);
+      toast.success('Código copiado!', 'O código de convite foi copiado para a área de transferência.');
       setTimeout(() => setCodeCopied(false), 2000);
     } catch {
       setErrorMsg('Nao foi possivel copiar o codigo.');
@@ -339,6 +367,7 @@ export default function UsuariosPage() {
       setInviteCode(res.data as CodigoConvite);
       setCodeVisible(false);
       setCodeCopied(false);
+      toast.success('Código regenerado!', 'O novo código de convite está ativo.');
     }
     setCodeLoading(false);
   };
@@ -366,12 +395,12 @@ export default function UsuariosPage() {
         <div className="relative flex-1 min-w-0 w-full sm:w-auto">
           <Search
             size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2"
+            className="tfd-input-leading-icon"
             style={{ color: 'var(--tfd-text-muted)' }}
           />
           <input
             type="text"
-            className="tfd-input tfd-input--sm pl-9"
+            className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
             placeholder="Buscar usuario..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}

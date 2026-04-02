@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import {
   CalendarClock,
@@ -17,22 +17,37 @@ import {
   User,
   Plus,
   Info,
+  Loader2,
+  Trash2,
+  SendHorizonal,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
-import { MOCK_PERMANENCIAS, type StatusPermanencia } from '@/core/mocks/permanencia.mock';
+import { useToast } from '@/shared/components/toast/Toast';
+import { listarPermanencias, listarSolicitacoesEmPermanencia, criarPermanencia, atualizarPermanencia, excluirPermanencia, criarProrrogacao } from '@/services/permanencias.service';
+import { buscarAjudaCustoPorSolicitacao } from '@/services/ajuda-custo.service';
+import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import { useLookup } from '@/shared/hooks/useLookup';
+import DevolverModal from '@/shared/components/devolver-modal/DevolverModal';
+import { useDevolucoesPendentes } from '@/shared/hooks/useDevolucoesPendentes';
+
+/* -------------------------------------------------- */
+/*  Types                                              */
+/* -------------------------------------------------- */
+
+type StatusPermanencia = 'ATIVA' | 'PRORROGADA' | 'ALTA_PENDENTE' | 'CONCLUIDA';
 
 /* -------------------------------------------------- */
 /*  Tab config                                         */
 /* -------------------------------------------------- */
 
-type TabKey = 'TODAS' | StatusPermanencia;
+type TabKey = 'TODAS' | 'DISPONIVEL' | StatusPermanencia;
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'TODAS', label: 'Todas' },
+  { key: 'DISPONIVEL', label: 'Disponíveis' },
   { key: 'ATIVA', label: 'Ativas' },
   { key: 'PRORROGADA', label: 'Prorrogadas' },
   { key: 'ALTA_PENDENTE', label: 'Alta Pendente' },
@@ -55,7 +70,9 @@ const statusStyleMap: Record<StatusPermanencia, { bg: string; text: string; labe
 /* -------------------------------------------------- */
 
 function formatDate(iso: string): string {
-  const [year, month, day] = iso.split('-');
+  if (!iso) return '—';
+  const datePart = iso.includes('T') ? iso.split('T')[0] : iso;
+  const [year, month, day] = datePart.split('-');
   return `${day}/${month}/${year}`;
 }
 
@@ -64,6 +81,7 @@ function formatDate(iso: string): string {
 /* -------------------------------------------------- */
 
 export default function PermanenciaPage() {
+  const toast = useToast();
   const { options: motivoPermOptions, loading: motivoPermLoading } = useLookup('motivo_permanencia');
 
   const [activeTab, setActiveTab] = useState<TabKey>('TODAS');
@@ -72,46 +90,316 @@ export default function PermanenciaPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [motivo, setMotivo] = useState('');
   const [solicitarProrrogacao, setSolicitarProrrogacao] = useState(false);
+  const [solicitacaoId, setSolicitacaoId] = useState('');
+  const [numProcesso, setNumProcesso] = useState('');
+  const [pacienteNome, setPacienteNome] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState('');
+  const [devolverItem, setDevolverItem] = useState<any>(null);
 
-  /* ---- Filtered data ---- */
-  const filtered = useMemo(() => {
-    return MOCK_PERMANENCIAS.filter((p) => {
-      const matchesTab = activeTab === 'TODAS' || p.statusDisplay === activeTab;
-      const matchesSearch =
-        search === '' ||
-        p.pacienteNome.toLowerCase().includes(search.toLowerCase()) ||
-        p.numeroSolicitacao.toLowerCase().includes(search.toLowerCase()) ||
-        p.destino.toLowerCase().includes(search.toLowerCase());
-      return matchesTab && matchesSearch;
+  /* ---- Devoluções pendentes ---- */
+  const { mapa: devolucoesEnviadas, labelDestino, refresh: refreshDevolucoes } = useDevolucoesPendentes('PERMANENCIA');
+
+  // Form fields — Comunicação de Permanência
+  const [dataComunicacao, setDataComunicacao] = useState(new Date().toISOString().split('T')[0]);
+  const [comunicadoPor, setComunicadoPor] = useState('');
+  const [motivoDescricao, setMotivoDescricao] = useState('');
+  const [novaDataRetorno, setNovaDataRetorno] = useState('');
+
+  // Prorrogação fields
+  const [diasAdicionais, setDiasAdicionais] = useState('');
+  const [justificativaMedica, setJustificativaMedica] = useState('');
+
+  // Ajuda de custo info for cost calculation
+  const [ajudaCustoInfo, setAjudaCustoInfo] = useState<{ valor_diaria: number; data_fim: string | null } | null>(null);
+
+  /* ---- Disponíveis: solicitações EM_PERMANENCIA sem registro ---- */
+  const [solDisp, setSolDisp] = useState<any[]>([]);
+  const [solDispLoading, setSolDispLoading] = useState(false);
+
+  async function refreshDisp() {
+    setSolDispLoading(true);
+    const { data } = await listarSolicitacoesEmPermanencia();
+    setSolDisp(data ?? []);
+    setSolDispLoading(false);
+  }
+
+  useEffect(() => { refreshDisp(); }, []);
+
+  function resetDrawerForm() {
+    setMotivo('');
+    setSolicitacaoId('');
+    setNumProcesso('');
+    setPacienteNome('');
+    setSolicitarProrrogacao(false);
+    setEditingId(null);
+    setDataComunicacao(new Date().toISOString().split('T')[0]);
+    setComunicadoPor('');
+    setMotivoDescricao('');
+    setNovaDataRetorno('');
+    setDiasAdicionais('');
+    setJustificativaMedica('');
+    setAjudaCustoInfo(null);
+  }
+
+  function handleCloseDrawer() {
+    setDrawerOpen(false);
+    resetDrawerForm();
+  }
+
+  /** Opens drawer for a new permanência from a "disponível" card */
+  async function handleOpenNew(sol: any) {
+    resetDrawerForm();
+    setSolicitacaoId(sol.id);
+    setNumProcesso(sol.numero_processo ?? '');
+    setPacienteNome(sol.pacientes?.nome_completo ?? '');
+    setDrawerOpen(true);
+
+    // Fetch ajuda de custo info for cost calculation
+    const { data } = await buscarAjudaCustoPorSolicitacao(sol.id);
+    setAjudaCustoInfo(data ? { valor_diaria: data.valor_diaria, data_fim: data.data_fim } : null);
+  }
+
+  function handleOpenEdit(perm: any) {
+    setEditingId(perm.id);
+    setSolicitacaoId(perm.solicitacaoId);
+    setNumProcesso(perm.numeroSolicitacao);
+    setPacienteNome(perm.pacienteNome);
+    setMotivo(perm.motivo ?? '');
+    setSolicitarProrrogacao(false);
+    setDrawerOpen(true);
+  }
+
+  function handleOpenDelete(perm: any) {
+    setDeleteConfirmId(perm.id);
+    setDeleteConfirmName(perm.pacienteNome);
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteConfirmId) return;
+    const { error } = await excluirPermanencia(deleteConfirmId);
+    if (error) {
+      toast.error('Erro ao excluir', (error as any).message);
+    } else {
+      toast.success('Permanência excluída', 'O registro foi removido com sucesso.');
+      refreshAll();
+    }
+    setDeleteConfirmId(null);
+    setDeleteConfirmName('');
+  }
+
+  /* ---- Fetch real data ---- */
+  const { data: permanenciasRaw, loading, refresh } = useSupabaseData(
+    useCallback(() => listarPermanencias({ search }), [search]),
+    [search],
+  );
+
+  function refreshAll() {
+    refresh();
+    refreshDisp();
+  }
+
+  /* ---- Map Supabase rows to display shape ---- */
+  const items = useMemo(() => {
+    return permanenciasRaw.map((p: any) => {
+      const prorrogacoes = (p.prorrogacoes ?? []) as any[];
+
+      let statusDisplay: StatusPermanencia = 'ATIVA';
+      if (prorrogacoes.length > 0) statusDisplay = 'PRORROGADA';
+      if (p.data_alta) statusDisplay = 'CONCLUIDA';
+
+      return {
+        _type: 'PERMANENCIA' as const,
+        id: p.id,
+        solicitacaoId: p.solicitacao_id,
+        numeroSolicitacao: p.solicitacoes?.numero_processo ?? '—',
+        pacienteNome: p.solicitacoes?.pacientes?.nome_completo ?? '—',
+        destino: p.cidade_destino ?? p.local_permanencia ?? '—',
+        dataInicio: p.data_inicio ?? p.registrado_em?.split('T')[0] ?? '',
+        dataFimPrevista: p.data_fim_prevista ?? p.data_retorno_prevista ?? '',
+        totalDias: p.dias_total ?? 0,
+        statusDisplay: statusDisplay as StatusPermanencia,
+        solicitacaoStatus: p.solicitacoes?.status ?? 'EM_PERMANENCIA',
+        totalProrrogacoes: prorrogacoes.length,
+        observacoes: p.observacoes ?? null,
+        motivo: p.motivo ?? null,
+        prorrogacoes: prorrogacoes.map((pr: any) => ({
+          id: pr.id,
+          dataInicio: pr.data_inicio ?? '',
+          dataFim: pr.data_fim ?? '',
+          justificativa: pr.justificativa ?? '',
+          aprovadoPor: pr.decisao_por ?? null,
+          dataAprovacao: pr.decisao_em?.split('T')[0] ?? null,
+        })),
+        raw: p,
+      };
     });
-  }, [activeTab, search]);
+  }, [permanenciasRaw]);
+
+  /* ---- Disponíveis mapped to card shape ---- */
+  const dispItems = useMemo(() => {
+    return solDisp.map((sol: any) => ({
+      _type: 'DISPONIVEL' as const,
+      id: sol.id,
+      solicitacaoId: sol.id,
+      numeroSolicitacao: sol.numero_processo ?? '—',
+      pacienteNome: sol.pacientes?.nome_completo ?? '—',
+      destino: '—',
+      dataInicio: sol.created_at?.split('T')[0] ?? '',
+      dataFimPrevista: '',
+      totalDias: 0,
+      statusDisplay: 'ATIVA' as StatusPermanencia,
+      solicitacaoStatus: sol.status ?? 'EM_PERMANENCIA',
+      totalProrrogacoes: 0,
+      observacoes: null,
+      motivo: null,
+      prorrogacoes: [] as any[],
+      raw: sol,
+    }));
+  }, [solDisp]);
+
+  /* ---- Unified rows: disponíveis + permanências ---- */
+  const allRows = useMemo(() => {
+    if (activeTab === 'DISPONIVEL') return dispItems;
+    if (activeTab === 'TODAS') return [...dispItems, ...items];
+    return items.filter((p) => p.statusDisplay === activeTab);
+  }, [dispItems, items, activeTab]);
+
+  /* ---- Filter by search (client-side) ---- */
+  const filtered = useMemo(() => {
+    if (search === '') return allRows;
+    const q = search.toLowerCase();
+    return allRows.filter((p) =>
+      p.pacienteNome.toLowerCase().includes(q) ||
+      p.numeroSolicitacao.toLowerCase().includes(q) ||
+      p.destino.toLowerCase().includes(q),
+    );
+  }, [allRows, search]);
 
   /* ---- Summary counters ---- */
   const counts = useMemo(() => {
-    const all = MOCK_PERMANENCIAS;
     return {
-      ativas: all.filter((p) => p.statusDisplay === 'ATIVA').length,
-      prorrogadas: all.filter((p) => p.statusDisplay === 'PRORROGADA').length,
-      altaPendente: all.filter((p) => p.statusDisplay === 'ALTA_PENDENTE').length,
-      concluidas: all.filter((p) => p.statusDisplay === 'CONCLUIDA').length,
+      disponiveis: solDisp.length,
+      ativas: items.filter((p) => p.statusDisplay === 'ATIVA').length,
+      prorrogadas: items.filter((p) => p.statusDisplay === 'PRORROGADA').length,
+      altaPendente: items.filter((p) => p.statusDisplay === 'ALTA_PENDENTE').length,
+      concluidas: items.filter((p) => p.statusDisplay === 'CONCLUIDA').length,
     };
-  }, []);
+  }, [items]);
+
+  /* ---- Cost calculation ---- */
+  const custoAdicional = useMemo(() => {
+    if (!ajudaCustoInfo || !novaDataRetorno || !ajudaCustoInfo.data_fim) return null;
+    const dataFimOriginal = new Date(ajudaCustoInfo.data_fim + 'T00:00:00');
+    const novaData = new Date(novaDataRetorno + 'T00:00:00');
+    const diffMs = novaData.getTime() - dataFimOriginal.getTime();
+    const diasExtras = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    if (diasExtras <= 0) return null;
+    return {
+      diasExtras,
+      valorDiaria: ajudaCustoInfo.valor_diaria,
+      valorTotal: diasExtras * ajudaCustoInfo.valor_diaria,
+    };
+  }, [ajudaCustoInfo, novaDataRetorno]);
+
+  /* ---- Form submission ---- */
+  async function handleSubmitPermanencia() {
+    if (!solicitacaoId) {
+      toast.warning('Campo obrigatório', 'Selecione o paciente.');
+      return;
+    }
+    if (!dataComunicacao) {
+      toast.warning('Campo obrigatório', 'Informe a data da comunicação.');
+      return;
+    }
+    if (!motivo) {
+      toast.warning('Campo obrigatório', 'Selecione o motivo da permanência.');
+      return;
+    }
+    if (!novaDataRetorno) {
+      toast.warning('Campo obrigatório', 'Informe a nova data de retorno prevista.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const payload: any = {
+        solicitacao_id: solicitacaoId,
+        data_comunicacao: dataComunicacao,
+        comunicado_por: comunicadoPor || null,
+        motivo,
+        motivo_descricao: motivo === 'OUTROS' ? motivoDescricao || null : null,
+        nova_data_retorno_prevista: novaDataRetorno,
+      };
+
+      const result = editingId
+        ? await atualizarPermanencia(editingId, payload)
+        : await criarPermanencia(payload);
+
+      if (result.error) {
+        const err = result.error as { message?: string };
+        toast.error(editingId ? 'Erro ao atualizar' : 'Erro ao registrar', err.message ?? 'Tente novamente.');
+        return;
+      }
+
+      // If prorrogação requested and this is a new permanência, create it
+      if (solicitarProrrogacao && !editingId && result.data) {
+        const permId = (result.data as any).id;
+        const diasAdd = parseInt(diasAdicionais, 10);
+        if (permId && diasAdd > 0) {
+          const novaDataProrrogacao = new Date(novaDataRetorno + 'T00:00:00');
+          novaDataProrrogacao.setDate(novaDataProrrogacao.getDate() + diasAdd);
+
+          await criarProrrogacao({
+            permanencia_id: permId,
+            justificativa_medica: justificativaMedica,
+            documento_justificativa_id: null as any,
+            dias_adicionais_solicitados: diasAdd,
+            nova_data_retorno: novaDataProrrogacao.toISOString().split('T')[0],
+            impacto_diarias_valor: custoAdicional ? custoAdicional.valorTotal : null,
+          });
+        }
+      }
+
+      toast.success(
+        editingId ? 'Permanência atualizada!' : 'Permanência registrada!',
+        editingId ? 'As alterações foram salvas com sucesso.' : 'O registro de permanência foi salvo no sistema.',
+      );
+      setDrawerOpen(false);
+      resetDrawerForm();
+      refreshAll();
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      toast.error('Erro inesperado', e.message ?? 'Tente novamente.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <>
       <PageHeader
         title="Permanência e Prorrogações"
         subtitle="Controle de permanência, prorrogações e alta de pacientes"
-        actions={
-          <button className="tfd-btn tfd-btn-primary" onClick={() => setDrawerOpen(true)}>
-            <Plus size={16} />
-            Registrar Permanência
-          </button>
-        }
       />
 
       {/* ========== Summary Cards ========== */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
+        <div className="tfd-card flex items-center gap-3">
+          <div
+            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
+            style={{ backgroundColor: '#EDE9FE', color: '#7C3AED' }}
+          >
+            <Plus size={20} />
+          </div>
+          <div>
+            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Disponíveis</p>
+            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.disponiveis}</p>
+          </div>
+        </div>
+
         <div className="tfd-card flex items-center gap-3">
           <div
             className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
@@ -171,8 +459,10 @@ export default function PermanenciaPage() {
           {TABS.map((tab) => {
             const isActive = activeTab === tab.key;
             const count = tab.key === 'TODAS'
-              ? MOCK_PERMANENCIAS.length
-              : MOCK_PERMANENCIAS.filter((p) => p.statusDisplay === tab.key).length;
+              ? solDisp.length + items.length
+              : tab.key === 'DISPONIVEL'
+                ? solDisp.length
+                : items.filter((p) => p.statusDisplay === tab.key).length;
             return (
               <button
                 key={tab.key}
@@ -205,12 +495,12 @@ export default function PermanenciaPage() {
         <div className="relative flex-1 max-w-xs min-w-[200px]">
           <Search
             size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+            className="tfd-input-leading-icon"
             style={{ color: 'var(--tfd-text-muted)' }}
           />
           <input
             type="text"
-            className="tfd-input tfd-input--sm pl-9"
+            className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
             placeholder="Buscar paciente ou destino..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -220,7 +510,16 @@ export default function PermanenciaPage() {
 
       {/* ========== Card List ========== */}
       <div className="space-y-3">
-        {filtered.length === 0 ? (
+        {(loading || solDispLoading) ? (
+          <div className="tfd-card">
+            <div className="flex flex-col items-center gap-2 py-12">
+              <Loader2 size={32} className="animate-spin" style={{ color: 'var(--tfd-primary-500)' }} />
+              <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
+                Carregando permanências...
+              </p>
+            </div>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="tfd-card">
             <div className="flex flex-col items-center gap-2 py-12">
               <CalendarClock size={32} style={{ color: 'var(--tfd-text-muted)' }} />
@@ -231,11 +530,73 @@ export default function PermanenciaPage() {
           </div>
         ) : (
           filtered.map((perm) => {
-            const { bg, text, label } = statusStyleMap[perm.statusDisplay];
+            const isDisponivel = perm._type === 'DISPONIVEL';
+
+            /* ---- Disponível card ---- */
+            if (isDisponivel) {
+              return (
+                <div
+                  key={`disp-${perm.id}`}
+                  className="tfd-card cursor-pointer"
+                  style={{ borderLeft: '3px solid #7C3AED' }}
+                  onClick={() => handleOpenNew(perm.raw)}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <Link
+                          href={`/solicitacoes/${perm.solicitacaoId}`}
+                          className="font-medium text-sm hover:underline"
+                          style={{ color: 'var(--tfd-primary-500)' }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {perm.numeroSolicitacao}
+                        </Link>
+                        <span
+                          className="tfd-tag tfd-tag--rounded"
+                          style={{ backgroundColor: '#EDE9FE', color: '#7C3AED' }}
+                        >
+                          Aguardando registro
+                        </span>
+                      </div>
+                      <p className="font-semibold text-base" style={{ color: 'var(--tfd-text-primary)' }}>
+                        {perm.pacienteNome}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Link
+                        href={`/solicitacoes/${perm.solicitacaoId}`}
+                        className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                        title="Ver processo completo"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Eye size={15} />
+                      </Link>
+                      <span
+                        className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                        title="Registrar permanência"
+                      >
+                        <Plus size={15} style={{ color: '#7C3AED' }} />
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 mt-3 flex-wrap text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
+                    <div className="flex items-center gap-1.5">
+                      <Calendar size={14} />
+                      <span>Solicitado em {formatDate(perm.dataInicio)}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            /* ---- Permanência card (existing) ---- */
+            const { bg, text, label } = statusStyleMap[perm.statusDisplay as StatusPermanencia];
             const isExpanded = expandedId === perm.id;
+            const aguardandoRetorno = labelDestino(perm.solicitacaoId);
 
             return (
-              <div key={perm.id} className="tfd-card">
+              <div key={perm.id} className={`tfd-card ${aguardandoRetorno ? '' : 'cursor-pointer'}`} style={{ opacity: aguardandoRetorno ? 0.5 : undefined, pointerEvents: aguardandoRetorno ? 'none' : undefined }} onClick={aguardandoRetorno ? undefined : () => handleOpenEdit(perm)}>
                 {/* ---- Header row ---- */}
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
@@ -244,6 +605,7 @@ export default function PermanenciaPage() {
                         href={`/solicitacoes/${perm.solicitacaoId}`}
                         className="font-medium text-sm hover:underline"
                         style={{ color: 'var(--tfd-primary-500)' }}
+                        onClick={(e) => e.stopPropagation()}
                       >
                         {perm.numeroSolicitacao}
                       </Link>
@@ -262,24 +624,49 @@ export default function PermanenciaPage() {
                           {perm.totalProrrogacoes} prorrog.
                         </span>
                       )}
+                      {aguardandoRetorno && (
+                        <span
+                          className="tfd-tag tfd-tag--rounded"
+                          style={{ backgroundColor: '#FEF3C7', color: '#92400E', fontSize: '0.625rem' }}
+                        >
+                          Ag. retorno — {aguardandoRetorno}
+                        </span>
+                      )}
                     </div>
                     <p className="font-semibold text-base" style={{ color: 'var(--tfd-text-primary)' }}>
                       {perm.pacienteNome}
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1 shrink-0">
                     <Link
                       href={`/solicitacoes/${perm.solicitacaoId}`}
-                      className="tfd-btn tfd-btn--text tfd-btn-primary tfd-btn--sm tfd-btn--icon-only"
+                      className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
                       title="Ver processo completo"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      <Eye size={16} />
+                      <Eye size={15} />
                     </Link>
+                    <button
+                      type="button"
+                      className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                      title="Devolver"
+                      onClick={(e) => { e.stopPropagation(); setDevolverItem(perm); }}
+                    >
+                      <SendHorizonal size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      className="tfd-btn tfd-btn-danger tfd-btn--icon-only"
+                      title="Excluir permanência"
+                      onClick={(e) => { e.stopPropagation(); handleOpenDelete(perm); }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
                     <button
                       className="tfd-btn tfd-btn--text tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
                       title={isExpanded ? 'Recolher' : 'Expandir'}
-                      onClick={() => setExpandedId(isExpanded ? null : perm.id)}
+                      onClick={(e) => { e.stopPropagation(); setExpandedId(isExpanded ? null : perm.id); }}
                     >
                       {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                     </button>
@@ -323,7 +710,7 @@ export default function PermanenciaPage() {
                       Histórico de Prorrogações
                     </h4>
                     <div className="space-y-3">
-                      {perm.prorrogacoes.map((pror, idx) => (
+                      {perm.prorrogacoes.map((pror: any, idx: number) => (
                         <div
                           key={pror.id}
                           className="flex items-start gap-3 p-3 rounded-lg"
@@ -382,54 +769,77 @@ export default function PermanenciaPage() {
         )}
       </div>
 
-      {/* ========== Registrar Permanência Drawer ========== */}
+      {/* ========== Modal de Confirmação de Exclusão ========== */}
+      {deleteConfirmId && (
+        <>
+          <div className="tfd-overlay-backdrop" onClick={() => setDeleteConfirmId(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="tfd-dialog w-full max-w-sm">
+              <div className="tfd-dialog-header">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[#FEF2F2]">
+                    <Trash2 size={16} className="text-[#EF4444]" />
+                  </div>
+                  <span>Excluir permanência</span>
+                </div>
+              </div>
+              <div className="tfd-dialog-content">
+                <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
+                  Tem certeza que deseja excluir a permanência de <strong>{deleteConfirmName}</strong>? Esta ação não pode ser desfeita.
+                </p>
+              </div>
+              <div className="tfd-dialog-footer">
+                <button className="tfd-btn tfd-btn-secondary" onClick={() => setDeleteConfirmId(null)}>
+                  Cancelar
+                </button>
+                <button className="tfd-btn" style={{ background: '#EF4444', color: 'white' }} onClick={handleConfirmDelete}>
+                  <Trash2 size={14} />
+                  Excluir
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ========== Registrar / Editar Permanência Drawer ========== */}
       <Drawer
         open={drawerOpen}
-        onClose={() => {
-          setDrawerOpen(false);
-          setMotivo('');
-          setSolicitarProrrogacao(false);
-        }}
-        title="Registrar Permanência"
+        onClose={handleCloseDrawer}
+        title={editingId ? 'Editar Permanência' : 'Registrar Permanência'}
         width="480px"
         footer={
           <>
             <button
               className="tfd-btn tfd-btn-secondary"
-              onClick={() => {
-                setDrawerOpen(false);
-                setMotivo('');
-                setSolicitarProrrogacao(false);
-              }}
+              onClick={handleCloseDrawer}
             >
               Cancelar
             </button>
             <button
               className="tfd-btn tfd-btn-primary"
-              onClick={() => {
-                alert('Permanência registrada com sucesso!');
-                setDrawerOpen(false);
-                setMotivo('');
-                setSolicitarProrrogacao(false);
-              }}
+              disabled={submitting}
+              onClick={handleSubmitPermanencia}
             >
-              Registrar
+              {submitting ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  {editingId ? 'Salvando...' : 'Registrando...'}
+                </>
+              ) : (
+                editingId ? 'Salvar Alterações' : 'Registrar'
+              )}
             </button>
           </>
         }
       >
-        {/* ---- Processo ---- */}
-        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
-          Processo
-        </h3>
-
-        <FormField label="Nº da Solicitação" required>
-          <input
-            type="text"
-            className="tfd-input"
-            placeholder="TFD-2026-..."
-          />
-        </FormField>
+        {/* Section: Processo (read-only — comes from the clicked card) */}
+        <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg mb-3" style={{ backgroundColor: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{pacienteNome || '—'}</p>
+            <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Processo: <strong style={{ color: 'var(--tfd-primary-500)' }}>{numProcesso}</strong></p>
+          </div>
+        </div>
 
         <hr className="tfd-divider" />
 
@@ -442,12 +852,17 @@ export default function PermanenciaPage() {
           <input
             type="date"
             className="tfd-input"
-            defaultValue={new Date().toISOString().split('T')[0]}
+            value={dataComunicacao}
+            onChange={(e) => setDataComunicacao(e.target.value)}
           />
         </FormField>
 
         <FormField label="Comunicado por" required>
-          <select className="tfd-input">
+          <select
+            className="tfd-input"
+            value={comunicadoPor}
+            onChange={(e) => setComunicadoPor(e.target.value)}
+          >
             <option value="">Selecione...</option>
             <option value="PACIENTE">Paciente</option>
             <option value="RESPONSAVEL">Responsável</option>
@@ -476,13 +891,53 @@ export default function PermanenciaPage() {
               className="tfd-input"
               rows={3}
               placeholder="Descreva o motivo da permanência..."
+              value={motivoDescricao}
+              onChange={(e) => setMotivoDescricao(e.target.value)}
             />
           </FormField>
         )}
 
         <FormField label="Nova data de retorno prevista" required>
-          <input type="date" className="tfd-input" />
+          <input
+            type="date"
+            className="tfd-input"
+            value={novaDataRetorno}
+            onChange={(e) => setNovaDataRetorno(e.target.value)}
+          />
         </FormField>
+
+        {/* ---- Cost impact calculation ---- */}
+        {custoAdicional && (
+          <div
+            className="flex flex-col gap-1 px-3 py-3 rounded-lg mb-3"
+            style={{ background: 'var(--tfd-warning-50, #FFFBEB)', border: '1px solid var(--tfd-warning-200, #FDE68A)' }}
+          >
+            <p className="text-xs font-semibold" style={{ color: 'var(--tfd-warning-700, #92400E)' }}>
+              Impacto na Ajuda de Custo
+            </p>
+            <div className="flex items-center justify-between text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
+              <span>Dias extras além do previsto:</span>
+              <span className="font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+                {custoAdicional.diasExtras} dia{custoAdicional.diasExtras !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
+              <span>Valor da diária:</span>
+              <span className="font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+                R$ {custoAdicional.valorDiaria.toFixed(2).replace('.', ',')}
+              </span>
+            </div>
+            <hr style={{ borderColor: 'var(--tfd-warning-200, #FDE68A)', margin: '4px 0' }} />
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-semibold" style={{ color: 'var(--tfd-warning-700, #92400E)' }}>
+                Custo adicional estimado:
+              </span>
+              <span className="font-bold text-base" style={{ color: 'var(--tfd-warning-700, #92400E)' }}>
+                R$ {custoAdicional.valorTotal.toFixed(2).replace('.', ',')}
+              </span>
+            </div>
+          </div>
+        )}
 
         <hr className="tfd-divider" />
 
@@ -510,6 +965,8 @@ export default function PermanenciaPage() {
                 className="tfd-input"
                 min={1}
                 placeholder="Ex: 5"
+                value={diasAdicionais}
+                onChange={(e) => setDiasAdicionais(e.target.value)}
               />
             </FormField>
 
@@ -518,6 +975,8 @@ export default function PermanenciaPage() {
                 className="tfd-input"
                 rows={3}
                 placeholder="Justificativa médica para a prorrogação..."
+                value={justificativaMedica}
+                onChange={(e) => setJustificativaMedica(e.target.value)}
               />
             </FormField>
 
@@ -536,6 +995,16 @@ export default function PermanenciaPage() {
           </>
         )}
       </Drawer>
+
+      <DevolverModal
+        open={!!devolverItem}
+        onClose={() => setDevolverItem(null)}
+        setorAtual="PERMANENCIA"
+        solicitacaoId={devolverItem?.solicitacaoId ?? ''}
+        statusAtual={devolverItem?.solicitacaoStatus ?? 'EM_PERMANENCIA'}
+        label={`${devolverItem?.numeroSolicitacao ?? ''} — ${devolverItem?.pacienteNome ?? 'Paciente'}`}
+        onSuccess={() => { refreshAll(); refreshDevolucoes(); toast.success('Solicitação devolvida', 'A solicitação foi encaminhada ao setor selecionado.'); }}
+      />
     </>
   );
 }
