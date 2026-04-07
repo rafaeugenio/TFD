@@ -33,7 +33,7 @@ export async function listarPacientes(filters?: {
 
 export async function buscarPaciente(id: string) {
   const supabase = getSupabase();
-  return supabase.from('pacientes').select('*').eq('id', id).single();
+  return supabase.from('pacientes').select('*, acompanhantes(*)').eq('id', id).single();
 }
 
 export async function buscarPorCpf(cpf: string) {
@@ -69,6 +69,20 @@ export async function historicoProcessos(pacienteId: string) {
   return supabase
     .from('solicitacoes')
     .select('*, viagens(*), ajudas_custo(*)')
+    .eq('paciente_id', pacienteId)
+    .order('created_at', { ascending: false });
+}
+
+/**
+ * Busca solicitações com dados completos para consulta pública (sem dados sensíveis de usuários internos).
+ */
+export async function historicoProcessosCompleto(pacienteId: string) {
+  const supabase = getSupabase();
+  return supabase
+    .from('solicitacoes')
+    .select(
+      '*, pareceres(id, decisao, observacoes_medicas, created_at), rotas_regulacao(id, tipo_rota, justificativa, created_at), agendamentos(id, unidade_executante, cidade_destino, uf_destino, data_hora_agendamento, status, tipo_atendimento), viagens(id, tipo, origem_cidade, origem_uf, destino_cidade, destino_uf, data_embarque_prevista, situacao, companhia), ajudas_custo(id, valor_diaria, data_inicio, data_fim, status), permanencias(id, data_comunicacao, motivo, nova_data_retorno_prevista, prorrogacoes(id, dias_adicionais_solicitados, nova_data_retorno, decisao)), encerramentos(id, motivo, data_encerramento, observacoes, created_at)',
+    )
     .eq('paciente_id', pacienteId)
     .order('created_at', { ascending: false });
 }

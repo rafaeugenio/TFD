@@ -14,6 +14,7 @@ import {
   FileCheck,
   Trash2,
   SendHorizonal,
+  ExternalLink,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -23,24 +24,12 @@ import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import { useToast } from '@/shared/components/toast/Toast';
 import { listarAgendamentos, criarAgendamento, atualizarAgendamento, excluirAgendamento, listarSolicitacoesAguardandoAgendamento, buscarRotaParaAgendamento } from '@/services/agendamentos.service';
+import { uploadDocumento } from '@/services/documentos.service';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import type { StatusAgendamento, TipoAtendimento, OrigemAgendamento } from '@/lib/supabase/database.types';
 import { formatDate } from '@/shared/pipes/formatters';
 import { useLookup } from '@/shared/hooks/useLookup';
 import UfCidadeSelect from '@/shared/components/uf-cidade-select/UfCidadeSelect';
-
-/* -------------------------------------------------- */
-/*  Tab config                                         */
-/* -------------------------------------------------- */
-
-type TabKey = 'TODOS' | 'DISPONIVEL' | StatusAgendamento;
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'TODOS', label: 'Todos' },
-  { key: 'DISPONIVEL', label: 'Disponíveis' },
-  { key: 'AGUARDANDO_CONFIRMACAO', label: 'Pendentes' },
-  { key: 'CONFIRMADO', label: 'Confirmados' },
-];
 
 /* -------------------------------------------------- */
 /*  Status styling                                     */
@@ -119,7 +108,6 @@ export default function AtendimentoDestinoPage() {
   const { options: tipoOptions, loading: tipoLoading } = useLookup('tipo_procedimento');
   const { options: origemOptions, loading: origemLoading } = useLookup('origem_agendamento');
 
-  const [activeTab, setActiveTab] = useState<TabKey>('TODOS');
   const [search, setSearch] = useState('');
   const [devolverItem, setDevolverItem] = useState<any>(null);
 
@@ -142,11 +130,11 @@ export default function AtendimentoDestinoPage() {
   const [origemAgendamento, setOrigemAgendamento] = useState('');
   const [numCnrac, setNumCnrac] = useState('');
   const [comprovante, setComprovante] = useState<File | null>(null);
+  const [comprovanteExistente, setComprovanteExistente] = useState<{ url: string; nome: string } | null>(null);
 
 
   /* ---- Edit / Delete state ---- */
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [statusAgendamento, setStatusAgendamento] = useState<string>('AGUARDANDO_CONFIRMACAO');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleteConfirmName, setDeleteConfirmName] = useState('');
 
@@ -165,8 +153,8 @@ export default function AtendimentoDestinoPage() {
     setOrigemAgendamento('');
     setNumCnrac('');
     setComprovante(null);
+    setComprovanteExistente(null);
     setEditingId(null);
-    setStatusAgendamento('AGUARDANDO_CONFIRMACAO');
   };
 
   const handleCloseDrawer = () => {
@@ -222,7 +210,11 @@ export default function AtendimentoDestinoPage() {
     setDataAgendamento(ag.data_hora_agendamento ? ag.data_hora_agendamento.split('T')[0] : '');
     setOrigemAgendamento(ag.origem_agendamento ?? '');
     setNumCnrac(ag.numero_cnrac ?? '');
-    setStatusAgendamento(ag.status ?? 'AGUARDANDO_CONFIRMACAO');
+    if (ag.documentos) {
+      setComprovanteExistente({ url: ag.documentos.url_arquivo, nome: ag.documentos.nome_arquivo });
+    } else {
+      setComprovanteExistente(null);
+    }
     setDrawerOpen(true);
   }
 
@@ -244,13 +236,10 @@ export default function AtendimentoDestinoPage() {
     setDeleteConfirmName('');
   }
 
-  /* ---- Data fetch: agendamentos ---- */
+  /* ---- Data fetch: agendamentos (sem filtro — cards sempre refletem totais reais) ---- */
   const { data: agendamentos, loading, count: totalCount, refresh } = useSupabaseData(
-    () => listarAgendamentos({
-      status: (activeTab === 'TODOS' || activeTab === 'DISPONIVEL') ? undefined : activeTab,
-      search,
-    }),
-    [activeTab, search],
+    () => listarAgendamentos({ pageSize: 500 }),
+    [],
   );
 
   /* ---- Data fetch: solicitações aguardando agendamento (sem agendamento ainda) ---- */
@@ -266,7 +255,7 @@ export default function AtendimentoDestinoPage() {
 
   useEffect(() => { refreshDisp(); }, []);
 
-  /** Unified rows: disponíveis + agendamentos */
+  /** Unified rows: disponíveis + agendamentos (sem filtro de aba) */
   const allRows = useMemo(() => {
     const dispRows = solDisp.map((sol: any) => ({
       _type: 'DISPONIVEL' as const,
@@ -287,10 +276,21 @@ export default function AtendimentoDestinoPage() {
       raw: ag,
     }));
 
-    if (activeTab === 'DISPONIVEL') return dispRows;
-    if (activeTab === 'TODOS') return [...dispRows, ...agRows];
-    return agRows; // filtered by status already in the query
-  }, [solDisp, agendamentos, activeTab]);
+    // Filtro local: paciente, processo, hospital, cidade
+    const combined = [...dispRows, ...agRows];
+    if (!search) return combined;
+    const term = search.toLowerCase();
+    return combined.filter((r) => {
+      if (r.paciente_nome.toLowerCase().includes(term)) return true;
+      if (r.numero_processo.toLowerCase().includes(term)) return true;
+      if (r._type === 'AGENDADO') {
+        const ag = r.raw;
+        if (ag.unidade_executante?.toLowerCase().includes(term)) return true;
+        if (ag.cidade_destino?.toLowerCase().includes(term)) return true;
+      }
+      return false;
+    });
+  }, [solDisp, agendamentos, search]);
 
   function refreshAll() {
     refresh();
@@ -303,21 +303,41 @@ export default function AtendimentoDestinoPage() {
       return;
     }
 
-    const payload = {
-      solicitacao_id: solicitacaoId,
-      unidade_executante: nomeUnidade,
-      cnes: cnes || undefined,
-      cidade_destino: cidade,
-      uf_destino: uf,
-      contato_unidade: (tipoContato && contatoUnidade) ? `${tipoContato}: ${contatoUnidade}` : contatoUnidade || undefined,
-      tipo_atendimento: (tipoAtendimento as TipoAtendimento) || undefined,
-      data_hora_agendamento: dataAgendamento ? new Date(dataAgendamento).toISOString() : new Date().toISOString(),
-      origem_agendamento: (origemAgendamento as OrigemAgendamento) || undefined,
-      numero_cnrac: numCnrac || undefined,
-      status: statusAgendamento as StatusAgendamento,
-    };
-
     try {
+      // Upload comprovante if a new file was provided
+      let comprovanteDocId: string | undefined = undefined;
+      if (comprovante) {
+        const uploadResult = await uploadDocumento(
+          solicitacaoId,
+          comprovante,
+          'COMPROVANTE_AGENDAMENTO',
+        );
+        if (uploadResult.error) {
+          toast.error('Erro no upload', (uploadResult.error as any).message ?? 'Falha ao enviar comprovante.');
+          return;
+        }
+        comprovanteDocId = uploadResult.data?.id;
+      }
+
+      // Status automático: com comprovante (novo ou existente) = CONFIRMADO
+      const temComprovante = !!comprovanteDocId || !!comprovanteExistente;
+      const statusFinal: StatusAgendamento = temComprovante ? 'CONFIRMADO' : 'AGUARDANDO_CONFIRMACAO';
+
+      const payload = {
+        solicitacao_id: solicitacaoId,
+        unidade_executante: nomeUnidade,
+        cnes: cnes || undefined,
+        cidade_destino: cidade,
+        uf_destino: uf,
+        contato_unidade: (tipoContato && contatoUnidade) ? `${tipoContato}: ${contatoUnidade}` : contatoUnidade || undefined,
+        tipo_atendimento: (tipoAtendimento as TipoAtendimento) || undefined,
+        data_hora_agendamento: dataAgendamento ? new Date(dataAgendamento).toISOString() : new Date().toISOString(),
+        origem_agendamento: (origemAgendamento as OrigemAgendamento) || undefined,
+        numero_cnrac: numCnrac || undefined,
+        status: statusFinal,
+        ...(comprovanteDocId && { comprovante_doc_id: comprovanteDocId }),
+      };
+
       const result = editingId
         ? await atualizarAgendamento(editingId, payload)
         : await criarAgendamento(payload);
@@ -425,44 +445,9 @@ export default function AtendimentoDestinoPage() {
         </div>
       </div>
 
-      {/* ========== Tabs + Search ========== */}
-      <div className="tfd-toolbar mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-1 flex-wrap">
-          {TABS.map((tab) => {
-            const isActive = activeTab === tab.key;
-            const count = tab.key === 'TODOS'
-              ? agendamentos.length
-              : agendamentos.filter((ag: any) => ag.status === tab.key).length;
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className="tfd-btn tfd-btn--sm"
-                style={{
-                  backgroundColor: isActive ? 'var(--tfd-primary-50)' : 'transparent',
-                  color: isActive ? 'var(--tfd-primary-700)' : 'var(--tfd-text-secondary)',
-                  borderColor: isActive ? 'var(--tfd-primary-200)' : 'transparent',
-                  fontWeight: isActive ? 600 : 400,
-                }}
-              >
-                {tab.label}
-                <span
-                  className="text-xs ml-1 px-1.5 py-0.5 rounded-full"
-                  style={{
-                    backgroundColor: isActive ? 'var(--tfd-primary-100)' : 'var(--tfd-surface-100)',
-                    color: isActive ? 'var(--tfd-primary-700)' : 'var(--tfd-text-muted)',
-                    fontSize: '0.6875rem',
-                    fontWeight: 600,
-                  }}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="relative flex-1 max-w-xs min-w-[200px]">
+      {/* ========== Search ========== */}
+      <div className="tfd-toolbar mb-4">
+        <div className="relative flex-1 max-w-md">
           <Search
             size={16}
             className="tfd-input-leading-icon"
@@ -471,7 +456,7 @@ export default function AtendimentoDestinoPage() {
           <input
             type="text"
             className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
-            placeholder="Buscar paciente, processo, hospital..."
+            placeholder="Buscar por paciente, nº do processo ou hospital..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -522,14 +507,14 @@ export default function AtendimentoDestinoPage() {
                   const tipoStyle = ag?.tipo_atendimento ? tipoStyleMap[ag.tipo_atendimento as TipoAtendimento] : null;
                   const origemStyle = ag?.origem_agendamento ? origemStyleMap[ag.origem_agendamento as OrigemAgendamento] : null;
                   const alertaSla = ag ? isAlertaSla(ag) : false;
-                  const temComprovante = ag?.comprovante_doc_id != null;
                   const aguardandoRetorno = labelDestino(row.solicitacao_id);
+                  const devolucaoInfo = devolucoesEnviadas.get(row.solicitacao_id);
 
                   return (
                     <tr
                       key={`${row._type}-${row.id}`}
                       className={aguardandoRetorno ? '' : 'cursor-pointer'}
-                      style={{ opacity: aguardandoRetorno ? 0.5 : undefined, pointerEvents: aguardandoRetorno ? 'none' : undefined }}
+                      style={{ opacity: aguardandoRetorno ? 0.55 : undefined, backgroundColor: aguardandoRetorno ? '#FFFBEB' : undefined, pointerEvents: aguardandoRetorno ? 'none' : undefined }}
                       onClick={aguardandoRetorno ? undefined : () => row._type === 'DISPONIVEL' ? handleOpenNew(row.raw) : handleOpenEdit(row.raw)}
                     >
                       {/* Nº Processo */}
@@ -544,16 +529,32 @@ export default function AtendimentoDestinoPage() {
                             <Link
                               href={`/solicitacoes/${row.solicitacao_id}`}
                               className="font-medium text-sm hover:underline"
-                              style={{ color: 'var(--tfd-primary-500)' }}
+                              style={{ color: aguardandoRetorno ? 'var(--tfd-text-muted)' : 'var(--tfd-primary-500)', pointerEvents: 'auto' }}
                               onClick={(e) => e.stopPropagation()}
                             >
                               {row.numero_processo}
                             </Link>
                           </div>
-                          {aguardandoRetorno && (
-                            <span className="tfd-tag tfd-tag--rounded" style={{ backgroundColor: '#FEF3C7', color: '#92400E', fontSize: '0.625rem' }}>
-                              Ag. retorno — {aguardandoRetorno}
-                            </span>
+                          {aguardandoRetorno && devolucaoInfo && (
+                            <div
+                              className="flex items-center gap-1.5 mt-1"
+                              title={`Devolvido em ${new Date(devolucaoInfo.created_at).toLocaleDateString('pt-BR')} — ${devolucaoInfo.urgencia === 'URGENTE' ? 'URGENTE' : 'Normal'}`}
+                            >
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                                style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
+                              >
+                                Devolvido p/ {aguardandoRetorno}
+                              </span>
+                              {devolucaoInfo.urgencia === 'URGENTE' && (
+                                <span
+                                  className="text-[9px] font-bold px-1 py-0.5 rounded"
+                                  style={{ backgroundColor: '#FEE2E2', color: '#B91C1C' }}
+                                >
+                                  URGENTE
+                                </span>
+                              )}
+                            </div>
                           )}
                         </div>
                       </td>
@@ -602,8 +603,20 @@ export default function AtendimentoDestinoPage() {
                       <td className="text-center">
                         {row._type === 'DISPONIVEL' ? (
                           <span style={{ color: 'var(--tfd-text-muted)' }}>—</span>
-                        ) : temComprovante ? (
-                          <span title="Comprovante anexado"><CheckCircle2 size={18} style={{ color: 'var(--tfd-status-success)' }} /></span>
+                        ) : ag?.documentos ? (
+                          <a
+                            href={ag.documentos.url_arquivo}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs font-medium hover:underline"
+                            style={{ color: 'var(--tfd-primary-500)', pointerEvents: 'auto' }}
+                            title={ag.documentos.nome_arquivo}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <CheckCircle2 size={15} style={{ color: 'var(--tfd-status-success)' }} />
+                            Ver
+                            <ExternalLink size={12} />
+                          </a>
                         ) : (
                           <span title="Aguardando comprovante"><Clock size={18} style={{ color: 'var(--tfd-status-warning)' }} /></span>
                         )}
@@ -627,11 +640,12 @@ export default function AtendimentoDestinoPage() {
                             href={`/solicitacoes/${row.solicitacao_id}`}
                             className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
                             title="Ver processo"
+                            style={{ pointerEvents: 'auto' }}
                             onClick={(e) => e.stopPropagation()}
                           >
                             <Eye size={15} />
                           </Link>
-                          {ag && (
+                          {ag && !aguardandoRetorno && (
                             <>
                               <button
                                 type="button"
@@ -858,41 +872,53 @@ export default function AtendimentoDestinoPage() {
 
         <hr className="tfd-divider" />
 
-        {/* Section: Status */}
-        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Status</h3>
-        <FormField label="Status do agendamento">
-          <select
-            className="tfd-input"
-            value={statusAgendamento}
-            onChange={(e) => setStatusAgendamento(e.target.value)}
-          >
-            <option value="AGUARDANDO_CONFIRMACAO">Aguardando Confirmação</option>
-            <option value="CONFIRMADO">Confirmado</option>
-          </select>
-        </FormField>
-
-        <hr className="tfd-divider" />
-
         {/* Section: Comprovante */}
         <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Comprovante</h3>
-        <FormField label="Upload de comprovante">
-          <div className="relative">
+
+        <div className="tfd-message tfd-message--warn mb-4">
+          <span className="tfd-message-icon mt-0.5 shrink-0">
+            <Info size={16} />
+          </span>
+          <p className="text-sm flex-1" style={{ color: 'var(--tfd-text-secondary)' }}>
+            O agendamento permanecerá com status <strong>Aguardando Confirmação</strong> até que um comprovante seja anexado. Ao anexar o comprovante, o status será alterado automaticamente para <strong>Confirmado</strong>.
+          </p>
+        </div>
+
+        {comprovanteExistente && !comprovante ? (
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg" style={{ backgroundColor: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}>
+            <CheckCircle2 size={16} style={{ color: 'var(--tfd-status-success)' }} />
+            <a
+              href={comprovanteExistente.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-medium truncate hover:underline flex-1 min-w-0"
+              style={{ color: 'var(--tfd-primary-500)' }}
+            >
+              {comprovanteExistente.nome}
+            </a>
+            <button
+              type="button"
+              className="text-xs shrink-0"
+              style={{ color: 'var(--tfd-text-muted)' }}
+              onClick={() => setComprovanteExistente(null)}
+            >
+              Substituir
+            </button>
+          </div>
+        ) : (
+          <FormField label="Upload de comprovante">
             <input
               type="file"
               accept=".pdf,.jpg,.jpeg,.png"
               className="tfd-input pt-1.5"
               onChange={(e) => setComprovante(e.target.files?.[0] ?? null)}
             />
-          </div>
-        </FormField>
-        <div className="tfd-message tfd-message--info">
-          <span className="tfd-message-icon mt-0.5 shrink-0">
-            <Info size={16} />
-          </span>
-          <p className="text-sm flex-1" style={{ color: 'var(--tfd-text-secondary)' }}>
-            Tipos aceitos: PDF, JPG, PNG. O comprovante é obrigatório para avançar para emissão de passagem.
-          </p>
-        </div>
+          </FormField>
+        )}
+
+        <p className="text-xs mt-2" style={{ color: 'var(--tfd-text-muted)' }}>
+          Tipos aceitos: PDF, JPG, PNG (máx. 50 MB)
+        </p>
       </Drawer>
 
       <DevolverModal

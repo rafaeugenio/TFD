@@ -4,37 +4,28 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, LogIn, Eye, EyeOff } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+
+function formatCPF(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9)
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [cpf, setCpf] = useState('');
   const [senha, setSenha] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
     setLoading(true);
-
-    const supabase = createClient();
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password: senha,
-    });
-
-    if (authError) {
-      setError(
-        authError.message === 'Invalid login credentials'
-          ? 'E-mail ou senha incorretos.'
-          : authError.message,
-      );
-      setLoading(false);
-      return;
-    }
-
+    // Mock: skip authentication, go straight to dashboard
+    await new Promise((r) => setTimeout(r, 400));
     router.push('/dashboard');
     router.refresh();
   }
@@ -70,26 +61,17 @@ export default function LoginPage() {
         {/* Form Card */}
         <div className="tfd-card">
           <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div
-                className="tfd-message tfd-message--danger"
-              >
-                <p className="text-sm">{error}</p>
-              </div>
-            )}
-
             <div>
-              <label className="tfd-label" htmlFor="email">
-                E-mail
+              <label className="tfd-label" htmlFor="cpf">
+                CPF
               </label>
               <input
-                id="email"
-                type="email"
+                id="cpf"
+                type="text"
                 className="tfd-input"
-                placeholder="seu.email@ses.ma.gov.br"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
+                placeholder="000.000.000-00"
+                value={cpf}
+                onChange={(e) => setCpf(formatCPF(e.target.value))}
                 autoFocus
               />
             </div>
@@ -106,7 +88,6 @@ export default function LoginPage() {
                   placeholder="Digite sua senha"
                   value={senha}
                   onChange={(e) => setSenha(e.target.value)}
-                  required
                 />
                 <button
                   type="button"
@@ -148,22 +129,6 @@ export default function LoginPage() {
               )}
             </button>
           </form>
-
-          <div
-            className="mt-4 pt-4 text-center text-sm"
-            style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
-          >
-            <span style={{ color: 'var(--tfd-text-muted)' }}>
-              Não tem conta?{' '}
-            </span>
-            <Link
-              href="/criar-conta"
-              className="font-medium hover:underline"
-              style={{ color: 'var(--tfd-primary-500)' }}
-            >
-              Criar conta
-            </Link>
-          </div>
         </div>
       </div>
     </div>

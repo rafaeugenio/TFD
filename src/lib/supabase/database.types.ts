@@ -65,7 +65,17 @@ export type TipoDocumento =
   | 'RELATORIO_ALTA'
   | 'DADOS_BANCARIOS'
   | 'CERTIDAO_OBITO'
+  | 'PASSAGEM_IDA'
+  | 'PASSAGEM_VOLTA'
   | 'OUTROS';
+
+export type TipoSistemaViagem =
+  | 'PENDENTE'
+  | 'EMITIDA'
+  | 'CONFIRMADA'
+  | 'NO_SHOW'
+  | 'REMARCADA'
+  | 'CANCELADA';
 
 export type StatusDocumento = 'PENDENTE' | 'ENVIADO' | 'REJEITADO';
 
@@ -115,8 +125,8 @@ export type TipoConta = 'CORRENTE' | 'POUPANCA';
 export type StatusAjudaCusto =
   | 'EM_ANALISE'
   | 'APROVADA'
-  | 'EM_PAGAMENTO'
   | 'CONCLUIDA'
+  | 'PAGO_PARCIALMENTE'
   | 'GLOSADA';
 
 export type ComunicadoPor =
@@ -217,6 +227,21 @@ export type StatusDevolucao = 'PENDENTE' | 'RECEBIDA' | 'RESOLVIDA';
 
 export type UrgenciaDevolucao = 'NORMAL' | 'URGENTE';
 
+export type StatusTermo = 'PENDENTE' | 'REGISTRADO';
+
+export type ModalidadeAceite =
+  | 'ACEITE_PRESENCIAL'
+  | 'UPLOAD_ASSINADO'
+  | 'ASSINATURA_DIGITAL';
+
+export type GrauParentesco =
+  | 'PAI_MAE'
+  | 'CONJUGE'
+  | 'FILHO'
+  | 'IRMAO'
+  | 'TUTOR_LEGAL'
+  | 'OUTRO';
+
 // ─── Database Definition ─────────────────────────────────────────────────────
 
 export type Database = {
@@ -273,6 +298,12 @@ export type Database = {
           ultimo_acesso: string | null;
           papel_id: string | null;
           is_admin: boolean;
+          descricao: string | null;
+          foto_url: string | null;
+          telefones: string[];
+          crm: string | null;
+          crm_uf: string | null;
+          especialidade_medica: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -290,6 +321,12 @@ export type Database = {
           ultimo_acesso?: string | null;
           papel_id?: string | null;
           is_admin?: boolean;
+          descricao?: string | null;
+          foto_url?: string | null;
+          telefones?: string[];
+          crm?: string | null;
+          crm_uf?: string | null;
+          especialidade_medica?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -307,6 +344,12 @@ export type Database = {
           ultimo_acesso?: string | null;
           papel_id?: string | null;
           is_admin?: boolean;
+          descricao?: string | null;
+          foto_url?: string | null;
+          telefones?: string[];
+          crm?: string | null;
+          crm_uf?: string | null;
+          especialidade_medica?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -432,7 +475,6 @@ export type Database = {
           numero_processo: string;
           numero_protocolo: string | null;
           paciente_id: string;
-          acompanhante_id: string | null;
           municipio_origem_id: string;
           regional_origem_id: string;
           modalidade: Modalidade;
@@ -452,6 +494,7 @@ export type Database = {
           descricao_excecao: string | null;
           data_encerramento: string | null;
           motivo_encerramento: MotivoEncerramento | null;
+          url_sei: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -460,7 +503,6 @@ export type Database = {
           numero_processo?: string;
           numero_protocolo?: string | null;
           paciente_id: string;
-          acompanhante_id?: string | null;
           municipio_origem_id: string;
           regional_origem_id: string;
           modalidade: Modalidade;
@@ -480,6 +522,7 @@ export type Database = {
           descricao_excecao?: string | null;
           data_encerramento?: string | null;
           motivo_encerramento?: MotivoEncerramento | null;
+          url_sei?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -488,7 +531,6 @@ export type Database = {
           numero_processo?: string;
           numero_protocolo?: string | null;
           paciente_id?: string;
-          acompanhante_id?: string | null;
           municipio_origem_id?: string;
           regional_origem_id?: string;
           modalidade?: Modalidade;
@@ -508,6 +550,7 @@ export type Database = {
           descricao_excecao?: string | null;
           data_encerramento?: string | null;
           motivo_encerramento?: MotivoEncerramento | null;
+          url_sei?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -518,7 +561,8 @@ export type Database = {
       documentos: {
         Row: {
           id: string;
-          solicitacao_id: string;
+          solicitacao_id: string | null;
+          paciente_id: string | null;
           tipo: TipoDocumento;
           nome_arquivo: string;
           url_arquivo: string;
@@ -528,22 +572,50 @@ export type Database = {
         };
         Insert: {
           id?: string;
-          solicitacao_id: string;
+          solicitacao_id?: string | null;
+          paciente_id?: string | null;
           tipo: TipoDocumento;
           nome_arquivo: string;
           url_arquivo: string;
           status?: StatusDocumento;
-          upload_por: string;
+          upload_por?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          solicitacao_id?: string | null;
+          paciente_id?: string | null;
+          tipo?: TipoDocumento;
+          nome_arquivo?: string;
+          url_arquivo?: string;
+          status?: StatusDocumento;
+          upload_por?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+
+      // ── Solicitacao Acompanhantes ─────────────────────────
+      solicitacao_acompanhantes: {
+        Row: {
+          id: string;
+          solicitacao_id: string;
+          acompanhante_id: string;
+          principal: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          solicitacao_id: string;
+          acompanhante_id: string;
+          principal?: boolean;
           created_at?: string;
         };
         Update: {
           id?: string;
           solicitacao_id?: string;
-          tipo?: TipoDocumento;
-          nome_arquivo?: string;
-          url_arquivo?: string;
-          status?: StatusDocumento;
-          upload_por?: string;
+          acompanhante_id?: string;
+          principal?: boolean;
           created_at?: string;
         };
         Relationships: [];
@@ -837,6 +909,10 @@ export type Database = {
           emissor_id: string | null;
           emitido_em: string | null;
           observacoes: string | null;
+          viagem_anterior_id: string | null;
+          prorrogacao_id: string | null;
+          motivo_cancelamento: string | null;
+          numero_sequencial: number;
           created_at: string;
           updated_at: string;
         };
@@ -865,6 +941,10 @@ export type Database = {
           emissor_id?: string | null;
           emitido_em?: string | null;
           observacoes?: string | null;
+          viagem_anterior_id?: string | null;
+          prorrogacao_id?: string | null;
+          motivo_cancelamento?: string | null;
+          numero_sequencial?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -893,6 +973,10 @@ export type Database = {
           emissor_id?: string | null;
           emitido_em?: string | null;
           observacoes?: string | null;
+          viagem_anterior_id?: string | null;
+          prorrogacao_id?: string | null;
+          motivo_cancelamento?: string | null;
+          numero_sequencial?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -1028,8 +1112,9 @@ export type Database = {
           dias_elegiveis: number | null;
           valor_diaria: number;
           valor_total: number | null;
+          valor_pago: number | null;
           status: StatusAjudaCusto;
-          dados_bancarios_id: string;
+          dados_bancarios_id: string | null;
           aprovado_por: string | null;
           aprovado_em: string | null;
           pago_por: string | null;
@@ -1048,8 +1133,9 @@ export type Database = {
           dias_elegiveis?: number | null;
           valor_diaria: number;
           valor_total?: number | null;
+          valor_pago?: number | null;
           status?: StatusAjudaCusto;
-          dados_bancarios_id: string;
+          dados_bancarios_id?: string | null;
           aprovado_por?: string | null;
           aprovado_em?: string | null;
           pago_por?: string | null;
@@ -1068,8 +1154,9 @@ export type Database = {
           dias_elegiveis?: number | null;
           valor_diaria?: number;
           valor_total?: number | null;
+          valor_pago?: number | null;
           status?: StatusAjudaCusto;
-          dados_bancarios_id?: string;
+          dados_bancarios_id?: string | null;
           aprovado_por?: string | null;
           aprovado_em?: string | null;
           pago_por?: string | null;
@@ -1086,36 +1173,36 @@ export type Database = {
         Row: {
           id: string;
           solicitacao_id: string;
-          data_comunicacao: string;
-          comunicado_por: ComunicadoPor;
-          motivo: MotivoPermanencia;
+          data_comunicacao: string | null;
+          comunicado_por: ComunicadoPor | null;
+          motivo: MotivoPermanencia | null;
           motivo_descricao: string | null;
-          nova_data_retorno_prevista: string;
-          registrado_por: string;
+          nova_data_retorno_prevista: string | null;
+          registrado_por: string | null;
           registrado_em: string;
           created_at: string;
         };
         Insert: {
           id?: string;
           solicitacao_id: string;
-          data_comunicacao: string;
-          comunicado_por: ComunicadoPor;
-          motivo: MotivoPermanencia;
+          data_comunicacao?: string | null;
+          comunicado_por?: ComunicadoPor | null;
+          motivo?: MotivoPermanencia | null;
           motivo_descricao?: string | null;
-          nova_data_retorno_prevista: string;
-          registrado_por: string;
+          nova_data_retorno_prevista?: string | null;
+          registrado_por?: string | null;
           registrado_em?: string;
           created_at?: string;
         };
         Update: {
           id?: string;
           solicitacao_id?: string;
-          data_comunicacao?: string;
-          comunicado_por?: ComunicadoPor;
-          motivo?: MotivoPermanencia;
+          data_comunicacao?: string | null;
+          comunicado_por?: ComunicadoPor | null;
+          motivo?: MotivoPermanencia | null;
           motivo_descricao?: string | null;
-          nova_data_retorno_prevista?: string;
-          registrado_por?: string;
+          nova_data_retorno_prevista?: string | null;
+          registrado_por?: string | null;
           registrado_em?: string;
           created_at?: string;
         };
@@ -1128,7 +1215,7 @@ export type Database = {
           id: string;
           permanencia_id: string;
           justificativa_medica: string;
-          documento_justificativa_id: string;
+          documento_justificativa_id: string | null;
           dias_adicionais_solicitados: number;
           nova_data_retorno: string;
           impacto_diarias_valor: number | null;
@@ -1138,6 +1225,7 @@ export type Database = {
           decisao_em: string | null;
           justificativa_decisao: string | null;
           complemento_ajuda_id: string | null;
+          viagem_prorrogacao_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -1145,7 +1233,7 @@ export type Database = {
           id?: string;
           permanencia_id: string;
           justificativa_medica: string;
-          documento_justificativa_id: string;
+          documento_justificativa_id?: string | null;
           dias_adicionais_solicitados: number;
           nova_data_retorno: string;
           impacto_diarias_valor?: number | null;
@@ -1155,6 +1243,7 @@ export type Database = {
           decisao_em?: string | null;
           justificativa_decisao?: string | null;
           complemento_ajuda_id?: string | null;
+          viagem_prorrogacao_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1172,6 +1261,7 @@ export type Database = {
           decisao_em?: string | null;
           justificativa_decisao?: string | null;
           complemento_ajuda_id?: string | null;
+          viagem_prorrogacao_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1603,6 +1693,83 @@ export type Database = {
         };
         Relationships: [];
       };
+
+      // ── Termos de Compromisso ─────────────────────────────
+      termos_compromisso: {
+        Row: {
+          id: string;
+          solicitacao_id: string;
+          numero_processo: string;
+          paciente_nome: string;
+          paciente_cpf: string;
+          paciente_rg: string | null;
+          paciente_cns: string | null;
+          paciente_endereco: string | null;
+          paciente_municipio: string | null;
+          status: StatusTermo;
+          modalidade_aceite: ModalidadeAceite;
+          responsavel_nome: string | null;
+          responsavel_cpf: string | null;
+          responsavel_parentesco: GrauParentesco | null;
+          arquivo_url: string | null;
+          arquivo_nome: string | null;
+          confirmacao_leitura: boolean;
+          local_registro: string | null;
+          data_registro: string;
+          registrado_por: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          solicitacao_id: string;
+          numero_processo: string;
+          paciente_nome: string;
+          paciente_cpf: string;
+          paciente_rg?: string | null;
+          paciente_cns?: string | null;
+          paciente_endereco?: string | null;
+          paciente_municipio?: string | null;
+          status?: StatusTermo;
+          modalidade_aceite: ModalidadeAceite;
+          responsavel_nome?: string | null;
+          responsavel_cpf?: string | null;
+          responsavel_parentesco?: GrauParentesco | null;
+          arquivo_url?: string | null;
+          arquivo_nome?: string | null;
+          confirmacao_leitura?: boolean;
+          local_registro?: string | null;
+          data_registro?: string;
+          registrado_por?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          solicitacao_id?: string;
+          numero_processo?: string;
+          paciente_nome?: string;
+          paciente_cpf?: string;
+          paciente_rg?: string | null;
+          paciente_cns?: string | null;
+          paciente_endereco?: string | null;
+          paciente_municipio?: string | null;
+          status?: StatusTermo;
+          modalidade_aceite?: ModalidadeAceite;
+          responsavel_nome?: string | null;
+          responsavel_cpf?: string | null;
+          responsavel_parentesco?: GrauParentesco | null;
+          arquivo_url?: string | null;
+          arquivo_nome?: string | null;
+          confirmacao_leitura?: boolean;
+          local_registro?: string | null;
+          data_registro?: string;
+          registrado_por?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
 
     Views: Record<string, never>;
@@ -1646,6 +1813,9 @@ export type Database = {
       setor_tfd: SetorTFD;
       status_devolucao: StatusDevolucao;
       urgencia_devolucao: UrgenciaDevolucao;
+      status_termo: StatusTermo;
+      modalidade_aceite: ModalidadeAceite;
+      grau_parentesco: GrauParentesco;
     };
   };
 };

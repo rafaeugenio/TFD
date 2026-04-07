@@ -8,25 +8,18 @@ import {
   AlertTriangle,
   XCircle,
   Eye,
-  ChevronDown,
-  ChevronUp,
   ClipboardCheck,
   ArrowRightLeft,
   UserX,
   UserMinus,
   Skull,
   Archive,
-  Plane,
-  Wallet,
   FileText,
-  Puzzle,
-  Calendar,
-  Stethoscope,
-  Plus,
   Info,
   Loader2,
   SendHorizonal,
   Trash2,
+  Filter,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -80,9 +73,10 @@ interface EncerramentoItem {
 /*  Tab config                                         */
 /* -------------------------------------------------- */
 
-type TabKey = 'DISPONIVEIS' | 'ALTA_MEDICA' | 'TRANSFERENCIA' | 'DESISTENCIA' | 'ABANDONO' | 'OBITO';
+type TabKey = 'TODOS' | 'DISPONIVEIS' | 'ALTA_MEDICA' | 'TRANSFERENCIA' | 'DESISTENCIA' | 'ABANDONO' | 'OBITO';
 
 const TABS: { key: TabKey; label: string }[] = [
+  { key: 'TODOS', label: 'Todos' },
   { key: 'DISPONIVEIS', label: 'Disponíveis' },
   { key: 'ALTA_MEDICA', label: 'Alta Médica' },
   { key: 'TRANSFERENCIA', label: 'Transferência' },
@@ -153,9 +147,9 @@ export default function AltaEncerramentoPage() {
   const toast = useToast();
   const { options: motivoEncOptions, loading: motivoEncLoading } = useLookup('motivo_encerramento');
 
-  const [activeTab, setActiveTab] = useState<TabKey>('DISPONIVEIS');
+  const [activeTab, setActiveTab] = useState<TabKey>('TODOS');
   const [search, setSearch] = useState('');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string>('TODOS');
 
   /* ---- Disponíveis: solicitações EM_PERMANENCIA sem encerramento ---- */
   const [disponiveis, setDisponiveis] = useState<any[]>([]);
@@ -267,32 +261,35 @@ export default function AltaEncerramentoPage() {
     }));
   }, [encerramentosRaw]);
 
-  /* ---- Filter by tab (client-side) ---- */
-  const filtered = useMemo(() => {
-    // DISPONIVEIS tab shows the disponíveis cards, not the encerramentos list
-    if (activeTab === 'DISPONIVEIS') return [];
-    // Other tabs filter encerramentos by motivo
-    return items.filter((e) => {
-      const matchesTab = e.motivo === activeTab;
-      const matchesSearch =
-        search === '' ||
-        e.pacienteNome.toLowerCase().includes(search.toLowerCase()) ||
-        e.numeroProcesso.toLowerCase().includes(search.toLowerCase()) ||
-        (e.cidCodigo ?? '').toLowerCase().includes(search.toLowerCase());
-      return matchesTab && matchesSearch;
-    });
-  }, [items, activeTab, search]);
+  /* ---- Unified rows: disponíveis + encerramentos ---- */
+  type UnifiedRow = { _type: 'DISPONIVEL'; raw: any } | { _type: 'ENCERRAMENTO'; data: EncerramentoItem };
 
-  /* ---- Filter disponíveis by search ---- */
-  const filteredDisp = useMemo(() => {
-    if (activeTab !== 'DISPONIVEIS') return [];
-    if (!search) return disponiveis;
-    const s = search.toLowerCase();
-    return disponiveis.filter((sol: any) =>
-      (sol.numero_processo ?? '').toLowerCase().includes(s) ||
-      (sol.pacientes?.nome_completo ?? '').toLowerCase().includes(s)
-    );
-  }, [disponiveis, activeTab, search]);
+  const allRows = useMemo<UnifiedRow[]>(() => {
+    const dispRows: UnifiedRow[] = disponiveis.map((sol: any) => ({ _type: 'DISPONIVEL' as const, raw: sol }));
+    const encRows: UnifiedRow[] = items.map((e) => ({ _type: 'ENCERRAMENTO' as const, data: e }));
+
+    if (activeTab === 'DISPONIVEIS') return dispRows;
+    if (activeTab === 'TODOS') return [...dispRows, ...encRows];
+    // Filter by motivo
+    return encRows.filter((r) => r._type === 'ENCERRAMENTO' && r.data.motivo === activeTab);
+  }, [disponiveis, items, activeTab]);
+
+  /* ---- Filter by search + status ---- */
+  const filtered = useMemo(() => {
+    return allRows.filter((row) => {
+      const nome = row._type === 'DISPONIVEL' ? (row.raw.pacientes?.nome_completo ?? '') : row.data.pacienteNome;
+      const processo = row._type === 'DISPONIVEL' ? (row.raw.numero_processo ?? '') : row.data.numeroProcesso;
+      const status = row._type === 'DISPONIVEL' ? (row.raw.status ?? '') : row.data.solicitacaoStatus;
+
+      const matchesSearch = search === '' ||
+        nome.toLowerCase().includes(search.toLowerCase()) ||
+        processo.toLowerCase().includes(search.toLowerCase());
+
+      const matchesStatus = filterStatus === 'TODOS' || status === filterStatus;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [allRows, search, filterStatus]);
 
   /* ---- Summary counters ---- */
   const counts = useMemo(() => {
@@ -308,6 +305,7 @@ export default function AltaEncerramentoPage() {
   /* ---- Tab counts ---- */
   const tabCounts = useMemo<Record<TabKey, number>>(() => {
     return {
+      TODOS: disponiveis.length + items.length,
       DISPONIVEIS: disponiveis.length,
       ALTA_MEDICA: items.filter((e) => e.motivo === 'ALTA_MEDICA').length,
       TRANSFERENCIA: items.filter((e) => e.motivo === 'TRANSFERENCIA').length,
@@ -316,6 +314,26 @@ export default function AltaEncerramentoPage() {
       OBITO: items.filter((e) => e.motivo === 'OBITO').length,
     };
   }, [items, disponiveis]);
+
+  /* ---- Unique status values for filter ---- */
+  const statusOptions = useMemo(() => {
+    const statuses = new Set<string>();
+    for (const sol of disponiveis) {
+      if (sol.status) statuses.add(sol.status);
+    }
+    for (const enc of items) {
+      if (enc.solicitacaoStatus) statuses.add(enc.solicitacaoStatus);
+    }
+    const statusLabels: Record<string, string> = {
+      EM_PERMANENCIA: 'Em Permanência',
+      EM_VIAGEM: 'Em Viagem',
+      EMITIDA: 'Emitida',
+      AGUARDANDO_EMISSAO: 'Aguardando Emissão',
+      CONCLUIDO: 'Concluído',
+      CANCELADO: 'Cancelado',
+    };
+    return Array.from(statuses).map((s) => ({ value: s, label: statusLabels[s] ?? s.replace(/_/g, ' ') }));
+  }, [disponiveis, items]);
 
   /* ---- Edit / Delete handlers ---- */
   function handleOpenEdit(enc: EncerramentoItem) {
@@ -461,41 +479,42 @@ export default function AltaEncerramentoPage() {
         </div>
       </div>
 
-      {/* ========== Tabs + Search ========== */}
-      <div className="tfd-toolbar mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-1 flex-wrap">
-          {TABS.map((tab) => {
-            const isActive = activeTab === tab.key;
-            const count = tabCounts[tab.key];
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className="tfd-btn tfd-btn--sm"
+      {/* ========== Tabs ========== */}
+      <div className="flex items-center gap-1 flex-wrap mb-4">
+        {TABS.map((tab) => {
+          const isActive = activeTab === tab.key;
+          const count = tabCounts[tab.key];
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className="tfd-btn tfd-btn--sm"
+              style={{
+                backgroundColor: isActive ? 'var(--tfd-primary-50)' : 'transparent',
+                color: isActive ? 'var(--tfd-primary-700)' : 'var(--tfd-text-secondary)',
+                borderColor: isActive ? 'var(--tfd-primary-200)' : 'transparent',
+                fontWeight: isActive ? 600 : 400,
+              }}
+            >
+              {tab.label}
+              <span
+                className="text-xs ml-1 px-1.5 py-0.5 rounded-full"
                 style={{
-                  backgroundColor: isActive ? 'var(--tfd-primary-50)' : 'transparent',
-                  color: isActive ? 'var(--tfd-primary-700)' : 'var(--tfd-text-secondary)',
-                  borderColor: isActive ? 'var(--tfd-primary-200)' : 'transparent',
-                  fontWeight: isActive ? 600 : 400,
+                  backgroundColor: isActive ? 'var(--tfd-primary-100)' : 'var(--tfd-surface-100)',
+                  color: isActive ? 'var(--tfd-primary-700)' : 'var(--tfd-text-muted)',
+                  fontSize: '0.6875rem',
+                  fontWeight: 600,
                 }}
               >
-                {tab.label}
-                <span
-                  className="text-xs ml-1 px-1.5 py-0.5 rounded-full"
-                  style={{
-                    backgroundColor: isActive ? 'var(--tfd-primary-100)' : 'var(--tfd-surface-100)',
-                    color: isActive ? 'var(--tfd-primary-700)' : 'var(--tfd-text-muted)',
-                    fontSize: '0.6875rem',
-                    fontWeight: 600,
-                  }}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
+      {/* ========== Search + Status Filter ========== */}
+      <div className="tfd-toolbar mb-4 flex-wrap gap-3">
         <div className="relative flex-1 max-w-xs min-w-[200px]">
           <Search
             size={16}
@@ -505,401 +524,231 @@ export default function AltaEncerramentoPage() {
           <input
             type="text"
             className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
-            placeholder="Buscar paciente, processo ou CID..."
+            placeholder="Buscar paciente ou processo..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+
+        {statusOptions.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Filter size={16} style={{ color: 'var(--tfd-text-muted)' }} />
+            <select
+              className="tfd-input tfd-input--sm"
+              style={{ minWidth: '200px', maxWidth: '240px' }}
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+            >
+              <option value="TODOS">Todos os status</option>
+              {statusOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
-      {/* ========== Content by tab ========== */}
-      <div className="space-y-3">
-        {(loading || disponiveisLoading) ? (
-          <div className="tfd-card">
-            <div className="flex flex-col items-center gap-2 py-12">
-              <Loader2 size={32} className="animate-spin" style={{ color: 'var(--tfd-text-muted)' }} />
-              <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-                Carregando...
-              </p>
-            </div>
-          </div>
-        ) : activeTab === 'DISPONIVEIS' ? (
-          /* ===== Tab: Disponíveis — cards de processos ativos ===== */
-          filteredDisp.length === 0 ? (
-            <div className="tfd-card">
-              <div className="flex flex-col items-center gap-2 py-12">
-                <Archive size={32} style={{ color: 'var(--tfd-text-muted)' }} />
-                <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-                  Nenhum processo disponível para encerramento
-                </p>
-              </div>
-            </div>
-          ) : (
-            filteredDisp.map((sol: any) => (
-              <div
-                key={sol.id}
-                className="tfd-card cursor-pointer"
-                style={{ borderLeft: '3px solid var(--tfd-primary-500)' }}
-                onClick={() => handleOpenNew(sol)}
-              >
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                      <Link
-                        href={`/solicitacoes/${sol.id}`}
-                        className="font-medium text-sm hover:underline"
-                        style={{ color: 'var(--tfd-primary-500)' }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {sol.numero_processo}
-                      </Link>
-                      <span
-                        className="tfd-tag tfd-tag--rounded"
-                        style={{ backgroundColor: 'var(--tfd-surface-100)', color: 'var(--tfd-text-secondary)', fontSize: '0.625rem' }}
-                      >
-                        {sol.status?.replace(/_/g, ' ') ?? 'Ativo'}
-                      </span>
+      {/* ========== Table ========== */}
+      <div className="tfd-card p-0 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="tfd-table">
+            <thead>
+              <tr>
+                <th>Nº Processo</th>
+                <th>Paciente</th>
+                <th>Status Solicitação</th>
+                <th className="hidden md:table-cell">Motivo</th>
+                <th className="hidden md:table-cell">Data Alta</th>
+                <th className="hidden lg:table-cell">Docs</th>
+                <th className="w-[100px]">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(loading || disponiveisLoading) ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-12">
+                    <div className="flex flex-col items-center gap-2">
+                      <Loader2 size={32} className="animate-spin" style={{ color: 'var(--tfd-primary-500)' }} />
+                      <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Carregando...</p>
                     </div>
-                    <p className="font-semibold text-base" style={{ color: 'var(--tfd-text-primary)' }}>
-                      {sol.pacientes?.nome_completo ?? '—'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Link
-                      href={`/solicitacoes/${sol.id}`}
-                      className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
-                      title="Ver processo"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Eye size={15} />
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            ))
-          )
-        ) : filtered.length === 0 ? (
-          <div className="tfd-card">
-            <div className="flex flex-col items-center gap-2 py-12">
-              <Archive size={32} style={{ color: 'var(--tfd-text-muted)' }} />
-              <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-                Nenhum encerramento encontrado
-              </p>
-            </div>
-          </div>
-        ) : (
-          filtered.map((enc) => {
-            const motivo = motivoStyleMap[enc.motivo];
-            const status = statusStyleMap[enc.status];
-            const isExpanded = expandedId === enc.id;
-            const retornoNA = enc.motivo === 'OBITO' || enc.motivo === 'TRANSFERENCIA';
-            const c = enc.conciliacao;
-            const archivable = canArchive(enc);
-            const aguardandoRetorno = labelDestino(enc.solicitacaoId);
-
-            return (
-              <div key={enc.id} className={`tfd-card ${aguardandoRetorno ? '' : 'cursor-pointer'}`} style={{ opacity: aguardandoRetorno ? 0.5 : undefined, pointerEvents: aguardandoRetorno ? 'none' : undefined }} onClick={aguardandoRetorno ? undefined : () => handleOpenEdit(enc)}>
-                {/* ---- Header row ---- */}
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <Link
-                        href={`/solicitacoes/${enc.solicitacaoId}`}
-                        className="font-medium text-sm hover:underline"
-                        style={{ color: 'var(--tfd-primary-500)' }}
-                      >
-                        {enc.numeroProcesso}
-                      </Link>
-                      <span
-                        className="tfd-tag tfd-tag--rounded tfd-tag--dot"
-                        style={{ backgroundColor: motivo.bg, color: motivo.text }}
-                      >
-                        {motivo.label}
-                      </span>
-                      <span
-                        className="tfd-tag tfd-tag--rounded tfd-tag--dot"
-                        style={{ backgroundColor: status.bg, color: status.text }}
-                      >
-                        {status.label}
-                      </span>
-                      {aguardandoRetorno && (
-                        <span
-                          className="tfd-tag tfd-tag--rounded"
-                          style={{ backgroundColor: '#FEF3C7', color: '#92400E', fontSize: '0.625rem' }}
-                        >
-                          Ag. retorno — {aguardandoRetorno}
-                        </span>
-                      )}
-                    </div>
-                    <p className="font-semibold text-base" style={{ color: 'var(--tfd-text-primary)' }}>
-                      {enc.pacienteNome}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Link
-                      href={`/solicitacoes/${enc.solicitacaoId}`}
-                      className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
-                      title="Ver processo completo"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Eye size={16} />
-                    </Link>
-                    <button
-                      type="button"
-                      className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
-                      title="Devolver"
-                      onClick={(e) => { e.stopPropagation(); setDevolverItem(enc); }}
-                    >
-                      <SendHorizonal size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      className="tfd-btn tfd-btn-danger tfd-btn--icon-only"
-                      title="Excluir encerramento"
-                      onClick={(e) => { e.stopPropagation(); handleOpenDelete(enc); }}
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                    <button
-                      className="tfd-btn tfd-btn--text tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                      title={isExpanded ? 'Recolher' : 'Expandir'}
-                      onClick={(e) => { e.stopPropagation(); setExpandedId(isExpanded ? null : enc.id); }}
-                    >
-                      {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* ---- Info row ---- */}
-                <div className="flex items-center gap-4 mt-3 flex-wrap text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
-                  <div className="flex items-center gap-1.5">
-                    <Stethoscope size={14} />
-                    <span>{enc.cidCodigo} — {enc.cidDescricao}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Calendar size={14} />
-                    <span>{formatDate(enc.dataAlta)}</span>
-                  </div>
-                </div>
-
-                {/* ---- Quick status indicators ---- */}
-                <div className="flex items-center gap-4 mt-3 flex-wrap">
-                  <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>
-                    <Plane size={12} />
-                    <span>Retorno:</span>
-                    {enc.passagemRetorno === 'EMITIDA' && (
-                      <CheckCircle2 size={14} style={{ color: '#16A34A' }} />
-                    )}
-                    {enc.passagemRetorno === 'PENDENTE' && (
-                      <AlertTriangle size={14} style={{ color: '#F59E0B' }} />
-                    )}
-                    {enc.passagemRetorno === 'NAO_APLICAVEL' && (
-                      <span style={{ color: 'var(--tfd-text-muted)' }}>N/A</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>
-                    <Wallet size={12} />
-                    <span>Diárias:</span>
-                    {enc.diarias === 'CONCILIADA' ? (
-                      <CheckCircle2 size={14} style={{ color: '#16A34A' }} />
-                    ) : (
-                      <AlertTriangle size={14} style={{ color: '#F59E0B' }} />
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>
-                    <FileText size={12} />
-                    <span>Docs:</span>
-                    {enc.documentosAlta === 'ANEXADO' ? (
-                      <CheckCircle2 size={14} style={{ color: '#16A34A' }} />
-                    ) : (
-                      <AlertTriangle size={14} style={{ color: '#F59E0B' }} />
-                    )}
-                  </div>
-                </div>
-
-                {/* ---- Observations ---- */}
-                {enc.observacoes && !isExpanded && (
-                  <p className="mt-2 text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-                    {enc.observacoes}
-                  </p>
-                )}
-
-                {/* ---- Expanded: Conciliação ---- */}
-                {isExpanded && (
-                  <div
-                    className="mt-4 pt-4"
-                    style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
-                  >
-                    {/* Óbito warning */}
-                    {enc.motivo === 'OBITO' && (
-                      <div className="tfd-message tfd-message--danger mb-4">
-                        <span className="tfd-message-icon mt-0.5 shrink-0">
-                          <Skull size={16} />
-                        </span>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                            Fluxo especial ativado
-                          </p>
-                          <p className="text-sm mt-0.5" style={{ color: 'var(--tfd-text-secondary)' }}>
-                            Diárias do paciente encerradas, passagem de retorno cancelada, retorno do acompanhante verificado, município notificado.
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    <h4 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
-                      Checklist de Conciliação
-                    </h4>
-
-                    <div className="space-y-2.5">
-                      {/* Passagem de ida */}
-                      <div
-                        className="flex items-center gap-3 p-3 rounded-lg"
-                        style={{ backgroundColor: 'var(--tfd-surface-50)' }}
-                      >
-                        <Plane size={16} style={{ color: 'var(--tfd-text-muted)' }} />
-                        <span className="text-sm flex-1" style={{ color: 'var(--tfd-text-primary)' }}>
-                          Passagem de ida
-                        </span>
-                        {c.passagemIda && c.embarqueConfirmado ? (
-                          <span className="flex items-center gap-1.5 text-sm" style={{ color: '#16A34A' }}>
-                            <CheckCircle2 size={14} />
-                            Emitida + embarque confirmado
-                          </span>
-                        ) : c.passagemIda ? (
-                          <span className="flex items-center gap-1.5 text-sm" style={{ color: '#F59E0B' }}>
-                            <AlertTriangle size={14} />
-                            Emitida — embarque pendente
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1.5 text-sm" style={{ color: '#B91C1C' }}>
-                            <XCircle size={14} />
-                            Não emitida
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Passagem de retorno */}
-                      <div
-                        className="flex items-center gap-3 p-3 rounded-lg"
-                        style={{ backgroundColor: 'var(--tfd-surface-50)' }}
-                      >
-                        <Plane size={16} style={{ color: 'var(--tfd-text-muted)' }} />
-                        <span className="text-sm flex-1" style={{ color: 'var(--tfd-text-primary)' }}>
-                          Passagem de retorno
-                        </span>
-                        {retornoNA ? (
-                          <span className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-                            N/A
-                          </span>
-                        ) : c.passagemRetornoEmitida ? (
-                          <span className="flex items-center gap-1.5 text-sm" style={{ color: '#16A34A' }}>
-                            <CheckCircle2 size={14} />
-                            Emitida
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1.5 text-sm" style={{ color: '#F59E0B' }}>
-                            <AlertTriangle size={14} />
-                            Pendente
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Diárias */}
-                      <div
-                        className="flex items-center gap-3 p-3 rounded-lg"
-                        style={{ backgroundColor: 'var(--tfd-surface-50)' }}
-                      >
-                        <Wallet size={16} style={{ color: 'var(--tfd-text-muted)' }} />
-                        <span className="text-sm flex-1" style={{ color: 'var(--tfd-text-primary)' }}>
-                          Diárias
-                        </span>
-                        {c.diariasPagas && c.diariasPendentes === 0 ? (
-                          <span className="flex items-center gap-1.5 text-sm" style={{ color: '#16A34A' }}>
-                            <CheckCircle2 size={14} />
-                            Todas pagas
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1.5 text-sm" style={{ color: '#F59E0B' }}>
-                            <AlertTriangle size={14} />
-                            {c.diariasPendentes} pendente{c.diariasPendentes !== 1 ? 's' : ''}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Complementos de permanência */}
-                      <div
-                        className="flex items-center gap-3 p-3 rounded-lg"
-                        style={{ backgroundColor: 'var(--tfd-surface-50)' }}
-                      >
-                        <Puzzle size={16} style={{ color: 'var(--tfd-text-muted)' }} />
-                        <span className="text-sm flex-1" style={{ color: 'var(--tfd-text-primary)' }}>
-                          Complementos de permanência
-                        </span>
-                        {c.complementosConciliados && c.complementosPendentes === 0 ? (
-                          <span className="flex items-center gap-1.5 text-sm" style={{ color: '#16A34A' }}>
-                            <CheckCircle2 size={14} />
-                            Conciliados
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1.5 text-sm" style={{ color: '#F59E0B' }}>
-                            <AlertTriangle size={14} />
-                            {c.complementosPendentes} pendente{c.complementosPendentes !== 1 ? 's' : ''}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Documentos de alta */}
-                      <div
-                        className="flex items-center gap-3 p-3 rounded-lg"
-                        style={{ backgroundColor: 'var(--tfd-surface-50)' }}
-                      >
-                        <FileText size={16} style={{ color: 'var(--tfd-text-muted)' }} />
-                        <span className="text-sm flex-1" style={{ color: 'var(--tfd-text-primary)' }}>
-                          Documentos de alta
-                        </span>
-                        {c.documentosAnexados ? (
-                          <span className="flex items-center gap-1.5 text-sm" style={{ color: '#16A34A' }}>
-                            <CheckCircle2 size={14} />
-                            Anexados
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1.5 text-sm" style={{ color: '#F59E0B' }}>
-                            <AlertTriangle size={14} />
-                            Pendente
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Observations */}
-                    {enc.observacoes && (
-                      <p className="mt-3 text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-                        {enc.observacoes}
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-12">
+                    <div className="flex flex-col items-center gap-2">
+                      <Archive size={32} style={{ color: 'var(--tfd-text-muted)' }} />
+                      <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
+                        Nenhum registro encontrado
                       </p>
-                    )}
-
-                    {/* Confirmar e Arquivar button */}
-                    <div className="mt-4 flex justify-end">
-                      <button
-                        className="tfd-btn tfd-btn-primary tfd-btn--sm"
-                        disabled={!archivable}
-                        style={{
-                          opacity: archivable ? 1 : 0.5,
-                          cursor: archivable ? 'pointer' : 'not-allowed',
-                        }}
-                      >
-                        <Archive size={16} />
-                        Confirmar e Arquivar
-                      </button>
                     </div>
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((row) => {
+                  if (row._type === 'DISPONIVEL') {
+                    const sol = row.raw;
+                    const solStatus = (sol.status ?? '').replace(/_/g, ' ');
+                    return (
+                      <tr
+                        key={`disp-${sol.id}`}
+                        className="cursor-pointer"
+                        onClick={() => handleOpenNew(sol)}
+                      >
+                        <td>
+                          <Link
+                            href={`/solicitacoes/${sol.id}`}
+                            className="font-medium text-sm hover:underline"
+                            style={{ color: 'var(--tfd-primary-500)' }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {sol.numero_processo}
+                          </Link>
+                        </td>
+                        <td className="max-w-[180px] truncate font-medium">
+                          {sol.pacientes?.nome_completo ?? '—'}
+                        </td>
+                        <td>
+                          <span
+                            className="tfd-tag tfd-tag--rounded"
+                            style={{ backgroundColor: 'var(--tfd-surface-100)', color: 'var(--tfd-text-secondary)', fontSize: '0.625rem' }}
+                          >
+                            {solStatus || 'Ativo'}
+                          </span>
+                        </td>
+                        <td className="hidden md:table-cell">
+                          <span className="tfd-tag tfd-tag--rounded tfd-tag--dot" style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}>
+                            Disponível
+                          </span>
+                        </td>
+                        <td className="hidden md:table-cell" style={{ color: 'var(--tfd-text-muted)' }}>—</td>
+                        <td className="hidden lg:table-cell" style={{ color: 'var(--tfd-text-muted)' }}>—</td>
+                        <td>
+                          <div className="flex items-center gap-1">
+                            <Link
+                              href={`/solicitacoes/${sol.id}`}
+                              className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                              title="Ver processo"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Eye size={15} />
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  const enc = row.data;
+                  const motivoStyle = motivoStyleMap[enc.motivo];
+                  const statusStyle = statusStyleMap[enc.status];
+                  const aguardandoRetorno = labelDestino(enc.solicitacaoId);
+                  const devolucaoInfo = devolucoesEnviadas.get(enc.solicitacaoId);
+
+                  return (
+                    <tr
+                      key={enc.id}
+                      className={aguardandoRetorno ? '' : 'cursor-pointer'}
+                      style={{
+                        opacity: aguardandoRetorno ? 0.55 : undefined,
+                        backgroundColor: aguardandoRetorno ? '#FFFBEB' : undefined,
+                        pointerEvents: aguardandoRetorno ? 'none' : undefined,
+                      }}
+                      onClick={aguardandoRetorno ? undefined : () => handleOpenEdit(enc)}
+                    >
+                      <td>
+                        <div className="flex flex-col gap-0.5">
+                          <Link
+                            href={`/solicitacoes/${enc.solicitacaoId}`}
+                            className="font-medium text-sm hover:underline"
+                            style={{ color: aguardandoRetorno ? 'var(--tfd-text-muted)' : 'var(--tfd-primary-500)' }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {enc.numeroProcesso}
+                          </Link>
+                          {aguardandoRetorno && devolucaoInfo && (
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                                style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
+                              >
+                                Devolvido p/ {aguardandoRetorno}
+                              </span>
+                              {devolucaoInfo.urgencia === 'URGENTE' && (
+                                <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: '#FEE2E2', color: '#B91C1C' }}>
+                                  URGENTE
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="max-w-[180px] truncate font-medium">
+                        {enc.pacienteNome}
+                      </td>
+                      <td>
+                        <span
+                          className="tfd-tag tfd-tag--rounded tfd-tag--dot"
+                          style={{ backgroundColor: statusStyle.bg, color: statusStyle.text }}
+                        >
+                          {statusStyle.label}
+                        </span>
+                      </td>
+                      <td className="hidden md:table-cell">
+                        <span
+                          className="tfd-tag tfd-tag--rounded tfd-tag--dot"
+                          style={{ backgroundColor: motivoStyle.bg, color: motivoStyle.text }}
+                        >
+                          {motivoStyle.label}
+                        </span>
+                      </td>
+                      <td className="hidden md:table-cell whitespace-nowrap" style={{ color: 'var(--tfd-text-secondary)' }}>
+                        {formatDate(enc.dataAlta)}
+                      </td>
+                      <td className="hidden lg:table-cell">
+                        {enc.documentosAlta === 'ANEXADO' ? (
+                          <CheckCircle2 size={16} style={{ color: '#16A34A' }} />
+                        ) : (
+                          <AlertTriangle size={16} style={{ color: '#F59E0B' }} />
+                        )}
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-1" style={{ pointerEvents: 'auto' }}>
+                          <Link
+                            href={`/solicitacoes/${enc.solicitacaoId}`}
+                            className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                            title="Ver processo"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Eye size={15} />
+                          </Link>
+                          {!aguardandoRetorno && (
+                            <button
+                              type="button"
+                              className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                              title="Devolver"
+                              onClick={(e) => { e.stopPropagation(); setDevolverItem(enc); }}
+                            >
+                              <SendHorizonal size={15} />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="tfd-btn tfd-btn-danger tfd-btn--icon-only"
+                            title="Excluir"
+                            onClick={(e) => { e.stopPropagation(); handleOpenDelete(enc); }}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* ========== Registrar Alta Drawer ========== */}
@@ -966,30 +815,6 @@ export default function AltaEncerramentoPage() {
           />
         </FormField>
 
-        {/* Section: Documentos (conditional — Alta Médica) */}
-        {motivo === 'ALTA_MEDICA' && (
-          <>
-            <hr className="tfd-divider" />
-            <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Documentos</h3>
-            <FormField label="Relatório de alta" required>
-              <input
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
-                className="tfd-input pt-1.5"
-                onChange={(e) => setRelatorioAlta(e.target.files?.[0] ?? null)}
-              />
-            </FormField>
-            <div className="tfd-message tfd-message--info">
-              <span className="tfd-message-icon mt-0.5 shrink-0">
-                <Info size={16} />
-              </span>
-              <p className="text-sm flex-1" style={{ color: 'var(--tfd-text-secondary)' }}>
-                O relatório de alta da unidade de destino é obrigatório para emissão da passagem de retorno.
-              </p>
-            </div>
-          </>
-        )}
-
         {/* Section: Óbito (conditional) */}
         {motivo === 'OBITO' && (
           <>
@@ -1003,14 +828,6 @@ export default function AltaEncerramentoPage() {
                 Fluxo especial será ativado: diárias do paciente encerradas na data, passagem de retorno cancelada, retorno do acompanhante verificado, município de origem notificado.
               </p>
             </div>
-            <FormField label="Certidão de óbito" required>
-              <input
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
-                className="tfd-input pt-1.5"
-                onChange={(e) => setCertidaoObito(e.target.files?.[0] ?? null)}
-              />
-            </FormField>
             <FormField label="Local do óbito" required>
               <input
                 type="text"
@@ -1021,6 +838,24 @@ export default function AltaEncerramentoPage() {
             </FormField>
           </>
         )}
+
+        {/* Section: Documento (sempre visível, opcional) */}
+        <hr className="tfd-divider" />
+        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
+          <FileText size={14} className="inline mr-1.5" style={{ color: 'var(--tfd-primary-500)' }} />
+          Documento
+        </h3>
+        <FormField label="Anexar documento">
+          <input
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png"
+            className="tfd-input pt-1.5"
+            onChange={(e) => setRelatorioAlta(e.target.files?.[0] ?? null)}
+          />
+        </FormField>
+        <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+          Opcional — anexe relatório de alta, certidão de óbito ou outro documento relevante ao encerramento.
+        </p>
       </Drawer>
 
       {/* ========== Modal de Confirmação de Exclusão ========== */}

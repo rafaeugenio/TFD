@@ -17,7 +17,7 @@ export async function listarAgendamentos(filters?: {
   let query = supabase
     .from('agendamentos')
     .select(
-      '*, solicitacoes(numero_processo, status, pacientes(nome_completo))',
+      '*, solicitacoes(numero_processo, status, pacientes(nome_completo)), documentos:comprovante_doc_id(id, url_arquivo, nome_arquivo)',
       { count: 'exact' },
     )
     .order('data_hora_agendamento', { ascending: true });

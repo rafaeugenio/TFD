@@ -12,16 +12,19 @@ function getSupabase() {
  * The bucket 'documentos-tfd' must be created via migration (00006_storage_documentos.sql).
  */
 export async function uploadDocumento(
-  solicitacaoId: string,
+  solicitacaoId: string | null,
   file: File,
   tipo: TipoDocumento,
+  pacienteId?: string,
+  viagemId?: string,
 ) {
   const supabase = getSupabase();
 
-  // Generate a unique path: solicitacao_id/timestamp_filename
+  // Generate a unique path: context_id/timestamp_filename
+  const contextId = viagemId || pacienteId || solicitacaoId || 'sem-vinculo';
   const timestamp = Date.now();
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const path = `${solicitacaoId}/${timestamp}_${safeName}`;
+  const path = `${contextId}/${timestamp}_${safeName}`;
 
   // Upload to storage
   const { error: uploadError } = await supabase.storage
@@ -40,7 +43,9 @@ export async function uploadDocumento(
 
   // Insert document record (upload_por is nullable — no auth yet)
   return supabase.from('documentos').insert({
-    solicitacao_id: solicitacaoId,
+    ...(solicitacaoId && { solicitacao_id: solicitacaoId }),
+    ...(pacienteId && { paciente_id: pacienteId }),
+    ...(viagemId && { viagem_id: viagemId }),
     tipo,
     nome_arquivo: file.name,
     url_arquivo: urlData.publicUrl,
@@ -75,4 +80,28 @@ export async function excluirDocumento(id: string, urlArquivo: string) {
   }
 
   return supabase.from('documentos').delete().eq('id', id);
+}
+
+/**
+ * Lists all documents for a given viagem (ida or volta).
+ */
+export async function listarDocumentosPorViagem(viagemId: string) {
+  const supabase = getSupabase();
+  return supabase
+    .from('documentos')
+    .select('*')
+    .eq('viagem_id' as any, viagemId)
+    .order('created_at', { ascending: false });
+}
+
+/**
+ * Lists all documents for a given paciente.
+ */
+export async function listarDocumentosPaciente(pacienteId: string) {
+  const supabase = getSupabase();
+  return supabase
+    .from('documentos')
+    .select('*')
+    .eq('paciente_id', pacienteId)
+    .order('created_at', { ascending: false });
 }

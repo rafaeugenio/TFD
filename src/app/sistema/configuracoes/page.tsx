@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Settings,
   Users,
@@ -21,6 +21,11 @@ import {
   XCircle,
   MessageSquare,
   Loader2,
+  ChevronRight,
+  Package,
+  Navigation,
+  Megaphone,
+  type LucideIcon,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -44,7 +49,7 @@ import {
   type UnidadeDestino,
   type CompanhiaTransporte,
 } from '@/services/tabelas-auxiliares.service';
-import { useLookup, invalidateCache } from '@/shared/hooks/useLookup';
+import { invalidateCache } from '@/shared/hooks/useLookup';
 import { maskCNPJ, maskPhone } from '@/shared/pipes/formatters';
 
 /* -------------------------------------------------- */
@@ -62,7 +67,6 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
 /*  Parameter types                                    */
 /* -------------------------------------------------- */
 
-// Icons by grupo
 const GRUPO_ICONS: Record<string, React.ReactNode> = {
   diarias: <DollarSign size={16} />,
   transporte: <Plane size={16} />,
@@ -86,31 +90,82 @@ const TIPO_SUFIXOS: Record<string, string> = {
 };
 
 /* -------------------------------------------------- */
-/*  Cadastros mestres — categorias                     */
+/*  Cadastros mestres — categorias e seções            */
 /* -------------------------------------------------- */
 
 interface CategoriaConfig {
   key: string;
   label: string;
-  icon: React.ReactNode;
+  icon: LucideIcon;
   desc: string;
 }
 
-const CATEGORIAS: CategoriaConfig[] = [
-  { key: 'especialidade', label: 'Especialidades Médicas', icon: <Stethoscope size={16} />, desc: 'Especialidades para encaminhamento TFD' },
-  { key: 'tipo_procedimento', label: 'Tipos de Procedimento', icon: <Activity size={16} />, desc: 'Consulta, cirurgia, exame, tratamento' },
-  { key: 'cid10', label: 'CIDs Frequentes', icon: <FileText size={16} />, desc: 'Códigos CID-10 mais utilizados' },
-  { key: 'vinculo_acompanhante', label: 'Vínculos de Acompanhante', icon: <Users size={16} />, desc: 'Tipos de vínculo com o paciente' },
-  { key: 'motivo_permanencia', label: 'Motivos de Permanência', icon: <CalendarClock size={16} />, desc: 'Razões para extensão de estada' },
-  { key: 'motivo_encerramento', label: 'Motivos de Encerramento', icon: <XCircle size={16} />, desc: 'Tipos de encerramento do processo' },
-  { key: 'canal_comunicacao', label: 'Canais de Comunicação', icon: <MessageSquare size={16} />, desc: 'Canais de notificação ao paciente' },
-  { key: 'modal_transporte', label: 'Modais de Transporte', icon: <Plane size={16} />, desc: 'Tipos de transporte disponíveis' },
-  { key: 'origem_agendamento', label: 'Origens de Agendamento', icon: <MapPin size={16} />, desc: 'Como o agendamento foi obtido' },
-  { key: 'perfil_usuario', label: 'Perfis de Usuário', icon: <Shield size={16} />, desc: 'Funções e permissões' },
-  { key: 'regional', label: 'Regionais', icon: <Building2 size={16} />, desc: 'Regionais de saúde do estado' },
-  { key: '_unidades_destino', label: 'Unidades de Destino', icon: <Building2 size={16} />, desc: 'Hospitais e clínicas de referência' },
-  { key: '_companhias', label: 'Companhias de Transporte', icon: <Plane size={16} />, desc: 'Empresas aéreas e rodoviárias' },
+interface SecaoConfig {
+  title: string;
+  icon: LucideIcon;
+  categorias: CategoriaConfig[];
+}
+
+const SECOES: SecaoConfig[] = [
+  {
+    title: 'Clínico',
+    icon: Stethoscope,
+    categorias: [
+      { key: 'especialidade', label: 'Especialidades Médicas', icon: Stethoscope, desc: 'Especialidades para encaminhamento TFD' },
+      { key: 'tipo_procedimento', label: 'Tipos de Procedimento', icon: Activity, desc: 'Consulta, cirurgia, exame, tratamento' },
+      { key: 'cid10', label: 'CIDs Frequentes', icon: FileText, desc: 'Códigos CID-10 mais utilizados' },
+      { key: 'origem_laudo', label: 'Origens de Laudo', icon: FileText, desc: 'Origem do laudo médico (estadual, municipal)' },
+      { key: 'carater_atendimento', label: 'Caráter de Atendimento', icon: Activity, desc: 'Hospitalar, ambulatorial e outros' },
+      { key: 'tipo_documento', label: 'Tipos de Documento', icon: FileText, desc: 'Categorias de documentos aceitos no sistema' },
+    ],
+  },
+  {
+    title: 'Pacientes e Acompanhantes',
+    icon: Users,
+    categorias: [
+      { key: 'vinculo_acompanhante', label: 'Vínculos de Acompanhante', icon: Users, desc: 'Tipos de vínculo com o paciente' },
+    ],
+  },
+  {
+    title: 'Regulação e Agendamento',
+    icon: Navigation,
+    categorias: [
+      { key: 'origem_agendamento', label: 'Origens de Agendamento', icon: MapPin, desc: 'Como o agendamento foi obtido' },
+      { key: '_unidades_destino', label: 'Unidades de Destino', icon: Building2, desc: 'Hospitais e clínicas de referência' },
+      { key: 'destinatario_rota', label: 'Destinatários de Rota', icon: Navigation, desc: 'Instituições de encaminhamento na regulação' },
+    ],
+  },
+  {
+    title: 'Transporte',
+    icon: Plane,
+    categorias: [
+      { key: 'modal_transporte', label: 'Modais de Transporte', icon: Plane, desc: 'Tipos de transporte disponíveis' },
+      { key: '_companhias', label: 'Companhias de Transporte', icon: Plane, desc: 'Empresas aéreas, rodoviárias e fluviais' },
+    ],
+  },
+  {
+    title: 'Financeiro e Permanência',
+    icon: DollarSign,
+    categorias: [
+      { key: 'motivo_permanencia', label: 'Motivos de Permanência', icon: CalendarClock, desc: 'Razões para extensão de estada' },
+      { key: 'motivo_encerramento', label: 'Motivos de Encerramento', icon: XCircle, desc: 'Tipos de encerramento do processo' },
+      { key: 'status_ajuda_custo', label: 'Status Ajuda de Custo', icon: DollarSign, desc: 'Status gerenciais para controle financeiro' },
+      { key: 'comunicado_por', label: 'Comunicado Por', icon: Megaphone, desc: 'Quem comunicou a permanência' },
+    ],
+  },
+  {
+    title: 'Sistema e Acesso',
+    icon: Settings,
+    categorias: [
+      { key: 'canal_comunicacao', label: 'Canais de Comunicação', icon: MessageSquare, desc: 'Canais de notificação ao paciente' },
+      { key: 'perfil_usuario', label: 'Perfis de Usuário', icon: Shield, desc: 'Funções e permissões do sistema' },
+      { key: 'regional', label: 'Regionais', icon: Building2, desc: 'Regionais de saúde do estado' },
+    ],
+  },
 ];
+
+// Flat list for lookups
+const ALL_CATEGORIAS = SECOES.flatMap((s) => s.categorias);
 
 /* -------------------------------------------------- */
 /*  ParametrosPanel                                    */
@@ -124,7 +179,6 @@ function ParametrosPanel() {
   const [editValue, setEditValue] = useState('');
   const [saving, setSaving] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  // For "Novo Parâmetro"
   const [newGrupo, setNewGrupo] = useState('diarias');
   const [newChave, setNewChave] = useState('');
   const [newLabel, setNewLabel] = useState('');
@@ -202,10 +256,8 @@ function ParametrosPanel() {
     return `${param.valor}${sufixo}`;
   };
 
-  // Group parametros
   const grupos = ['diarias', 'transporte', 'sla'];
   const byGrupo = (g: string) => parametros.filter((p) => p.grupo === g);
-  // Custom groups (user-created)
   const customGrupos = [...new Set(parametros.map(p => p.grupo))].filter(g => !grupos.includes(g));
 
   return (
@@ -343,45 +395,22 @@ function ParametrosPanel() {
               {editingParam.tipo === 'booleano' ? (
                 <div className="flex items-center gap-3 mt-1">
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="paramBool"
-                      checked={editValue === 'true'}
-                      onChange={() => setEditValue('true')}
-                      style={{ accentColor: 'var(--tfd-primary-500)' }}
-                    />
+                    <input type="radio" name="paramBool" checked={editValue === 'true'} onChange={() => setEditValue('true')} style={{ accentColor: 'var(--tfd-primary-500)' }} />
                     <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>Sim</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="paramBool"
-                      checked={editValue === 'false'}
-                      onChange={() => setEditValue('false')}
-                      style={{ accentColor: 'var(--tfd-primary-500)' }}
-                    />
+                    <input type="radio" name="paramBool" checked={editValue === 'false'} onChange={() => setEditValue('false')} style={{ accentColor: 'var(--tfd-primary-500)' }} />
                     <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>Não</span>
                   </label>
                 </div>
               ) : editingParam.tipo === 'moeda' ? (
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--tfd-text-muted)' }}>R$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="tfd-input pl-10"
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                  />
+                  <input type="number" step="0.01" className="tfd-input pl-10" value={editValue} onChange={(e) => setEditValue(e.target.value)} />
                 </div>
               ) : ['numero', 'dias', 'horas', 'km'].includes(editingParam.tipo) ? (
                 <div className="relative">
-                  <input
-                    type="number"
-                    className="tfd-input"
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                  />
+                  <input type="number" className="tfd-input" value={editValue} onChange={(e) => setEditValue(e.target.value)} />
                   {TIPO_SUFIXOS[editingParam.tipo] && (
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
                       {TIPO_SUFIXOS[editingParam.tipo]?.trim()}
@@ -389,12 +418,7 @@ function ParametrosPanel() {
                   )}
                 </div>
               ) : (
-                <input
-                  type="text"
-                  className="tfd-input"
-                  value={editValue}
-                  onChange={(e) => setEditValue(e.target.value)}
-                />
+                <input type="text" className="tfd-input" value={editValue} onChange={(e) => setEditValue(e.target.value)} />
               )}
             </FormField>
 
@@ -479,36 +503,37 @@ function ParametrosPanel() {
 }
 
 /* -------------------------------------------------- */
-/*  CadastrosPanel (Tabelas Auxiliares)                */
+/*  CadastrosPanel (Card-based layout by sections)     */
 /* -------------------------------------------------- */
 
 function CadastrosPanel() {
   const toast = useToast();
-  const [selectedKey, setSelectedKey] = useState(CATEGORIAS[0].key);
+
+  /* ---- Active category drawer ---- */
+  const [activeKey, setActiveKey] = useState<string | null>(null);
   const [items, setItems] = useState<TabelaAuxiliar[]>([]);
   const [unidades, setUnidades] = useState<UnidadeDestino[]>([]);
   const [companhias, setCompanhias] = useState<CompanhiaTransporte[]>([]);
   const [loading, setLoading] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Editing state — null = creating new
+  const isUnidades = activeKey === '_unidades_destino';
+  const isCompanhias = activeKey === '_companhias';
+  const isGeneric = activeKey != null && !isUnidades && !isCompanhias;
+  const activeCat = ALL_CATEGORIAS.find((c) => c.key === activeKey);
+
+  /* ---- Editing state ---- */
   const [editingItem, setEditingItem] = useState<TabelaAuxiliar | null>(null);
   const [editingUnidade, setEditingUnidade] = useState<UnidadeDestino | null>(null);
   const [editingCompanhia, setEditingCompanhia] = useState<CompanhiaTransporte | null>(null);
 
-  // Counts per category (for sidebar badges)
-  const [counts, setCounts] = useState<Record<string, number>>({});
-
-  // Form state — generic
-  const [fCodigo, setFCodigo] = useState('');
+  /* ---- Form state — generic ---- */
   const [fNome, setFNome] = useState('');
   const [fDescricao, setFDescricao] = useState('');
-  const [fOrdem, setFOrdem] = useState(0);
   const [fAtivo, setFAtivo] = useState(true);
 
-  // Form state — unidade destino
+  /* ---- Form state — unidade destino ---- */
   const [fUCnes, setFUCnes] = useState('');
   const [fUCidade, setFUCidade] = useState('');
   const [fUUf, setFUUf] = useState('');
@@ -518,47 +543,22 @@ function CadastrosPanel() {
   const [fUContatoEmail, setFUContatoEmail] = useState('');
   const [fUEndereco, setFUEndereco] = useState('');
 
-  // Form state — companhia
+  /* ---- Form state — companhia ---- */
   const [fCModal, setFCModal] = useState('Aéreo');
   const [fCCnpj, setFCCnpj] = useState('');
   const [fCContato, setFCContato] = useState('');
 
-  const selected = CATEGORIAS.find((c) => c.key === selectedKey) ?? CATEGORIAS[0];
-  const isUnidades = selectedKey === '_unidades_destino';
-  const isCompanhias = selectedKey === '_companhias';
-  const isGeneric = !isUnidades && !isCompanhias;
+  /* ---- Inline form mode (list vs form in same drawer) ---- */
+  const [formMode, setFormMode] = useState(false);
 
-  // ---- Load data when category changes ----
-  const loadItems = async (key: string) => {
-    setLoading(true);
-    setErrorMsg(null);
-    if (key === '_unidades_destino') {
-      const { data, error } = await listarUnidadesDestinoAdmin();
-      if (error) { console.error('Supabase error:', error); setErrorMsg(error.message); }
-      setUnidades((data as UnidadeDestino[]) ?? []);
-    } else if (key === '_companhias') {
-      const { data, error } = await listarCompanhiasAdmin();
-      if (error) { console.error('Supabase error:', error); setErrorMsg(error.message); }
-      setCompanhias((data as CompanhiaTransporte[]) ?? []);
-    } else {
-      const { data, error } = await listarPorCategoriaAdmin(key);
-      if (error) { console.error('Supabase error:', error); setErrorMsg(error.message); }
-      setItems((data as TabelaAuxiliar[]) ?? []);
-    }
-    setLoading(false);
-  };
-
-  // Load on mount and category change
-  useEffect(() => {
-    loadItems(selectedKey);
-  }, [selectedKey]);
+  /* ---- Counts per category ---- */
+  const [counts, setCounts] = useState<Record<string, number>>({});
 
   // Load all counts on mount
   useEffect(() => {
     const loadCounts = async () => {
       const newCounts: Record<string, number> = {};
-      // Load generic category counts in parallel
-      const genericKeys = CATEGORIAS.filter((c) => c.key !== '_unidades_destino' && c.key !== '_companhias').map((c) => c.key);
+      const genericKeys = ALL_CATEGORIAS.filter((c) => c.key !== '_unidades_destino' && c.key !== '_companhias').map((c) => c.key);
       const promises = genericKeys.map(async (key) => {
         const { data } = await listarPorCategoriaAdmin(key);
         newCounts[key] = data?.length ?? 0;
@@ -575,35 +575,66 @@ function CadastrosPanel() {
     loadCounts();
   }, []);
 
-  // Update count for the active category when items change
-  useEffect(() => {
-    if (isUnidades) setCounts((prev) => ({ ...prev, [selectedKey]: unidades.length }));
-    else if (isCompanhias) setCounts((prev) => ({ ...prev, [selectedKey]: companhias.length }));
-    else setCounts((prev) => ({ ...prev, [selectedKey]: items.length }));
-  }, [items, unidades, companhias, selectedKey, isUnidades, isCompanhias]);
+  /* ---- Load items for active category ---- */
+  const loadItems = async (key: string) => {
+    setLoading(true);
+    setErrorMsg(null);
+    if (key === '_unidades_destino') {
+      const { data, error } = await listarUnidadesDestinoAdmin();
+      if (error) setErrorMsg(error.message);
+      setUnidades((data as UnidadeDestino[]) ?? []);
+    } else if (key === '_companhias') {
+      const { data, error } = await listarCompanhiasAdmin();
+      if (error) setErrorMsg(error.message);
+      setCompanhias((data as CompanhiaTransporte[]) ?? []);
+    } else {
+      const { data, error } = await listarPorCategoriaAdmin(key);
+      if (error) setErrorMsg(error.message);
+      setItems((data as TabelaAuxiliar[]) ?? []);
+    }
+    setLoading(false);
+  };
 
-  // ---- Reset form ----
+  const handleOpenCategory = (key: string) => {
+    setActiveKey(key);
+    loadItems(key);
+  };
+
+  const handleCloseCategory = () => {
+    setActiveKey(null);
+    setItems([]);
+    setUnidades([]);
+    setCompanhias([]);
+    setErrorMsg(null);
+    setFormMode(false);
+    resetForm();
+  };
+
+  // Update count when items change
+  useEffect(() => {
+    if (!activeKey) return;
+    if (isUnidades) setCounts((prev) => ({ ...prev, [activeKey]: unidades.length }));
+    else if (isCompanhias) setCounts((prev) => ({ ...prev, [activeKey]: companhias.length }));
+    else setCounts((prev) => ({ ...prev, [activeKey]: items.length }));
+  }, [items, unidades, companhias, activeKey, isUnidades, isCompanhias]);
+
+  /* ---- Reset form ---- */
   const resetForm = () => {
-    setFCodigo(''); setFNome(''); setFDescricao(''); setFOrdem(0); setFAtivo(true);
+    setFNome(''); setFDescricao(''); setFAtivo(true);
     setFUCnes(''); setFUCidade(''); setFUUf(''); setFUTipo('');
     setFUContatoNome(''); setFUContatoTel(''); setFUContatoEmail(''); setFUEndereco('');
     setFCModal('Aéreo'); setFCCnpj(''); setFCContato('');
     setEditingItem(null); setEditingUnidade(null); setEditingCompanhia(null);
   };
 
-  // ---- Open drawer for new ----
-  const handleNew = () => {
-    resetForm();
-    setDrawerOpen(true);
-  };
+  const handleNew = () => { resetForm(); setFormMode(true); };
 
-  // ---- Open drawer for edit ----
   const handleEditGeneric = (item: TabelaAuxiliar) => {
     resetForm();
     setEditingItem(item);
-    setFCodigo(item.codigo); setFNome(item.nome);
-    setFDescricao(item.descricao ?? ''); setFOrdem(item.ordem); setFAtivo(item.ativo);
-    setDrawerOpen(true);
+    setFNome(item.nome);
+    setFDescricao(item.descricao ?? ''); setFAtivo(item.ativo);
+    setFormMode(true);
   };
 
   const handleEditUnidade = (u: UnidadeDestino) => {
@@ -613,7 +644,7 @@ function CadastrosPanel() {
     setFUTipo(u.tipo ?? ''); setFUContatoNome(u.contato_nome ?? '');
     setFUContatoTel(u.contato_telefone ?? ''); setFUContatoEmail(u.contato_email ?? '');
     setFUEndereco(u.endereco ?? ''); setFAtivo(u.ativo);
-    setDrawerOpen(true);
+    setFormMode(true);
   };
 
   const handleEditCompanhia = (c: CompanhiaTransporte) => {
@@ -621,33 +652,30 @@ function CadastrosPanel() {
     setEditingCompanhia(c);
     setFNome(c.nome); setFCModal(c.tipo_modal); setFCCnpj(c.cnpj ?? '');
     setFCContato(c.contato ?? ''); setFAtivo(c.ativo);
-    setDrawerOpen(true);
+    setFormMode(true);
   };
 
-  // ---- Save ----
+  /* ---- Save ---- */
   const handleSave = async () => {
     setSaving(true);
     setErrorMsg(null);
     try {
       let result: { error: { message: string } | null };
 
-      if (isGeneric) {
+      if (isGeneric && activeKey) {
+        const codigoAuto = fNome.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
         if (editingItem) {
           result = await atualizarItemAuxiliar(editingItem.id, {
-            codigo: fCodigo, nome: fNome, descricao: fDescricao || undefined, ordem: fOrdem, ativo: fAtivo,
+            codigo: codigoAuto, nome: fNome, descricao: fDescricao || undefined, ativo: fAtivo,
           });
         } else {
           result = await criarItemAuxiliar({
-            categoria: selectedKey, codigo: fCodigo, nome: fNome,
-            descricao: fDescricao || undefined, ordem: fOrdem,
+            categoria: activeKey, codigo: codigoAuto, nome: fNome,
+            descricao: fDescricao || undefined,
           });
         }
-        if (result.error) {
-          setErrorMsg(`Erro ao salvar: ${result.error.message}`);
-          setSaving(false);
-          return;
-        }
-        invalidateCache(selectedKey);
+        if (result.error) { setErrorMsg(result.error.message); setSaving(false); return; }
+        invalidateCache(activeKey);
       } else if (isUnidades) {
         const payload = {
           nome: fNome, cnes: fUCnes || null, cidade: fUCidade, uf: fUUf,
@@ -660,11 +688,7 @@ function CadastrosPanel() {
         } else {
           result = await criarUnidadeDestino(payload);
         }
-        if (result.error) {
-          setErrorMsg(`Erro ao salvar: ${result.error.message}`);
-          setSaving(false);
-          return;
-        }
+        if (result.error) { setErrorMsg(result.error.message); setSaving(false); return; }
         invalidateCache('_unidades_destino');
       } else {
         const payload = {
@@ -676,22 +700,15 @@ function CadastrosPanel() {
         } else {
           result = await criarCompanhia(payload);
         }
-        if (result.error) {
-          setErrorMsg(`Erro ao salvar: ${result.error.message}`);
-          setSaving(false);
-          return;
-        }
+        if (result.error) { setErrorMsg(result.error.message); setSaving(false); return; }
         invalidateCache('_companhias');
       }
+
       const isEditing = !!(editingItem || editingUnidade || editingCompanhia);
-      if (isEditing) {
-        toast.success('Item atualizado!', 'As alterações foram salvas.');
-      } else {
-        toast.success('Item criado!', 'O novo registro foi salvo com sucesso.');
-      }
-      setDrawerOpen(false);
+      toast.success(isEditing ? 'Item atualizado!' : 'Item criado!', isEditing ? 'As alterações foram salvas.' : 'O novo registro foi salvo com sucesso.');
       resetForm();
-      await loadItems(selectedKey);
+      setFormMode(false);
+      if (activeKey) await loadItems(activeKey);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Tente novamente.';
       setErrorMsg(`Erro de conexão: ${msg}`);
@@ -700,280 +717,197 @@ function CadastrosPanel() {
     }
   };
 
-  // ---- Delete ----
-  const handleDeleteGeneric = async (item: TabelaAuxiliar) => {
-    if (!window.confirm(`Excluir "${item.nome}"? Esta ação não pode ser desfeita.`)) return;
-    const { error } = await excluirItemAuxiliar(item.id);
+  /* ---- Delete ---- */
+  const handleDelete = async (type: 'generic' | 'unidade' | 'companhia', item: any) => {
+    const nome = item.nome ?? 'este item';
+    if (!window.confirm(`Excluir "${nome}"? Esta ação não pode ser desfeita.`)) return;
+    let error: { message: string } | null = null;
+    if (type === 'generic') {
+      const res = await excluirItemAuxiliar(item.id);
+      error = res.error;
+      if (!error && activeKey) invalidateCache(activeKey);
+    } else if (type === 'unidade') {
+      const res = await excluirUnidadeDestino(item.id);
+      error = res.error;
+      if (!error) invalidateCache('_unidades_destino');
+    } else {
+      const res = await excluirCompanhia(item.id);
+      error = res.error;
+      if (!error) invalidateCache('_companhias');
+    }
     if (error) { setErrorMsg(`Erro ao excluir: ${error.message}`); return; }
-    invalidateCache(selectedKey);
     toast.success('Item excluído!', 'O registro foi removido.');
-    await loadItems(selectedKey);
+    if (activeKey) await loadItems(activeKey);
   };
 
-  const handleDeleteUnidade = async (u: UnidadeDestino) => {
-    if (!window.confirm(`Excluir "${u.nome}"? Esta ação não pode ser desfeita.`)) return;
-    const { error } = await excluirUnidadeDestino(u.id);
-    if (error) { setErrorMsg(`Erro ao excluir: ${error.message}`); return; }
-    invalidateCache('_unidades_destino');
-    toast.success('Item excluído!', 'O registro foi removido.');
-    await loadItems(selectedKey);
-  };
-
-  const handleDeleteCompanhia = async (c: CompanhiaTransporte) => {
-    if (!window.confirm(`Excluir "${c.nome}"? Esta ação não pode ser desfeita.`)) return;
-    const { error } = await excluirCompanhia(c.id);
-    if (error) { setErrorMsg(`Erro ao excluir: ${error.message}`); return; }
-    invalidateCache('_companhias');
-    toast.success('Item excluído!', 'O registro foi removido.');
-    await loadItems(selectedKey);
-  };
-
-  // ---- Drawer title ----
-  const drawerTitle = (() => {
+  /* ---- Drawer titles ---- */
+  const formDrawerTitle = (() => {
     if (isUnidades) return editingUnidade ? 'Editar Unidade' : 'Nova Unidade';
     if (isCompanhias) return editingCompanhia ? 'Editar Companhia' : 'Nova Companhia';
     return editingItem ? 'Editar Item' : 'Novo Item';
   })();
 
-  const drawerSubtitle = (() => {
-    if (isUnidades && editingUnidade) return `Editando ${editingUnidade.nome}`;
-    if (isCompanhias && editingCompanhia) return `Editando ${editingCompanhia.nome}`;
-    if (isGeneric && editingItem) return `Editando ${editingItem.nome}`;
-    return selected.label;
+  const formDrawerSubtitle = (() => {
+    if (isUnidades && editingUnidade) return editingUnidade.nome;
+    if (isCompanhias && editingCompanhia) return editingCompanhia.nome;
+    if (isGeneric && editingItem) return editingItem.nome;
+    return activeCat?.label ?? '';
   })();
 
-  // ---- Table renderers ----
-  const renderGenericTable = () => (
-    <table className="tfd-table">
-      <thead>
-        <tr>
-          <th>Código</th>
-          <th>Nome</th>
-          <th className="hidden md:table-cell">Descrição</th>
-          <th>Status</th>
-          <th className="w-[100px]">Ações</th>
-        </tr>
-      </thead>
-      <tbody>
-        {items.length === 0 && !loading && (
-          <tr>
-            <td colSpan={5} className="text-center py-8" style={{ color: 'var(--tfd-text-muted)' }}>
-              Nenhum item cadastrado nesta categoria.
-            </td>
-          </tr>
-        )}
+  /* ---- Item list inside category drawer ---- */
+  const currentItems = isUnidades ? unidades : isCompanhias ? companhias : items;
+  const isEmpty = currentItems.length === 0 && !loading;
+
+  const renderItemList = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-16 gap-2" style={{ color: 'var(--tfd-text-muted)' }}>
+          <Loader2 size={18} className="animate-spin" />
+          <span className="text-sm">Carregando...</span>
+        </div>
+      );
+    }
+
+    if (isEmpty) {
+      return (
+        <div className="flex flex-col items-center justify-center py-16 gap-4">
+          <div
+            className="flex items-center justify-center w-16 h-16 rounded-2xl"
+            style={{ backgroundColor: 'var(--tfd-primary-50)' }}
+          >
+            <Package size={28} style={{ color: 'var(--tfd-primary-400)' }} />
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-semibold mb-1" style={{ color: 'var(--tfd-text-primary)' }}>
+              Nenhum item cadastrado
+            </p>
+            <p className="text-xs max-w-[280px]" style={{ color: 'var(--tfd-text-muted)' }}>
+              Adicione o primeiro item para que ele fique disponível nos formulários do sistema.
+            </p>
+          </div>
+          <button className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={handleNew}>
+            <Plus size={14} />
+            Adicionar primeiro item
+          </button>
+        </div>
+      );
+    }
+
+    if (isUnidades) {
+      return (
+        <div className="space-y-2">
+          {unidades.map((u) => (
+            <div
+              key={u.id}
+              className="flex items-center justify-between gap-3 p-3 rounded-lg transition-colors"
+              style={{ backgroundColor: 'var(--tfd-surface-50)' }}
+              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-100)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-50)'; }}
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{u.nome}</p>
+                <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+                  {u.cidade}/{u.uf} {u.cnes ? `· CNES: ${u.cnes}` : ''}
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {!u.ativo && (
+                  <span className="tfd-tag tfd-tag--rounded tfd-tag--dot tfd-tag--secondary text-[10px]">Inativo</span>
+                )}
+                <button className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only" title="Editar" style={{ color: 'var(--tfd-primary-500)' }} onClick={() => handleEditUnidade(u)}>
+                  <Pencil size={14} />
+                </button>
+                <button className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only" title="Excluir" style={{ color: 'var(--tfd-status-danger)' }} onClick={() => handleDelete('unidade', u)}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (isCompanhias) {
+      return (
+        <div className="space-y-2">
+          {companhias.map((c) => (
+            <div
+              key={c.id}
+              className="flex items-center justify-between gap-3 p-3 rounded-lg transition-colors"
+              style={{ backgroundColor: 'var(--tfd-surface-50)' }}
+              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-100)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-50)'; }}
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{c.nome}</p>
+                <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+                  {c.tipo_modal} {c.cnpj ? `· ${c.cnpj}` : ''}
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {!c.ativo && (
+                  <span className="tfd-tag tfd-tag--rounded tfd-tag--dot tfd-tag--secondary text-[10px]">Inativo</span>
+                )}
+                <button className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only" title="Editar" style={{ color: 'var(--tfd-primary-500)' }} onClick={() => handleEditCompanhia(c)}>
+                  <Pencil size={14} />
+                </button>
+                <button className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only" title="Excluir" style={{ color: 'var(--tfd-status-danger)' }} onClick={() => handleDelete('companhia', c)}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // Generic items
+    return (
+      <div className="space-y-2">
         {items.map((item) => (
-          <tr key={item.id}>
-            <td className="font-mono text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>{item.codigo}</td>
-            <td className="font-medium">{item.nome}</td>
-            <td className="hidden md:table-cell" style={{ color: 'var(--tfd-text-secondary)' }}>
-              {item.descricao || '—'}
-            </td>
-            <td>
-              {item.ativo ? (
-                <span className="tfd-tag tfd-tag--rounded tfd-tag--dot tfd-tag--success">Ativo</span>
-              ) : (
-                <span className="tfd-tag tfd-tag--rounded tfd-tag--dot tfd-tag--secondary">Inativo</span>
+          <div
+            key={item.id}
+            className="flex items-center justify-between gap-3 p-3 rounded-lg transition-colors"
+            style={{ backgroundColor: 'var(--tfd-surface-50)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-100)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-50)'; }}
+          >
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{item.nome}</p>
+              {item.descricao && (
+                <p className="text-xs mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>{item.descricao}</p>
               )}
-            </td>
-            <td>
-              <div className="flex items-center gap-1">
-                <button
-                  className="tfd-btn tfd-btn--text tfd-btn-primary tfd-btn--sm tfd-btn--icon-only"
-                  title="Editar"
-                  onClick={() => handleEditGeneric(item)}
-                >
-                  <Pencil size={14} />
-                </button>
-                <button
-                  className="tfd-btn tfd-btn--text tfd-btn-danger tfd-btn--sm tfd-btn--icon-only"
-                  title="Excluir"
-                  onClick={() => handleDeleteGeneric(item)}
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-
-  const renderUnidadesTable = () => (
-    <table className="tfd-table">
-      <thead>
-        <tr>
-          <th>Nome</th>
-          <th>CNES</th>
-          <th className="hidden md:table-cell">Cidade/UF</th>
-          <th className="hidden lg:table-cell">Tipo</th>
-          <th>Status</th>
-          <th className="w-[100px]">Ações</th>
-        </tr>
-      </thead>
-      <tbody>
-        {unidades.length === 0 && !loading && (
-          <tr>
-            <td colSpan={6} className="text-center py-8" style={{ color: 'var(--tfd-text-muted)' }}>
-              Nenhuma unidade de destino cadastrada.
-            </td>
-          </tr>
-        )}
-        {unidades.map((u) => (
-          <tr key={u.id}>
-            <td className="font-medium">{u.nome}</td>
-            <td className="font-mono text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>{u.cnes || '—'}</td>
-            <td className="hidden md:table-cell" style={{ color: 'var(--tfd-text-secondary)' }}>
-              {u.cidade}/{u.uf}
-            </td>
-            <td className="hidden lg:table-cell" style={{ color: 'var(--tfd-text-secondary)' }}>
-              {u.tipo || '—'}
-            </td>
-            <td>
-              {u.ativo ? (
-                <span className="tfd-tag tfd-tag--rounded tfd-tag--dot tfd-tag--success">Ativo</span>
-              ) : (
-                <span className="tfd-tag tfd-tag--rounded tfd-tag--dot tfd-tag--secondary">Inativo</span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {!item.ativo && (
+                <span className="tfd-tag tfd-tag--rounded tfd-tag--dot tfd-tag--secondary text-[10px]">Inativo</span>
               )}
-            </td>
-            <td>
-              <div className="flex items-center gap-1">
-                <button
-                  className="tfd-btn tfd-btn--text tfd-btn-primary tfd-btn--sm tfd-btn--icon-only"
-                  title="Editar"
-                  onClick={() => handleEditUnidade(u)}
-                >
-                  <Pencil size={14} />
-                </button>
-                <button
-                  className="tfd-btn tfd-btn--text tfd-btn-danger tfd-btn--sm tfd-btn--icon-only"
-                  title="Excluir"
-                  onClick={() => handleDeleteUnidade(u)}
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </td>
-          </tr>
+              <button className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only" title="Editar" style={{ color: 'var(--tfd-primary-500)' }} onClick={() => handleEditGeneric(item)}>
+                <Pencil size={14} />
+              </button>
+              <button className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only" title="Excluir" style={{ color: 'var(--tfd-status-danger)' }} onClick={() => handleDelete('generic', item)}>
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </div>
         ))}
-      </tbody>
-    </table>
-  );
+      </div>
+    );
+  };
 
-  const renderCompanhiasTable = () => (
-    <table className="tfd-table">
-      <thead>
-        <tr>
-          <th>Nome</th>
-          <th>Modal</th>
-          <th className="hidden md:table-cell">CNPJ</th>
-          <th>Status</th>
-          <th className="w-[100px]">Ações</th>
-        </tr>
-      </thead>
-      <tbody>
-        {companhias.length === 0 && !loading && (
-          <tr>
-            <td colSpan={5} className="text-center py-8" style={{ color: 'var(--tfd-text-muted)' }}>
-              Nenhuma companhia cadastrada.
-            </td>
-          </tr>
-        )}
-        {companhias.map((c) => (
-          <tr key={c.id}>
-            <td className="font-medium">{c.nome}</td>
-            <td>
-              <span className="tfd-tag tfd-tag--rounded tfd-tag--info">{c.tipo_modal}</span>
-            </td>
-            <td className="hidden md:table-cell font-mono text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>
-              {c.cnpj || '—'}
-            </td>
-            <td>
-              {c.ativo ? (
-                <span className="tfd-tag tfd-tag--rounded tfd-tag--dot tfd-tag--success">Ativo</span>
-              ) : (
-                <span className="tfd-tag tfd-tag--rounded tfd-tag--dot tfd-tag--secondary">Inativo</span>
-              )}
-            </td>
-            <td>
-              <div className="flex items-center gap-1">
-                <button
-                  className="tfd-btn tfd-btn--text tfd-btn-primary tfd-btn--sm tfd-btn--icon-only"
-                  title="Editar"
-                  onClick={() => handleEditCompanhia(c)}
-                >
-                  <Pencil size={14} />
-                </button>
-                <button
-                  className="tfd-btn tfd-btn--text tfd-btn-danger tfd-btn--sm tfd-btn--icon-only"
-                  title="Excluir"
-                  onClick={() => handleDeleteCompanhia(c)}
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-
-  // ---- Drawer form renderers ----
+  /* ---- Form renderers (same as before) ---- */
   const renderGenericForm = () => (
     <div>
-      <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
-        Dados do Item
-      </h3>
-      <FormField label="Código" required>
-        <input
-          type="text"
-          className="tfd-input"
-          placeholder="Ex: ESP001"
-          value={fCodigo}
-          onChange={(e) => setFCodigo(e.target.value)}
-        />
-      </FormField>
       <FormField label="Nome" required>
-        <input
-          type="text"
-          className="tfd-input"
-          placeholder="Nome do item"
-          value={fNome}
-          onChange={(e) => setFNome(e.target.value)}
-        />
+        <input type="text" className="tfd-input" placeholder="Nome do item" value={fNome} onChange={(e) => setFNome(e.target.value)} />
       </FormField>
       <FormField label="Descrição">
-        <textarea
-          className="tfd-input"
-          rows={3}
-          placeholder="Descrição opcional"
-          value={fDescricao}
-          onChange={(e) => setFDescricao(e.target.value)}
-        />
-      </FormField>
-      <FormField label="Ordem">
-        <input
-          type="number"
-          className="tfd-input"
-          placeholder="0"
-          value={fOrdem}
-          onChange={(e) => setFOrdem(parseInt(e.target.value) || 0)}
-        />
+        <textarea className="tfd-input" rows={3} placeholder="Descrição opcional" value={fDescricao} onChange={(e) => setFDescricao(e.target.value)} />
       </FormField>
       <div className="mb-4">
         <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={fAtivo}
-            onChange={(e) => setFAtivo(e.target.checked)}
-            className="w-4 h-4 rounded"
-            style={{ accentColor: 'var(--tfd-primary-600)' }}
-          />
-          <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>
-            Item ativo
-          </span>
+          <input type="checkbox" checked={fAtivo} onChange={(e) => setFAtivo(e.target.checked)} className="w-4 h-4 rounded" style={{ accentColor: 'var(--tfd-primary-600)' }} />
+          <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>Item ativo</span>
         </label>
       </div>
     </div>
@@ -981,9 +915,6 @@ function CadastrosPanel() {
 
   const renderUnidadeForm = () => (
     <div>
-      <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
-        Dados da Unidade
-      </h3>
       <FormField label="Nome" required>
         <input type="text" className="tfd-input" placeholder="Nome da unidade" value={fNome} onChange={(e) => setFNome(e.target.value)} />
       </FormField>
@@ -1001,10 +932,8 @@ function CadastrosPanel() {
       <FormField label="Tipo">
         <input type="text" className="tfd-input" placeholder="Ex: Hospital, Clínica" value={fUTipo} onChange={(e) => setFUTipo(e.target.value)} />
       </FormField>
-
-      <h3 className="text-sm font-semibold mb-3 mt-5" style={{ color: 'var(--tfd-text-primary)' }}>
-        Contato
-      </h3>
+      <hr className="tfd-divider" />
+      <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Contato</h3>
       <FormField label="Nome do contato">
         <input type="text" className="tfd-input" placeholder="Nome" value={fUContatoNome} onChange={(e) => setFUContatoNome(e.target.value)} />
       </FormField>
@@ -1028,9 +957,6 @@ function CadastrosPanel() {
 
   const renderCompanhiaForm = () => (
     <div>
-      <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
-        Dados da Companhia
-      </h3>
       <FormField label="Nome" required>
         <input type="text" className="tfd-input" placeholder="Nome da companhia" value={fNome} onChange={(e) => setFNome(e.target.value)} />
       </FormField>
@@ -1057,133 +983,138 @@ function CadastrosPanel() {
   );
 
   return (
-    <div className="flex gap-0 rounded-xl overflow-hidden" style={{ border: '1px solid var(--tfd-surface-border)', backgroundColor: 'var(--tfd-surface-card)' }}>
-      {/* ===== Left sidebar ===== */}
-      <div
-        className="shrink-0 overflow-y-auto"
-        style={{
-          width: '240px',
-          borderRight: '1px solid var(--tfd-surface-border)',
-          backgroundColor: 'var(--tfd-surface-50)',
-          maxHeight: '70vh',
-        }}
-      >
-        <div className="p-3">
-          <p className="text-xs font-semibold uppercase tracking-wider mb-2 px-2" style={{ color: 'var(--tfd-text-muted)' }}>
-            Categorias
-          </p>
-          {CATEGORIAS.map((cat) => {
-            const isActive = cat.key === selectedKey;
-            return (
-              <button
-                key={cat.key}
-                onClick={() => setSelectedKey(cat.key)}
-                className="flex items-center gap-2 w-full text-left px-2 py-2 rounded-lg text-sm transition-colors mb-0.5"
-                style={{
-                  backgroundColor: isActive ? 'var(--tfd-primary-50)' : 'transparent',
-                  color: isActive ? 'var(--tfd-primary-700)' : 'var(--tfd-text-secondary)',
-                  fontWeight: isActive ? 600 : 400,
-                }}
-              >
-                <span className="shrink-0" style={{ color: isActive ? 'var(--tfd-primary-600)' : 'var(--tfd-text-muted)' }}>
-                  {cat.icon}
-                </span>
-                <span className="flex-1 truncate">{cat.label}</span>
-                {counts[cat.key] !== undefined && (
-                  <span
-                    className="text-xs px-1.5 py-0.5 rounded-full shrink-0"
-                    style={{
-                      backgroundColor: isActive ? 'var(--tfd-primary-100)' : 'var(--tfd-surface-200)',
-                      color: isActive ? 'var(--tfd-primary-700)' : 'var(--tfd-text-muted)',
-                      fontWeight: 500,
-                      minWidth: '20px',
-                      textAlign: 'center',
-                    }}
-                  >
-                    {counts[cat.key]}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+    <>
+      {/* ===== Card grid by sections ===== */}
+      <div className="space-y-8">
+        {SECOES.map((secao) => {
+          const SecaoIcon = secao.icon;
+          return (
+            <div key={secao.title}>
+              <div className="flex items-center gap-2 mb-4">
+                <SecaoIcon size={16} style={{ color: 'var(--tfd-text-muted)' }} />
+                <h3
+                  className="text-[11px] font-semibold tracking-[0.08em] uppercase"
+                  style={{ color: 'var(--tfd-text-muted)' }}
+                >
+                  {secao.title}
+                </h3>
+              </div>
 
-      {/* ===== Main area ===== */}
-      <div className="flex-1 min-w-0">
-        <>
-          {/* Error message */}
-          {errorMsg && (
-            <div className="mx-4 mt-3 p-3 rounded-lg flex items-start gap-2" style={{ backgroundColor: 'var(--tfd-status-danger-bg)', color: 'var(--tfd-status-danger)' }}>
-              <span className="shrink-0 mt-0.5">&#9888;</span>
-              <div>
-                <p className="text-sm font-medium">Erro ao comunicar com o banco de dados</p>
-                <p className="text-xs mt-1 opacity-80">{errorMsg}</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {secao.categorias.map((cat) => {
+                  const CatIcon = cat.icon;
+                  const count = counts[cat.key];
+                  return (
+                    <button
+                      key={cat.key}
+                      type="button"
+                      onClick={() => handleOpenCategory(cat.key)}
+                      className="flex items-center gap-3 p-4 rounded-xl text-left transition-all duration-150 group"
+                      style={{
+                        backgroundColor: 'var(--tfd-surface-card)',
+                        border: '1px solid var(--tfd-surface-border)',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--tfd-primary-200)';
+                        e.currentTarget.style.backgroundColor = 'var(--tfd-primary-50)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--tfd-surface-border)';
+                        e.currentTarget.style.backgroundColor = 'var(--tfd-surface-card)';
+                      }}
+                    >
+                      <div
+                        className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0 transition-colors"
+                        style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}
+                      >
+                        <CatIcon size={20} />
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold truncate" style={{ color: 'var(--tfd-text-primary)' }}>
+                            {cat.label}
+                          </p>
+                          {count !== undefined && (
+                            <span
+                              className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
+                              style={{
+                                backgroundColor: 'var(--tfd-surface-100)',
+                                color: 'var(--tfd-text-muted)',
+                                minWidth: '20px',
+                                textAlign: 'center',
+                              }}
+                            >
+                              {count}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--tfd-text-muted)' }}>
+                          {cat.desc}
+                        </p>
+                      </div>
+
+                      <ChevronRight
+                        size={16}
+                        className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ color: 'var(--tfd-primary-400)' }}
+                      />
+                    </button>
+                  );
+                })}
               </div>
             </div>
-          )}
+          );
+        })}
+      </div>
 
-          {/* Header */}
-          <div className="flex items-center justify-between p-4" style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
-            <div className="min-w-0">
-              <h3 className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-                {selected.label}
-              </h3>
-              <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-                {selected.desc}
-              </p>
-            </div>
-            <button className="tfd-btn tfd-btn-primary tfd-btn--sm shrink-0" onClick={handleNew}>
+      {/* ===== Single drawer: list ↔ form ===== */}
+      <Drawer
+        open={activeKey !== null}
+        onClose={handleCloseCategory}
+        title={formMode ? formDrawerTitle : (activeCat?.label ?? '')}
+        subtitle={formMode ? formDrawerSubtitle : activeCat?.desc}
+        width="480px"
+        footer={
+          formMode ? (
+            <>
+              <button className="tfd-btn tfd-btn-secondary" onClick={() => { setFormMode(false); resetForm(); }}>
+                Voltar
+              </button>
+              <button className="tfd-btn tfd-btn-primary" onClick={handleSave} disabled={saving}>
+                {saving ? (
+                  <><Loader2 size={14} className="animate-spin" /> Salvando...</>
+                ) : (
+                  editingItem || editingUnidade || editingCompanhia ? 'Salvar Alterações' : 'Criar'
+                )}
+              </button>
+            </>
+          ) : !isEmpty ? (
+            <button className="tfd-btn tfd-btn-primary w-full" onClick={handleNew}>
               <Plus size={14} />
               Novo Item
             </button>
-          </div>
-
-          {/* Table */}
-          <div className="overflow-x-auto" style={{ maxHeight: 'calc(70vh - 73px)' }}>
-            {loading ? (
-              <div className="flex items-center justify-center py-16 gap-2" style={{ color: 'var(--tfd-text-muted)' }}>
-                <Loader2 size={18} className="animate-spin" />
-                <span className="text-sm">Carregando...</span>
-              </div>
-            ) : (
-              <>
-                {isGeneric && renderGenericTable()}
-                {isUnidades && renderUnidadesTable()}
-                {isCompanhias && renderCompanhiasTable()}
-              </>
-            )}
-          </div>
-        </>
-      </div>
-
-      {/* ===== Drawer ===== */}
-      <Drawer
-        open={drawerOpen}
-        onClose={() => { setDrawerOpen(false); resetForm(); }}
-        title={drawerTitle}
-        subtitle={drawerSubtitle}
-        width="460px"
-        footer={
-          <>
-            <button className="tfd-btn tfd-btn-secondary" onClick={() => { setDrawerOpen(false); resetForm(); }}>
-              Cancelar
-            </button>
-            <button className="tfd-btn tfd-btn-primary" onClick={handleSave} disabled={saving}>
-              {saving ? (
-                <><Loader2 size={14} className="animate-spin" /> Salvando...</>
-              ) : (
-                editingItem || editingUnidade || editingCompanhia ? 'Salvar Alterações' : 'Criar'
-              )}
-            </button>
-          </>
+          ) : undefined
         }
       >
-        {isGeneric && renderGenericForm()}
-        {isUnidades && renderUnidadeForm()}
-        {isCompanhias && renderCompanhiaForm()}
+        {errorMsg && (
+          <div className="p-3 rounded-lg flex items-start gap-2 mb-4" style={{ backgroundColor: 'var(--tfd-status-danger-bg)', color: 'var(--tfd-status-danger)' }}>
+            <span className="shrink-0 mt-0.5">&#9888;</span>
+            <p className="text-sm">{errorMsg}</p>
+          </div>
+        )}
+
+        {formMode ? (
+          <>
+            {isGeneric && renderGenericForm()}
+            {isUnidades && renderUnidadeForm()}
+            {isCompanhias && renderCompanhiaForm()}
+          </>
+        ) : (
+          renderItemList()
+        )}
       </Drawer>
-    </div>
+    </>
   );
 }
 

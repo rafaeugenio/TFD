@@ -256,13 +256,15 @@ export default function ParecerMedicoPage() {
                   const docsCount = (sol.documentos ?? []).length;
                   const aguardandoRetorno = labelDestino(sol.id);
 
+                  const devolucaoInfo = devolucoesEnviadas.get(sol.id);
+
                   return (
-                    <tr key={sol.id} style={{ opacity: aguardandoRetorno ? 0.5 : undefined, pointerEvents: aguardandoRetorno ? 'none' : undefined }}>
+                    <tr key={sol.id} style={{ opacity: aguardandoRetorno ? 0.55 : undefined, backgroundColor: aguardandoRetorno ? '#FFFBEB' : undefined, pointerEvents: aguardandoRetorno ? 'none' : undefined }}>
                       <td>
                         <Link
                           href={`/solicitacoes/${sol.id}`}
                           className="font-medium text-sm hover:underline"
-                          style={{ color: 'var(--tfd-primary-500)' }}
+                          style={{ color: aguardandoRetorno ? 'var(--tfd-text-muted)' : 'var(--tfd-primary-500)' }}
                         >
                           {sol.numero_processo}
                         </Link>
@@ -270,13 +272,26 @@ export default function ParecerMedicoPage() {
                       <td className="max-w-[180px] truncate font-medium">
                         <div className="flex flex-col gap-0.5">
                           <span>{sol.pacientes?.nome_completo ?? '—'}</span>
-                          {aguardandoRetorno && (
-                            <span
-                              className="tfd-tag tfd-tag--rounded"
-                              style={{ backgroundColor: '#FEF3C7', color: '#92400E', fontSize: '0.625rem' }}
+                          {aguardandoRetorno && devolucaoInfo && (
+                            <div
+                              className="flex items-center gap-1.5 mt-1"
+                              title={`Devolvido em ${new Date(devolucaoInfo.created_at).toLocaleDateString('pt-BR')} — ${devolucaoInfo.urgencia === 'URGENTE' ? 'URGENTE' : 'Normal'}`}
                             >
-                              Ag. retorno — {aguardandoRetorno}
-                            </span>
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                                style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
+                              >
+                                Devolvido p/ {aguardandoRetorno}
+                              </span>
+                              {devolucaoInfo.urgencia === 'URGENTE' && (
+                                <span
+                                  className="text-[9px] font-bold px-1 py-0.5 rounded"
+                                  style={{ backgroundColor: '#FEE2E2', color: '#B91C1C' }}
+                                >
+                                  URGENTE
+                                </span>
+                              )}
+                            </div>
                           )}
                         </div>
                       </td>
@@ -305,7 +320,7 @@ export default function ParecerMedicoPage() {
                         {formatDate(sol.created_at)}
                       </td>
                       <td>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1" style={{ pointerEvents: 'auto' }}>
                           <button
                             className="tfd-btn tfd-btn-primary tfd-btn--sm"
                             onClick={() => handleOpenParecer(sol)}
@@ -313,13 +328,15 @@ export default function ParecerMedicoPage() {
                             <Stethoscope size={14} />
                             Analisar
                           </button>
-                          <button
-                            className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
-                            title="Devolver"
-                            onClick={() => setDevolverSol(sol)}
-                          >
-                            <SendHorizonal size={15} />
-                          </button>
+                          {!aguardandoRetorno && (
+                            <button
+                              className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                              title="Devolver"
+                              onClick={() => setDevolverSol(sol)}
+                            >
+                              <SendHorizonal size={15} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -8,7 +8,7 @@ import { Menu } from 'lucide-react';
 const BP_MD = 768;
 const BP_XL = 1280;
 
-const AUTH_ROUTES = ['/login', '/criar-conta', '/recuperar-senha'];
+const AUTH_ROUTES = ['/login', '/criar-conta', '/recuperar-senha', '/consulta'];
 
 interface AppLayoutProps {
   children: React.ReactNode;

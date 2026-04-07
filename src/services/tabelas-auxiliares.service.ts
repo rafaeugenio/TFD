@@ -52,7 +52,6 @@ export async function listarPorCategoria(categoria: string) {
     .select('*')
     .eq('categoria', categoria)
     .eq('ativo', true)
-    .order('ordem', { ascending: true })
     .order('nome', { ascending: true });
 }
 
@@ -62,7 +61,6 @@ export async function listarPorCategoriaAdmin(categoria: string) {
     .from('tabelas_auxiliares')
     .select('*')
     .eq('categoria', categoria)
-    .order('ordem', { ascending: true })
     .order('nome', { ascending: true });
 }
 

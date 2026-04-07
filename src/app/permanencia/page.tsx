@@ -1,1010 +1,670 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  CalendarClock,
-  Search,
-  Clock,
-  AlertTriangle,
-  CheckCircle2,
-  RefreshCw,
-  Eye,
-  ChevronDown,
-  ChevronUp,
-  MapPin,
-  Calendar,
-  User,
-  Plus,
-  Info,
-  Loader2,
-  Trash2,
-  SendHorizonal,
+  CalendarClock, Search, Clock, AlertTriangle, CheckCircle2, RefreshCw,
+  Eye, Plus, Loader2, Trash2, Pencil, Plane, Wallet, Ban, XCircle,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import { useToast } from '@/shared/components/toast/Toast';
-import { listarPermanencias, listarSolicitacoesEmPermanencia, criarPermanencia, atualizarPermanencia, excluirPermanencia, criarProrrogacao } from '@/services/permanencias.service';
-import { buscarAjudaCustoPorSolicitacao } from '@/services/ajuda-custo.service';
+import {
+  listarSolicitacoesPoRegulacao, buscarDetalhesPermanencia, garantirPermanencia,
+  criarProrrogacao, aprovarProrrogacao, indeferirProrrogacao, excluirProrrogacao,
+  criarViagemProrrogacao, criarAjudaCustoProrrogacao,
+} from '@/services/permanencias.service';
+import { useParametroNumero } from '@/shared/hooks/useParametros';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
-import { useLookup } from '@/shared/hooks/useLookup';
-import DevolverModal from '@/shared/components/devolver-modal/DevolverModal';
-import { useDevolucoesPendentes } from '@/shared/hooks/useDevolucoesPendentes';
+import { formatCurrency, formatDate, maskCurrency, parseCurrency } from '@/shared/pipes/formatters';
 
-/* -------------------------------------------------- */
-/*  Types                                              */
-/* -------------------------------------------------- */
+/* ── Status maps ────────────────────────────────────── */
 
-type StatusPermanencia = 'ATIVA' | 'PRORROGADA' | 'ALTA_PENDENTE' | 'CONCLUIDA';
-
-/* -------------------------------------------------- */
-/*  Tab config                                         */
-/* -------------------------------------------------- */
-
-type TabKey = 'TODAS' | 'DISPONIVEL' | StatusPermanencia;
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'TODAS', label: 'Todas' },
-  { key: 'DISPONIVEL', label: 'Disponíveis' },
-  { key: 'ATIVA', label: 'Ativas' },
-  { key: 'PRORROGADA', label: 'Prorrogadas' },
-  { key: 'ALTA_PENDENTE', label: 'Alta Pendente' },
-  { key: 'CONCLUIDA', label: 'Concluídas' },
-];
-
-/* -------------------------------------------------- */
-/*  Status styling                                     */
-/* -------------------------------------------------- */
-
-const statusStyleMap: Record<StatusPermanencia, { bg: string; text: string; label: string }> = {
-  ATIVA: { bg: '#DBEAFE', text: '#1D4ED8', label: 'Ativa' },
-  PRORROGADA: { bg: '#FFEDD5', text: '#C2410C', label: 'Prorrogada' },
-  ALTA_PENDENTE: { bg: '#FEF3C7', text: '#92400E', label: 'Alta Pendente' },
-  CONCLUIDA: { bg: '#DCFCE7', text: '#15803D', label: 'Concluída' },
+const solStatusStyleMap: Record<string, { bg: string; text: string; label: string }> = {
+  AGUARDANDO_AGENDAMENTO: { bg: '#EDE9FE', text: '#7C3AED', label: 'Ag. Agendamento' },
+  AGUARDANDO_EMISSAO: { bg: '#DBEAFE', text: '#1D4ED8', label: 'Ag. Emissao' },
+  EMITIDA: { bg: '#E0E7FF', text: '#4338CA', label: 'Emitida' },
+  EM_VIAGEM: { bg: '#FFF7ED', text: '#C2410C', label: 'Em Viagem' },
+  EM_PAGAMENTO: { bg: '#FEF3C7', text: '#92400E', label: 'Em Pagamento' },
+  EM_PERMANENCIA: { bg: '#FFEDD5', text: '#EA580C', label: 'Em Permanencia' },
+  CONCLUIDO: { bg: '#DCFCE7', text: '#15803D', label: 'Concluido' },
 };
 
-/* -------------------------------------------------- */
-/*  Helper                                             */
-/* -------------------------------------------------- */
+const decisaoStyleMap: Record<string, { bg: string; text: string; label: string }> = {
+  PENDENTE: { bg: '#FEF3C7', text: '#92400E', label: 'Pendente' },
+  APROVADA: { bg: '#DCFCE7', text: '#15803D', label: 'Aprovada' },
+  INDEFERIDA: { bg: '#FEE2E2', text: '#B91C1C', label: 'Indeferida' },
+};
 
-function formatDate(iso: string): string {
-  if (!iso) return '—';
-  const datePart = iso.includes('T') ? iso.split('T')[0] : iso;
-  const [year, month, day] = datePart.split('-');
-  return `${day}/${month}/${year}`;
+/* ── Inline action types ─────────────────────────────── */
+
+type InlineAction =
+  | { type: 'aprovar'; id: string }
+  | { type: 'indeferir'; id: string }
+  | { type: 'excluir'; id: string }
+  | { type: 'add-passagem'; id: string }
+  | { type: 'add-ajuda'; id: string }
+  | null;
+
+/* ── Helper: prorrogação sub-status ──────────────────── */
+
+function prorrogacaoSubStatus(p: any): string {
+  if (p.decisao === 'PENDENTE') return 'PENDENTE';
+  if (p.decisao === 'INDEFERIDA') return 'INDEFERIDA';
+  // APROVADA → check if passagem and ajuda exist
+  const temViagem = !!p.viagem_prorrogacao_id || !!(p as any).viagem;
+  const temAjuda = !!p.complemento_ajuda_id || !!(p as any).ajuda;
+  if (!temViagem) return 'SEM_PASSAGEM';
+  if (!temAjuda) return 'SEM_AJUDA';
+  return 'FINALIZADA';
 }
 
-/* -------------------------------------------------- */
-/*  Component                                          */
-/* -------------------------------------------------- */
+/* ══════════════════════════════════════════════════════ */
 
 export default function PermanenciaPage() {
   const toast = useToast();
-  const { options: motivoPermOptions, loading: motivoPermLoading } = useLookup('motivo_permanencia');
-
-  const [activeTab, setActiveTab] = useState<TabKey>('TODAS');
   const [search, setSearch] = useState('');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
+  const [filtroProrrogacao, setFiltroProrrogacao] = useState<string>('TODOS');
+  const { valor: valorDiariaCompleta } = useParametroNumero('diaria_valor_completa');
+
+  /* ── Main data ─────────────────────────────────────── */
+  const { data: solicitacoes, loading, refresh } = useSupabaseData(
+    useCallback(() => listarSolicitacoesPoRegulacao(), []),
+    [],
+  );
+
+  /* ── Drawer state ──────────────────────────────────── */
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [motivo, setMotivo] = useState('');
-  const [solicitarProrrogacao, setSolicitarProrrogacao] = useState(false);
-  const [solicitacaoId, setSolicitacaoId] = useState('');
-  const [numProcesso, setNumProcesso] = useState('');
-  const [pacienteNome, setPacienteNome] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [deleteConfirmName, setDeleteConfirmName] = useState('');
-  const [devolverItem, setDevolverItem] = useState<any>(null);
+  const [drawerSolId, setDrawerSolId] = useState('');
+  const [drawerNumProcesso, setDrawerNumProcesso] = useState('');
+  const [drawerPaciente, setDrawerPaciente] = useState('');
+  const [drawerViagens, setDrawerViagens] = useState<any[]>([]);
+  const [drawerAjudas, setDrawerAjudas] = useState<any[]>([]);
+  const [drawerProrrogacoes, setDrawerProrrogacoes] = useState<any[]>([]);
+  const [drawerPermanenciaId, setDrawerPermanenciaId] = useState<string | null>(null);
+  const [drawerLoading, setDrawerLoading] = useState(false);
 
-  /* ---- Devoluções pendentes ---- */
-  const { mapa: devolucoesEnviadas, labelDestino, refresh: refreshDevolucoes } = useDevolucoesPendentes('PERMANENCIA');
-
-  // Form fields — Comunicação de Permanência
-  const [dataComunicacao, setDataComunicacao] = useState(new Date().toISOString().split('T')[0]);
-  const [comunicadoPor, setComunicadoPor] = useState('');
-  const [motivoDescricao, setMotivoDescricao] = useState('');
-  const [novaDataRetorno, setNovaDataRetorno] = useState('');
-
-  // Prorrogação fields
+  /* ── New prorrogacao form ──────────────────────────── */
+  const [addingProrrogacao, setAddingProrrogacao] = useState(false);
   const [diasAdicionais, setDiasAdicionais] = useState('');
-  const [justificativaMedica, setJustificativaMedica] = useState('');
+  const [novaDataRetorno, setNovaDataRetorno] = useState('');
+  const [justificativaProrr, setJustificativaProrr] = useState('');
 
-  // Ajuda de custo info for cost calculation
-  const [ajudaCustoInfo, setAjudaCustoInfo] = useState<{ valor_diaria: number; data_fim: string | null } | null>(null);
+  /* ── Inline actions ────────────────────────────────── */
+  const [inlineAction, setInlineAction] = useState<InlineAction>(null);
+  const [indeferirMotivo, setIndeferirMotivo] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
 
-  /* ---- Disponíveis: solicitações EM_PERMANENCIA sem registro ---- */
-  const [solDisp, setSolDisp] = useState<any[]>([]);
-  const [solDispLoading, setSolDispLoading] = useState(false);
+  /* ── Passagem form fields ──────────────────────────── */
+  const [passagemTipo, setPassagemTipo] = useState('RETORNO');
+  const [passagemOrigem, setPassagemOrigem] = useState('');
+  const [passagemOrigemUf, setPassagemOrigemUf] = useState('');
+  const [passagemDestino, setPassagemDestino] = useState('');
+  const [passagemDestinoUf, setPassagemDestinoUf] = useState('');
+  const [passagemData, setPassagemData] = useState('');
+  const [passagemCompanhia, setPassagemCompanhia] = useState('');
+  const [passagemValor, setPassagemValor] = useState('');
 
-  async function refreshDisp() {
-    setSolDispLoading(true);
-    const { data } = await listarSolicitacoesEmPermanencia();
-    setSolDisp(data ?? []);
-    setSolDispLoading(false);
+  /* ── Ajuda form fields ─────────────────────────────── */
+  const [ajudaDataInicio, setAjudaDataInicio] = useState('');
+  const [ajudaDataFim, setAjudaDataFim] = useState('');
+  const [ajudaValorDiaria, setAjudaValorDiaria] = useState('');
+
+  /* ── Helpers ───────────────────────────────────────── */
+
+  function resetForm() {
+    setAddingProrrogacao(false);
+    setDiasAdicionais(''); setNovaDataRetorno(''); setJustificativaProrr('');
   }
 
-  useEffect(() => { refreshDisp(); }, []);
-
-  function resetDrawerForm() {
-    setMotivo('');
-    setSolicitacaoId('');
-    setNumProcesso('');
-    setPacienteNome('');
-    setSolicitarProrrogacao(false);
-    setEditingId(null);
-    setDataComunicacao(new Date().toISOString().split('T')[0]);
-    setComunicadoPor('');
-    setMotivoDescricao('');
-    setNovaDataRetorno('');
-    setDiasAdicionais('');
-    setJustificativaMedica('');
-    setAjudaCustoInfo(null);
+  function resetInlineAction() {
+    setInlineAction(null); setIndeferirMotivo(''); setActionLoading(false);
+    setPassagemTipo('RETORNO'); setPassagemOrigem(''); setPassagemOrigemUf('');
+    setPassagemDestino(''); setPassagemDestinoUf(''); setPassagemData('');
+    setPassagemCompanhia(''); setPassagemValor('');
+    setAjudaDataInicio(''); setAjudaDataFim(''); setAjudaValorDiaria('');
   }
 
   function handleCloseDrawer() {
-    setDrawerOpen(false);
-    resetDrawerForm();
+    setDrawerOpen(false); resetForm(); resetInlineAction();
   }
 
-  /** Opens drawer for a new permanência from a "disponível" card */
-  async function handleOpenNew(sol: any) {
-    resetDrawerForm();
-    setSolicitacaoId(sol.id);
-    setNumProcesso(sol.numero_processo ?? '');
-    setPacienteNome(sol.pacientes?.nome_completo ?? '');
+  async function carregarDrawer(solId: string) {
+    setDrawerLoading(true);
+    const d = await buscarDetalhesPermanencia(solId);
+    setDrawerViagens(d.viagens);
+    setDrawerAjudas(d.ajudas);
+    setDrawerProrrogacoes(d.prorrogacoes);
+    setDrawerPermanenciaId(d.permanencia?.id ?? null);
+    setDrawerLoading(false);
+  }
+
+  async function handleOpenDrawer(sol: any) {
+    setDrawerSolId(sol.id);
+    setDrawerNumProcesso(sol.numero_processo ?? '—');
+    setDrawerPaciente((sol.pacientes as any)?.nome_completo ?? '—');
+    resetForm(); resetInlineAction();
     setDrawerOpen(true);
-
-    // Fetch ajuda de custo info for cost calculation
-    const { data } = await buscarAjudaCustoPorSolicitacao(sol.id);
-    setAjudaCustoInfo(data ? { valor_diaria: data.valor_diaria, data_fim: data.data_fim } : null);
+    await carregarDrawer(sol.id);
   }
 
-  function handleOpenEdit(perm: any) {
-    setEditingId(perm.id);
-    setSolicitacaoId(perm.solicitacaoId);
-    setNumProcesso(perm.numeroSolicitacao);
-    setPacienteNome(perm.pacienteNome);
-    setMotivo(perm.motivo ?? '');
-    setSolicitarProrrogacao(false);
-    setDrawerOpen(true);
-  }
+  /* ── Save prorrogacao ──────────────────────────────── */
 
-  function handleOpenDelete(perm: any) {
-    setDeleteConfirmId(perm.id);
-    setDeleteConfirmName(perm.pacienteNome);
-  }
+  async function handleSaveProrrogacao() {
+    if (!diasAdicionais || parseInt(diasAdicionais) <= 0) { toast.error('Obrigatorio', 'Informe os dias adicionais.'); return; }
+    if (!novaDataRetorno) { toast.error('Obrigatorio', 'Informe a nova data de retorno.'); return; }
+    if (!justificativaProrr.trim()) { toast.error('Obrigatorio', 'Informe a justificativa.'); return; }
 
-  async function handleConfirmDelete() {
-    if (!deleteConfirmId) return;
-    const { error } = await excluirPermanencia(deleteConfirmId);
-    if (error) {
-      toast.error('Erro ao excluir', (error as any).message);
-    } else {
-      toast.success('Permanência excluída', 'O registro foi removido com sucesso.');
-      refreshAll();
+    let permId = drawerPermanenciaId;
+    if (!permId) {
+      permId = await garantirPermanencia(drawerSolId);
+      if (!permId) { toast.error('Erro', 'Nao foi possivel criar o registro de permanencia.'); return; }
+      setDrawerPermanenciaId(permId);
     }
-    setDeleteConfirmId(null);
-    setDeleteConfirmName('');
-  }
 
-  /* ---- Fetch real data ---- */
-  const { data: permanenciasRaw, loading, refresh } = useSupabaseData(
-    useCallback(() => listarPermanencias({ search }), [search]),
-    [search],
-  );
-
-  function refreshAll() {
+    const { error } = await criarProrrogacao({
+      permanencia_id: permId,
+      justificativa_medica: justificativaProrr,
+      dias_adicionais_solicitados: parseInt(diasAdicionais),
+      nova_data_retorno: novaDataRetorno,
+      decisao: 'PENDENTE',
+    } as any);
+    if (error) { toast.error('Erro ao criar', (error as any).message); return; }
+    toast.success('Prorrogacao cadastrada!', 'Aguardando aprovacao.');
+    resetForm();
+    await carregarDrawer(drawerSolId);
     refresh();
-    refreshDisp();
   }
 
-  /* ---- Map Supabase rows to display shape ---- */
-  const items = useMemo(() => {
-    return permanenciasRaw.map((p: any) => {
-      const prorrogacoes = (p.prorrogacoes ?? []) as any[];
+  /* ── Inline actions ────────────────────────────────── */
 
-      let statusDisplay: StatusPermanencia = 'ATIVA';
-      if (prorrogacoes.length > 0) statusDisplay = 'PRORROGADA';
-      if (p.data_alta) statusDisplay = 'CONCLUIDA';
+  async function handleConfirmAprovar(id: string) {
+    setActionLoading(true);
+    const { error } = await aprovarProrrogacao(id);
+    if (error) toast.error('Erro', (error as any).message);
+    else toast.success('Aprovada!', 'Adicione a passagem e ajuda de custo.');
+    resetInlineAction();
+    await carregarDrawer(drawerSolId); refresh();
+  }
 
+  async function handleConfirmIndeferir(id: string) {
+    if (!indeferirMotivo.trim()) { toast.error('Obrigatorio', 'Informe o motivo.'); return; }
+    setActionLoading(true);
+    const { error } = await indeferirProrrogacao(id, indeferirMotivo);
+    if (error) toast.error('Erro', (error as any).message);
+    else toast.success('Indeferida', 'Registro salvo.');
+    resetInlineAction();
+    await carregarDrawer(drawerSolId); refresh();
+  }
+
+  async function handleConfirmExcluir(id: string) {
+    setActionLoading(true);
+    const { error } = await excluirProrrogacao(id);
+    if (error) toast.error('Erro', (error as any).message);
+    else toast.success('Excluida', 'Prorrogacao removida.');
+    resetInlineAction();
+    await carregarDrawer(drawerSolId); refresh();
+  }
+
+  async function handleSalvarPassagem(prorrogacaoId: string) {
+    if (!passagemOrigem || !passagemDestino || !passagemData) {
+      toast.error('Campos obrigatorios', 'Preencha origem, destino e data.');
+      return;
+    }
+    setActionLoading(true);
+    const { error } = await criarViagemProrrogacao(drawerSolId, prorrogacaoId, {
+      tipo: passagemTipo,
+      origemCidade: passagemOrigem,
+      origemUf: passagemOrigemUf || 'MA',
+      destinoCidade: passagemDestino,
+      destinoUf: passagemDestinoUf || 'MA',
+      dataEmbarque: passagemData,
+      companhia: passagemCompanhia || undefined,
+      valor: passagemValor ? parseCurrency(passagemValor) : undefined,
+    });
+    if (error) toast.error('Erro', (error as any).message);
+    else toast.success('Passagem adicionada!', 'Agora adicione a ajuda de custo.');
+    resetInlineAction();
+    await carregarDrawer(drawerSolId); refresh();
+  }
+
+  async function handleSalvarAjuda(prorrogacaoId: string) {
+    if (!ajudaDataInicio || !ajudaDataFim) {
+      toast.error('Campos obrigatorios', 'Preencha data inicio e fim.');
+      return;
+    }
+    const vDiaria = ajudaValorDiaria ? parseCurrency(ajudaValorDiaria) : valorDiariaCompleta;
+    const d1 = new Date(ajudaDataInicio);
+    const d2 = new Date(ajudaDataFim);
+    const dias = Math.max(0, Math.ceil((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)));
+
+    setActionLoading(true);
+    const { error } = await criarAjudaCustoProrrogacao(drawerSolId, prorrogacaoId, {
+      dataInicio: ajudaDataInicio,
+      dataFim: ajudaDataFim,
+      valorDiaria: vDiaria,
+      valorTotal: dias * vDiaria,
+    });
+    if (error) toast.error('Erro', (error as any).message);
+    else toast.success('Ajuda de custo adicionada!', 'O periodo foi registrado.');
+    resetInlineAction();
+    await carregarDrawer(drawerSolId); refresh();
+  }
+
+  /* ── Computed rows ─────────────────────────────────── */
+
+  const rows = useMemo(() => {
+    return (solicitacoes as any[]).map((sol: any) => {
+      const perms = sol.permanencias ?? [];
+      const prorrogacoes = perms.flatMap((p: any) => p.prorrogacoes ?? []);
+      const ajudas = sol.ajudas_custo ?? [];
+      const viagens = sol.viagens ?? [];
       return {
-        _type: 'PERMANENCIA' as const,
-        id: p.id,
-        solicitacaoId: p.solicitacao_id,
-        numeroSolicitacao: p.solicitacoes?.numero_processo ?? '—',
-        pacienteNome: p.solicitacoes?.pacientes?.nome_completo ?? '—',
-        destino: p.cidade_destino ?? p.local_permanencia ?? '—',
-        dataInicio: p.data_inicio ?? p.registrado_em?.split('T')[0] ?? '',
-        dataFimPrevista: p.data_fim_prevista ?? p.data_retorno_prevista ?? '',
-        totalDias: p.dias_total ?? 0,
-        statusDisplay: statusDisplay as StatusPermanencia,
-        solicitacaoStatus: p.solicitacoes?.status ?? 'EM_PERMANENCIA',
-        totalProrrogacoes: prorrogacoes.length,
-        observacoes: p.observacoes ?? null,
-        motivo: p.motivo ?? null,
-        prorrogacoes: prorrogacoes.map((pr: any) => ({
-          id: pr.id,
-          dataInicio: pr.data_inicio ?? '',
-          dataFim: pr.data_fim ?? '',
-          justificativa: pr.justificativa ?? '',
-          aprovadoPor: pr.decisao_por ?? null,
-          dataAprovacao: pr.decisao_em?.split('T')[0] ?? null,
-        })),
-        raw: p,
+        ...sol,
+        viagensCount: viagens.length,
+        ajudasTotal: ajudas.reduce((s: number, a: any) => s + (a.valor_total ?? 0), 0),
+        prorrogacoesCount: prorrogacoes.length,
+        prorrogacoesPendentes: prorrogacoes.filter((p: any) => p.decisao === 'PENDENTE').length,
+        prorrogacoesAprovadas: prorrogacoes.filter((p: any) => p.decisao === 'APROVADA').length,
+        prorrogacoesSemPassagem: prorrogacoes.filter((p: any) => p.decisao === 'APROVADA' && !p.viagem_prorrogacao_id).length,
+        prorrogacoesSemAjuda: prorrogacoes.filter((p: any) => p.decisao === 'APROVADA' && !p.complemento_ajuda_id).length,
+        prorrogacoesCompletas: prorrogacoes.filter((p: any) => p.decisao === 'APROVADA' && p.viagem_prorrogacao_id && p.complemento_ajuda_id).length,
+        prorrogacoesIndeferidas: prorrogacoes.filter((p: any) => p.decisao === 'INDEFERIDA').length,
       };
     });
-  }, [permanenciasRaw]);
+  }, [solicitacoes]);
 
-  /* ---- Disponíveis mapped to card shape ---- */
-  const dispItems = useMemo(() => {
-    return solDisp.map((sol: any) => ({
-      _type: 'DISPONIVEL' as const,
-      id: sol.id,
-      solicitacaoId: sol.id,
-      numeroSolicitacao: sol.numero_processo ?? '—',
-      pacienteNome: sol.pacientes?.nome_completo ?? '—',
-      destino: '—',
-      dataInicio: sol.created_at?.split('T')[0] ?? '',
-      dataFimPrevista: '',
-      totalDias: 0,
-      statusDisplay: 'ATIVA' as StatusPermanencia,
-      solicitacaoStatus: sol.status ?? 'EM_PERMANENCIA',
-      totalProrrogacoes: 0,
-      observacoes: null,
-      motivo: null,
-      prorrogacoes: [] as any[],
-      raw: sol,
-    }));
-  }, [solDisp]);
-
-  /* ---- Unified rows: disponíveis + permanências ---- */
-  const allRows = useMemo(() => {
-    if (activeTab === 'DISPONIVEL') return dispItems;
-    if (activeTab === 'TODAS') return [...dispItems, ...items];
-    return items.filter((p) => p.statusDisplay === activeTab);
-  }, [dispItems, items, activeTab]);
-
-  /* ---- Filter by search (client-side) ---- */
   const filtered = useMemo(() => {
-    if (search === '') return allRows;
-    const q = search.toLowerCase();
-    return allRows.filter((p) =>
-      p.pacienteNome.toLowerCase().includes(q) ||
-      p.numeroSolicitacao.toLowerCase().includes(q) ||
-      p.destino.toLowerCase().includes(q),
-    );
-  }, [allRows, search]);
+    return rows.filter((r: any) => {
+      const matchesStatus = filtroStatus === 'TODOS' || r.status === filtroStatus;
+      const matchesSearch = search === '' ||
+        r.numero_processo?.toLowerCase().includes(search.toLowerCase()) ||
+        (r.pacientes as any)?.nome_completo?.toLowerCase().includes(search.toLowerCase());
+      let matchesProrrogacao = true;
+      if (filtroProrrogacao === 'PENDENTE') matchesProrrogacao = r.prorrogacoesPendentes > 0;
+      else if (filtroProrrogacao === 'SEM_PASSAGEM') matchesProrrogacao = r.prorrogacoesSemPassagem > 0;
+      else if (filtroProrrogacao === 'SEM_AJUDA') matchesProrrogacao = r.prorrogacoesSemAjuda > 0;
+      else if (filtroProrrogacao === 'COMPLETA') matchesProrrogacao = r.prorrogacoesCompletas > 0;
+      else if (filtroProrrogacao === 'INDEFERIDA') matchesProrrogacao = r.prorrogacoesIndeferidas > 0;
+      else if (filtroProrrogacao === 'SEM_PRORROGACAO') matchesProrrogacao = r.prorrogacoesCount === 0;
+      return matchesStatus && matchesSearch && matchesProrrogacao;
+    });
+  }, [rows, filtroStatus, search, filtroProrrogacao]);
 
-  /* ---- Summary counters ---- */
   const counts = useMemo(() => {
     return {
-      disponiveis: solDisp.length,
-      ativas: items.filter((p) => p.statusDisplay === 'ATIVA').length,
-      prorrogadas: items.filter((p) => p.statusDisplay === 'PRORROGADA').length,
-      altaPendente: items.filter((p) => p.statusDisplay === 'ALTA_PENDENTE').length,
-      concluidas: items.filter((p) => p.statusDisplay === 'CONCLUIDA').length,
+      total: rows.length,
+      pendentes: rows.filter((r: any) => r.prorrogacoesPendentes > 0).length,
+      semPassagem: rows.filter((r: any) => r.prorrogacoesSemPassagem > 0).length,
+      semAjuda: rows.filter((r: any) => r.prorrogacoesSemAjuda > 0).length,
+      completas: rows.filter((r: any) => r.prorrogacoesCompletas > 0).length,
+      indeferidas: rows.filter((r: any) => r.prorrogacoesIndeferidas > 0).length,
     };
-  }, [items]);
+  }, [rows]);
 
-  /* ---- Cost calculation ---- */
-  const custoAdicional = useMemo(() => {
-    if (!ajudaCustoInfo || !novaDataRetorno || !ajudaCustoInfo.data_fim) return null;
-    const dataFimOriginal = new Date(ajudaCustoInfo.data_fim + 'T00:00:00');
-    const novaData = new Date(novaDataRetorno + 'T00:00:00');
-    const diffMs = novaData.getTime() - dataFimOriginal.getTime();
-    const diasExtras = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-    if (diasExtras <= 0) return null;
-    return {
-      diasExtras,
-      valorDiaria: ajudaCustoInfo.valor_diaria,
-      valorTotal: diasExtras * ajudaCustoInfo.valor_diaria,
-    };
-  }, [ajudaCustoInfo, novaDataRetorno]);
+  /* ── Drawer totals ─────────────────────────────────── */
+  const drawerAjudasTotal = useMemo(() => drawerAjudas.reduce((s: number, a: any) => s + (a.valor_total ?? 0), 0), [drawerAjudas]);
+  const drawerAjudasPago = useMemo(() => drawerAjudas.reduce((s: number, a: any) => s + (a.valor_pago ?? 0), 0), [drawerAjudas]);
 
-  /* ---- Form submission ---- */
-  async function handleSubmitPermanencia() {
-    if (!solicitacaoId) {
-      toast.warning('Campo obrigatório', 'Selecione o paciente.');
-      return;
-    }
-    if (!dataComunicacao) {
-      toast.warning('Campo obrigatório', 'Informe a data da comunicação.');
-      return;
-    }
-    if (!motivo) {
-      toast.warning('Campo obrigatório', 'Selecione o motivo da permanência.');
-      return;
-    }
-    if (!novaDataRetorno) {
-      toast.warning('Campo obrigatório', 'Informe a nova data de retorno prevista.');
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const payload: any = {
-        solicitacao_id: solicitacaoId,
-        data_comunicacao: dataComunicacao,
-        comunicado_por: comunicadoPor || null,
-        motivo,
-        motivo_descricao: motivo === 'OUTROS' ? motivoDescricao || null : null,
-        nova_data_retorno_prevista: novaDataRetorno,
-      };
-
-      const result = editingId
-        ? await atualizarPermanencia(editingId, payload)
-        : await criarPermanencia(payload);
-
-      if (result.error) {
-        const err = result.error as { message?: string };
-        toast.error(editingId ? 'Erro ao atualizar' : 'Erro ao registrar', err.message ?? 'Tente novamente.');
-        return;
-      }
-
-      // If prorrogação requested and this is a new permanência, create it
-      if (solicitarProrrogacao && !editingId && result.data) {
-        const permId = (result.data as any).id;
-        const diasAdd = parseInt(diasAdicionais, 10);
-        if (permId && diasAdd > 0) {
-          const novaDataProrrogacao = new Date(novaDataRetorno + 'T00:00:00');
-          novaDataProrrogacao.setDate(novaDataProrrogacao.getDate() + diasAdd);
-
-          await criarProrrogacao({
-            permanencia_id: permId,
-            justificativa_medica: justificativaMedica,
-            documento_justificativa_id: null as any,
-            dias_adicionais_solicitados: diasAdd,
-            nova_data_retorno: novaDataProrrogacao.toISOString().split('T')[0],
-            impacto_diarias_valor: custoAdicional ? custoAdicional.valorTotal : null,
-          });
-        }
-      }
-
-      toast.success(
-        editingId ? 'Permanência atualizada!' : 'Permanência registrada!',
-        editingId ? 'As alterações foram salvas com sucesso.' : 'O registro de permanência foi salvo no sistema.',
-      );
-      setDrawerOpen(false);
-      resetDrawerForm();
-      refreshAll();
-    } catch (err: unknown) {
-      const e = err as { message?: string };
-      toast.error('Erro inesperado', e.message ?? 'Tente novamente.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
+  /* ══════════════════════════════════════════════════ */
 
   return (
     <>
-      <PageHeader
-        title="Permanência e Prorrogações"
-        subtitle="Controle de permanência, prorrogações e alta de pacientes"
-      />
+      <PageHeader title="Permanencia e Prorrogacoes" subtitle="Acompanhamento pos-regulacao e controle de prorrogacoes" />
 
-      {/* ========== Summary Cards ========== */}
-      <div className="grid grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
+      {/* ── Summary Cards ── */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: '#EDE9FE', color: '#7C3AED' }}
-          >
-            <Plus size={20} />
-          </div>
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: '#DBEAFE', color: '#3B82F6' }}><CalendarClock size={20} /></div>
           <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Disponíveis</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.disponiveis}</p>
+            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Processos Ativos</p>
+            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.total}</p>
           </div>
         </div>
-
         <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: '#DBEAFE', color: '#3B82F6' }}
-          >
-            <CalendarClock size={20} />
-          </div>
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: '#FEF3C7', color: '#F59E0B' }}><Clock size={20} /></div>
           <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Ativas</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.ativas}</p>
+            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Prorrog. Pendentes</p>
+            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-warning)' }}>{counts.pendentes}</p>
           </div>
         </div>
-
         <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: '#FFEDD5', color: '#EA580C' }}
-          >
-            <RefreshCw size={20} />
-          </div>
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: '#EDE9FE', color: '#7C3AED' }}><Plane size={20} /></div>
           <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Prorrogadas</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.prorrogadas}</p>
+            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Sem Passagem</p>
+            <p className="text-xl font-semibold" style={{ color: '#7C3AED' }}>{counts.semPassagem}</p>
           </div>
         </div>
-
         <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: '#FEF3C7', color: '#F59E0B' }}
-          >
-            <AlertTriangle size={20} />
-          </div>
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: '#FFF7ED', color: '#EA580C' }}><Wallet size={20} /></div>
           <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Alta Pendente</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-warning)' }}>{counts.altaPendente}</p>
-          </div>
-        </div>
-
-        <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: '#DCFCE7', color: '#16A34A' }}
-          >
-            <CheckCircle2 size={20} />
-          </div>
-          <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Concluídas</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-success)' }}>{counts.concluidas}</p>
+            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Sem Ajuda Custo</p>
+            <p className="text-xl font-semibold" style={{ color: '#EA580C' }}>{counts.semAjuda}</p>
           </div>
         </div>
       </div>
 
-      {/* ========== Tabs + Search ========== */}
-      <div className="tfd-toolbar mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-1 flex-wrap">
-          {TABS.map((tab) => {
-            const isActive = activeTab === tab.key;
-            const count = tab.key === 'TODAS'
-              ? solDisp.length + items.length
-              : tab.key === 'DISPONIVEL'
-                ? solDisp.length
-                : items.filter((p) => p.statusDisplay === tab.key).length;
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className="tfd-btn tfd-btn--sm"
-                style={{
-                  backgroundColor: isActive ? 'var(--tfd-primary-50)' : 'transparent',
-                  color: isActive ? 'var(--tfd-primary-700)' : 'var(--tfd-text-secondary)',
-                  borderColor: isActive ? 'var(--tfd-primary-200)' : 'transparent',
-                  fontWeight: isActive ? 600 : 400,
-                }}
-              >
-                {tab.label}
-                <span
-                  className="text-xs ml-1 px-1.5 py-0.5 rounded-full"
-                  style={{
-                    backgroundColor: isActive ? 'var(--tfd-primary-100)' : 'var(--tfd-surface-100)',
-                    color: isActive ? 'var(--tfd-primary-700)' : 'var(--tfd-text-muted)',
-                    fontSize: '0.6875rem',
-                    fontWeight: 600,
-                  }}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="relative flex-1 max-w-xs min-w-[200px]">
-          <Search
-            size={16}
-            className="tfd-input-leading-icon"
-            style={{ color: 'var(--tfd-text-muted)' }}
-          />
-          <input
-            type="text"
-            className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
-            placeholder="Buscar paciente ou destino..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+      {/* ── Search + Filter ── */}
+      <div className="tfd-toolbar mb-4">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <div className="relative flex-1 max-w-md">
+            <Search size={16} className="tfd-input-leading-icon" style={{ color: 'var(--tfd-text-muted)' }} />
+            <input type="text" className="tfd-input tfd-input--sm tfd-input--with-leading-icon" placeholder="Buscar paciente ou processo..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <select className="tfd-input tfd-input--sm" style={{ maxWidth: 200 }} value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)}>
+            <option value="TODOS">Status: Todos</option>
+            <option value="AGUARDANDO_AGENDAMENTO">Ag. Agendamento</option>
+            <option value="AGUARDANDO_EMISSAO">Ag. Emissao</option>
+            <option value="EM_VIAGEM">Em Viagem</option>
+            <option value="EM_PAGAMENTO">Em Pagamento</option>
+            <option value="EM_PERMANENCIA">Em Permanencia</option>
+            <option value="CONCLUIDO">Concluido</option>
+          </select>
+          <select className="tfd-input tfd-input--sm" style={{ maxWidth: 220 }} value={filtroProrrogacao} onChange={(e) => setFiltroProrrogacao(e.target.value)}>
+            <option value="TODOS">Prorrogacao: Todas</option>
+            <option value="SEM_PRORROGACAO">Sem prorrogacao</option>
+            <option value="PENDENTE">Pendente aprovacao ({counts.pendentes})</option>
+            <option value="SEM_PASSAGEM">Sem passagem ({counts.semPassagem})</option>
+            <option value="SEM_AJUDA">Sem ajuda custo ({counts.semAjuda})</option>
+            <option value="COMPLETA">Completas ({counts.completas})</option>
+            <option value="INDEFERIDA">Indeferidas ({counts.indeferidas})</option>
+          </select>
         </div>
       </div>
 
-      {/* ========== Card List ========== */}
-      <div className="space-y-3">
-        {(loading || solDispLoading) ? (
-          <div className="tfd-card">
-            <div className="flex flex-col items-center gap-2 py-12">
-              <Loader2 size={32} className="animate-spin" style={{ color: 'var(--tfd-primary-500)' }} />
-              <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-                Carregando permanências...
-              </p>
-            </div>
+      {/* ── Table ── */}
+      <div className="tfd-card p-0 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="tfd-table">
+            <thead>
+              <tr>
+                <th>Processo</th>
+                <th>Paciente</th>
+                <th className="text-center">Passagens</th>
+                <th className="hidden md:table-cell">Ajuda de Custo</th>
+                <th className="text-center">Prorrogacoes</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={6} className="text-center py-12"><Loader2 size={32} className="animate-spin mx-auto mb-2" style={{ color: 'var(--tfd-primary-500)' }} /><p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Carregando...</p></td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={6} className="text-center py-12"><Ban size={32} style={{ color: 'var(--tfd-text-muted)' }} className="mx-auto mb-2" /><p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Nenhum processo encontrado</p></td></tr>
+              ) : filtered.map((r: any) => {
+                const sStyle = solStatusStyleMap[r.status] ?? { bg: 'var(--tfd-surface-100)', text: 'var(--tfd-surface-500)', label: r.status };
+                return (
+                  <tr key={r.id} className="cursor-pointer" onClick={() => handleOpenDrawer(r)}>
+                    <td><Link href={`/solicitacoes/${r.id}`} className="font-medium text-sm hover:underline" style={{ color: 'var(--tfd-primary-500)' }} onClick={(e) => e.stopPropagation()}>{r.numero_processo}</Link></td>
+                    <td className="max-w-[180px] truncate font-medium">{(r.pacientes as any)?.nome_completo ?? '—'}</td>
+                    <td className="text-center">{r.viagensCount > 0 ? <span className="inline-flex items-center justify-center min-w-[24px] h-[22px] px-1.5 rounded-full text-xs font-semibold" style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}>{r.viagensCount}</span> : <span style={{ color: 'var(--tfd-text-muted)' }}>—</span>}</td>
+                    <td className="hidden md:table-cell whitespace-nowrap">{r.ajudasTotal > 0 ? <span className="font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{formatCurrency(r.ajudasTotal)}</span> : <span style={{ color: 'var(--tfd-text-muted)' }}>—</span>}</td>
+                    <td className="text-center">
+                      {r.prorrogacoesCount > 0 ? (
+                        <div className="flex items-center justify-center gap-1">
+                          <span className="inline-flex items-center justify-center min-w-[24px] h-[22px] px-1.5 rounded-full text-xs font-semibold" style={{ backgroundColor: '#FFEDD5', color: '#C2410C' }}>{r.prorrogacoesCount}</span>
+                          {r.prorrogacoesSemPassagem > 0 && <span className="text-[10px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: '#EDE9FE', color: '#7C3AED' }} title="Sem passagem">{r.prorrogacoesSemPassagem} s/pass</span>}
+                        </div>
+                      ) : <span style={{ color: 'var(--tfd-text-muted)' }}>—</span>}
+                    </td>
+                    <td><span className="tfd-tag tfd-tag--rounded tfd-tag--dot" style={{ backgroundColor: sStyle.bg, color: sStyle.text }}>{sStyle.label}</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ══ Drawer ══ */}
+      <Drawer open={drawerOpen} onClose={handleCloseDrawer} title="Permanencia e Prorrogacoes" subtitle={drawerNumProcesso} width="600px" footer={<button className="tfd-btn tfd-btn-secondary" onClick={handleCloseDrawer}>Fechar</button>}>
+        {/* Patient */}
+        <div className="flex items-center gap-3 px-4 py-3 rounded-lg mb-4" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+          <div className="flex-1">
+            <p className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{drawerPaciente}</p>
+            <p className="text-xs" style={{ color: '#1E40AF' }}>Processo: {drawerNumProcesso}</p>
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="tfd-card">
-            <div className="flex flex-col items-center gap-2 py-12">
-              <CalendarClock size={32} style={{ color: 'var(--tfd-text-muted)' }} />
-              <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-                Nenhuma permanência encontrada
-              </p>
-            </div>
-          </div>
+          <Link href={`/solicitacoes/${drawerSolId}`} className="tfd-btn tfd-btn-ghost tfd-btn--icon-only" title="Ver processo"><Eye size={15} /></Link>
+        </div>
+
+        {drawerLoading ? (
+          <div className="flex items-center justify-center py-12"><Loader2 size={24} className="animate-spin" style={{ color: 'var(--tfd-primary-500)' }} /></div>
         ) : (
-          filtered.map((perm) => {
-            const isDisponivel = perm._type === 'DISPONIVEL';
-
-            /* ---- Disponível card ---- */
-            if (isDisponivel) {
-              return (
-                <div
-                  key={`disp-${perm.id}`}
-                  className="tfd-card cursor-pointer"
-                  style={{ borderLeft: '3px solid #7C3AED' }}
-                  onClick={() => handleOpenNew(perm.raw)}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <Link
-                          href={`/solicitacoes/${perm.solicitacaoId}`}
-                          className="font-medium text-sm hover:underline"
-                          style={{ color: 'var(--tfd-primary-500)' }}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {perm.numeroSolicitacao}
-                        </Link>
-                        <span
-                          className="tfd-tag tfd-tag--rounded"
-                          style={{ backgroundColor: '#EDE9FE', color: '#7C3AED' }}
-                        >
-                          Aguardando registro
+          <>
+            {/* ── Passagens ── */}
+            <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--tfd-text-primary)' }}><Plane size={14} className="inline mr-1.5" />Passagens</h3>
+            {drawerViagens.length === 0 ? (
+              <p className="text-xs mb-4" style={{ color: 'var(--tfd-text-muted)' }}>Nenhuma passagem</p>
+            ) : (
+              <div className="flex flex-col gap-2 mb-4">
+                {drawerViagens.map((v: any) => (
+                  <div key={v.id} className="flex items-center justify-between px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: v.prorrogacao_id ? '#F5F3FF' : 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}>
+                    <div className="flex items-center gap-3">
+                      <span className="font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{v.tipo === 'IDA' ? 'Ida' : 'Retorno'}</span>
+                      <span style={{ color: 'var(--tfd-text-secondary)' }}>{v.data_embarque_prevista ? formatDate(v.data_embarque_prevista) : '—'}</span>
+                      {v.origem_cidade && <span style={{ color: 'var(--tfd-text-muted)' }}>{v.origem_cidade} → {v.destino_cidade}</span>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {v.prorrogacao_id && <span className="tfd-tag tfd-tag--rounded" style={{ fontSize: '0.55rem', backgroundColor: '#EDE9FE', color: '#7C3AED' }}>Prorrogacao</span>}
+                      {v.embarcou != null && (
+                        <span className="tfd-tag tfd-tag--rounded" style={{ fontSize: '0.55rem', backgroundColor: v.embarcou ? '#DCFCE7' : '#FEE2E2', color: v.embarcou ? '#15803D' : '#B91C1C' }}>
+                          {v.embarcou ? 'Embarcou' : 'Nao embarcou'}
                         </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* ── Ajuda custo ── */}
+            <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--tfd-text-primary)' }}><Wallet size={14} className="inline mr-1.5" />Ajuda de Custo</h3>
+            {drawerAjudas.length === 0 ? (
+              <p className="text-xs mb-4" style={{ color: 'var(--tfd-text-muted)' }}>Nenhuma ajuda de custo</p>
+            ) : (
+              <div className="px-3 py-2.5 rounded-lg mb-4 text-xs" style={{ backgroundColor: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}>
+                <div className="flex items-center justify-between">
+                  <span style={{ color: 'var(--tfd-text-secondary)' }}>{drawerAjudas.length} periodo{drawerAjudas.length !== 1 ? 's' : ''}</span>
+                  <span className="font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>Total: {formatCurrency(drawerAjudasTotal)}</span>
+                </div>
+                {drawerAjudasPago > 0 && <div className="flex items-center justify-between mt-1"><span style={{ color: 'var(--tfd-text-muted)' }}>Pago</span><span className="font-medium" style={{ color: '#15803D' }}>{formatCurrency(drawerAjudasPago)}</span></div>}
+              </div>
+            )}
+
+            <hr className="tfd-divider" />
+
+            {/* ── Prorrogacoes ── */}
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}><RefreshCw size={14} className="inline mr-1.5" />Prorrogacoes</h3>
+              {!addingProrrogacao && <button type="button" className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={() => { resetForm(); setAddingProrrogacao(true); }}><Plus size={14} /> Nova</button>}
+            </div>
+
+            {drawerProrrogacoes.length === 0 && !addingProrrogacao ? (
+              <div className="text-center py-6"><Ban size={24} style={{ color: 'var(--tfd-text-muted)' }} className="mx-auto mb-2" /><p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Nenhuma prorrogacao</p></div>
+            ) : (
+              <div className="flex flex-col gap-3 mb-4">
+                {drawerProrrogacoes.map((p: any, idx: number) => {
+                  const dStyle = decisaoStyleMap[p.decisao] ?? decisaoStyleMap.PENDENTE;
+                  const isTarget = inlineAction?.id === p.id;
+                  const subStatus = prorrogacaoSubStatus(p);
+                  const viagem = (p as any).viagem;
+                  const ajuda = (p as any).ajuda;
+
+                  return (
+                    <div key={p.id} className="rounded-lg px-4 py-3" style={{ border: `1px solid ${isTarget ? 'var(--tfd-primary-300)' : 'var(--tfd-surface-border)'}`, backgroundColor: isTarget ? 'var(--tfd-primary-50)' : 'var(--tfd-surface-50)' }}>
+                      {/* Header */}
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold" style={{ color: 'var(--tfd-text-muted)' }}>#{idx + 1}</span>
+                          <span className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>+{p.dias_adicionais_solicitados} dias</span>
+                          {p.nova_data_retorno && <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>→ {formatDate(p.nova_data_retorno)}</span>}
+                        </div>
+                        <span className="tfd-tag tfd-tag--rounded tfd-tag--dot shrink-0" style={{ backgroundColor: dStyle.bg, color: dStyle.text, fontSize: '0.65rem' }}>{dStyle.label}</span>
                       </div>
-                      <p className="font-semibold text-base" style={{ color: 'var(--tfd-text-primary)' }}>
-                        {perm.pacienteNome}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Link
-                        href={`/solicitacoes/${perm.solicitacaoId}`}
-                        className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
-                        title="Ver processo completo"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Eye size={15} />
-                      </Link>
-                      <span
-                        className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
-                        title="Registrar permanência"
-                      >
-                        <Plus size={15} style={{ color: '#7C3AED' }} />
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4 mt-3 flex-wrap text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
-                    <div className="flex items-center gap-1.5">
-                      <Calendar size={14} />
-                      <span>Solicitado em {formatDate(perm.dataInicio)}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
 
-            /* ---- Permanência card (existing) ---- */
-            const { bg, text, label } = statusStyleMap[perm.statusDisplay as StatusPermanencia];
-            const isExpanded = expandedId === perm.id;
-            const aguardandoRetorno = labelDestino(perm.solicitacaoId);
+                      <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>{p.justificativa_medica}</p>
 
-            return (
-              <div key={perm.id} className={`tfd-card ${aguardandoRetorno ? '' : 'cursor-pointer'}`} style={{ opacity: aguardandoRetorno ? 0.5 : undefined, pointerEvents: aguardandoRetorno ? 'none' : undefined }} onClick={aguardandoRetorno ? undefined : () => handleOpenEdit(perm)}>
-                {/* ---- Header row ---- */}
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <Link
-                        href={`/solicitacoes/${perm.solicitacaoId}`}
-                        className="font-medium text-sm hover:underline"
-                        style={{ color: 'var(--tfd-primary-500)' }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {perm.numeroSolicitacao}
-                      </Link>
-                      <span
-                        className="tfd-tag tfd-tag--rounded tfd-tag--dot"
-                        style={{ backgroundColor: bg, color: text }}
-                      >
-                        {label}
-                      </span>
-                      {perm.totalProrrogacoes > 0 && (
-                        <span
-                          className="tfd-tag tfd-tag--rounded"
-                          style={{ backgroundColor: '#FFEDD5', color: '#C2410C' }}
-                        >
-                          <RefreshCw size={10} />
-                          {perm.totalProrrogacoes} prorrog.
-                        </span>
+                      {/* Sub-status indicators for APROVADA */}
+                      {p.decisao === 'APROVADA' && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: viagem ? '#DCFCE7' : '#EDE9FE', color: viagem ? '#15803D' : '#7C3AED' }}>
+                            {viagem ? `Passagem: ${formatDate(viagem.data_embarque_prevista)}` : 'Sem passagem'}
+                          </span>
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: ajuda ? '#DCFCE7' : '#FFF7ED', color: ajuda ? '#15803D' : '#EA580C' }}>
+                            {ajuda ? `Ajuda: ${formatCurrency(ajuda.valor_total ?? 0)}` : 'Sem ajuda custo'}
+                          </span>
+                        </div>
                       )}
-                      {aguardandoRetorno && (
-                        <span
-                          className="tfd-tag tfd-tag--rounded"
-                          style={{ backgroundColor: '#FEF3C7', color: '#92400E', fontSize: '0.625rem' }}
-                        >
-                          Ag. retorno — {aguardandoRetorno}
-                        </span>
+
+                      {p.justificativa_decisao && <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>Motivo: {p.justificativa_decisao}</p>}
+
+                      {/* Action buttons */}
+                      {!isTarget && !addingProrrogacao && (
+                        <div className="flex items-center gap-1.5 pt-2 mt-2" style={{ borderTop: '1px solid var(--tfd-surface-border)' }}>
+                          {p.decisao === 'PENDENTE' && (
+                            <>
+                              <button type="button" className="tfd-btn tfd-btn--sm" style={{ backgroundColor: 'var(--tfd-status-success)', color: 'white', fontSize: '0.7rem', padding: '3px 8px' }} onClick={() => setInlineAction({ type: 'aprovar', id: p.id })}><CheckCircle2 size={12} /> Aprovar</button>
+                              <button type="button" className="tfd-btn tfd-btn--sm" style={{ backgroundColor: '#FEE2E2', color: '#B91C1C', fontSize: '0.7rem', padding: '3px 8px' }} onClick={() => setInlineAction({ type: 'indeferir', id: p.id })}><XCircle size={12} /> Indeferir</button>
+                              <button type="button" className="tfd-btn tfd-btn-ghost tfd-btn--icon-only tfd-btn--sm ml-auto" title="Excluir" onClick={() => setInlineAction({ type: 'excluir', id: p.id })}><Trash2 size={13} style={{ color: '#EF4444' }} /></button>
+                            </>
+                          )}
+                          {p.decisao === 'APROVADA' && !viagem && (
+                            <button type="button" className="tfd-btn tfd-btn--sm" style={{ backgroundColor: '#7C3AED', color: 'white', fontSize: '0.7rem', padding: '3px 8px' }} onClick={() => setInlineAction({ type: 'add-passagem', id: p.id })}><Plane size={12} /> Adicionar Passagem</button>
+                          )}
+                          {p.decisao === 'APROVADA' && !ajuda && (
+                            <button type="button" className="tfd-btn tfd-btn--sm" style={{ backgroundColor: '#EA580C', color: 'white', fontSize: '0.7rem', padding: '3px 8px' }} onClick={() => setInlineAction({ type: 'add-ajuda', id: p.id })}><Wallet size={12} /> Adicionar Ajuda Custo</button>
+                          )}
+                          {p.decisao === 'APROVADA' && viagem && ajuda && (
+                            <span className="text-xs" style={{ color: 'var(--tfd-status-success)' }}><CheckCircle2 size={12} className="inline mr-1" />Finalizada</span>
+                          )}
+                          {p.decisao === 'INDEFERIDA' && <span className="text-xs" style={{ color: '#B91C1C' }}>Indeferida</span>}
+                        </div>
                       )}
-                    </div>
-                    <p className="font-semibold text-base" style={{ color: 'var(--tfd-text-primary)' }}>
-                      {perm.pacienteNome}
-                    </p>
-                  </div>
 
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Link
-                      href={`/solicitacoes/${perm.solicitacaoId}`}
-                      className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
-                      title="Ver processo completo"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Eye size={15} />
-                    </Link>
-                    <button
-                      type="button"
-                      className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
-                      title="Devolver"
-                      onClick={(e) => { e.stopPropagation(); setDevolverItem(perm); }}
-                    >
-                      <SendHorizonal size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      className="tfd-btn tfd-btn-danger tfd-btn--icon-only"
-                      title="Excluir permanência"
-                      onClick={(e) => { e.stopPropagation(); handleOpenDelete(perm); }}
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                    <button
-                      className="tfd-btn tfd-btn--text tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                      title={isExpanded ? 'Recolher' : 'Expandir'}
-                      onClick={(e) => { e.stopPropagation(); setExpandedId(isExpanded ? null : perm.id); }}
-                    >
-                      {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* ---- Info row ---- */}
-                <div className="flex items-center gap-4 mt-3 flex-wrap text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
-                  <div className="flex items-center gap-1.5">
-                    <MapPin size={14} />
-                    <span className="truncate max-w-[240px]">{perm.destino}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Calendar size={14} />
-                    <span>
-                      {formatDate(perm.dataInicio)} — {formatDate(perm.dataFimPrevista)}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Clock size={14} />
-                    <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                      {perm.totalDias} dias
-                    </span>
-                  </div>
-                </div>
-
-                {/* ---- Observations ---- */}
-                {perm.observacoes && (
-                  <p className="mt-2 text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-                    {perm.observacoes}
-                  </p>
-                )}
-
-                {/* ---- Expanded: Prorrogacoes ---- */}
-                {isExpanded && perm.prorrogacoes.length > 0 && (
-                  <div
-                    className="mt-4 pt-4"
-                    style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
-                  >
-                    <h4 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
-                      Histórico de Prorrogações
-                    </h4>
-                    <div className="space-y-3">
-                      {perm.prorrogacoes.map((pror: any, idx: number) => (
-                        <div
-                          key={pror.id}
-                          className="flex items-start gap-3 p-3 rounded-lg"
-                          style={{ backgroundColor: 'var(--tfd-surface-50)' }}
-                        >
-                          <div
-                            className="flex items-center justify-center w-8 h-8 rounded-full shrink-0 text-xs font-bold"
-                            style={{
-                              backgroundColor: '#FFEDD5',
-                              color: '#C2410C',
-                            }}
-                          >
-                            {idx + 1}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                                {formatDate(pror.dataInicio)} — {formatDate(pror.dataFim)}
-                              </span>
-                              {pror.aprovadoPor && (
-                                <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--tfd-status-success)' }}>
-                                  <CheckCircle2 size={12} />
-                                  Aprovada
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-sm mt-0.5" style={{ color: 'var(--tfd-text-secondary)' }}>
-                              {pror.justificativa}
-                            </p>
-                            {pror.aprovadoPor && (
-                              <p className="flex items-center gap-1 text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
-                                <User size={11} />
-                                Aprovado por {pror.aprovadoPor} em {formatDate(pror.dataAprovacao!)}
-                              </p>
-                            )}
+                      {/* ── INLINE: Aprovar ── */}
+                      {isTarget && inlineAction?.type === 'aprovar' && (
+                        <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--tfd-primary-200)' }}>
+                          <p className="text-xs font-medium mb-2" style={{ color: 'var(--tfd-text-primary)' }}>Confirma aprovacao de +{p.dias_adicionais_solicitados} dias?</p>
+                          <div className="flex gap-2">
+                            <button className="tfd-btn tfd-btn-secondary tfd-btn--sm flex-1" disabled={actionLoading} onClick={resetInlineAction}>Cancelar</button>
+                            <button className="tfd-btn tfd-btn--sm flex-1" style={{ backgroundColor: 'var(--tfd-status-success)', color: 'white' }} disabled={actionLoading} onClick={() => handleConfirmAprovar(p.id)}>{actionLoading ? 'Aprovando...' : 'Confirmar'}</button>
                           </div>
                         </div>
-                      ))}
+                      )}
+
+                      {/* ── INLINE: Indeferir ── */}
+                      {isTarget && inlineAction?.type === 'indeferir' && (
+                        <div className="mt-2 pt-2" style={{ borderTop: '1px solid #FCA5A5' }}>
+                          <textarea className="tfd-input mb-2" rows={2} placeholder="Motivo do indeferimento..." value={indeferirMotivo} onChange={(e) => setIndeferirMotivo(e.target.value)} autoFocus />
+                          <div className="flex gap-2">
+                            <button className="tfd-btn tfd-btn-secondary tfd-btn--sm flex-1" disabled={actionLoading} onClick={resetInlineAction}>Cancelar</button>
+                            <button className="tfd-btn tfd-btn--sm flex-1" style={{ background: '#EF4444', color: 'white' }} disabled={actionLoading || !indeferirMotivo.trim()} onClick={() => handleConfirmIndeferir(p.id)}>{actionLoading ? 'Indeferindo...' : 'Confirmar'}</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── INLINE: Excluir ── */}
+                      {isTarget && inlineAction?.type === 'excluir' && (
+                        <div className="mt-2 pt-2" style={{ borderTop: '1px solid #FCA5A5' }}>
+                          <p className="text-xs font-medium mb-2" style={{ color: '#B91C1C' }}>Excluir esta prorrogacao?</p>
+                          <div className="flex gap-2">
+                            <button className="tfd-btn tfd-btn-secondary tfd-btn--sm flex-1" disabled={actionLoading} onClick={resetInlineAction}>Cancelar</button>
+                            <button className="tfd-btn tfd-btn--sm flex-1" style={{ background: '#EF4444', color: 'white' }} disabled={actionLoading} onClick={() => handleConfirmExcluir(p.id)}>{actionLoading ? 'Excluindo...' : 'Confirmar'}</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── INLINE: Add Passagem ── */}
+                      {isTarget && inlineAction?.type === 'add-passagem' && (
+                        <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--tfd-primary-200)' }}>
+                          <p className="text-xs font-semibold mb-2" style={{ color: '#7C3AED' }}>Adicionar Passagem</p>
+                          <div className="grid grid-cols-2 gap-2 mb-2">
+                            <FormField label="Tipo">
+                              <select className="tfd-input tfd-input--sm" value={passagemTipo} onChange={(e) => setPassagemTipo(e.target.value)}>
+                                <option value="RETORNO">Retorno</option>
+                                <option value="IDA">Ida</option>
+                              </select>
+                            </FormField>
+                            <FormField label="Data embarque" required>
+                              <input type="date" className="tfd-input tfd-input--sm" value={passagemData} onChange={(e) => setPassagemData(e.target.value)} />
+                            </FormField>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 mb-2">
+                            <FormField label="Origem" required>
+                              <input type="text" className="tfd-input tfd-input--sm" placeholder="Cidade" value={passagemOrigem} onChange={(e) => setPassagemOrigem(e.target.value)} />
+                            </FormField>
+                            <FormField label="Destino" required>
+                              <input type="text" className="tfd-input tfd-input--sm" placeholder="Cidade" value={passagemDestino} onChange={(e) => setPassagemDestino(e.target.value)} />
+                            </FormField>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 mb-2">
+                            <FormField label="Companhia">
+                              <input type="text" className="tfd-input tfd-input--sm" placeholder="Ex: LATAM" value={passagemCompanhia} onChange={(e) => setPassagemCompanhia(e.target.value)} />
+                            </FormField>
+                            <FormField label="Valor">
+                              <input type="text" className="tfd-input tfd-input--sm" placeholder="R$ 0,00" value={passagemValor} onChange={(e) => setPassagemValor(maskCurrency(e.target.value))} />
+                            </FormField>
+                          </div>
+                          <div className="flex gap-2">
+                            <button className="tfd-btn tfd-btn-secondary tfd-btn--sm flex-1" disabled={actionLoading} onClick={resetInlineAction}>Cancelar</button>
+                            <button className="tfd-btn tfd-btn--sm flex-1" style={{ backgroundColor: '#7C3AED', color: 'white' }} disabled={actionLoading} onClick={() => handleSalvarPassagem(p.id)}>{actionLoading ? 'Salvando...' : 'Salvar Passagem'}</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── INLINE: Add Ajuda Custo ── */}
+                      {isTarget && inlineAction?.type === 'add-ajuda' && (
+                        <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--tfd-primary-200)' }}>
+                          <p className="text-xs font-semibold mb-2" style={{ color: '#EA580C' }}>Adicionar Ajuda de Custo</p>
+                          <div className="grid grid-cols-2 gap-2 mb-2">
+                            <FormField label="Data inicio" required>
+                              <input type="date" className="tfd-input tfd-input--sm" value={ajudaDataInicio} onChange={(e) => setAjudaDataInicio(e.target.value)} />
+                            </FormField>
+                            <FormField label="Data fim" required>
+                              <input type="date" className="tfd-input tfd-input--sm" value={ajudaDataFim} onChange={(e) => setAjudaDataFim(e.target.value)} />
+                            </FormField>
+                          </div>
+                          <FormField label="Valor diaria">
+                            <input type="text" className="tfd-input tfd-input--sm" placeholder={`R$ ${valorDiariaCompleta.toFixed(2).replace('.', ',')}`} value={ajudaValorDiaria} onChange={(e) => setAjudaValorDiaria(maskCurrency(e.target.value))} />
+                          </FormField>
+                          <div className="flex gap-2">
+                            <button className="tfd-btn tfd-btn-secondary tfd-btn--sm flex-1" disabled={actionLoading} onClick={resetInlineAction}>Cancelar</button>
+                            <button className="tfd-btn tfd-btn--sm flex-1" style={{ backgroundColor: '#EA580C', color: 'white' }} disabled={actionLoading} onClick={() => handleSalvarAjuda(p.id)}>{actionLoading ? 'Salvando...' : 'Salvar Ajuda Custo'}</button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
-
-                {isExpanded && perm.prorrogacoes.length === 0 && (
-                  <div
-                    className="mt-4 pt-4 text-center py-6"
-                    style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
-                  >
-                    <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-                      Nenhuma prorrogação registrada
-                    </p>
-                  </div>
-                )}
+                  );
+                })}
               </div>
-            );
-          })
-        )}
-      </div>
+            )}
 
-      {/* ========== Modal de Confirmação de Exclusão ========== */}
-      {deleteConfirmId && (
-        <>
-          <div className="tfd-overlay-backdrop" onClick={() => setDeleteConfirmId(null)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="tfd-dialog w-full max-w-sm">
-              <div className="tfd-dialog-header">
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[#FEF2F2]">
-                    <Trash2 size={16} className="text-[#EF4444]" />
-                  </div>
-                  <span>Excluir permanência</span>
+            {/* ── Add prorrogacao form ── */}
+            {addingProrrogacao && (
+              <>
+                <hr className="tfd-divider" />
+                <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Nova Prorrogacao</h3>
+                <FormField label="Dias adicionais" required>
+                  <input type="number" className="tfd-input" min={1} placeholder="Ex: 5" value={diasAdicionais} onChange={(e) => setDiasAdicionais(e.target.value)} />
+                </FormField>
+                <FormField label="Nova data retorno" required>
+                  <input type="date" className="tfd-input" value={novaDataRetorno} onChange={(e) => setNovaDataRetorno(e.target.value)} />
+                </FormField>
+                <FormField label="Justificativa" required>
+                  <textarea className="tfd-input" rows={3} placeholder="Justificativa medica ou administrativa..." value={justificativaProrr} onChange={(e) => setJustificativaProrr(e.target.value)} />
+                </FormField>
+                <div className="flex gap-2">
+                  <button className="tfd-btn tfd-btn-secondary flex-1" onClick={resetForm}>Cancelar</button>
+                  <button className="tfd-btn tfd-btn-primary flex-1" onClick={handleSaveProrrogacao}>Solicitar Prorrogacao</button>
                 </div>
-              </div>
-              <div className="tfd-dialog-content">
-                <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
-                  Tem certeza que deseja excluir a permanência de <strong>{deleteConfirmName}</strong>? Esta ação não pode ser desfeita.
-                </p>
-              </div>
-              <div className="tfd-dialog-footer">
-                <button className="tfd-btn tfd-btn-secondary" onClick={() => setDeleteConfirmId(null)}>
-                  Cancelar
-                </button>
-                <button className="tfd-btn" style={{ background: '#EF4444', color: 'white' }} onClick={handleConfirmDelete}>
-                  <Trash2 size={14} />
-                  Excluir
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* ========== Registrar / Editar Permanência Drawer ========== */}
-      <Drawer
-        open={drawerOpen}
-        onClose={handleCloseDrawer}
-        title={editingId ? 'Editar Permanência' : 'Registrar Permanência'}
-        width="480px"
-        footer={
-          <>
-            <button
-              className="tfd-btn tfd-btn-secondary"
-              onClick={handleCloseDrawer}
-            >
-              Cancelar
-            </button>
-            <button
-              className="tfd-btn tfd-btn-primary"
-              disabled={submitting}
-              onClick={handleSubmitPermanencia}
-            >
-              {submitting ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" />
-                  {editingId ? 'Salvando...' : 'Registrando...'}
-                </>
-              ) : (
-                editingId ? 'Salvar Alterações' : 'Registrar'
-              )}
-            </button>
-          </>
-        }
-      >
-        {/* Section: Processo (read-only — comes from the clicked card) */}
-        <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg mb-3" style={{ backgroundColor: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{pacienteNome || '—'}</p>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Processo: <strong style={{ color: 'var(--tfd-primary-500)' }}>{numProcesso}</strong></p>
-          </div>
-        </div>
-
-        <hr className="tfd-divider" />
-
-        {/* ---- Comunicação de Permanência ---- */}
-        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
-          Comunicação de Permanência
-        </h3>
-
-        <FormField label="Data da comunicação" required>
-          <input
-            type="date"
-            className="tfd-input"
-            value={dataComunicacao}
-            onChange={(e) => setDataComunicacao(e.target.value)}
-          />
-        </FormField>
-
-        <FormField label="Comunicado por" required>
-          <select
-            className="tfd-input"
-            value={comunicadoPor}
-            onChange={(e) => setComunicadoPor(e.target.value)}
-          >
-            <option value="">Selecione...</option>
-            <option value="PACIENTE">Paciente</option>
-            <option value="RESPONSAVEL">Responsável</option>
-            <option value="UNIDADE_DESTINO">Unidade de Destino</option>
-            <option value="REGIONAL">Regional</option>
-          </select>
-        </FormField>
-
-        <FormField label="Motivo" required>
-          <select
-            className="tfd-input"
-            value={motivo}
-            onChange={(e) => setMotivo(e.target.value)}
-            disabled={motivoPermLoading}
-          >
-            <option value="">{motivoPermLoading ? 'Carregando...' : 'Selecione...'}</option>
-            {motivoPermOptions.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </FormField>
-
-        {motivo === 'OUTROS' && (
-          <FormField label="Descrição do motivo" required>
-            <textarea
-              className="tfd-input"
-              rows={3}
-              placeholder="Descreva o motivo da permanência..."
-              value={motivoDescricao}
-              onChange={(e) => setMotivoDescricao(e.target.value)}
-            />
-          </FormField>
-        )}
-
-        <FormField label="Nova data de retorno prevista" required>
-          <input
-            type="date"
-            className="tfd-input"
-            value={novaDataRetorno}
-            onChange={(e) => setNovaDataRetorno(e.target.value)}
-          />
-        </FormField>
-
-        {/* ---- Cost impact calculation ---- */}
-        {custoAdicional && (
-          <div
-            className="flex flex-col gap-1 px-3 py-3 rounded-lg mb-3"
-            style={{ background: 'var(--tfd-warning-50, #FFFBEB)', border: '1px solid var(--tfd-warning-200, #FDE68A)' }}
-          >
-            <p className="text-xs font-semibold" style={{ color: 'var(--tfd-warning-700, #92400E)' }}>
-              Impacto na Ajuda de Custo
-            </p>
-            <div className="flex items-center justify-between text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
-              <span>Dias extras além do previsto:</span>
-              <span className="font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-                {custoAdicional.diasExtras} dia{custoAdicional.diasExtras !== 1 ? 's' : ''}
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
-              <span>Valor da diária:</span>
-              <span className="font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-                R$ {custoAdicional.valorDiaria.toFixed(2).replace('.', ',')}
-              </span>
-            </div>
-            <hr style={{ borderColor: 'var(--tfd-warning-200, #FDE68A)', margin: '4px 0' }} />
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-semibold" style={{ color: 'var(--tfd-warning-700, #92400E)' }}>
-                Custo adicional estimado:
-              </span>
-              <span className="font-bold text-base" style={{ color: 'var(--tfd-warning-700, #92400E)' }}>
-                R$ {custoAdicional.valorTotal.toFixed(2).replace('.', ',')}
-              </span>
-            </div>
-          </div>
-        )}
-
-        <hr className="tfd-divider" />
-
-        {/* ---- Prorrogação ---- */}
-        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
-          Prorrogação
-        </h3>
-
-        <label className="flex items-center gap-2 mb-4 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={solicitarProrrogacao}
-            onChange={(e) => setSolicitarProrrogacao(e.target.checked)}
-          />
-          <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>
-            Solicitar prorrogação?
-          </span>
-        </label>
-
-        {solicitarProrrogacao && (
-          <>
-            <FormField label="Dias adicionais" required>
-              <input
-                type="number"
-                className="tfd-input"
-                min={1}
-                placeholder="Ex: 5"
-                value={diasAdicionais}
-                onChange={(e) => setDiasAdicionais(e.target.value)}
-              />
-            </FormField>
-
-            <FormField label="Justificativa médica" required>
-              <textarea
-                className="tfd-input"
-                rows={3}
-                placeholder="Justificativa médica para a prorrogação..."
-                value={justificativaMedica}
-                onChange={(e) => setJustificativaMedica(e.target.value)}
-              />
-            </FormField>
-
-            <FormField label="Documento justificativa" required>
-              <input type="file" className="tfd-input" />
-            </FormField>
-
-            <div className="tfd-message tfd-message--info">
-              <span className="tfd-message-icon mt-0.5 shrink-0">
-                <Info size={14} />
-              </span>
-              <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
-                A prorrogação será encaminhada para a Regulação para aprovação. Processos de prorrogação não passam por parecer médico.
-              </p>
-            </div>
+              </>
+            )}
           </>
         )}
       </Drawer>
-
-      <DevolverModal
-        open={!!devolverItem}
-        onClose={() => setDevolverItem(null)}
-        setorAtual="PERMANENCIA"
-        solicitacaoId={devolverItem?.solicitacaoId ?? ''}
-        statusAtual={devolverItem?.solicitacaoStatus ?? 'EM_PERMANENCIA'}
-        label={`${devolverItem?.numeroSolicitacao ?? ''} — ${devolverItem?.pacienteNome ?? 'Paciente'}`}
-        onSuccess={() => { refreshAll(); refreshDevolucoes(); toast.success('Solicitação devolvida', 'A solicitação foi encaminhada ao setor selecionado.'); }}
-      />
     </>
   );
 }

@@ -15,7 +15,7 @@ export async function listarSolicitacoes(filters?: {
 
   let query = supabase
     .from('solicitacoes')
-    .select('*, pacientes(*, municipio_pac:municipio_residencia_id(id, nome, uf)), municipios:municipio_origem_id(id, nome, uf), acompanhantes(*)', { count: 'exact' })
+    .select('*, pacientes(*, municipio_pac:municipio_residencia_id(id, nome, uf)), municipios:municipio_origem_id(id, nome, uf)', { count: 'exact' })
     .order('created_at', { ascending: false });
 
   if (filters?.status && filters.status !== 'TODOS') {
@@ -41,7 +41,7 @@ export async function buscarSolicitacao(id: string) {
   return supabase
     .from('solicitacoes')
     .select(
-      '*, pacientes(*, municipios:municipio_residencia_id(id, nome, uf)), municipios:municipio_origem_id(id, nome, uf), acompanhantes(*), documentos(*), pareceres(*, usuarios:medico_auditor_id(id, nome_completo, perfil)), rotas_regulacao(*, cobrancas_externas(*)), agendamentos(*), viagens(*), ajudas_custo(*), permanencias(*, prorrogacoes(*)), encerramentos(*)',
+      '*, pacientes(*, municipios:municipio_residencia_id(id, nome, uf)), municipios:municipio_origem_id(id, nome, uf), solicitacao_acompanhantes(*, acompanhantes(*)), documentos(*), pareceres(*, usuarios:medico_auditor_id(id, nome_completo, perfil)), rotas_regulacao(*, cobrancas_externas(*)), agendamentos(*), viagens(*), ajudas_custo(*), permanencias(*, prorrogacoes(*)), encerramentos(*), devolucoes(*)',
     )
     .eq('id', id)
     .single();

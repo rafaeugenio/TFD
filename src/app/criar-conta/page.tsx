@@ -1,39 +1,32 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, UserPlus, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { Loader2, UserPlus, Eye, EyeOff, ArrowLeft, ShieldCheck } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
-const PERFIS = [
-  { value: 'ATENDENTE_MUNICIPAL', label: 'Atendente Municipal' },
-  { value: 'ATENDENTE_REGIONAL', label: 'Atendente Regional' },
-  { value: 'COORDENACAO_ESTADUAL', label: 'Coordenação Estadual' },
-  { value: 'MEDICO_AUDITOR', label: 'Médico Auditor' },
-  { value: 'SETOR_REGULACAO', label: 'Setor de Regulação' },
-  { value: 'SETOR_PASSAGENS', label: 'Setor de Passagens' },
-  { value: 'FINANCEIRO', label: 'Financeiro' },
-  { value: 'ASSISTENTE_SOCIAL', label: 'Assistente Social' },
-  { value: 'CONTROLE_INTERNO', label: 'Controle Interno' },
-  { value: 'ADMINISTRADOR', label: 'Administrador' },
-];
-
-function formatCPF(value: string): string {
-  const digits = value.replace(/\D/g, '').slice(0, 11);
-  if (digits.length <= 3) return digits;
-  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
-  if (digits.length <= 9)
-    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
-  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+export default function CriarContaPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--tfd-surface-ground)' }}>
+        <Loader2 size={24} className="animate-spin" style={{ color: 'var(--tfd-primary-500)' }} />
+      </div>
+    }>
+      <CriarContaContent />
+    </Suspense>
+  );
 }
 
-export default function CriarContaPage() {
-  const router = useRouter();
-  const [nome, setNome] = useState('');
-  const [cpf, setCpf] = useState('');
-  const [email, setEmail] = useState('');
-  const [perfil, setPerfil] = useState('');
+function CriarContaContent() {
+  const searchParams = useSearchParams();
+  const token = searchParams.get('token');
+  const nomeParam = searchParams.get('nome') ?? '';
+  const emailParam = searchParams.get('email') ?? '';
+
+  const [nome, setNome] = useState(nomeParam);
+  const [email] = useState(emailParam);
+  const [telefone, setTelefone] = useState('');
   const [senha, setSenha] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -41,10 +34,60 @@ export default function CriarContaPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  function formatPhone(value: string): string {
+    let v = value.replace(/\D/g, '').slice(0, 11);
+    if (v.length > 6) v = `(${v.slice(0, 2)}) ${v.slice(2, 7)}-${v.slice(7)}`;
+    else if (v.length > 2) v = `(${v.slice(0, 2)}) ${v.slice(2)}`;
+    else if (v.length > 0) v = `(${v}`;
+    return v;
+  }
+
+  // If no token, show access denied
+  if (!token) {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center px-4"
+        style={{ background: 'var(--tfd-surface-ground)' }}
+      >
+        <div className="w-full max-w-[400px] text-center">
+          <div
+            className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4"
+            style={{ background: '#FEE2E2', color: '#EF4444' }}
+          >
+            <ShieldCheck size={24} />
+          </div>
+          <h1
+            className="text-2xl font-bold mb-2"
+            style={{ color: 'var(--tfd-text-primary)' }}
+          >
+            Link inválido
+          </h1>
+          <p
+            className="text-sm mb-6"
+            style={{ color: 'var(--tfd-text-secondary)' }}
+          >
+            Este link de cadastro é inválido ou já foi utilizado. Solicite um novo convite ao administrador do sistema.
+          </p>
+          <Link
+            href="/login"
+            className="tfd-btn tfd-btn-secondary inline-flex"
+          >
+            <ArrowLeft size={16} />
+            Voltar para o login
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
+    if (!nome.trim()) {
+      setError('Informe seu nome completo.');
+      return;
+    }
     if (senha.length < 6) {
       setError('A senha deve ter no mínimo 6 caracteres.');
       return;
@@ -53,55 +96,44 @@ export default function CriarContaPage() {
       setError('As senhas não coincidem.');
       return;
     }
-    if (!perfil) {
-      setError('Selecione um perfil de acesso.');
-      return;
-    }
-
-    const cpfDigits = cpf.replace(/\D/g, '');
-    if (cpfDigits.length !== 11) {
-      setError('CPF inválido. Informe os 11 dígitos.');
-      return;
-    }
 
     setLoading(true);
 
-    const supabase = createClient();
+    try {
+      const supabase = createClient();
 
-    // 1. Create auth user
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password: senha,
-    });
-
-    if (authError) {
-      setError(authError.message);
-      setLoading(false);
-      return;
-    }
-
-    // 2. Create usuarios record linked to auth user
-    if (authData.user) {
-      const { error: dbError } = await supabase.from('usuarios').insert({
-        id: authData.user.id,
-        nome_completo: nome.trim(),
-        cpf: cpfDigits,
+      // 1. Create auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
-        senha_hash: 'managed_by_supabase_auth',
-        perfil,
-        ativo: true,
-        primeiro_acesso: true,
-      } as any);
+        password: senha,
+      });
 
-      if (dbError) {
-        setError(`Conta criada, mas erro ao salvar dados: ${dbError.message}`);
+      if (authError) {
+        setError(authError.message);
         setLoading(false);
         return;
       }
-    }
 
-    setLoading(false);
-    setSuccess(true);
+      // 2. Create usuarios record linked to auth user
+      if (authData.user) {
+        await supabase.from('usuarios').insert({
+          id: authData.user.id,
+          nome_completo: nome.trim(),
+          email,
+          telefone: telefone.replace(/\D/g, '') || null,
+          senha_hash: 'managed_by_supabase_auth',
+          perfil: 'ATENDENTE_MUNICIPAL',
+          ativo: true,
+          primeiro_acesso: true,
+        } as any);
+      }
+
+      setLoading(false);
+      setSuccess(true);
+    } catch {
+      setError('Erro inesperado. Tente novamente.');
+      setLoading(false);
+    }
   }
 
   if (success) {
@@ -133,7 +165,7 @@ export default function CriarContaPage() {
             href="/login"
             className="tfd-btn tfd-btn-primary inline-flex"
           >
-            <LogInIcon size={16} />
+            <ArrowLeft size={16} />
             Ir para o login
           </Link>
         </div>
@@ -165,7 +197,7 @@ export default function CriarContaPage() {
             className="text-sm mt-1"
             style={{ color: 'var(--tfd-text-muted)' }}
           >
-            Preencha seus dados para acessar o sistema
+            Complete seu cadastro para acessar o sistema
           </p>
         </div>
 
@@ -195,21 +227,6 @@ export default function CriarContaPage() {
             </div>
 
             <div>
-              <label className="tfd-label" htmlFor="cpf">
-                CPF
-              </label>
-              <input
-                id="cpf"
-                type="text"
-                className="tfd-input"
-                placeholder="000.000.000-00"
-                value={cpf}
-                onChange={(e) => setCpf(formatCPF(e.target.value))}
-                required
-              />
-            </div>
-
-            <div>
               <label className="tfd-label" htmlFor="email-reg">
                 E-mail
               </label>
@@ -217,31 +234,27 @@ export default function CriarContaPage() {
                 id="email-reg"
                 type="email"
                 className="tfd-input"
-                placeholder="seu.email@ses.ma.gov.br"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
+                readOnly
+                style={{ backgroundColor: 'var(--tfd-surface-50)', color: 'var(--tfd-text-secondary)' }}
               />
+              <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
+                O e-mail foi definido pelo administrador e não pode ser alterado.
+              </p>
             </div>
 
             <div>
-              <label className="tfd-label" htmlFor="perfil">
-                Perfil de acesso
+              <label className="tfd-label" htmlFor="telefone">
+                Telefone <span style={{ color: 'var(--tfd-text-muted)', fontWeight: 400 }}>(opcional)</span>
               </label>
-              <select
-                id="perfil"
+              <input
+                id="telefone"
+                type="tel"
                 className="tfd-input"
-                value={perfil}
-                onChange={(e) => setPerfil(e.target.value)}
-                required
-              >
-                <option value="">Selecione o perfil...</option>
-                {PERFIS.map((p) => (
-                  <option key={p.value} value={p.value}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
+                placeholder="(99) 99999-0000"
+                value={telefone}
+                onChange={(e) => setTelefone(formatPhone(e.target.value))}
+              />
             </div>
 
             <div>
@@ -315,31 +328,11 @@ export default function CriarContaPage() {
               style={{ color: 'var(--tfd-primary-500)' }}
             >
               <ArrowLeft size={14} />
-              Voltar para o login
+              Já tenho conta — fazer login
             </Link>
           </div>
         </div>
       </div>
     </div>
-  );
-}
-
-function LogInIcon({ size }: { size: number }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-      <polyline points="10 17 15 12 10 7" />
-      <line x1="15" y1="12" x2="3" y2="12" />
-    </svg>
   );
 }

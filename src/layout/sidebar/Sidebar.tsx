@@ -1,6 +1,6 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import clsx from 'clsx';
 import {
@@ -16,17 +16,17 @@ import {
   Settings,
   Shield,
   Users,
+  Contact,
   ScrollText,
   X,
   Stethoscope,
   ChevronsLeft,
   ChevronsRight,
-  ChevronUp,
   Microscope,
-  FileSignature,
   type LucideIcon,
 } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+
+
 
 /* ── Nav config ──────────────────────────────────── */
 
@@ -51,8 +51,8 @@ const navSections: NavSection[] = [
   {
     title: 'FLUXO DO PROCESSO',
     items: [
+      { icon: Contact, label: 'Pacientes', href: '/pacientes' },
       { icon: FileText, label: 'Solicitações', href: '/solicitacoes' },
-      { icon: FileSignature, label: 'Termo de Compromisso', href: '/termo-compromisso' },
       { icon: Microscope, label: 'Diagnóstico Clínico', href: '/diagnostico-clinico' },
       { icon: Stethoscope, label: 'Parecer Médico', href: '/parecer-medico' },
       { icon: ClipboardCheck, label: 'Regulação', href: '/regulacao' },
@@ -93,20 +93,9 @@ export default function Sidebar({
   onMobileClose,
 }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + '/');
-
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const userMenuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
-        setUserMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
 
   const content = (
     <div className="flex flex-col h-full select-none">
@@ -249,101 +238,59 @@ export default function Sidebar({
         </button>
       </div>
 
-      {/* ── User profile ─────────────────────── */}
+      {/* ── Logout + User profile ─────────────────────── */}
       <div style={{ borderTop: '1px solid #E8ECF4' }}>
-        {/* User profile card */}
-        <div ref={userMenuRef} className="relative" style={{ borderTop: '1px solid #E8ECF4' }}>
-          <button
-            type="button"
-            onClick={() => setUserMenuOpen((p) => !p)}
-            className={clsx(
-              'w-full flex items-center gap-3 transition-colors duration-150',
-              collapsed ? 'justify-center px-2 py-3' : 'px-4 py-3',
-            )}
-            onMouseEnter={(e) => { e.currentTarget.style.background = '#F5F7FA'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
+        {/* Logout button */}
+        <button
+          type="button"
+          className={clsx(
+            'w-full flex items-center gap-2.5 transition-colors duration-150',
+            collapsed ? 'justify-center px-2 py-2.5' : 'px-4 py-2.5',
+          )}
+          style={{ color: '#EF4444' }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = '#FEF2F2'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
+          onClick={() => { onMobileClose(); router.push('/login'); }}
+        >
+          <LogOut size={15} />
+          {!collapsed && <span className="text-[12px] font-medium">Sair do sistema</span>}
+        </button>
+
+        {/* User profile — links to /meu-perfil */}
+        <Link
+          href="/meu-perfil"
+          className={clsx(
+            'w-full flex items-center gap-3 transition-colors duration-150 no-underline',
+            collapsed ? 'justify-center px-2 py-3' : 'px-4 py-3',
+          )}
+          style={{ textDecoration: 'none', color: 'inherit', borderTop: '1px solid #E8ECF4' }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = '#F5F7FA'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
+          onClick={onMobileClose}
+        >
+          <div
+            className="flex items-center justify-center shrink-0 text-white text-[11px] font-semibold rounded-full"
+            style={{
+              width: 32,
+              height: 32,
+              background: '#4361EE',
+              border: '2px solid white',
+              boxShadow: '0 0 0 1px #E8ECF4',
+            }}
           >
-            {/* Avatar */}
-            <div
-              className="flex items-center justify-center shrink-0 text-white text-[11px] font-semibold rounded-full"
-              style={{
-                width: 32,
-                height: 32,
-                background: '#4361EE',
-                border: '2px solid white',
-                boxShadow: '0 0 0 1px #E8ECF4',
-              }}
-            >
-              MS
-            </div>
-
-            {!collapsed && (
-              <>
-                <div className="flex-1 min-w-0 text-left">
-                  <p className="text-[12px] font-semibold truncate" style={{ color: '#1A1D2B' }}>
-                    Maria Silva
-                  </p>
-                  <p className="text-[10px] truncate" style={{ color: '#9CA3AF' }}>
-                    Coordenação Estadual
-                  </p>
-                </div>
-                <ChevronUp
-                  size={14}
-                  className={clsx(
-                    'shrink-0 transition-transform duration-150',
-                    !userMenuOpen && 'rotate-180',
-                  )}
-                  style={{ color: '#9CA3AF' }}
-                />
-              </>
-            )}
-          </button>
-
-          {/* User popup menu */}
-          {userMenuOpen && (
-            <div
-              className={clsx(
-                'absolute z-50 overflow-hidden bg-white rounded-xl shadow-lg',
-                collapsed ? 'left-full bottom-0 ml-2 w-52' : 'left-4 right-4 bottom-full mb-1',
-              )}
-              style={{
-                border: '1px solid #E8ECF4',
-                animation: 'tfd-scale-in 150ms var(--tfd-ease) both',
-              }}
-            >
-              {collapsed && (
-                <div className="px-4 py-3" style={{ borderBottom: '1px solid #E8ECF4' }}>
-                  <p className="text-[13px] font-semibold" style={{ color: '#1A1D2B' }}>Maria Silva</p>
-                  <p className="text-[11px] mt-0.5" style={{ color: '#9CA3AF' }}>Coordenação Estadual</p>
-                </div>
-              )}
-              <div className="py-1">
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-[13px] transition-colors duration-150"
-                  style={{ color: '#6B7280' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = '#F5F7FA'; e.currentTarget.style.color = '#1A1D2B'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = ''; e.currentTarget.style.color = '#6B7280'; }}
-                  onClick={() => setUserMenuOpen(false)}
-                >
-                  <Users size={14} style={{ color: '#9CA3AF' }} />
-                  Meu Perfil
-                </button>
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-[13px] transition-colors duration-150"
-                  style={{ color: '#EF4444' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = '#FEF2F2'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
-                  onClick={() => setUserMenuOpen(false)}
-                >
-                  <LogOut size={14} />
-                  Sair do sistema
-                </button>
-              </div>
+            MS
+          </div>
+          {!collapsed && (
+            <div className="flex-1 min-w-0 text-left">
+              <p className="text-[12px] font-semibold truncate" style={{ color: '#1A1D2B' }}>
+                Maria Silva
+              </p>
+              <p className="text-[10px] truncate" style={{ color: '#9CA3AF' }}>
+                Coordenação Estadual
+              </p>
             </div>
           )}
-        </div>
+        </Link>
       </div>
     </div>
   );

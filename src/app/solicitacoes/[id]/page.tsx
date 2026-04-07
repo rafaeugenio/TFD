@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -35,6 +35,7 @@ import {
   X,
   Paperclip,
   Trash2,
+  Send,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -42,16 +43,25 @@ import StatusTag from '@/shared/components/status-tag/StatusTag';
 import TimelineTFD, { type TimelineEvent } from '@/shared/components/timeline-tfd/TimelineTFD';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
+import UfCidadeSelect from '@/shared/components/uf-cidade-select/UfCidadeSelect';
 import { useToast } from '@/shared/components/toast/Toast';
 import { buscarSolicitacao, atualizarSolicitacao, atualizarStatus } from '@/services/solicitacoes.service';
-import { atualizarPaciente } from '@/services/pacientes.service';
+import { criarParecer } from '@/services/pareceres.service';
+import { criarRotaRegulacao, criarCobrancaExterna } from '@/services/regulacao.service';
+import { criarAgendamento, atualizarAgendamento } from '@/services/agendamentos.service';
+import { criarViagem, atualizarViagem } from '@/services/viagens.service';
+import { criarAjudaCusto, atualizarAjudaCusto } from '@/services/ajuda-custo.service';
+import { buscarViagensPorSolicitacao } from '@/services/viagens.service';
+import { criarPermanencia, atualizarPermanencia, criarProrrogacao } from '@/services/permanencias.service';
+import { buscarAjudaCustoPorSolicitacao } from '@/services/ajuda-custo.service';
 import { uploadDocumento, excluirDocumento } from '@/services/documentos.service';
-import { useLookup, useMunicipios } from '@/shared/hooks/useLookup';
+import { useLookup } from '@/shared/hooks/useLookup';
 import { useCompanhias } from '@/shared/hooks/useLookup';
 import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
-import { formatCPF, formatCNS, formatCurrency, formatDate, formatDateTime, maskCPF, maskCNS, maskPhone } from '@/shared/pipes/formatters';
+import { useParametroNumero } from '@/shared/hooks/useParametros';
+import { formatCPF, formatCNS, formatCurrency, formatDate, formatDateTime, maskCPF, maskCNS, maskPhone, maskCurrency, parseCurrency } from '@/shared/pipes/formatters';
 import type { StatusSolicitacao, TipoDocumento } from '@/core/models';
-import type { TipoDocumento as TipoDocumentoDB, DecisaoParecer } from '@/lib/supabase/database.types';
+import type { TipoDocumento as TipoDocumentoDB } from '@/lib/supabase/database.types';
 import type { SituacaoViagem, TipoRota, StatusParecer, MotivoAlta } from '@/core/models';
 
 /* -------------------------------------------------- */
@@ -149,7 +159,7 @@ const situacaoViagemLabels: Record<SituacaoViagem, { label: string; bg: string; 
   EMITIDA: { bg: '#DBEAFE', text: '#1D4ED8', label: 'Emitida' } as never,
   REMARCADA: { bg: '#E0E7FF', text: '#4338CA', label: 'Remarcada' } as never,
   CANCELADA: { bg: 'var(--tfd-surface-100)', text: 'var(--tfd-surface-500)', label: 'Cancelada' } as never,
-  NO_SHOW: { bg: '#FEE2E2', text: '#B91C1C', label: 'NO-SHOW' } as never,
+  NO_SHOW: { bg: '#FEE2E2', text: '#B91C1C', label: 'Não Compareceu' } as never,
   UTILIZADA: { bg: '#DCFCE7', text: '#15803D', label: 'Utilizada' } as never,
 };
 
@@ -164,8 +174,8 @@ const motivoAltaLabels: Record<MotivoAlta, string> = {
 const statusAjudaLabels: Record<string, { label: string; bg: string; color: string }> = {
   EM_ANALISE: { label: 'Em Análise', bg: '#FEF3C7', color: '#92400E' },
   APROVADA: { label: 'Aprovada', bg: '#DBEAFE', color: '#1D4ED8' },
-  EM_PAGAMENTO: { label: 'Em Pagamento', bg: '#E0E7FF', color: '#4338CA' },
   CONCLUIDA: { label: 'Paga', bg: '#DCFCE7', color: '#15803D' },
+  PAGO_PARCIALMENTE: { label: 'Pago Parcial', bg: '#FFF7ED', color: '#C2410C' },
   GLOSADA: { label: 'Glosada', bg: '#FEE2E2', color: '#B91C1C' },
 };
 
@@ -399,14 +409,13 @@ function buildTimeline(sol: any): TimelineEvent[] {
     }
   }
 
-  const ajudaCusto = sol.ajudas_custo?.[0];
-  if (ajudaCusto) {
+  for (const ac of (sol.ajudas_custo ?? [])) {
     events.push({
-      id: `ev-ac-${ajudaCusto.id}`,
-      date: formatDate(ajudaCusto.data_inicio),
-      title: `Ajuda de custo ${statusAjudaLabels[ajudaCusto.status]?.label?.toLowerCase() ?? ajudaCusto.status} — ${formatCurrency(ajudaCusto.valor_total)}`,
-      description: ajudaCusto.observacoes ?? undefined,
-      status: ajudaCusto.status === 'CONCLUIDA' ? 'success' : ajudaCusto.status === 'GLOSADA' ? 'danger' : 'info',
+      id: `ev-ac-${ac.id}`,
+      date: formatDate(ac.data_inicio),
+      title: `Ajuda de custo ${statusAjudaLabels[ac.status]?.label?.toLowerCase() ?? ac.status} — ${formatCurrency(ac.valor_total)}`,
+      description: ac.observacoes ?? undefined,
+      status: ac.status === 'CONCLUIDA' ? 'success' : ac.status === 'GLOSADA' ? 'danger' : 'info',
     });
   }
 
@@ -462,6 +471,44 @@ function buildTimeline(sol: any): TimelineEvent[] {
     });
   }
 
+  // Devoluções (retornos entre setores)
+  const setorLabels: Record<string, string> = {
+    SOLICITACOES: 'Solicitações',
+    DIAGNOSTICO_CLINICO: 'Diagnóstico Clínico',
+    PARECER_MEDICO: 'Parecer Médico',
+    REGULACAO: 'Regulação',
+    AGENDAMENTO: 'Agendamento',
+    PASSAGENS: 'Viagens / Passagens',
+    AJUDA_CUSTO: 'Ajuda de Custo',
+    PERMANENCIA: 'Permanência',
+    ENCERRAMENTO: 'Encerramento',
+  };
+  for (const dev of (sol.devolucoes ?? [])) {
+    const origem = setorLabels[dev.setor_origem] ?? dev.setor_origem;
+    const destino = setorLabels[dev.setor_destino] ?? dev.setor_destino;
+    const urgente = dev.urgencia === 'URGENTE';
+
+    // Evento de criação da devolução
+    events.push({
+      id: `ev-dev-${dev.id}`,
+      date: formatDate(dev.created_at),
+      title: `${urgente ? '⚠ ' : ''}Devolvido: ${origem} → ${destino}`,
+      description: dev.motivo,
+      status: urgente ? 'danger' : 'warning',
+    });
+
+    // Evento de resolução (se resolvida)
+    if (dev.status_devolucao === 'RESOLVIDA' && dev.resolvido_em) {
+      events.push({
+        id: `ev-dev-res-${dev.id}`,
+        date: formatDate(dev.resolvido_em),
+        title: `Devolução resolvida — ${destino}`,
+        description: dev.observacao_resolucao ?? undefined,
+        status: 'success',
+      });
+    }
+  }
+
   // Sort by date
   events.sort((a, b) => {
     const da = a.date.split('/').reverse().join('-');
@@ -482,24 +529,20 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
   const toast = useToast();
   const [sol, setSol] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const { options: companhiasList } = useCompanhias();
+  const { options: companhiasList, loading: loadingCompanhias } = useCompanhias();
   const { user: currentUser } = useCurrentUser();
   const [editingSection, setEditingSection] = useState<string | null>(null);
 
   /* ---- Lookups for edit forms ---- */
-  const { options: municipios, loading: loadingMun } = useMunicipios();
   const { options: especialidades, loading: loadingEsp } = useLookup('especialidade');
+  const { options: canalOptions, loading: canalLoading } = useLookup('canal_comunicacao');
+  const { options: tipoAtendOptions, loading: tipoAtendLoading } = useLookup('tipo_procedimento');
+  const { options: origemAgendOptions, loading: origemAgendLoading } = useLookup('origem_agendamento');
+  const { options: modaisTransporte, loading: loadingModais } = useLookup('modal_transporte');
+  const { options: motivoPermOptions, loading: motivoPermLoading } = useLookup('motivo_permanencia');
+  const { valor: valorDiariaCompleta } = useParametroNumero('diaria_valor_completa');
 
   /* ---- Edit form states ---- */
-  // Paciente
-  const [edNome, setEdNome] = useState('');
-  const [edCpf, setEdCpf] = useState('');
-  const [edCns, setEdCns] = useState('');
-  const [edDataNascimento, setEdDataNascimento] = useState('');
-  const [edSexo, setEdSexo] = useState('');
-  const [edTelefone, setEdTelefone] = useState('');
-  const [edEmail, setEdEmail] = useState('');
-  const [edMunicipio, setEdMunicipio] = useState('');
 
   // Diagnóstico
   const [edCid, setEdCid] = useState('');
@@ -516,8 +559,128 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
   // Parecer
   const [edParecerDecisao, setEdParecerDecisao] = useState('');
   const [edParecerObs, setEdParecerObs] = useState('');
+  const [edAutorizaAcompanhante, setEdAutorizaAcompanhante] = useState(false);
+
+  // Regulação
+  const [regPendingRoute, setRegPendingRoute] = useState<string | null>(null);
+  const [regCobDestinatario, setRegCobDestinatario] = useState('');
+  const [regCobCanal, setRegCobCanal] = useState('');
+  const [regCobContatoCanal, setRegCobContatoCanal] = useState('');
+  const [regCobDataEnvio, setRegCobDataEnvio] = useState(new Date().toISOString().split('T')[0]);
+  const [regCobConteudo, setRegCobConteudo] = useState('');
+  const [regDeciding, setRegDeciding] = useState(false);
+
+  // Agendamento
+  const [agNomeUnidade, setAgNomeUnidade] = useState('');
+  const [agCnes, setAgCnes] = useState('');
+  const [agCidade, setAgCidade] = useState('');
+  const [agUf, setAgUf] = useState('');
+  const [agTipoContato, setAgTipoContato] = useState('');
+  const [agContatoUnidade, setAgContatoUnidade] = useState('');
+  const [agTipoAtendimento, setAgTipoAtendimento] = useState('');
+  const [agDataAgendamento, setAgDataAgendamento] = useState('');
+  const [agOrigemAgendamento, setAgOrigemAgendamento] = useState('');
+  const [agNumCnrac, setAgNumCnrac] = useState('');
+  const [agStatusAgendamento, setAgStatusAgendamento] = useState('AGUARDANDO_CONFIRMACAO');
+  const [agComprovante, setAgComprovante] = useState<File | null>(null);
+  const [agEditingId, setAgEditingId] = useState<string | null>(null);
+
+  // Viagens
+  type DrawerTab = 'ida' | 'volta';
+  const [viagDrawerTab, setViagDrawerTab] = useState<DrawerTab>('ida');
+  const [viagEditingId, setViagEditingId] = useState<string | null>(null);
+  const [idaOrigemUf, setIdaOrigemUf] = useState('MA');
+  const [idaOrigem, setIdaOrigem] = useState('');
+  const [idaDestinoUf, setIdaDestinoUf] = useState('');
+  const [idaDestino, setIdaDestino] = useState('');
+  const [idaDataEmbarque, setIdaDataEmbarque] = useState('');
+  const [idaModalTransporte, setIdaModalTransporte] = useState('');
+  const [idaCompanhia, setIdaCompanhia] = useState('');
+  const [idaLocalizador, setIdaLocalizador] = useState('');
+  const [idaValor, setIdaValor] = useState('');
+  const [idaMedif, setIdaMedif] = useState(false);
+  const [idaObservacoes, setIdaObservacoes] = useState('');
+  const [voltaOrigemUf, setVoltaOrigemUf] = useState('');
+  const [voltaOrigem, setVoltaOrigem] = useState('');
+  const [voltaDestinoUf, setVoltaDestinoUf] = useState('MA');
+  const [voltaDestino, setVoltaDestino] = useState('');
+  const [voltaDataEmbarque, setVoltaDataEmbarque] = useState('');
+  const [voltaModalTransporte, setVoltaModalTransporte] = useState('');
+  const [voltaCompanhia, setVoltaCompanhia] = useState('');
+  const [voltaLocalizador, setVoltaLocalizador] = useState('');
+  const [voltaValor, setVoltaValor] = useState('');
+  const [voltaMedif, setVoltaMedif] = useState(false);
+  const [voltaObservacoes, setVoltaObservacoes] = useState('');
+
+  // Ajuda de Custo
+  const [acTipoBeneficiario, setAcTipoBeneficiario] = useState('PACIENTE');
+  const [acDataInicio, setAcDataInicio] = useState('');
+  const [acDataFim, setAcDataFim] = useState('');
+  const [acDiasElegiveis, setAcDiasElegiveis] = useState('');
+  const [acValorDiaria, setAcValorDiaria] = useState('');
+  const [acObservacoes, setAcObservacoes] = useState('');
+  const [acEditingId, setAcEditingId] = useState<string | null>(null);
+
+  // Permanência
+  const [permDataComunicacao, setPermDataComunicacao] = useState(new Date().toISOString().split('T')[0]);
+  const [permComunicadoPor, setPermComunicadoPor] = useState('');
+  const [permMotivo, setPermMotivo] = useState('');
+  const [permMotivoDescricao, setPermMotivoDescricao] = useState('');
+  const [permNovaDataRetorno, setPermNovaDataRetorno] = useState('');
+  const [permSolicitarProrrogacao, setPermSolicitarProrrogacao] = useState(false);
+  const [permDiasAdicionais, setPermDiasAdicionais] = useState('');
+  const [permJustificativaMedica, setPermJustificativaMedica] = useState('');
+  const [permEditingId, setPermEditingId] = useState<string | null>(null);
+  const [permAjudaCustoInfo, setPermAjudaCustoInfo] = useState<{ valor_diaria: number; data_fim: string | null } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const [saving, setSaving] = useState(false);
+
+  /* ---- Computed values for Ajuda de Custo ---- */
+  function calcularDias(inicio: string, fim: string): number {
+    if (!inicio || !fim) return 0;
+    const d1 = new Date(inicio);
+    const d2 = new Date(fim);
+    const diff = Math.ceil((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
+    return diff > 0 ? diff : 0;
+  }
+
+  const acDataFimError = useMemo(() => {
+    if (acDataInicio && acDataFim && acDataFim < acDataInicio) {
+      return 'Data de fim não pode ser anterior à data de início.';
+    }
+    return '';
+  }, [acDataInicio, acDataFim]);
+
+  const acDiasCalc = useMemo(() => {
+    if (acDiasElegiveis) return parseInt(acDiasElegiveis, 10) || 0;
+    if (acDataFimError) return 0;
+    return calcularDias(acDataInicio, acDataFim);
+  }, [acDiasElegiveis, acDataInicio, acDataFim, acDataFimError]);
+
+  const acValorDiariaNum = useMemo(() => {
+    if (acValorDiaria) return parseCurrency(acValorDiaria);
+    return valorDiariaCompleta;
+  }, [acValorDiaria, valorDiariaCompleta]);
+
+  const acValorTotalCalc = useMemo(() => {
+    return acDiasCalc * acValorDiariaNum;
+  }, [acDiasCalc, acValorDiariaNum]);
+
+  /* ---- Computed: Permanência cost impact ---- */
+  const permCustoAdicional = useMemo(() => {
+    if (!permAjudaCustoInfo || !permNovaDataRetorno || !permAjudaCustoInfo.data_fim) return null;
+    const dataFimOriginal = new Date(permAjudaCustoInfo.data_fim + 'T00:00:00');
+    const novaData = new Date(permNovaDataRetorno + 'T00:00:00');
+    const diffMs = novaData.getTime() - dataFimOriginal.getTime();
+    const diasExtras = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    if (diasExtras <= 0) return null;
+    return {
+      diasExtras,
+      valorDiaria: permAjudaCustoInfo.valor_diaria,
+      valorTotal: diasExtras * permAjudaCustoInfo.valor_diaria,
+    };
+  }, [permAjudaCustoInfo, permNovaDataRetorno]);
 
   /* ---- Reload data helper ---- */
   function reloadSolicitacao() {
@@ -527,18 +690,6 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
   }
 
   /* ---- Open edit helpers — populate form from current data ---- */
-  function openEditPaciente() {
-    const pac = sol?.pacientes;
-    setEdNome(pac?.nome_completo ?? '');
-    setEdCpf(maskCPF(pac?.cpf ?? ''));
-    setEdCns(maskCNS(pac?.cns ?? ''));
-    setEdDataNascimento(pac?.data_nascimento ?? '');
-    setEdSexo(pac?.sexo ?? '');
-    setEdTelefone(maskPhone(pac?.telefone_celular ?? ''));
-    setEdEmail(pac?.email ?? '');
-    setEdMunicipio(pac?.municipio_residencia_id ?? '');
-    setEditingSection('paciente');
-  }
 
   function openEditDiagnostico() {
     setEdCid(sol?.cid10_principal ?? '');
@@ -553,33 +704,121 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
     const p = sol?.pareceres?.[0];
     setEdParecerDecisao(p?.decisao ?? '');
     setEdParecerObs(p?.observacoes_medicas ?? '');
+    setEdAutorizaAcompanhante(false);
     setEditingSection('parecer');
   }
 
-  /* ---- Save handlers ---- */
-  async function savePaciente() {
-    const pac = sol?.pacientes;
-    if (!pac?.id) return;
-    setSaving(true);
-    const munLabel = municipios.find((m) => m.value === edMunicipio)?.label ?? '';
-    const { error } = await atualizarPaciente(pac.id, {
-      nome_completo: edNome,
-      cpf: edCpf.replace(/\D/g, ''),
-      cns: edCns.replace(/\D/g, ''),
-      data_nascimento: edDataNascimento,
-      sexo: edSexo || 'OUTRO',
-      telefone_celular: edTelefone.replace(/\D/g, ''),
-      email: edEmail,
-      municipio: munLabel,
-      municipio_residencia_id: edMunicipio || undefined,
-    } as any);
-    setSaving(false);
-    if (error) { toast.error('Erro ao salvar', (error as any).message); return; }
-    toast.success('Dados do paciente atualizados!');
-    setEditingSection(null);
-    reloadSolicitacao();
+  function openEditRegulacao() {
+    setRegPendingRoute(null);
+    setRegCobDestinatario('');
+    setRegCobCanal('');
+    setRegCobContatoCanal('');
+    setRegCobDataEnvio(new Date().toISOString().split('T')[0]);
+    setRegCobConteudo('');
+    setRegDeciding(false);
+    setEditingSection('regulacao');
   }
 
+  function openEditAgendamento() {
+    const ag = sol?.agendamentos?.[0];
+    setAgEditingId(ag?.id ?? null);
+    setAgNomeUnidade(ag?.unidade_executante ?? '');
+    setAgCnes(ag?.cnes ?? '');
+    setAgCidade(ag?.cidade_destino ?? '');
+    setAgUf(ag?.uf_destino ?? '');
+    setAgTipoContato('');
+    setAgContatoUnidade(ag?.contato_unidade ?? '');
+    setAgTipoAtendimento(ag?.tipo_atendimento ?? '');
+    setAgDataAgendamento(ag?.data_hora_agendamento ? ag.data_hora_agendamento.split('T')[0] : '');
+    setAgOrigemAgendamento(ag?.origem_agendamento ?? '');
+    setAgNumCnrac(ag?.numero_cnrac ?? '');
+    setAgStatusAgendamento(ag?.status ?? 'AGUARDANDO_CONFIRMACAO');
+    setAgComprovante(null);
+    setEditingSection('agendamento');
+  }
+
+  function openEditViagens() {
+    const viagens = sol?.viagens ?? [];
+    const ida = viagens.find((v: any) => v.tipo === 'IDA');
+    const volta = viagens.find((v: any) => v.tipo === 'RETORNO');
+    setViagEditingId(ida?.id ?? null);
+    setViagDrawerTab('ida');
+    // Ida
+    setIdaOrigemUf(ida?.origem_uf ?? 'MA');
+    setIdaOrigem(ida?.origem_cidade ?? '');
+    setIdaDestinoUf(ida?.destino_uf ?? '');
+    setIdaDestino(ida?.destino_cidade ?? '');
+    setIdaDataEmbarque(ida?.data_embarque_prevista ? ida.data_embarque_prevista.split('T')[0] : '');
+    setIdaModalTransporte(ida?.modal ?? '');
+    setIdaCompanhia(ida?.companhia ?? '');
+    setIdaLocalizador(ida?.numero_bilhete ?? '');
+    setIdaValor(ida?.valor ? maskCurrency(String(Math.round(ida.valor * 100))) : '');
+    setIdaMedif(ida?.medif_necessario ?? false);
+    setIdaObservacoes(ida?.observacoes ?? '');
+    // Volta
+    setVoltaOrigemUf(volta?.origem_uf ?? '');
+    setVoltaOrigem(volta?.origem_cidade ?? '');
+    setVoltaDestinoUf(volta?.destino_uf ?? 'MA');
+    setVoltaDestino(volta?.destino_cidade ?? '');
+    setVoltaDataEmbarque(volta?.data_embarque_prevista ? volta.data_embarque_prevista.split('T')[0] : '');
+    setVoltaModalTransporte(volta?.modal ?? '');
+    setVoltaCompanhia(volta?.companhia ?? '');
+    setVoltaLocalizador(volta?.numero_bilhete ?? '');
+    setVoltaValor(volta?.valor ? maskCurrency(String(Math.round(volta.valor * 100))) : '');
+    setVoltaMedif(volta?.medif_necessario ?? false);
+    setVoltaObservacoes(volta?.observacoes ?? '');
+    setEditingSection('viagens');
+  }
+
+  function openEditAjudaCusto() {
+    const ac = sol?.ajudas_custo?.[0];
+    setAcEditingId(ac?.id ?? null);
+    setAcTipoBeneficiario(ac?.tipo ?? 'PACIENTE');
+    setAcDataInicio(ac?.data_inicio ? (ac.data_inicio.includes('T') ? ac.data_inicio.split('T')[0] : ac.data_inicio) : '');
+    setAcDataFim(ac?.data_fim ? (ac.data_fim.includes('T') ? ac.data_fim.split('T')[0] : ac.data_fim) : '');
+    setAcDiasElegiveis(ac?.dias_elegiveis > 0 ? String(ac.dias_elegiveis) : '');
+    const valCents = ac?.valor_diaria ? Math.round(ac.valor_diaria * 100) : 0;
+    setAcValorDiaria(valCents > 0 ? maskCurrency(String(valCents)) : '');
+    setAcObservacoes(ac?.observacoes ?? '');
+    // If creating new, pre-fill dates from viagens
+    if (!ac) {
+      buscarViagensPorSolicitacao(id).then(({ data: viagens }) => {
+        if (viagens && viagens.length > 0) {
+          const idaV = viagens.find((v: any) => v.tipo === 'IDA');
+          const voltaV = viagens.find((v: any) => v.tipo === 'RETORNO');
+          if (idaV?.data_embarque_prevista) {
+            setAcDataInicio(idaV.data_embarque_prevista.includes('T') ? idaV.data_embarque_prevista.split('T')[0] : idaV.data_embarque_prevista);
+          }
+          if (voltaV?.data_embarque_prevista) {
+            setAcDataFim(voltaV.data_embarque_prevista.includes('T') ? voltaV.data_embarque_prevista.split('T')[0] : voltaV.data_embarque_prevista);
+          }
+        }
+      });
+      const defaultVal = Math.round(valorDiariaCompleta * 100);
+      setAcValorDiaria(defaultVal > 0 ? maskCurrency(String(defaultVal)) : '');
+    }
+    setEditingSection('ajuda-custo');
+  }
+
+  async function openEditPermanencia() {
+    const p = sol?.permanencias?.[0];
+    setPermEditingId(p?.id ?? null);
+    setPermDataComunicacao(p?.data_comunicacao ?? new Date().toISOString().split('T')[0]);
+    setPermComunicadoPor(p?.comunicado_por ?? '');
+    setPermMotivo(p?.motivo ?? '');
+    setPermMotivoDescricao(p?.motivo_descricao ?? '');
+    setPermNovaDataRetorno(p?.nova_data_retorno_prevista ?? '');
+    setPermSolicitarProrrogacao(false);
+    setPermDiasAdicionais('');
+    setPermJustificativaMedica('');
+    setPermAjudaCustoInfo(null);
+    setEditingSection('permanencia');
+    // Fetch ajuda de custo info for cost calculation
+    const { data } = await buscarAjudaCustoPorSolicitacao(id);
+    setPermAjudaCustoInfo(data ? { valor_diaria: data.valor_diaria, data_fim: data.data_fim } : null);
+  }
+
+  /* ---- Save handlers ---- */
   async function saveDiagnostico() {
     setSaving(true);
     const { error } = await atualizarSolicitacao(id, {
@@ -665,7 +904,7 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
   const activeStep = getActiveStepIndex(sol);
   const timeline = buildTimeline(sol);
   const pac = sol.pacientes;
-  const acomp = sol.acompanhantes?.[0];
+  const acomp = (sol as any).solicitacao_acompanhantes?.[0]?.acompanhantes;
   const parecer = sol.pareceres?.[0];
   const agendamento = sol.agendamentos?.[0];
 
@@ -677,7 +916,15 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
   const municipioPaciente = (pac as any)?.municipios?.nome
     || (pac?.municipio && !pac.municipio.includes('-') ? pac.municipio : null)
     || null;
-  const ajudaCusto = sol.ajudas_custo?.[0];
+  const ajudasCusto: any[] = sol.ajudas_custo ?? [];
+  const ajudaCustoTotal = ajudasCusto.reduce((s: number, ac: any) => s + (ac.valor_total ?? 0), 0);
+  const ajudaCustoDias = ajudasCusto.reduce((s: number, ac: any) => s + (ac.dias_elegiveis ?? 0), 0);
+  const ajudaCustoStatusDominante = ajudasCusto.length === 0 ? null
+    : ajudasCusto.some((ac: any) => ac.status === 'EM_ANALISE') ? 'EM_ANALISE'
+    : ajudasCusto.some((ac: any) => ac.status === 'APROVADA') ? 'APROVADA'
+    : ajudasCusto.every((ac: any) => ac.status === 'CONCLUIDA') ? 'CONCLUIDA'
+    : ajudasCusto.every((ac: any) => ac.status === 'GLOSADA') ? 'GLOSADA'
+    : ajudasCusto[0].status;
   const perm = sol.permanencias?.[0];
   const isFinal = ['CONCLUIDO', 'INDEFERIDO', 'CANCELADO'].includes(sol.status);
 
@@ -708,6 +955,18 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
         ]}
         actions={
           <div className="flex items-center gap-2">
+            {sol.url_sei && (
+              <a
+                href={sol.url_sei}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="tfd-btn tfd-btn-outline tfd-btn--sm"
+                style={{ gap: '0.375rem' }}
+              >
+                <ExternalLink size={13} />
+                SEI
+              </a>
+            )}
             <StatusTag status={sol.status} />
             {nextAction && (
               <button
@@ -783,7 +1042,7 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
         <div className="xl:col-span-2 space-y-4">
 
           {/* ── Dados do Paciente ── */}
-          <Section title="Dados do Paciente" icon={<User size={18} />} onEdit={openEditPaciente}>
+          <Section title="Dados do Paciente" icon={<User size={18} />}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <InfoRow label="Nome completo" value={pac?.nome_completo ?? '—'} />
               <InfoRow label="CPF" value={formatCPF(pac?.cpf ?? '')} mono />
@@ -901,7 +1160,7 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
             title="Regulação"
             icon={<ClipboardCheck size={18} />}
             empty={!(sol.rotas_regulacao?.length)}
-            onEdit={() => setEditingSection('regulacao')}
+            onEdit={openEditRegulacao}
             badge={
               sol.rotas_regulacao?.[0] ? (
                 <span className="tfd-tag tfd-tag--rounded tfd-tag--dot" style={{
@@ -1007,7 +1266,7 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
             title="Agendamento no Destino"
             icon={<Calendar size={18} />}
             empty={!agendamento}
-            onEdit={() => setEditingSection('agendamento')}
+            onEdit={openEditAgendamento}
             badge={
               agendamento ? (
                 <span className={`tfd-tag tfd-tag--rounded tfd-tag--dot ${agendamento.status === 'CONFIRMADO' ? 'tfd-tag--success' : 'tfd-tag--warning'}`}>
@@ -1040,7 +1299,7 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
             title="Viagens e Passagens"
             icon={<Plane size={18} />}
             empty={(sol.viagens ?? []).length === 0}
-            onEdit={() => setEditingSection('viagens')}
+            onEdit={openEditViagens}
             badge={
               (sol.viagens ?? []).length > 0 ? (
                 <span
@@ -1051,116 +1310,197 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
               ) : undefined
             }
           >
-            {(sol.viagens ?? []).length > 0 && (
-              <div className="space-y-3">
-                {(sol.viagens ?? []).map((v: any) => {
-                  const sit = situacaoViagemLabels[v.situacao as SituacaoViagem] as unknown as { bg: string; text: string; label: string };
-                  return (
-                    <div
-                      key={v.id}
-                      className="flex items-center gap-4 p-3 rounded-lg"
-                      style={{ backgroundColor: 'var(--tfd-surface-50)' }}
-                    >
+            {(sol.viagens ?? []).length > 0 && (() => {
+              const viagensSorted = [...(sol.viagens ?? [])].sort((a: any, b: any) => {
+                const tipoOrder = a.tipo === 'IDA' ? 0 : 1;
+                const tipoOrderB = b.tipo === 'IDA' ? 0 : 1;
+                if (tipoOrder !== tipoOrderB) return tipoOrder - tipoOrderB;
+                return (a.numero_sequencial ?? 1) - (b.numero_sequencial ?? 1);
+              });
+              return (
+                <div className="space-y-3">
+                  {viagensSorted.map((v: any) => {
+                    const sit = situacaoViagemLabels[v.situacao as SituacaoViagem] as unknown as { bg: string; text: string; label: string };
+                    const isTerminal = ['CANCELADA', 'NO_SHOW', 'REMARCADA'].includes(v.situacao);
+                    const tipoLabel = v.tipo === 'IDA' ? 'IDA' : 'VOLTA';
+                    const seq = v.numero_sequencial ?? 1;
+                    return (
                       <div
-                        className="flex items-center justify-center w-9 h-9 rounded-lg shrink-0"
-                        style={{
-                          backgroundColor: v.tipo === 'IDA' ? '#DBEAFE' : '#F5F3FF',
-                          color: v.tipo === 'IDA' ? '#1D4ED8' : '#7C3AED',
-                        }}
+                        key={v.id}
+                        className="flex items-center gap-4 p-3 rounded-lg"
+                        style={{ backgroundColor: 'var(--tfd-surface-50)', opacity: isTerminal ? 0.5 : 1 }}
                       >
-                        <Plane size={16} className={v.tipo === 'RETORNO' ? 'rotate-180' : ''} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 text-sm">
-                          <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                            {v.origem_cidade ?? '—'}
-                          </span>
-                          <ArrowRight size={12} style={{ color: 'var(--tfd-text-muted)' }} />
-                          <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                            {v.destino_cidade ?? '—'}
-                          </span>
+                        <div
+                          className="flex items-center justify-center w-9 h-9 rounded-lg shrink-0"
+                          style={{
+                            backgroundColor: v.tipo === 'IDA' ? '#DBEAFE' : '#F5F3FF',
+                            color: v.tipo === 'IDA' ? '#1D4ED8' : '#7C3AED',
+                          }}
+                        >
+                          <Plane size={16} className={v.tipo === 'RETORNO' ? 'rotate-180' : ''} />
                         </div>
-                        <div className="flex items-center gap-3 mt-1 text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-                          <span>{formatDate(v.data_embarque_prevista)}</span>
-                          {v.companhia && <span>{companhiasList.find((c) => c.id === v.companhia)?.nome ?? v.companhia}</span>}
-                          {v.numero_bilhete && (
-                            <code style={{ fontFamily: 'var(--tfd-font-mono)', color: 'var(--tfd-text-secondary)' }}>
-                              {v.numero_bilhete}
-                            </code>
-                          )}
-                          {v.valor != null && v.valor > 0 && (
-                            <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                              {formatCurrency(v.valor)}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="text-xs font-semibold px-1.5 py-0.5 rounded" style={{
+                              backgroundColor: v.tipo === 'IDA' ? '#DBEAFE' : '#F5F3FF',
+                              color: v.tipo === 'IDA' ? '#1D4ED8' : '#7C3AED',
+                            }}>
+                              {tipoLabel} #{seq}
                             </span>
+                            <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                              {v.origem_cidade ?? '—'}
+                            </span>
+                            <ArrowRight size={12} style={{ color: 'var(--tfd-text-muted)' }} />
+                            <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                              {v.destino_cidade ?? '—'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+                            <span style={{ textDecoration: isTerminal ? 'line-through' : undefined }}>
+                              {formatDate(v.data_embarque_prevista)}
+                            </span>
+                            {v.companhia && <span>{companhiasList.find((c) => c.id === v.companhia)?.nome ?? v.companhia}</span>}
+                            {v.numero_bilhete && (
+                              <code style={{ fontFamily: 'var(--tfd-font-mono)', color: 'var(--tfd-text-secondary)' }}>
+                                {v.numero_bilhete}
+                              </code>
+                            )}
+                            {v.valor != null && v.valor > 0 && (
+                              <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                                {formatCurrency(v.valor)}
+                              </span>
+                            )}
+                          </div>
+                          {v.motivo_cancelamento && (
+                            <p className="text-xs mt-1" style={{ color: '#92400E' }}>
+                              Motivo: {v.motivo_cancelamento}
+                            </p>
                           )}
                         </div>
+                        <span
+                          className="tfd-tag tfd-tag--rounded tfd-tag--dot shrink-0"
+                          style={{ backgroundColor: sit?.bg, color: sit?.text }}
+                        >
+                          {sit?.label ?? v.situacao}
+                        </span>
                       </div>
-                      <span
-                        className="tfd-tag tfd-tag--rounded tfd-tag--dot shrink-0"
-                        style={{ backgroundColor: sit?.bg, color: sit?.text }}
-                      >
-                        {sit?.label ?? v.situacao}
-                      </span>
-                    </div>
-                  );
-                })}
-                <DocumentList docs={getDocsForSection(sol.documentos ?? [], 'viagens')} docTypeLabels={docTypeLabels} />
-              </div>
-            )}
+                    );
+                  })}
+                  <DocumentList docs={getDocsForSection(sol.documentos ?? [], 'viagens')} docTypeLabels={docTypeLabels} />
+                </div>
+              );
+            })()}
           </Section>
 
           {/* ── Ajuda de Custo ── */}
           <Section
             title="Ajuda de Custo"
             icon={<Wallet size={18} />}
-            empty={!ajudaCusto}
-            onEdit={() => setEditingSection('ajuda-custo')}
+            empty={ajudasCusto.length === 0}
+            onEdit={openEditAjudaCusto}
             badge={
-              ajudaCusto ? (
+              ajudaCustoStatusDominante ? (
                 <span
                   className="tfd-tag tfd-tag--rounded tfd-tag--dot"
                   style={{
-                    backgroundColor: statusAjudaLabels[ajudaCusto.status]?.bg,
-                    color: statusAjudaLabels[ajudaCusto.status]?.color,
+                    backgroundColor: statusAjudaLabels[ajudaCustoStatusDominante]?.bg,
+                    color: statusAjudaLabels[ajudaCustoStatusDominante]?.color,
                   }}
                 >
-                  {statusAjudaLabels[ajudaCusto.status]?.label}
+                  {statusAjudaLabels[ajudaCustoStatusDominante]?.label}
                 </span>
               ) : undefined
             }
           >
-            {ajudaCusto && (
+            {ajudasCusto.length > 0 && (
               <div className="space-y-3">
+                {/* Summary cards */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="p-3 rounded-lg text-center" style={{ backgroundColor: 'var(--tfd-surface-50)' }}>
+                    <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Períodos</p>
+                    <p className="text-lg font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+                      {ajudasCusto.length}
+                    </p>
+                  </div>
                   <div className="p-3 rounded-lg text-center" style={{ backgroundColor: 'var(--tfd-surface-50)' }}>
                     <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Dias elegíveis</p>
                     <p className="text-lg font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-                      {ajudaCusto.dias_elegiveis ?? '—'}
+                      {ajudaCustoDias}
                     </p>
                   </div>
                   <div className="p-3 rounded-lg text-center" style={{ backgroundColor: 'var(--tfd-surface-50)' }}>
-                    <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Valor/dia</p>
+                    <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Valor/dia (base)</p>
                     <p className="text-lg font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-                      {formatCurrency(ajudaCusto.valor_diaria ?? 0)}
-                    </p>
-                  </div>
-                  <div className="p-3 rounded-lg text-center" style={{ backgroundColor: 'var(--tfd-surface-50)' }}>
-                    <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Tipo</p>
-                    <p className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-                      {ajudaCusto.tipo === 'PACIENTE' ? 'Paciente' : 'Acompanhante'}
+                      {formatCurrency(ajudasCusto[0]?.valor_diaria ?? 0)}
                     </p>
                   </div>
                   <div className="p-3 rounded-lg text-center" style={{ backgroundColor: 'var(--tfd-primary-50)' }}>
                     <p className="text-xs" style={{ color: 'var(--tfd-primary-600)' }}>Total</p>
                     <p className="text-lg font-bold" style={{ color: 'var(--tfd-primary-700)' }}>
-                      {formatCurrency(ajudaCusto.valor_total ?? 0)}
+                      {formatCurrency(ajudaCustoTotal)}
                     </p>
                   </div>
                 </div>
-                <InfoRow label="Período" value={`${formatDate(ajudaCusto.data_inicio)} — ${formatDate(ajudaCusto.data_fim)}`} />
-                {ajudaCusto.observacoes && (
-                  <InfoRow label="Observações" value={ajudaCusto.observacoes} />
-                )}
+
+                {/* Periods list */}
+                <div className="flex flex-col gap-2">
+                  {ajudasCusto.map((ac: any, idx: number) => {
+                    const pStyle = statusAjudaLabels[ac.status] ?? statusAjudaLabels.EM_ANALISE;
+                    const dias = ac.dias_elegiveis ?? 0;
+                    return (
+                      <div
+                        key={ac.id}
+                        className="rounded-lg px-4 py-3"
+                        style={{ border: '1px solid var(--tfd-surface-border)', backgroundColor: 'var(--tfd-surface-50)' }}
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold" style={{ color: 'var(--tfd-text-muted)' }}>
+                              #{idx + 1}
+                            </span>
+                            <span className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                              {formatDate(ac.data_inicio)} — {formatDate(ac.data_fim ?? ac.data_inicio)}
+                            </span>
+                          </div>
+                          <span
+                            className="tfd-tag tfd-tag--rounded tfd-tag--dot shrink-0"
+                            style={{ backgroundColor: pStyle.bg, color: pStyle.color, fontSize: '0.65rem' }}
+                          >
+                            {pStyle.label}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>
+                          <span>{ac.tipo === 'PACIENTE' ? 'Paciente' : 'Acompanhante'}</span>
+                          <span>{dias} dias</span>
+                          <span>{formatCurrency(ac.valor_diaria ?? 0)}/dia</span>
+                          <span className="font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+                            {formatCurrency(ac.valor_total ?? 0)}
+                          </span>
+                        </div>
+                        {(ac.status === 'CONCLUIDA' || ac.status === 'PAGO_PARCIALMENTE') && ac.valor_pago != null && (
+                          <div className="flex items-center gap-3 text-xs mt-1 px-2 py-1.5 rounded" style={{ backgroundColor: ac.status === 'CONCLUIDA' ? '#F0FDF4' : '#FFF7ED' }}>
+                            <span style={{ color: 'var(--tfd-text-secondary)' }}>Pago:</span>
+                            <span className="font-semibold" style={{ color: ac.status === 'CONCLUIDA' ? '#15803D' : '#C2410C' }}>
+                              {formatCurrency(ac.valor_pago)}
+                            </span>
+                            {ac.status === 'PAGO_PARCIALMENTE' && (
+                              <>
+                                <span style={{ color: 'var(--tfd-text-muted)' }}>·</span>
+                                <span style={{ color: '#C2410C' }}>Saldo: {formatCurrency((ac.valor_total ?? 0) - ac.valor_pago)}</span>
+                              </>
+                            )}
+                          </div>
+                        )}
+                        {ac.observacoes && (
+                          <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
+                            {ac.observacoes}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
                 <DocumentList docs={getDocsForSection(sol.documentos ?? [], 'ajudaCusto')} docTypeLabels={docTypeLabels} />
               </div>
             )}
@@ -1171,7 +1511,7 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
             title="Permanência e Prorrogações"
             icon={<CalendarClock size={18} />}
             empty={!perm}
-            onEdit={() => setEditingSection('permanencia')}
+            onEdit={openEditPermanencia}
             badge={
               perm && (perm.prorrogacoes ?? []).length > 0 ? (
                 <span className="tfd-tag tfd-tag--rounded" style={{ backgroundColor: '#FFEDD5', color: '#C2410C' }}>
@@ -1283,11 +1623,11 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
                   </span>
                 </div>
               )}
-              {ajudaCusto && (
+              {ajudasCusto.length > 0 && (
                 <div className="flex items-center justify-between">
-                  <span className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>Diarias</span>
+                  <span className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>Diárias ({ajudasCusto.length} {ajudasCusto.length === 1 ? 'período' : 'períodos'})</span>
                   <span className="text-sm font-semibold" style={{ color: 'var(--tfd-primary-700)' }}>
-                    {formatCurrency(ajudaCusto.valor_total ?? 0)}
+                    {formatCurrency(ajudaCustoTotal)}
                   </span>
                 </div>
               )}
@@ -1317,60 +1657,6 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
       </div>
 
       {/* ====== Edit Drawers ====== */}
-
-      {/* ── Paciente ── */}
-      <Drawer
-        open={editingSection === 'paciente'}
-        onClose={() => setEditingSection(null)}
-        title="Editar Dados do Paciente"
-        subtitle={pac?.nome_completo ?? ''}
-        width="520px"
-        footer={
-          <>
-            <button className="tfd-btn tfd-btn-secondary" onClick={() => setEditingSection(null)}>Cancelar</button>
-            <button className="tfd-btn tfd-btn-primary" onClick={savePaciente} disabled={saving}>
-              {saving ? 'Salvando...' : 'Salvar'}
-            </button>
-          </>
-        }
-      >
-        <FormField label="Nome completo" required>
-          <input type="text" className="tfd-input" value={edNome} onChange={(e) => setEdNome(e.target.value)} />
-        </FormField>
-        <FormField label="CPF" required>
-          <input type="text" className="tfd-input" placeholder="000.000.000-00" value={edCpf} onChange={(e) => setEdCpf(maskCPF(e.target.value))} />
-        </FormField>
-        <FormField label="Cartão SUS (CNS)">
-          <input type="text" className="tfd-input" placeholder="000 0000 0000 0000" value={edCns} onChange={(e) => setEdCns(maskCNS(e.target.value))} />
-        </FormField>
-        <div className="grid grid-cols-2 gap-3">
-          <FormField label="Data de Nascimento" required>
-            <input type="date" className="tfd-input" value={edDataNascimento} onChange={(e) => setEdDataNascimento(e.target.value)} />
-          </FormField>
-          <FormField label="Sexo" required>
-            <select className="tfd-input" value={edSexo} onChange={(e) => setEdSexo(e.target.value)}>
-              <option value="">Selecione...</option>
-              <option value="MASCULINO">Masculino</option>
-              <option value="FEMININO">Feminino</option>
-              <option value="OUTRO">Outro</option>
-            </select>
-          </FormField>
-        </div>
-        <FormField label="Telefone celular">
-          <input type="tel" className="tfd-input" placeholder="(99) 99999-0000" value={edTelefone} onChange={(e) => setEdTelefone(maskPhone(e.target.value))} />
-        </FormField>
-        <FormField label="E-mail">
-          <input type="email" className="tfd-input" value={edEmail} onChange={(e) => setEdEmail(e.target.value)} />
-        </FormField>
-        <FormField label="Município">
-          <select className="tfd-input" value={edMunicipio} onChange={(e) => setEdMunicipio(e.target.value)} disabled={loadingMun}>
-            <option value="">{loadingMun ? 'Carregando...' : 'Selecione...'}</option>
-            {municipios.map((m) => (
-              <option key={m.value} value={m.value}>{m.label}</option>
-            ))}
-          </select>
-        </FormField>
-      </Drawer>
 
       {/* ── Diagnóstico ── */}
       <Drawer
@@ -1410,135 +1696,1256 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
         </FormField>
       </Drawer>
 
-      {/* ── Parecer Médico ── */}
+      {/* ── Parecer Médico (full form) ── */}
       <Drawer
         open={editingSection === 'parecer'}
         onClose={() => setEditingSection(null)}
-        title="Parecer Médico"
-        subtitle="Registre a decisão do auditor sobre esta solicitação"
-        width="520px"
+        title={`Parecer — ${sol?.numero_processo ?? ''}`}
+        subtitle={pac?.nome_completo ?? ''}
+        width="580px"
         footer={
           <>
-            <button className="tfd-btn tfd-btn-secondary" onClick={() => setEditingSection(null)}>Cancelar</button>
-            <button className="tfd-btn tfd-btn-primary" disabled={saving} onClick={async () => {
-              if (!edParecerDecisao) { toast.error('Decisão obrigatória', 'Selecione Deferido, Indeferido ou Exigência.'); return; }
-              setSaving(true);
-              const supabase = (await import('@/lib/supabase/client')).createClient();
-              const existing = sol?.pareceres?.[0];
-              const parecerData = { decisao: edParecerDecisao as DecisaoParecer, observacoes_medicas: edParecerObs || null, medico_auditor_id: currentUser?.id ?? null };
-              const result = existing
-                ? await supabase.from('pareceres').update({ ...parecerData } as any).eq('id', existing.id).select().single()
-                : await supabase.from('pareceres').insert({ ...parecerData, solicitacao_id: id } as any).select().single();
-              if (result.error) { setSaving(false); toast.error('Erro ao salvar', (result.error as any).message); return; }
-
-              // Auto-transition: parecer controls the flow
-              // DEFERIDO → goes to regulation automatically
-              // INDEFERIDO → back to solicitações team (EXIGENCIA status for review/closure)
-              // EXIGENCIA → back to solicitações team for adjustments
-              let novoStatus: string | null = null;
-              let statusMsg = '';
-              if (edParecerDecisao === 'DEFERIDO') {
-                novoStatus = 'AGUARDANDO_REGULACAO';
-                statusMsg = 'Processo encaminhado para regulação.';
-              } else if (edParecerDecisao === 'INDEFERIDO') {
-                novoStatus = 'INDEFERIDO';
-                statusMsg = 'Processo indeferido — retornado ao setor de solicitações.';
-              } else if (edParecerDecisao === 'EXIGENCIA') {
-                novoStatus = 'EXIGENCIA';
-                statusMsg = 'Exigência registrada — processo retornado para ajustes.';
-              }
-
-              if (novoStatus) {
-                await atualizarStatus(id, novoStatus as any);
-              }
-
-              setSaving(false);
-              toast.success('Parecer salvo!', statusMsg);
-              setEditingSection(null);
-              reloadSolicitacao();
-            }}>
-              {saving ? 'Salvando...' : 'Salvar Parecer'}
+            <button className="tfd-btn tfd-btn-secondary" onClick={() => setEditingSection(null)}>
+              Cancelar
+            </button>
+            <button
+              className="tfd-btn tfd-btn-primary"
+              onClick={async () => {
+                if (!edParecerDecisao) { toast.error('Decisão obrigatória', 'Selecione Deferido ou Indeferido.'); return; }
+                if (!edParecerObs.trim()) { toast.warning('Campo obrigatório', 'Justifique a decisão do parecer.'); return; }
+                setSaving(true);
+                try {
+                  const result = await criarParecer({
+                    solicitacao_id: id,
+                    medico_auditor_id: currentUser?.id,
+                    decisao: edParecerDecisao as any,
+                    observacoes_medicas: edParecerObs.trim(),
+                    autoriza_acompanhante: edAutorizaAcompanhante,
+                  });
+                  if (result.error) { toast.error('Erro ao registrar parecer', (result.error as any).message); setSaving(false); return; }
+                  const labels: Record<string, string> = { DEFERIDO: 'aprovada e encaminhada à Regulação', INDEFERIDO: 'indeferida', EXIGENCIA: 'devolvida com exigências' };
+                  toast.success('Parecer registrado!', `Solicitação ${labels[edParecerDecisao]}.`);
+                  setSaving(false);
+                  setEditingSection(null);
+                  reloadSolicitacao();
+                } catch (err: unknown) {
+                  const e = err as { message?: string };
+                  toast.error('Erro inesperado', e.message ?? 'Tente novamente');
+                  setSaving(false);
+                }
+              }}
+              disabled={saving}
+            >
+              {saving ? 'Registrando...' : 'Registrar Parecer'}
             </button>
           </>
         }
       >
+        {/* ── Dados do Paciente ── */}
+        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
+          <User size={14} className="inline mr-1.5" style={{ color: 'var(--tfd-primary-500)' }} />
+          Dados do Paciente
+        </h3>
+        <div className="space-y-1.5 mb-4">
+          <div className="flex justify-between text-sm">
+            <span style={{ color: 'var(--tfd-text-secondary)' }}>Nome</span>
+            <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{pac?.nome_completo ?? '—'}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span style={{ color: 'var(--tfd-text-secondary)' }}>CPF</span>
+            <span style={{ color: 'var(--tfd-text-primary)', fontFamily: 'var(--tfd-font-mono)' }}>{formatCPF(pac?.cpf ?? '')}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span style={{ color: 'var(--tfd-text-secondary)' }}>CNS</span>
+            <span style={{ color: 'var(--tfd-text-primary)', fontFamily: 'var(--tfd-font-mono)' }}>{formatCNS(pac?.cns ?? '') || '—'}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span style={{ color: 'var(--tfd-text-secondary)' }}>Município</span>
+            <span style={{ color: 'var(--tfd-text-primary)' }}>{municipioPaciente ?? '—'}</span>
+          </div>
+        </div>
+
+        <hr className="tfd-divider" />
+
+        {/* ── Diagnóstico ── */}
+        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
+          <Stethoscope size={14} className="inline mr-1.5" style={{ color: 'var(--tfd-primary-500)' }} />
+          Diagnóstico
+        </h3>
+        <div className="space-y-1.5 mb-4">
+          <div className="flex justify-between text-sm">
+            <span style={{ color: 'var(--tfd-text-secondary)' }}>CID-10</span>
+            <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+              {sol?.cid10_principal ?? '—'}
+              {sol?.cid10_secundario ? ` / ${sol.cid10_secundario}` : ''}
+            </span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span style={{ color: 'var(--tfd-text-secondary)' }}>Procedimento</span>
+            <span style={{ color: 'var(--tfd-text-primary)' }}>{sol?.tipo_procedimento ?? '—'}</span>
+          </div>
+          {sol?.descricao_diagnostico && (
+            <div className="mt-2">
+              <p className="text-xs font-medium mb-1" style={{ color: 'var(--tfd-text-secondary)' }}>Descrição</p>
+              <p className="text-sm leading-relaxed p-2.5 rounded-lg" style={{ backgroundColor: 'var(--tfd-surface-100)', color: 'var(--tfd-text-primary)' }}>
+                {sol.descricao_diagnostico}
+              </p>
+            </div>
+          )}
+          {sol?.justificativa_tfd && (
+            <div className="mt-2">
+              <p className="text-xs font-medium mb-1" style={{ color: 'var(--tfd-text-secondary)' }}>Justificativa TFD</p>
+              <p className="text-sm leading-relaxed p-2.5 rounded-lg" style={{ backgroundColor: 'var(--tfd-surface-100)', color: 'var(--tfd-text-primary)' }}>
+                {sol.justificativa_tfd}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <hr className="tfd-divider" />
+
+        {/* ── Documentos ── */}
+        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
+          <FileText size={14} className="inline mr-1.5" style={{ color: 'var(--tfd-primary-500)' }} />
+          Documentos ({(sol?.documentos ?? []).length})
+        </h3>
+        {(sol?.documentos ?? []).length === 0 ? (
+          <p className="text-sm py-3 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
+            Nenhum documento anexado.
+          </p>
+        ) : (
+          <div className="space-y-1.5 mb-4">
+            {(sol?.documentos ?? []).map((doc: any) => (
+              <a
+                key={doc.id}
+                href={doc.url_arquivo}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2.5 p-2 rounded-lg transition-colors duration-150"
+                style={{ textDecoration: 'none', color: 'var(--tfd-text-primary)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-100)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = ''; }}
+              >
+                <div className="flex items-center justify-center w-7 h-7 rounded shrink-0"
+                  style={{ backgroundColor: 'var(--tfd-surface-100)', color: 'var(--tfd-text-secondary)' }}>
+                  <FileText size={12} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{doc.nome_arquivo}</p>
+                  <p className="text-[11px]" style={{ color: 'var(--tfd-text-muted)' }}>
+                    {docTypeLabels[doc.tipo as TipoDocumento] ?? doc.tipo}
+                  </p>
+                </div>
+                <ExternalLink size={13} style={{ color: 'var(--tfd-text-muted)' }} />
+              </a>
+            ))}
+          </div>
+        )}
+
+        <hr className="tfd-divider" />
+
+        {/* ── Decisão do Parecer ── */}
+        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
+          <CheckCircle2 size={14} className="inline mr-1.5" style={{ color: 'var(--tfd-primary-500)' }} />
+          Decisão do Parecer
+        </h3>
+
         <FormField label="Decisão" required>
-          <select className="tfd-input" value={edParecerDecisao} onChange={(e) => setEdParecerDecisao(e.target.value)}>
-            <option value="">Selecione...</option>
-            <option value="DEFERIDO">Deferido</option>
-            <option value="INDEFERIDO">Indeferido</option>
-            <option value="EXIGENCIA">Exigência</option>
-          </select>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              className="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all duration-150"
+              style={{
+                border: edParecerDecisao === 'DEFERIDO' ? '2px solid #10B981' : '1px solid #E8ECF4',
+                backgroundColor: edParecerDecisao === 'DEFERIDO' ? '#ECFDF5' : 'white',
+                color: edParecerDecisao === 'DEFERIDO' ? '#059669' : '#6B7280',
+              }}
+              onClick={() => setEdParecerDecisao('DEFERIDO')}
+            >
+              <CheckCircle2 size={16} />
+              Aprovar
+            </button>
+            <button
+              type="button"
+              className="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all duration-150"
+              style={{
+                border: edParecerDecisao === 'INDEFERIDO' ? '2px solid #EF4444' : '1px solid #E8ECF4',
+                backgroundColor: edParecerDecisao === 'INDEFERIDO' ? '#FEF2F2' : 'white',
+                color: edParecerDecisao === 'INDEFERIDO' ? '#DC2626' : '#6B7280',
+              }}
+              onClick={() => setEdParecerDecisao('INDEFERIDO')}
+            >
+              <XCircle size={16} />
+              Reprovar
+            </button>
+          </div>
         </FormField>
-        <FormField label="Observações médicas">
-          <textarea className="tfd-input" rows={4} placeholder="Justificativa do parecer..." value={edParecerObs} onChange={(e) => setEdParecerObs(e.target.value)} />
+
+        {sol?.necessidade_acompanhante && edParecerDecisao === 'DEFERIDO' && (
+          <div className="mb-4 flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="edAutorizaAcomp"
+              checked={edAutorizaAcompanhante}
+              onChange={(e) => setEdAutorizaAcompanhante(e.target.checked)}
+              style={{ accentColor: 'var(--tfd-primary-500)' }}
+            />
+            <label htmlFor="edAutorizaAcomp" className="tfd-label" style={{ marginBottom: 0 }}>
+              Autorizar acompanhante
+            </label>
+          </div>
+        )}
+
+        <FormField
+          label={edParecerDecisao === 'DEFERIDO' ? 'Justificativa da aprovação' : edParecerDecisao === 'INDEFERIDO' ? 'Motivo da reprovação' : 'Observações do parecer'}
+          required
+        >
+          <textarea
+            className="tfd-input"
+            rows={4}
+            placeholder={
+              edParecerDecisao === 'DEFERIDO'
+                ? 'Descreva por que a solicitação foi aprovada...'
+                : edParecerDecisao === 'INDEFERIDO'
+                  ? 'Descreva o motivo da reprovação...'
+                  : 'Selecione a decisão acima para prosseguir...'
+            }
+            value={edParecerObs}
+            onChange={(e) => setEdParecerObs(e.target.value)}
+          />
         </FormField>
       </Drawer>
 
-      {/* ── Seções sem edição direta (redirecionam para telas dedicadas) ── */}
+      {/* ── Regulação (full decision panel) ── */}
       <Drawer
         open={editingSection === 'regulacao'}
         onClose={() => setEditingSection(null)}
-        title="Regulação"
-        width="460px"
-        footer={<button className="tfd-btn tfd-btn-secondary" onClick={() => setEditingSection(null)}>Fechar</button>}
+        title={`Regulação — ${sol?.numero_processo ?? ''}`}
+        subtitle={pac?.nome_completo ?? ''}
+        width="520px"
+        footer={
+          <button className="tfd-btn tfd-btn-secondary" onClick={() => setEditingSection(null)}>Fechar</button>
+        }
       >
-        <div className="tfd-message tfd-message--info">
-          <span className="tfd-message-icon mt-0.5 shrink-0"><Info size={16} /></span>
-          <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>A regulação é gerenciada na tela dedicada de Regulação. Use o menu lateral para acessá-la.</p>
-        </div>
+        {/* Decision Card */}
+        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Decisão</h3>
+
+        {regPendingRoute ? (
+          /* ===== Rota selecionada — formulário de cobrança/proposta ===== */
+          <div className="space-y-3">
+            <div className="tfd-message tfd-message--info">
+              <span className="tfd-message-icon mt-0.5 shrink-0">
+                <Send size={14} />
+              </span>
+              <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
+                <strong>{{ CNRAC: 'Encaminhar para CNRAC', SETI: 'Encaminhar para SETI', RESPOSTA_EXTERNA: 'Consultar SAAS/Dutra', SERVICO_SOCIAL: 'Encaminhar ao Serviço Social' }[regPendingRoute]}</strong> — preencha os dados do encaminhamento/proposta antes de confirmar.
+              </p>
+            </div>
+
+            <FormField label="Destinatário" required>
+              <input
+                type="text"
+                className="tfd-input tfd-input--sm"
+                placeholder="Ex: CNRAC, SETI, Hospital Dutra..."
+                value={regCobDestinatario}
+                onChange={(e) => setRegCobDestinatario(e.target.value)}
+              />
+            </FormField>
+
+            <FormField label="Canal de envio" required>
+              <select
+                className="tfd-input tfd-input--sm"
+                disabled={canalLoading}
+                value={regCobCanal}
+                onChange={(e) => { setRegCobCanal(e.target.value); setRegCobContatoCanal(''); }}
+              >
+                <option value="">{canalLoading ? 'Carregando...' : 'Selecione...'}</option>
+                {canalOptions.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </FormField>
+
+            {regCobCanal && (
+              <FormField label={regCobCanal === 'EMAIL' ? 'E-mail de contato' : regCobCanal === 'SISTEMA' ? 'Identificação no sistema' : 'Número de contato'} required>
+                {regCobCanal === 'EMAIL' ? (
+                  <input
+                    type="email"
+                    className="tfd-input tfd-input--sm"
+                    placeholder="contato@orgao.gov.br"
+                    value={regCobContatoCanal}
+                    onChange={(e) => setRegCobContatoCanal(e.target.value)}
+                  />
+                ) : regCobCanal === 'SISTEMA' ? (
+                  <input
+                    type="text"
+                    className="tfd-input tfd-input--sm"
+                    placeholder="Ex: Protocolo CNRAC nº 12345"
+                    value={regCobContatoCanal}
+                    onChange={(e) => setRegCobContatoCanal(e.target.value)}
+                  />
+                ) : (
+                  <input
+                    type="tel"
+                    className="tfd-input tfd-input--sm"
+                    placeholder="(00) 00000-0000"
+                    value={regCobContatoCanal}
+                    onChange={(e) => {
+                      let v = e.target.value.replace(/\D/g, '').slice(0, 11);
+                      if (v.length > 6) v = `(${v.slice(0, 2)}) ${v.slice(2, 7)}-${v.slice(7)}`;
+                      else if (v.length > 2) v = `(${v.slice(0, 2)}) ${v.slice(2)}`;
+                      else if (v.length > 0) v = `(${v}`;
+                      setRegCobContatoCanal(v);
+                    }}
+                  />
+                )}
+              </FormField>
+            )}
+
+            <FormField label="Data de envio" required>
+              <input
+                type="date"
+                className="tfd-input tfd-input--sm"
+                value={regCobDataEnvio}
+                onChange={(e) => setRegCobDataEnvio(e.target.value)}
+              />
+            </FormField>
+
+            <FormField label="Conteúdo da proposta / Resumo">
+              <textarea
+                className="tfd-input tfd-input--sm"
+                rows={3}
+                placeholder="Descreva a proposta enviada, dados do paciente encaminhados, etc."
+                value={regCobConteudo}
+                onChange={(e) => setRegCobConteudo(e.target.value)}
+              />
+            </FormField>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                className="tfd-btn tfd-btn-secondary tfd-btn--sm flex-1"
+                onClick={() => setRegPendingRoute(null)}
+              >
+                Voltar
+              </button>
+              <button
+                className="tfd-btn tfd-btn-primary tfd-btn--sm flex-1"
+                disabled={regDeciding || !regCobDestinatario || !regCobCanal || !regCobContatoCanal}
+                onClick={async () => {
+                  setRegDeciding(true);
+                  try {
+                    const rotaResult = await criarRotaRegulacao({
+                      solicitacao_id: id,
+                      tipo_rota: regPendingRoute as any,
+                      justificativa: regCobConteudo || null,
+                    } as any);
+                    if (rotaResult.error) {
+                      toast.error('Erro na regulação', (rotaResult.error as any).message);
+                      setRegDeciding(false);
+                      return;
+                    }
+                    // Create cobranca linked to the rota
+                    await criarCobrancaExterna({
+                      rota_regulacao_id: (rotaResult.data as any).id,
+                      solicitacao_id: id,
+                      destinatario: regCobDestinatario,
+                      canal: regCobCanal,
+                      contato_canal: regCobContatoCanal,
+                      data_envio: regCobDataEnvio,
+                      conteudo_envio: regCobConteudo || null,
+                    } as any);
+                    toast.success('Encaminhamento registrado!', `Solicitação encaminhada para ${regCobDestinatario}.`);
+                    setRegDeciding(false);
+                    setEditingSection(null);
+                    reloadSolicitacao();
+                  } catch (err: unknown) {
+                    const e = err as { message?: string };
+                    toast.error('Erro inesperado', e.message ?? 'Tente novamente');
+                    setRegDeciding(false);
+                  }
+                }}
+              >
+                <Send size={14} />
+                {regDeciding ? 'Enviando...' : 'Confirmar Envio'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* ===== Botões de roteamento ===== */
+          <div className="space-y-2">
+            <button
+              className="tfd-btn tfd-btn-primary tfd-btn--sm w-full"
+              disabled={regDeciding}
+              onClick={async () => {
+                setRegDeciding(true);
+                try {
+                  const result = await criarRotaRegulacao({
+                    solicitacao_id: id,
+                    tipo_rota: 'APROVADO_DIRETO' as any,
+                    justificativa: null,
+                  } as any);
+                  if (result.error) {
+                    toast.error('Erro na regulação', (result.error as any).message);
+                    setRegDeciding(false);
+                    return;
+                  }
+                  toast.success('Aprovado!', 'Solicitação aprovada diretamente.');
+                  setRegDeciding(false);
+                  setEditingSection(null);
+                  reloadSolicitacao();
+                } catch (err: unknown) {
+                  const e = err as { message?: string };
+                  toast.error('Erro inesperado', e.message ?? 'Tente novamente');
+                  setRegDeciding(false);
+                }
+              }}
+            >
+              <CheckCircle2 size={14} />
+              {regDeciding ? 'Processando...' : 'Aprovar Diretamente'}
+            </button>
+            <button
+              className="tfd-btn tfd-btn-outline tfd-btn--sm w-full"
+              style={{ borderColor: '#1D4ED8', color: '#1D4ED8' }}
+              onClick={() => { setRegPendingRoute('CNRAC'); setRegCobDestinatario('CNRAC'); }}
+            >
+              <Building2 size={14} />
+              Encaminhar CNRAC
+            </button>
+            <button
+              className="tfd-btn tfd-btn-outline tfd-btn--sm w-full"
+              style={{ borderColor: '#7C3AED', color: '#7C3AED' }}
+              onClick={() => { setRegPendingRoute('SETI'); setRegCobDestinatario('SETI'); }}
+            >
+              <Heart size={14} />
+              Encaminhar SETI
+            </button>
+            <button
+              className="tfd-btn tfd-btn-outline tfd-btn--sm w-full"
+              style={{ borderColor: '#C2410C', color: '#C2410C' }}
+              onClick={() => { setRegPendingRoute('RESPOSTA_EXTERNA'); setRegCobDestinatario('SAAS/Hospital Dutra'); }}
+            >
+              <ExternalLink size={14} />
+              Consultar SAAS/Dutra
+            </button>
+            <button
+              className="tfd-btn tfd-btn-outline tfd-btn--sm w-full"
+              style={{ borderColor: '#92400E', color: '#92400E' }}
+              onClick={() => { setRegPendingRoute('SERVICO_SOCIAL'); setRegCobDestinatario('Serviço Social'); }}
+            >
+              <Users size={14} />
+              Encaminhar Serviço Social
+            </button>
+          </div>
+        )}
       </Drawer>
 
+      {/* ── Agendamento (full form) ── */}
       <Drawer
         open={editingSection === 'agendamento'}
         onClose={() => setEditingSection(null)}
-        title="Agendamento"
-        width="460px"
-        footer={<button className="tfd-btn tfd-btn-secondary" onClick={() => setEditingSection(null)}>Fechar</button>}
+        title={agEditingId ? 'Editar Agendamento' : 'Novo Agendamento'}
+        subtitle={`${pac?.nome_completo ?? '—'} — ${sol?.numero_processo ?? ''}`}
+        width="480px"
+        footer={
+          <>
+            <button className="tfd-btn tfd-btn-secondary" onClick={() => setEditingSection(null)}>Cancelar</button>
+            <button
+              className="tfd-btn tfd-btn-primary"
+              disabled={saving}
+              onClick={async () => {
+                if (!agNomeUnidade) { toast.error('Campo obrigatório', 'Informe o nome da unidade.'); return; }
+                if (!agDataAgendamento) { toast.error('Campo obrigatório', 'Informe a data do agendamento.'); return; }
+                setSaving(true);
+                const payload = {
+                  solicitacao_id: id,
+                  unidade_executante: agNomeUnidade,
+                  cnes: agCnes || undefined,
+                  cidade_destino: agCidade,
+                  uf_destino: agUf,
+                  contato_unidade: (agTipoContato && agContatoUnidade) ? `${agTipoContato}: ${agContatoUnidade}` : agContatoUnidade || undefined,
+                  tipo_atendimento: (agTipoAtendimento as any) || undefined,
+                  data_hora_agendamento: agDataAgendamento ? new Date(agDataAgendamento).toISOString() : new Date().toISOString(),
+                  origem_agendamento: (agOrigemAgendamento as any) || undefined,
+                  numero_cnrac: agNumCnrac || undefined,
+                  status: agStatusAgendamento as any,
+                };
+                try {
+                  const result = agEditingId
+                    ? await atualizarAgendamento(agEditingId, payload)
+                    : await criarAgendamento(payload);
+                  if (result.error) {
+                    toast.error(agEditingId ? 'Erro ao atualizar' : 'Erro ao registrar', (result.error as any).message);
+                    setSaving(false);
+                    return;
+                  }
+                  toast.success(agEditingId ? 'Agendamento atualizado!' : 'Agendamento registrado!');
+                  setSaving(false);
+                  setEditingSection(null);
+                  reloadSolicitacao();
+                } catch (err: unknown) {
+                  const e = err as { message?: string };
+                  toast.error('Erro inesperado', e.message ?? 'Tente novamente');
+                  setSaving(false);
+                }
+              }}
+            >
+              {saving ? 'Salvando...' : agEditingId ? 'Salvar Alterações' : 'Registrar Agendamento'}
+            </button>
+          </>
+        }
       >
+        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Unidade de Destino</h3>
+        <FormField label="Nome da unidade" required>
+          <input
+            type="text"
+            className="tfd-input"
+            placeholder="Ex: Hospital Sírio-Libanês"
+            value={agNomeUnidade}
+            onChange={(e) => setAgNomeUnidade(e.target.value)}
+          />
+        </FormField>
+        <FormField label="CNES">
+          <input
+            type="text"
+            className="tfd-input"
+            placeholder="0000000"
+            maxLength={7}
+            value={agCnes}
+            onChange={(e) => setAgCnes(e.target.value.replace(/\D/g, '').slice(0, 7))}
+            style={{ fontFamily: 'var(--tfd-font-mono)' }}
+          />
+        </FormField>
+        <UfCidadeSelect
+          uf={agUf}
+          cidade={agCidade}
+          onUfChange={setAgUf}
+          onCidadeChange={setAgCidade}
+          required
+        />
+        <FormField label="Tipo de contato">
+          <select
+            className="tfd-input"
+            value={agTipoContato}
+            onChange={(e) => { setAgTipoContato(e.target.value); setAgContatoUnidade(''); }}
+          >
+            <option value="">Selecione...</option>
+            <option value="TELEFONE">Telefone</option>
+            <option value="WHATSAPP">WhatsApp</option>
+            <option value="SMS">SMS</option>
+            <option value="EMAIL">E-mail</option>
+          </select>
+        </FormField>
+        {agTipoContato && (
+          <FormField label={agTipoContato === 'EMAIL' ? 'E-mail' : 'Número'}>
+            {agTipoContato === 'EMAIL' ? (
+              <input
+                type="email"
+                className="tfd-input"
+                placeholder="contato@hospital.com.br"
+                value={agContatoUnidade}
+                onChange={(e) => setAgContatoUnidade(e.target.value)}
+              />
+            ) : (
+              <input
+                type="tel"
+                className="tfd-input"
+                placeholder="(00) 00000-0000"
+                value={agContatoUnidade}
+                onChange={(e) => {
+                  let v = e.target.value.replace(/\D/g, '').slice(0, 11);
+                  if (v.length > 6) v = `(${v.slice(0, 2)}) ${v.slice(2, 7)}-${v.slice(7)}`;
+                  else if (v.length > 2) v = `(${v.slice(0, 2)}) ${v.slice(2)}`;
+                  else if (v.length > 0) v = `(${v}`;
+                  setAgContatoUnidade(v);
+                }}
+              />
+            )}
+          </FormField>
+        )}
+
+        <hr className="tfd-divider" />
+
+        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Agendamento</h3>
+        <FormField label="Tipo de atendimento" required>
+          <select
+            className="tfd-input"
+            value={agTipoAtendimento}
+            onChange={(e) => setAgTipoAtendimento(e.target.value)}
+            disabled={tipoAtendLoading}
+          >
+            <option value="">{tipoAtendLoading ? 'Carregando...' : 'Selecione...'}</option>
+            {tipoAtendOptions.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </FormField>
+        <FormField label="Data do agendamento" required>
+          <input
+            type="date"
+            className="tfd-input"
+            value={agDataAgendamento}
+            onChange={(e) => setAgDataAgendamento(e.target.value)}
+          />
+        </FormField>
+        <FormField label="Origem do agendamento">
+          <select
+            className="tfd-input"
+            value={agOrigemAgendamento}
+            onChange={(e) => setAgOrigemAgendamento(e.target.value)}
+            disabled={origemAgendLoading}
+          >
+            <option value="">{origemAgendLoading ? 'Carregando...' : 'Selecione...'}</option>
+            {origemAgendOptions.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </FormField>
+        {agOrigemAgendamento === 'CNRAC' && (
+          <FormField label="Nº CNRAC">
+            <input
+              type="text"
+              className="tfd-input"
+              placeholder="Número CNRAC"
+              value={agNumCnrac}
+              onChange={(e) => setAgNumCnrac(e.target.value)}
+              style={{ fontFamily: 'var(--tfd-font-mono)' }}
+            />
+          </FormField>
+        )}
+
+        <hr className="tfd-divider" />
+
+        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Status</h3>
+        <FormField label="Status do agendamento">
+          <select
+            className="tfd-input"
+            value={agStatusAgendamento}
+            onChange={(e) => setAgStatusAgendamento(e.target.value)}
+          >
+            <option value="AGUARDANDO_CONFIRMACAO">Aguardando Confirmação</option>
+            <option value="CONFIRMADO">Confirmado</option>
+          </select>
+        </FormField>
+
+        <hr className="tfd-divider" />
+
+        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Comprovante</h3>
+        <FormField label="Upload de comprovante">
+          <div className="relative">
+            <input
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png"
+              className="tfd-input pt-1.5"
+              onChange={(e) => setAgComprovante(e.target.files?.[0] ?? null)}
+            />
+          </div>
+        </FormField>
         <div className="tfd-message tfd-message--info">
-          <span className="tfd-message-icon mt-0.5 shrink-0"><Info size={16} /></span>
-          <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>Os agendamentos são gerenciados na tela de Atendimento no Destino. Use o menu lateral para acessá-la.</p>
+          <span className="tfd-message-icon mt-0.5 shrink-0">
+            <Info size={16} />
+          </span>
+          <p className="text-sm flex-1" style={{ color: 'var(--tfd-text-secondary)' }}>
+            Tipos aceitos: PDF, JPG, PNG. O comprovante é obrigatório para avançar para emissão de passagem.
+          </p>
         </div>
       </Drawer>
 
+      {/* ── Viagens (tabbed ida/volta form) ── */}
       <Drawer
         open={editingSection === 'viagens'}
         onClose={() => setEditingSection(null)}
-        title="Viagens e Passagens"
-        width="460px"
-        footer={<button className="tfd-btn tfd-btn-secondary" onClick={() => setEditingSection(null)}>Fechar</button>}
+        title={viagEditingId ? 'Editar Passagens' : 'Emitir Passagens — Ida + Volta'}
+        subtitle={`${pac?.nome_completo ?? '—'} — ${sol?.numero_processo ?? ''}`}
+        width="580px"
+        footer={
+          <>
+            <button className="tfd-btn tfd-btn-secondary" onClick={() => setEditingSection(null)}>Cancelar</button>
+            <button
+              className="tfd-btn tfd-btn-primary"
+              disabled={submitting}
+              onClick={async () => {
+                if (!idaOrigem || !idaDestino || !idaDataEmbarque) {
+                  toast.warning('Dados incompletos', 'Preencha origem, destino e data da IDA.');
+                  setViagDrawerTab('ida');
+                  return;
+                }
+                if (!voltaOrigem || !voltaDestino || !voltaDataEmbarque) {
+                  toast.warning('Dados incompletos', 'Preencha origem, destino e data da VOLTA.');
+                  setViagDrawerTab('volta');
+                  return;
+                }
+                setSubmitting(true);
+                try {
+                  if (viagEditingId) {
+                    // Edit existing
+                    const viagens = sol?.viagens ?? [];
+                    const ida = viagens.find((v: any) => v.tipo === 'IDA');
+                    const volta = viagens.find((v: any) => v.tipo === 'RETORNO');
+                    if (ida) {
+                      await atualizarViagem(ida.id, {
+                        solicitacao_id: id,
+                        tipo: 'IDA' as any,
+                        modal: (idaModalTransporte as any) || 'AEREO',
+                        origem_cidade: idaOrigem, origem_uf: idaOrigemUf,
+                        destino_cidade: idaDestino, destino_uf: idaDestinoUf,
+                        com_pernoite: false,
+                        data_embarque_prevista: idaDataEmbarque,
+                        medif_necessario: idaMedif,
+                        valor: idaValor ? parseCurrency(idaValor) : undefined,
+                        companhia: (companhiasList.find((c) => c.id === idaCompanhia)?.nome ?? idaCompanhia) || undefined,
+                        numero_bilhete: idaLocalizador || undefined,
+                        observacoes: idaObservacoes || undefined,
+                      } as any);
+                    }
+                    if (volta) {
+                      await atualizarViagem(volta.id, {
+                        solicitacao_id: id,
+                        tipo: 'RETORNO' as any,
+                        modal: (voltaModalTransporte as any) || 'AEREO',
+                        origem_cidade: voltaOrigem, origem_uf: voltaOrigemUf,
+                        destino_cidade: voltaDestino, destino_uf: voltaDestinoUf,
+                        com_pernoite: false,
+                        data_embarque_prevista: voltaDataEmbarque,
+                        medif_necessario: voltaMedif,
+                        valor: voltaValor ? parseCurrency(voltaValor) : undefined,
+                        companhia: (companhiasList.find((c) => c.id === voltaCompanhia)?.nome ?? voltaCompanhia) || undefined,
+                        numero_bilhete: voltaLocalizador || undefined,
+                        observacoes: voltaObservacoes || undefined,
+                      } as any);
+                    }
+                    toast.success('Passagens atualizadas!');
+                  } else {
+                    // Create ida
+                    const idaResult = await criarViagem({
+                      solicitacao_id: id,
+                      tipo: 'IDA' as any,
+                      modal: (idaModalTransporte as any) || 'AEREO',
+                      origem_cidade: idaOrigem, origem_uf: idaOrigemUf,
+                      destino_cidade: idaDestino, destino_uf: idaDestinoUf,
+                      com_pernoite: false,
+                      data_embarque_prevista: idaDataEmbarque,
+                      medif_necessario: idaMedif,
+                      valor: idaValor ? parseCurrency(idaValor) : undefined,
+                      companhia: (companhiasList.find((c) => c.id === idaCompanhia)?.nome ?? idaCompanhia) || undefined,
+                      numero_bilhete: idaLocalizador || undefined,
+                      observacoes: idaObservacoes || undefined,
+                    } as any);
+                    if (idaResult.error) {
+                      toast.error('Erro ao emitir ida', (idaResult.error as any).message);
+                      setSubmitting(false);
+                      return;
+                    }
+                    // Create volta
+                    const voltaResult = await criarViagem({
+                      solicitacao_id: id,
+                      tipo: 'RETORNO' as any,
+                      modal: (voltaModalTransporte as any) || 'AEREO',
+                      origem_cidade: voltaOrigem, origem_uf: voltaOrigemUf,
+                      destino_cidade: voltaDestino, destino_uf: voltaDestinoUf,
+                      com_pernoite: false,
+                      data_embarque_prevista: voltaDataEmbarque,
+                      medif_necessario: voltaMedif,
+                      valor: voltaValor ? parseCurrency(voltaValor) : undefined,
+                      companhia: (companhiasList.find((c) => c.id === voltaCompanhia)?.nome ?? voltaCompanhia) || undefined,
+                      numero_bilhete: voltaLocalizador || undefined,
+                      observacoes: voltaObservacoes || undefined,
+                    } as any);
+                    if (voltaResult.error) {
+                      toast.error('Erro ao emitir volta', (voltaResult.error as any).message);
+                      setSubmitting(false);
+                      return;
+                    }
+                    toast.success('Passagens emitidas!', 'Ida e volta registradas.');
+                  }
+                  setSubmitting(false);
+                  setEditingSection(null);
+                  reloadSolicitacao();
+                } catch (err: unknown) {
+                  const e = err as { message?: string };
+                  toast.error('Erro inesperado', e.message ?? 'Tente novamente');
+                  setSubmitting(false);
+                }
+              }}
+            >
+              {submitting ? <><Loader2 size={14} className="animate-spin" /> Emitindo...</> : viagEditingId ? 'Salvar Alterações' : <><Plane size={14} /> Emitir Ida + Volta</>}
+            </button>
+          </>
+        }
       >
-        <div className="tfd-message tfd-message--info">
-          <span className="tfd-message-icon mt-0.5 shrink-0"><Info size={16} /></span>
-          <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>As passagens são gerenciadas na tela de Viagens e Passagens. Use o menu lateral para acessá-la.</p>
+        {/* Tabs: Ida / Volta */}
+        <div className="flex items-center gap-1 mb-4" style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
+          {([
+            { key: 'ida' as DrawerTab, label: 'Ida', icon: <Plane size={14} /> },
+            { key: 'volta' as DrawerTab, label: 'Volta', icon: <Plane size={14} style={{ transform: 'rotate(180deg)' }} /> },
+          ]).map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              className="flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium transition-colors"
+              style={{
+                color: viagDrawerTab === tab.key ? 'var(--tfd-primary-600)' : 'var(--tfd-text-muted)',
+                borderBottom: viagDrawerTab === tab.key ? '2px solid var(--tfd-primary-500)' : '2px solid transparent',
+                marginBottom: '-1px',
+              }}
+              onClick={() => setViagDrawerTab(tab.key)}
+            >
+              {tab.icon}
+              {tab.label}
+              {tab.key === 'ida' && idaOrigem && idaDestino && idaDataEmbarque && (
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--tfd-status-success)' }} />
+              )}
+              {tab.key === 'volta' && voltaOrigem && voltaDestino && voltaDataEmbarque && (
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--tfd-status-success)' }} />
+              )}
+            </button>
+          ))}
         </div>
+
+        {/* Tab: Ida */}
+        {viagDrawerTab === 'ida' && (
+          <>
+            <h4 className="text-xs font-semibold mb-1" style={{ color: 'var(--tfd-text-muted)' }}>Origem</h4>
+            <UfCidadeSelect ufLabel="UF Origem" cidadeLabel="Cidade Origem" uf={idaOrigemUf} cidade={idaOrigem} onUfChange={setIdaOrigemUf} onCidadeChange={setIdaOrigem} required />
+            <h4 className="text-xs font-semibold mb-1 mt-2" style={{ color: 'var(--tfd-text-muted)' }}>Destino</h4>
+            <UfCidadeSelect ufLabel="UF Destino" cidadeLabel="Cidade Destino" uf={idaDestinoUf} cidade={idaDestino} onUfChange={setIdaDestinoUf} onCidadeChange={setIdaDestino} required />
+            <FormField label="Data de embarque" required>
+              <input type="date" className="tfd-input" value={idaDataEmbarque} onChange={(e) => setIdaDataEmbarque(e.target.value)} />
+            </FormField>
+            <FormField label="Modal de transporte">
+              <select className="tfd-input" value={idaModalTransporte} onChange={(e) => setIdaModalTransporte(e.target.value)} disabled={loadingModais}>
+                <option value="">{loadingModais ? 'Carregando...' : 'Selecione...'}</option>
+                {modaisTransporte.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Companhia">
+              <select className="tfd-input" value={idaCompanhia} onChange={(e) => setIdaCompanhia(e.target.value)} disabled={loadingCompanhias}>
+                <option value="">{loadingCompanhias ? 'Carregando...' : 'Selecione...'}</option>
+                {companhiasList.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Localizador / Bilhete">
+              <input type="text" className="tfd-input" placeholder="Código do bilhete" value={idaLocalizador} onChange={(e) => setIdaLocalizador(e.target.value)} />
+            </FormField>
+            <FormField label="Valor da passagem">
+              <input type="text" className="tfd-input" placeholder="R$ 0,00" value={idaValor} onChange={(e) => setIdaValor(maskCurrency(e.target.value))} />
+            </FormField>
+            <div className="mb-4 flex items-center gap-2">
+              <input type="checkbox" id="idaMedif" checked={idaMedif} onChange={(e) => setIdaMedif(e.target.checked)} style={{ accentColor: 'var(--tfd-primary-500)' }} />
+              <label htmlFor="idaMedif" className="tfd-label" style={{ marginBottom: 0 }}>MEDIF necessário</label>
+            </div>
+            <FormField label="Observações">
+              <textarea className="tfd-input" rows={2} value={idaObservacoes} onChange={(e) => setIdaObservacoes(e.target.value)} />
+            </FormField>
+          </>
+        )}
+
+        {/* Tab: Volta */}
+        {viagDrawerTab === 'volta' && (
+          <>
+            <h4 className="text-xs font-semibold mb-1" style={{ color: 'var(--tfd-text-muted)' }}>Origem</h4>
+            <UfCidadeSelect ufLabel="UF Origem" cidadeLabel="Cidade Origem" uf={voltaOrigemUf} cidade={voltaOrigem} onUfChange={setVoltaOrigemUf} onCidadeChange={setVoltaOrigem} required />
+            <h4 className="text-xs font-semibold mb-1 mt-2" style={{ color: 'var(--tfd-text-muted)' }}>Destino</h4>
+            <UfCidadeSelect ufLabel="UF Destino" cidadeLabel="Cidade Destino" uf={voltaDestinoUf} cidade={voltaDestino} onUfChange={setVoltaDestinoUf} onCidadeChange={setVoltaDestino} required />
+            <FormField label="Data de embarque" required>
+              <input type="date" className="tfd-input" value={voltaDataEmbarque} onChange={(e) => setVoltaDataEmbarque(e.target.value)} />
+            </FormField>
+            <FormField label="Modal de transporte">
+              <select className="tfd-input" value={voltaModalTransporte} onChange={(e) => setVoltaModalTransporte(e.target.value)} disabled={loadingModais}>
+                <option value="">{loadingModais ? 'Carregando...' : 'Selecione...'}</option>
+                {modaisTransporte.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Companhia">
+              <select className="tfd-input" value={voltaCompanhia} onChange={(e) => setVoltaCompanhia(e.target.value)} disabled={loadingCompanhias}>
+                <option value="">{loadingCompanhias ? 'Carregando...' : 'Selecione...'}</option>
+                {companhiasList.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Localizador / Bilhete">
+              <input type="text" className="tfd-input" placeholder="Código do bilhete" value={voltaLocalizador} onChange={(e) => setVoltaLocalizador(e.target.value)} />
+            </FormField>
+            <FormField label="Valor da passagem">
+              <input type="text" className="tfd-input" placeholder="R$ 0,00" value={voltaValor} onChange={(e) => setVoltaValor(maskCurrency(e.target.value))} />
+            </FormField>
+            <div className="mb-4 flex items-center gap-2">
+              <input type="checkbox" id="voltaMedif" checked={voltaMedif} onChange={(e) => setVoltaMedif(e.target.checked)} style={{ accentColor: 'var(--tfd-primary-500)' }} />
+              <label htmlFor="voltaMedif" className="tfd-label" style={{ marginBottom: 0 }}>MEDIF necessário</label>
+            </div>
+            <FormField label="Observações">
+              <textarea className="tfd-input" rows={2} value={voltaObservacoes} onChange={(e) => setVoltaObservacoes(e.target.value)} />
+            </FormField>
+          </>
+        )}
       </Drawer>
 
+      {/* ── Ajuda de Custo (full form) ── */}
       <Drawer
         open={editingSection === 'ajuda-custo'}
         onClose={() => setEditingSection(null)}
-        title="Ajuda de Custo"
-        width="460px"
-        footer={<button className="tfd-btn tfd-btn-secondary" onClick={() => setEditingSection(null)}>Fechar</button>}
+        title={acEditingId ? 'Editar Ajuda de Custo' : 'Nova Ajuda de Custo'}
+        subtitle={`${pac?.nome_completo ?? '—'} — ${sol?.numero_processo ?? ''}`}
+        width="520px"
+        footer={
+          <>
+            <button className="tfd-btn tfd-btn-secondary" onClick={() => setEditingSection(null)}>Cancelar</button>
+            <button
+              className="tfd-btn tfd-btn-primary"
+              disabled={saving}
+              onClick={async () => {
+                if (!acDataInicio) { toast.error('Data obrigatória', 'Informe a data de início do período.'); return; }
+                if (acDataFimError) { toast.error('Datas inválidas', acDataFimError); return; }
+                setSaving(true);
+                const payload: any = {
+                  solicitacao_id: id,
+                  tipo: acTipoBeneficiario || 'PACIENTE',
+                  data_inicio: acDataInicio,
+                  data_fim: acDataFim || null,
+                  valor_diaria: acValorDiariaNum,
+                  valor_total: acValorTotalCalc,
+                  observacoes: acObservacoes || null,
+                  status: 'EM_ANALISE',
+                };
+                try {
+                  const result = acEditingId
+                    ? await atualizarAjudaCusto(acEditingId, payload)
+                    : await criarAjudaCusto(payload);
+                  if (result.error) {
+                    toast.error(acEditingId ? 'Erro ao atualizar' : 'Erro ao cadastrar', (result.error as any).message);
+                    setSaving(false);
+                    return;
+                  }
+                  toast.success(acEditingId ? 'Ajuda de custo atualizada!' : 'Ajuda de custo cadastrada!');
+                  setSaving(false);
+                  setEditingSection(null);
+                  reloadSolicitacao();
+                } catch (err: unknown) {
+                  const e = err as { message?: string };
+                  toast.error('Erro inesperado', e.message ?? 'Tente novamente');
+                  setSaving(false);
+                }
+              }}
+            >
+              {saving ? 'Salvando...' : acEditingId ? 'Salvar Alterações' : 'Cadastrar Ajuda de Custo'}
+            </button>
+          </>
+        }
       >
-        <div className="tfd-message tfd-message--info">
-          <span className="tfd-message-icon mt-0.5 shrink-0"><Info size={16} /></span>
-          <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>A ajuda de custo é gerenciada na tela dedicada. Use o menu lateral para acessá-la.</p>
+        <FormField label="Tipo de beneficiário" required>
+          <select
+            className="tfd-input"
+            value={acTipoBeneficiario}
+            onChange={(e) => setAcTipoBeneficiario(e.target.value)}
+          >
+            <option value="PACIENTE">Paciente</option>
+            <option value="ACOMPANHANTE">Acompanhante</option>
+          </select>
+        </FormField>
+
+        <hr className="tfd-divider" />
+
+        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Período</h3>
+        <FormField label="Data de início" required>
+          <input
+            type="date"
+            className="tfd-input"
+            value={acDataInicio}
+            onChange={(e) => setAcDataInicio(e.target.value)}
+          />
+        </FormField>
+        <FormField label="Data de fim" error={acDataFimError}>
+          <input
+            type="date"
+            className="tfd-input"
+            min={acDataInicio || undefined}
+            value={acDataFim}
+            onChange={(e) => setAcDataFim(e.target.value)}
+          />
+        </FormField>
+        <FormField label="Dias elegíveis">
+          <input
+            type="number"
+            className="tfd-input"
+            min="0"
+            placeholder={acDiasCalc > 0 ? `Calculado: ${acDiasCalc}` : 'Calculado automaticamente'}
+            value={acDiasElegiveis}
+            onChange={(e) => setAcDiasElegiveis(e.target.value)}
+          />
+          <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
+            Deixe em branco para calcular automaticamente pelas datas.
+          </p>
+        </FormField>
+
+        <hr className="tfd-divider" />
+
+        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Valores</h3>
+        <FormField label="Valor da diária">
+          <input
+            type="text"
+            className="tfd-input"
+            placeholder={`R$ ${valorDiariaCompleta.toFixed(2).replace('.', ',')}`}
+            value={acValorDiaria}
+            onChange={(e) => setAcValorDiaria(maskCurrency(e.target.value))}
+          />
+          <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
+            Valor padrão do sistema: {formatCurrency(valorDiariaCompleta)}
+          </p>
+        </FormField>
+
+        {/* Calculated total display */}
+        <div
+          className="flex items-center justify-between px-4 py-3 rounded-lg mb-4"
+          style={{ backgroundColor: 'var(--tfd-primary-50)' }}
+        >
+          <div>
+            <p className="text-xs" style={{ color: 'var(--tfd-primary-600)' }}>Valor total calculado</p>
+            <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
+              {acDiasCalc} dias × {formatCurrency(acValorDiariaNum)}
+            </p>
+          </div>
+          <p className="text-xl font-bold" style={{ color: 'var(--tfd-primary-700)' }}>
+            {formatCurrency(acValorTotalCalc)}
+          </p>
         </div>
+
+        <hr className="tfd-divider" />
+
+        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Observações</h3>
+        <FormField label="Observações">
+          <textarea
+            className="tfd-input"
+            rows={3}
+            placeholder="Observações opcionais..."
+            value={acObservacoes}
+            onChange={(e) => setAcObservacoes(e.target.value)}
+          />
+        </FormField>
       </Drawer>
 
+      {/* ── Permanência (full form) ── */}
       <Drawer
         open={editingSection === 'permanencia'}
         onClose={() => setEditingSection(null)}
-        title="Permanência"
-        width="460px"
-        footer={<button className="tfd-btn tfd-btn-secondary" onClick={() => setEditingSection(null)}>Fechar</button>}
+        title={permEditingId ? 'Editar Permanência' : 'Registrar Permanência'}
+        subtitle={`${pac?.nome_completo ?? '—'} — ${sol?.numero_processo ?? ''}`}
+        width="480px"
+        footer={
+          <>
+            <button className="tfd-btn tfd-btn-secondary" onClick={() => setEditingSection(null)}>Cancelar</button>
+            <button
+              className="tfd-btn tfd-btn-primary"
+              disabled={submitting}
+              onClick={async () => {
+                if (!permDataComunicacao) { toast.warning('Campo obrigatório', 'Informe a data da comunicação.'); return; }
+                if (!permMotivo) { toast.warning('Campo obrigatório', 'Selecione o motivo da permanência.'); return; }
+                if (!permNovaDataRetorno) { toast.warning('Campo obrigatório', 'Informe a nova data de retorno prevista.'); return; }
+                setSubmitting(true);
+                try {
+                  const payload: any = {
+                    solicitacao_id: id,
+                    data_comunicacao: permDataComunicacao,
+                    comunicado_por: permComunicadoPor || null,
+                    motivo: permMotivo,
+                    motivo_descricao: permMotivo === 'OUTROS' ? permMotivoDescricao || null : null,
+                    nova_data_retorno_prevista: permNovaDataRetorno,
+                  };
+                  const result = permEditingId
+                    ? await atualizarPermanencia(permEditingId, payload)
+                    : await criarPermanencia(payload);
+                  if (result.error) {
+                    const err = result.error as { message?: string };
+                    toast.error(permEditingId ? 'Erro ao atualizar' : 'Erro ao registrar', err.message ?? 'Tente novamente.');
+                    setSubmitting(false);
+                    return;
+                  }
+                  // If prorrogação requested and this is a new permanência, create it
+                  if (permSolicitarProrrogacao && !permEditingId && result.data) {
+                    const permId = (result.data as any).id;
+                    const diasAdd = parseInt(permDiasAdicionais, 10);
+                    if (permId && diasAdd > 0) {
+                      const novaDataProrrogacao = new Date(permNovaDataRetorno + 'T00:00:00');
+                      novaDataProrrogacao.setDate(novaDataProrrogacao.getDate() + diasAdd);
+                      await criarProrrogacao({
+                        permanencia_id: permId,
+                        justificativa_medica: permJustificativaMedica,
+                        documento_justificativa_id: null as any,
+                        dias_adicionais_solicitados: diasAdd,
+                        nova_data_retorno: novaDataProrrogacao.toISOString().split('T')[0],
+                        impacto_diarias_valor: permCustoAdicional ? permCustoAdicional.valorTotal : null,
+                      });
+                    }
+                  }
+                  toast.success(
+                    permEditingId ? 'Permanência atualizada!' : 'Permanência registrada!',
+                    permEditingId ? 'As alterações foram salvas.' : 'O registro de permanência foi salvo.',
+                  );
+                  setSubmitting(false);
+                  setEditingSection(null);
+                  reloadSolicitacao();
+                } catch (err: unknown) {
+                  const e = err as { message?: string };
+                  toast.error('Erro inesperado', e.message ?? 'Tente novamente.');
+                  setSubmitting(false);
+                }
+              }}
+            >
+              {submitting ? (
+                <><Loader2 size={16} className="animate-spin" /> {permEditingId ? 'Salvando...' : 'Registrando...'}</>
+              ) : (
+                permEditingId ? 'Salvar Alterações' : 'Registrar'
+              )}
+            </button>
+          </>
+        }
       >
-        <div className="tfd-message tfd-message--info">
-          <span className="tfd-message-icon mt-0.5 shrink-0"><Info size={16} /></span>
-          <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>A permanência é gerenciada na tela dedicada. Use o menu lateral para acessá-la.</p>
-        </div>
+        <hr className="tfd-divider" />
+
+        {/* ---- Comunicação de Permanência ---- */}
+        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
+          Comunicação de Permanência
+        </h3>
+
+        <FormField label="Data da comunicação" required>
+          <input
+            type="date"
+            className="tfd-input"
+            value={permDataComunicacao}
+            onChange={(e) => setPermDataComunicacao(e.target.value)}
+          />
+        </FormField>
+
+        <FormField label="Comunicado por" required>
+          <select
+            className="tfd-input"
+            value={permComunicadoPor}
+            onChange={(e) => setPermComunicadoPor(e.target.value)}
+          >
+            <option value="">Selecione...</option>
+            <option value="PACIENTE">Paciente</option>
+            <option value="RESPONSAVEL">Responsável</option>
+            <option value="UNIDADE_DESTINO">Unidade de Destino</option>
+            <option value="REGIONAL">Regional</option>
+          </select>
+        </FormField>
+
+        <FormField label="Motivo" required>
+          <select
+            className="tfd-input"
+            value={permMotivo}
+            onChange={(e) => setPermMotivo(e.target.value)}
+            disabled={motivoPermLoading}
+          >
+            <option value="">{motivoPermLoading ? 'Carregando...' : 'Selecione...'}</option>
+            {motivoPermOptions.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </FormField>
+
+        {permMotivo === 'OUTROS' && (
+          <FormField label="Descrição do motivo" required>
+            <textarea
+              className="tfd-input"
+              rows={3}
+              placeholder="Descreva o motivo da permanência..."
+              value={permMotivoDescricao}
+              onChange={(e) => setPermMotivoDescricao(e.target.value)}
+            />
+          </FormField>
+        )}
+
+        <FormField label="Nova data de retorno prevista" required>
+          <input
+            type="date"
+            className="tfd-input"
+            value={permNovaDataRetorno}
+            onChange={(e) => setPermNovaDataRetorno(e.target.value)}
+          />
+        </FormField>
+
+        {/* ---- Cost impact calculation ---- */}
+        {permCustoAdicional && (
+          <div
+            className="flex flex-col gap-1 px-3 py-3 rounded-lg mb-3"
+            style={{ background: 'var(--tfd-warning-50, #FFFBEB)', border: '1px solid var(--tfd-warning-200, #FDE68A)' }}
+          >
+            <p className="text-xs font-semibold" style={{ color: 'var(--tfd-warning-700, #92400E)' }}>
+              Impacto na Ajuda de Custo
+            </p>
+            <div className="flex items-center justify-between text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
+              <span>Dias extras além do previsto:</span>
+              <span className="font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+                {permCustoAdicional.diasExtras} dia{permCustoAdicional.diasExtras !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
+              <span>Valor da diária:</span>
+              <span className="font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+                R$ {permCustoAdicional.valorDiaria.toFixed(2).replace('.', ',')}
+              </span>
+            </div>
+            <hr style={{ borderColor: 'var(--tfd-warning-200, #FDE68A)', margin: '4px 0' }} />
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-semibold" style={{ color: 'var(--tfd-warning-700, #92400E)' }}>
+                Custo adicional estimado:
+              </span>
+              <span className="font-bold text-base" style={{ color: 'var(--tfd-warning-700, #92400E)' }}>
+                R$ {permCustoAdicional.valorTotal.toFixed(2).replace('.', ',')}
+              </span>
+            </div>
+          </div>
+        )}
+
+        <hr className="tfd-divider" />
+
+        {/* ---- Prorrogação ---- */}
+        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
+          Prorrogação
+        </h3>
+
+        <label className="flex items-center gap-2 mb-4 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={permSolicitarProrrogacao}
+            onChange={(e) => setPermSolicitarProrrogacao(e.target.checked)}
+          />
+          <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>
+            Solicitar prorrogação?
+          </span>
+        </label>
+
+        {permSolicitarProrrogacao && (
+          <>
+            <FormField label="Dias adicionais" required>
+              <input
+                type="number"
+                className="tfd-input"
+                min={1}
+                placeholder="Ex: 5"
+                value={permDiasAdicionais}
+                onChange={(e) => setPermDiasAdicionais(e.target.value)}
+              />
+            </FormField>
+
+            <FormField label="Justificativa médica" required>
+              <textarea
+                className="tfd-input"
+                rows={3}
+                placeholder="Justificativa médica para a prorrogação..."
+                value={permJustificativaMedica}
+                onChange={(e) => setPermJustificativaMedica(e.target.value)}
+              />
+            </FormField>
+
+            <div className="tfd-message tfd-message--info">
+              <span className="tfd-message-icon mt-0.5 shrink-0">
+                <Info size={14} />
+              </span>
+              <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
+                A prorrogação será encaminhada para a Regulação para aprovação. Processos de prorrogação não passam por parecer médico.
+              </p>
+            </div>
+          </>
+        )}
       </Drawer>
     </>
   );

@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
+import type { InsertDTO, StatusTermo } from '@/lib/supabase/database.types';
 
 function getSupabase() {
   return createClient();
@@ -20,7 +21,7 @@ export async function listarTermos(filters?: {
     .order('created_at', { ascending: false });
 
   if (filters?.status && filters.status !== 'TODOS') {
-    query = query.eq('status', filters.status);
+    query = query.eq('status', filters.status as StatusTermo);
   }
 
   if (filters?.search) {
@@ -62,26 +63,7 @@ export async function buscarTermoPorSolicitacao(solicitacaoId: string) {
 
 /* ── Criar (registrar) termo de compromisso ── */
 
-export async function criarTermo(data: {
-  solicitacao_id: string;
-  numero_processo: string;
-  paciente_nome: string;
-  paciente_cpf: string;
-  paciente_rg?: string;
-  paciente_cns?: string;
-  paciente_endereco?: string;
-  paciente_municipio?: string;
-  status: string;
-  modalidade_aceite: string;
-  responsavel_nome?: string;
-  responsavel_cpf?: string;
-  responsavel_parentesco?: string;
-  arquivo_url?: string;
-  arquivo_nome?: string;
-  confirmacao_leitura?: boolean;
-  data_registro?: string;
-  registrado_por?: string;
-}) {
+export async function criarTermo(data: Omit<InsertDTO<'termos_compromisso'>, 'id' | 'created_at' | 'updated_at'>) {
   const supabase = getSupabase();
   return supabase.from('termos_compromisso').insert(data).select().single();
 }

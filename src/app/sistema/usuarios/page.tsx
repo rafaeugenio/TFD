@@ -9,17 +9,19 @@ import {
   Shield,
   ChevronDown,
   ChevronUp,
-  Eye,
-  EyeOff,
   Copy,
-  RefreshCw,
   Link2,
   Trash2,
   Loader2,
   AlertTriangle,
   Info,
   Monitor,
+  Mail,
+  CheckCircle2,
 } from 'lucide-react';
+
+import Drawer from '@/shared/components/drawer/Drawer';
+import FormField from '@/shared/components/drawer/FormField';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import EmptyState from '@/shared/components/empty-state/EmptyState';
@@ -32,8 +34,6 @@ import {
 } from '@/services/usuarios.service';
 import {
   listarPapeis,
-  buscarCodigoAtivo,
-  regenerarCodigo,
   listarTelas,
   listarTelasDoPapel,
   type Papel,
@@ -55,13 +55,6 @@ interface UsuarioRow {
   is_admin: boolean;
   created_at?: string;
   updated_at?: string;
-}
-
-interface CodigoConvite {
-  id: string;
-  codigo: string;
-  ativo: boolean;
-  created_at: string;
 }
 
 /* -------------------------------------------------- */
@@ -87,10 +80,6 @@ function getAvatarColor(name: string): string {
   return colors[Math.abs(hash) % colors.length];
 }
 
-function maskCode(code: string): string {
-  return code.replace(/[A-Z0-9]/g, '\u2022');
-}
-
 /** Convert mock Usuario to UsuarioRow shape */
 function mockToRow(mock: (typeof MOCK_USUARIOS)[number]): UsuarioRow {
   return {
@@ -113,7 +102,7 @@ const MODULOS = [
   {
     key: 'operacional',
     label: 'Operacional',
-    telas: ['Dashboard', 'Solicitacoes', 'Regulacao Medica'],
+    telas: ['Dashboard', 'Solicitações', 'Regulação Médica'],
   },
   {
     key: 'atendimento',
@@ -123,12 +112,12 @@ const MODULOS = [
   {
     key: 'financeiro',
     label: 'Financeiro',
-    telas: ['Ajuda de Custo / Diarias', 'Permanencia'],
+    telas: ['Ajuda de Custo / Diárias', 'Permanência'],
   },
   {
     key: 'gestao',
-    label: 'Gestao',
-    telas: ['Altas e Encerramento', 'Relatorios', 'Configuracoes'],
+    label: 'Gestão',
+    telas: ['Altas e Encerramento', 'Relatórios', 'Configurações'],
   },
 ];
 
@@ -150,12 +139,13 @@ export default function UsuariosPage() {
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  /* ---- Invite code state ---- */
-  const [showInviteBanner, setShowInviteBanner] = useState(false);
-  const [inviteCode, setInviteCode] = useState<CodigoConvite | null>(null);
-  const [codeVisible, setCodeVisible] = useState(false);
-  const [codeCopied, setCodeCopied] = useState(false);
-  const [codeLoading, setCodeLoading] = useState(false);
+  /* ---- Invite drawer state ---- */
+  const [inviteDrawerOpen, setInviteDrawerOpen] = useState(false);
+  const [inviteNome, setInviteNome] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteSending, setInviteSending] = useState(false);
+  const [inviteSuccess, setInviteSuccess] = useState(false);
+  const [inviteLink, setInviteLink] = useState('');
 
   /* ---- Papel change loading ---- */
   const [savingPapelFor, setSavingPapelFor] = useState<string | null>(null);
@@ -171,12 +161,10 @@ export default function UsuariosPage() {
       const usersPromise = listarUsuarios();
       const papeisPromise = listarPapeis() as Promise<{ data: unknown; error: unknown }>;
       const telasPromise = listarTelas() as Promise<{ data: unknown; error: unknown }>;
-      const codigoPromise = buscarCodigoAtivo() as Promise<{ data: unknown; error: unknown }>;
 
       const usersRes = await usersPromise;
       const papeisRes = await papeisPromise;
       const telasRes = await telasPromise;
-      const codigoRes = await codigoPromise;
 
       // Users: fallback to mocks if Supabase table is empty or errors
       if (usersRes.error || !usersRes.data || (usersRes.data as unknown[]).length === 0) {
@@ -195,10 +183,6 @@ export default function UsuariosPage() {
         setTelas(telasRes.data as TelaSistema[]);
       }
 
-      // Invite code
-      if (!codigoRes.error && codigoRes.data) {
-        setInviteCode(codigoRes.data as CodigoConvite);
-      }
     } catch {
       setUsuarios(MOCK_USUARIOS.map(mockToRow));
     } finally {
@@ -335,42 +319,59 @@ export default function UsuariosPage() {
     toast.success('Usuário removido!', 'O usuário foi desvinculado do sistema.');
   };
 
-  /* ---- Invite code handlers ---- */
+  /* ---- Invite drawer handlers ---- */
 
-  const handleShowInvite = () => {
-    setShowInviteBanner(true);
-    setCodeVisible(false);
-    setCodeCopied(false);
-  };
+  function handleOpenInviteDrawer() {
+    setInviteNome('');
+    setInviteEmail('');
+    setInviteSending(false);
+    setInviteSuccess(false);
+    setInviteLink('');
+    setInviteDrawerOpen(true);
+  }
 
-  const handleCopyCode = async () => {
-    if (!inviteCode) return;
-    try {
-      await navigator.clipboard.writeText(inviteCode.codigo);
-      setCodeCopied(true);
-      toast.success('Código copiado!', 'O código de convite foi copiado para a área de transferência.');
-      setTimeout(() => setCodeCopied(false), 2000);
-    } catch {
-      setErrorMsg('Nao foi possivel copiar o codigo.');
-    }
-  };
+  function handleCloseInviteDrawer() {
+    setInviteDrawerOpen(false);
+    setInviteNome('');
+    setInviteEmail('');
+    setInviteSending(false);
+    setInviteSuccess(false);
+    setInviteLink('');
+  }
 
-  const handleRegenerateCode = async () => {
-    if (!window.confirm('Regenerar codigo? O codigo anterior sera invalidado.'))
+  async function handleSendInvite() {
+    if (!inviteNome.trim()) {
+      toast.warning('Campo obrigatório', 'Informe o nome do usuário.');
       return;
-
-    setCodeLoading(true);
-    const res = await regenerarCodigo() as { data: unknown; error: { message: string } | null };
-    if (res.error) {
-      setErrorMsg(`Erro ao regenerar: ${res.error.message}`);
-    } else if (res.data) {
-      setInviteCode(res.data as CodigoConvite);
-      setCodeVisible(false);
-      setCodeCopied(false);
-      toast.success('Código regenerado!', 'O novo código de convite está ativo.');
     }
-    setCodeLoading(false);
-  };
+    if (!inviteEmail.trim() || !inviteEmail.includes('@')) {
+      toast.warning('Campo obrigatório', 'Informe um e-mail válido.');
+      return;
+    }
+
+    setInviteSending(true);
+
+    // Mock: gera um token de convite e simula o envio
+    const token = crypto.randomUUID();
+    const link = `${window.location.origin}/criar-conta?token=${token}&nome=${encodeURIComponent(inviteNome.trim())}&email=${encodeURIComponent(inviteEmail.trim())}`;
+
+    // Simula delay de envio do email
+    await new Promise((r) => setTimeout(r, 1200));
+
+    setInviteLink(link);
+    setInviteSuccess(true);
+    setInviteSending(false);
+    toast.success('Convite enviado!', `Um e-mail foi enviado para ${inviteEmail.trim()} com o link de cadastro.`);
+  }
+
+  async function handleCopyInviteLink() {
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      toast.success('Link copiado!', 'O link de convite foi copiado para a área de transferência.');
+    } catch {
+      toast.error('Erro', 'Não foi possível copiar o link.');
+    }
+  }
 
   /* ---- Render ---- */
 
@@ -427,7 +428,7 @@ export default function UsuariosPage() {
           </Link>
           <button
             className="tfd-btn tfd-btn-primary tfd-btn--sm"
-            onClick={handleShowInvite}
+            onClick={handleOpenInviteDrawer}
           >
             <Plus size={14} />
             Adicionar Usuario
@@ -448,126 +449,121 @@ export default function UsuariosPage() {
         </div>
       )}
 
-      {/* Invite Code Banner */}
-      {showInviteBanner && (
-        <div
-          className="tfd-card mb-4"
-          style={{
-            borderColor: 'var(--tfd-primary-200)',
-            backgroundColor: 'var(--tfd-primary-50)',
-          }}
-        >
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div
-                className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-                style={{ backgroundColor: 'var(--tfd-primary-100)' }}
-              >
-                <Link2
-                  size={18}
-                  style={{ color: 'var(--tfd-primary-600)' }}
-                />
-              </div>
-              <div>
-                <h3
-                  className="text-sm font-semibold"
-                  style={{ color: 'var(--tfd-text-primary)' }}
-                >
-                  Adicionar usuario ao sistema
-                </h3>
-                <p
-                  className="text-xs mt-0.5"
-                  style={{ color: 'var(--tfd-text-secondary)' }}
-                >
-                  Compartilhe o codigo abaixo com o novo membro para que ele
-                  possa se registrar.
-                </p>
-
-                {/* Code display */}
-                <div className="flex items-center gap-2 mt-3">
-                  <div
-                    className="px-3 py-1.5 rounded-md font-mono text-sm tracking-widest select-all"
-                    style={{
-                      backgroundColor: 'var(--tfd-surface-card)',
-                      border: '1px solid var(--tfd-surface-border)',
-                      color: 'var(--tfd-text-primary)',
-                      minWidth: '160px',
-                    }}
-                  >
-                    {inviteCode
-                      ? codeVisible
-                        ? inviteCode.codigo
-                        : maskCode(inviteCode.codigo)
-                      : '------'}
-                  </div>
-
-                  {/* Toggle visibility */}
-                  <button
-                    type="button"
-                    className="tfd-btn tfd-btn--text tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                    title={codeVisible ? 'Ocultar' : 'Ver codigo'}
-                    onClick={() => setCodeVisible((v) => !v)}
-                  >
-                    {codeVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-
-                  {/* Copy */}
-                  <button
-                    type="button"
-                    className="tfd-btn tfd-btn--text tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                    title="Copiar codigo"
-                    onClick={handleCopyCode}
-                  >
-                    <Copy size={16} />
-                  </button>
-                  {codeCopied && (
-                    <span
-                      className="text-xs font-medium"
-                      style={{ color: 'var(--tfd-status-success)' }}
-                    >
-                      Copiado!
-                    </span>
-                  )}
-
-                  {/* Regenerate */}
-                  <button
-                    type="button"
-                    className="tfd-btn tfd-btn--text tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                    title="Regenerar codigo"
-                    onClick={handleRegenerateCode}
-                    disabled={codeLoading}
-                  >
-                    {codeLoading ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : (
-                      <RefreshCw size={16} />
-                    )}
-                  </button>
-                </div>
-
-                {/* Warning */}
-                <p
-                  className="flex items-center gap-1.5 text-xs mt-2"
-                  style={{ color: 'var(--tfd-status-warning)' }}
-                >
-                  <AlertTriangle size={12} />
-                  Se regenerar, o codigo anterior sera invalidado.
-                </p>
-              </div>
+      {/* ========== Invite Drawer ========== */}
+      <Drawer
+        open={inviteDrawerOpen}
+        onClose={handleCloseInviteDrawer}
+        title="Adicionar Usuário"
+        subtitle="Envie um convite por e-mail para um novo membro"
+        width="460px"
+        footer={
+          inviteSuccess ? (
+            <button className="tfd-btn tfd-btn-secondary" onClick={handleCloseInviteDrawer}>
+              Fechar
+            </button>
+          ) : (
+            <>
+              <button className="tfd-btn tfd-btn-secondary" onClick={handleCloseInviteDrawer}>
+                Cancelar
+              </button>
+              <button className="tfd-btn tfd-btn-primary" onClick={handleSendInvite} disabled={inviteSending}>
+                {inviteSending ? (
+                  <><Loader2 size={14} className="animate-spin" /> Enviando...</>
+                ) : (
+                  <><Mail size={14} /> Enviar Convite</>
+                )}
+              </button>
+            </>
+          )
+        }
+      >
+        {inviteSuccess ? (
+          /* ── Success state ── */
+          <div className="flex flex-col items-center gap-4 py-6">
+            <div
+              className="w-14 h-14 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: '#DCFCE7' }}
+            >
+              <CheckCircle2 size={28} style={{ color: '#16A34A' }} />
+            </div>
+            <div className="text-center">
+              <h3 className="text-base font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+                Convite enviado!
+              </h3>
+              <p className="text-sm mt-1" style={{ color: 'var(--tfd-text-secondary)' }}>
+                Um e-mail foi enviado para <strong>{inviteEmail}</strong> com um link de cadastro.
+              </p>
+              <p className="text-xs mt-2" style={{ color: 'var(--tfd-text-muted)' }}>
+                O link expira após o primeiro uso.
+              </p>
             </div>
 
-            {/* Close banner */}
-            <button
-              type="button"
-              className="tfd-btn tfd-btn--text tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only shrink-0"
-              onClick={() => setShowInviteBanner(false)}
-              aria-label="Fechar"
-            >
-              <ChevronUp size={16} />
-            </button>
+            <hr className="tfd-divider w-full" />
+
+            <div className="w-full">
+              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--tfd-text-muted)' }}>
+                Ou copie o link manualmente:
+              </p>
+              <div
+                className="flex items-center gap-2 p-2.5 rounded-lg"
+                style={{ backgroundColor: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}
+              >
+                <Link2 size={14} style={{ color: 'var(--tfd-primary-500)' }} className="shrink-0" />
+                <p
+                  className="text-xs flex-1 min-w-0 truncate"
+                  style={{ color: 'var(--tfd-text-secondary)', fontFamily: 'var(--tfd-font-mono)' }}
+                >
+                  {inviteLink}
+                </p>
+                <button
+                  type="button"
+                  className="tfd-btn tfd-btn-ghost tfd-btn--sm shrink-0"
+                  onClick={handleCopyInviteLink}
+                >
+                  <Copy size={13} />
+                  Copiar
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        ) : (
+          /* ── Form state ── */
+          <>
+            <div className="tfd-message tfd-message--info mb-4">
+              <span className="tfd-message-icon mt-0.5 shrink-0">
+                <Info size={16} />
+              </span>
+              <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
+                O usuário receberá um e-mail com um link único para se cadastrar no sistema. O link expira após o primeiro uso.
+              </p>
+            </div>
+
+            <FormField label="Nome completo" required>
+              <input
+                type="text"
+                className="tfd-input"
+                placeholder="Nome do novo usuário"
+                value={inviteNome}
+                onChange={(e) => setInviteNome(e.target.value)}
+              />
+            </FormField>
+
+            <FormField label="E-mail" required>
+              <input
+                type="email"
+                className="tfd-input"
+                placeholder="email@exemplo.gov.br"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+              />
+            </FormField>
+
+            <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+              O e-mail deve ser institucional. O usuário usará este endereço para acessar o sistema.
+            </p>
+          </>
+        )}
+      </Drawer>
 
       {/* Loading */}
       {loading && (

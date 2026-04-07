@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import clsx from 'clsx';
 import { Menu, Bell, Search, ChevronDown, User, LogOut } from 'lucide-react';
 import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
-import { createClient } from '@/lib/supabase/client';
+
 
 /* ── Title map ───────────────────────────────────── */
 
@@ -53,11 +53,8 @@ export default function Header({
   const displayInitials = user?.iniciais ?? 'U';
   const displayPerfil = user?.perfil?.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c: string) => c.toUpperCase()) ?? '';
 
-  async function handleLogout() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+  function handleLogout() {
     router.push('/login');
-    router.refresh();
   }
 
   useEffect(() => {

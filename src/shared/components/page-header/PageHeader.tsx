@@ -20,6 +20,7 @@ interface PageHeaderProps {
 
 const routeLabels: Record<string, string> = {
   dashboard: 'Painel',
+  pacientes: 'Pacientes',
   solicitacoes: 'Solicitações',
   'termo-compromisso': 'Termo de Compromisso',
   'diagnostico-clinico': 'Diagnóstico Clínico',
@@ -36,6 +37,7 @@ const routeLabels: Record<string, string> = {
   papeis: 'Permissões',
   usuarios: 'Usuários',
   logs: 'Logs',
+  'meu-perfil': 'Meu Perfil',
 };
 
 function buildAutoBreadcrumbs(pathname: string): Breadcrumb[] {

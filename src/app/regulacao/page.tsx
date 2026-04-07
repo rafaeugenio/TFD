@@ -199,21 +199,46 @@ export default function RegulacaoPage() {
                   items.map((item) => {
                     const prio = prioridadeMap[item.prioridade];
                     const aguardandoRetorno = labelDestino(item.solicitacaoId);
+                    const devolucaoInfo = devolucoesEnviadas.get(item.solicitacaoId);
 
                     return (
                       <tr
                         key={item.id}
                         className={aguardandoRetorno ? '' : 'cursor-pointer'}
                         style={{
-                          opacity: aguardandoRetorno ? 0.5 : undefined,
+                          opacity: aguardandoRetorno ? 0.55 : undefined,
                           pointerEvents: aguardandoRetorno ? 'none' : undefined,
+                          backgroundColor: aguardandoRetorno ? '#FFFBEB' : undefined,
                         }}
                         onClick={aguardandoRetorno ? undefined : () => setSelectedId(item.id)}
                       >
                         <td>
-                          <span className="font-medium text-sm" style={{ color: 'var(--tfd-primary-500)' }}>
-                            {item.numeroProcesso}
-                          </span>
+                          <div>
+                            <span className="font-medium text-sm" style={{ color: aguardandoRetorno ? 'var(--tfd-text-muted)' : 'var(--tfd-primary-500)' }}>
+                              {item.numeroProcesso}
+                            </span>
+                            {aguardandoRetorno && devolucaoInfo && (
+                              <div
+                                className="flex items-center gap-1.5 mt-1"
+                                title={`Devolvido em ${new Date(devolucaoInfo.created_at).toLocaleDateString('pt-BR')} — ${devolucaoInfo.urgencia === 'URGENTE' ? 'URGENTE' : 'Normal'}`}
+                              >
+                                <span
+                                  className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                                  style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
+                                >
+                                  Devolvido p/ {aguardandoRetorno}
+                                </span>
+                                {devolucaoInfo.urgencia === 'URGENTE' && (
+                                  <span
+                                    className="text-[9px] font-bold px-1 py-0.5 rounded"
+                                    style={{ backgroundColor: '#FEE2E2', color: '#B91C1C' }}
+                                  >
+                                    URGENTE
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="max-w-[160px] truncate font-medium">
                           {item.pacienteNome}
@@ -254,7 +279,7 @@ export default function RegulacaoPage() {
                           </span>
                         </td>
                         <td>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1" style={{ pointerEvents: 'auto' }}>
                             <Link
                               href={`/solicitacoes/${item.solicitacaoId}`}
                               className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
@@ -263,13 +288,15 @@ export default function RegulacaoPage() {
                             >
                               <Eye size={16} />
                             </Link>
-                            <button
-                              className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
-                              title="Devolver"
-                              onClick={(e) => { e.stopPropagation(); setDevolverItem(item); }}
-                            >
-                              <SendHorizonal size={15} />
-                            </button>
+                            {!aguardandoRetorno && (
+                              <button
+                                className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                                title="Devolver"
+                                onClick={(e) => { e.stopPropagation(); setDevolverItem(item); }}
+                              >
+                                <SendHorizonal size={15} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
