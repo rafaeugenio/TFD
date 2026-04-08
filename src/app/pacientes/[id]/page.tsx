@@ -19,6 +19,8 @@ import {
   XCircle,
   Hash,
   Pencil,
+  Activity,
+  CheckCircle2,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -153,6 +155,51 @@ export default function PacienteDetalhePage({
           </div>
         }
       />
+
+      {/* Summary cards */}
+      {(() => {
+        const totalSol = solicitacoes.length;
+        const emAndamento = solicitacoes.filter((s) => {
+          const st = s.status as string;
+          return st && !['CONCLUIDO', 'CANCELADO', 'ENCERRADO'].includes(st);
+        }).length;
+        const concluidas = solicitacoes.filter((s) => {
+          const st = s.status as string;
+          return st === 'CONCLUIDO' || st === 'ENCERRADO';
+        }).length;
+
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <div className="tfd-card flex items-center gap-3">
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}>
+                <FileText size={20} />
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Total de Solicitações</p>
+                <p className="text-xl font-semibold" style={{ color: 'var(--tfd-primary-500)' }}>{loadingSol ? '...' : totalSol}</p>
+              </div>
+            </div>
+            <div className="tfd-card flex items-center gap-3">
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: 'var(--tfd-status-warning-bg)', color: 'var(--tfd-status-warning)' }}>
+                <Activity size={20} />
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Em Andamento</p>
+                <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-warning)' }}>{loadingSol ? '...' : emAndamento}</p>
+              </div>
+            </div>
+            <div className="tfd-card flex items-center gap-3">
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: 'var(--tfd-status-success-bg)', color: 'var(--tfd-status-success)' }}>
+                <CheckCircle2 size={20} />
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Concluídas</p>
+                <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-success)' }}>{loadingSol ? '...' : concluidas}</p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* ========== Coluna Esquerda: Dados do Paciente ========== */}
