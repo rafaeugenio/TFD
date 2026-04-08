@@ -28,7 +28,7 @@ import { uploadDocumento } from '@/services/documentos.service';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import type { StatusAgendamento, TipoAtendimento, OrigemAgendamento } from '@/lib/supabase/database.types';
 import { formatDate } from '@/shared/pipes/formatters';
-import { useLookup } from '@/shared/hooks/useLookup';
+import { useLookup, useUnidadesDestino } from '@/shared/hooks/useLookup';
 import UfCidadeSelect from '@/shared/components/uf-cidade-select/UfCidadeSelect';
 
 /* -------------------------------------------------- */
@@ -107,6 +107,7 @@ export default function AtendimentoDestinoPage() {
   const toast = useToast();
   const { options: tipoOptions, loading: tipoLoading } = useLookup('tipo_procedimento');
   const { options: origemOptions, loading: origemLoading } = useLookup('origem_agendamento');
+  const { options: unidadesOptions } = useUnidadesDestino();
 
   const [search, setSearch] = useState('');
   const [devolverItem, setDevolverItem] = useState<any>(null);
@@ -119,6 +120,7 @@ export default function AtendimentoDestinoPage() {
   const [solicitacaoId, setSolicitacaoId] = useState('');
   const [pacienteNome, setPacienteNome] = useState('');
   const [numProcesso, setNumProcesso] = useState('');
+  const [selectedUnidadeId, setSelectedUnidadeId] = useState('');
   const [nomeUnidade, setNomeUnidade] = useState('');
   const [cnes, setCnes] = useState('');
   const [cidade, setCidade] = useState('');
@@ -142,6 +144,7 @@ export default function AtendimentoDestinoPage() {
     setSolicitacaoId('');
     setNumProcesso('');
     setPacienteNome('');
+    setSelectedUnidadeId('');
     setNomeUnidade('');
     setCnes('');
     setCidade('');
@@ -192,6 +195,7 @@ export default function AtendimentoDestinoPage() {
     setSolicitacaoId(ag.solicitacao_id);
     setNumProcesso(ag.solicitacoes?.numero_processo ?? '');
     setPacienteNome(ag.solicitacoes?.pacientes?.nome_completo ?? '');
+    setSelectedUnidadeId(ag.unidade_destino_id ?? '');
     setNomeUnidade(ag.unidade_executante ?? '');
     setCnes(ag.cnes ?? '');
     setCidade(ag.cidade_destino ?? '');
@@ -325,6 +329,7 @@ export default function AtendimentoDestinoPage() {
 
       const payload = {
         solicitacao_id: solicitacaoId,
+        unidade_destino_id: selectedUnidadeId || undefined,
         unidade_executante: nomeUnidade,
         cnes: cnes || undefined,
         cidade_destino: cidade,
@@ -739,14 +744,29 @@ export default function AtendimentoDestinoPage() {
 
         {/* Section: Unidade de Destino */}
         <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Unidade de Destino</h3>
-        <FormField label="Nome da unidade" required>
-          <input
-            type="text"
+        <FormField label="Unidade de Saúde" required>
+          <select
             className="tfd-input"
-            placeholder="Ex: Hospital Sírio-Libanês"
-            value={nomeUnidade}
-            onChange={(e) => setNomeUnidade(e.target.value)}
-          />
+            value={selectedUnidadeId}
+            onChange={(e) => {
+              const uid = e.target.value;
+              setSelectedUnidadeId(uid);
+              const found = unidadesOptions.find((u) => u.value === uid);
+              if (found) {
+                setNomeUnidade(found.nome);
+                setCnes(found.cnes ?? '');
+                setCidade(found.cidade ?? '');
+                setUf(found.uf ?? '');
+              } else {
+                setNomeUnidade(''); setCnes(''); setCidade(''); setUf('');
+              }
+            }}
+          >
+            <option value="">Selecione uma unidade...</option>
+            {unidadesOptions.map((u) => (
+              <option key={u.value} value={u.value}>{u.label}</option>
+            ))}
+          </select>
         </FormField>
         <FormField label="CNES">
           <input
@@ -755,6 +775,7 @@ export default function AtendimentoDestinoPage() {
             placeholder="0000000"
             maxLength={7}
             value={cnes}
+            readOnly={!!selectedUnidadeId}
             onChange={(e) => {
               const v = e.target.value.replace(/\D/g, '').slice(0, 7);
               setCnes(v);
