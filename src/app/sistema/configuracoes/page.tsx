@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Settings,
   Users,
@@ -25,8 +25,15 @@ import {
   Package,
   Navigation,
   Megaphone,
+  FileCode2,
+
+  Route,
   type LucideIcon,
 } from 'lucide-react';
+import SigtapPanel from './SigtapPanel';
+
+import RotasPanel from './RotasPanel';
+import Cid10Panel from './Cid10Panel';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import Drawer from '@/shared/components/drawer/Drawer';
@@ -50,17 +57,21 @@ import {
   type CompanhiaTransporte,
 } from '@/services/tabelas-auxiliares.service';
 import { invalidateCache } from '@/shared/hooks/useLookup';
-import { maskCNPJ, maskPhone } from '@/shared/pipes/formatters';
+import { maskCNPJ, maskPhone, maskCEP } from '@/shared/pipes/formatters';
 
 /* -------------------------------------------------- */
 /*  Tab config                                         */
 /* -------------------------------------------------- */
 
-type TabKey = 'tabelas' | 'parametros';
+type TabKey = 'tabelas' | 'parametros' | 'cid10' | 'sigtap' | 'rotas';
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'tabelas', label: 'Tabelas Auxiliares', icon: <Building2 size={16} /> },
   { key: 'parametros', label: 'Parâmetros do Sistema', icon: <Sliders size={16} /> },
+  { key: 'cid10', label: 'CID-10', icon: <FileText size={16} /> },
+  { key: 'sigtap', label: 'Códigos SIGTAP', icon: <FileCode2 size={16} /> },
+
+  { key: 'rotas', label: 'Rotas', icon: <Route size={16} /> },
 ];
 
 /* -------------------------------------------------- */
@@ -113,7 +124,6 @@ const SECOES: SecaoConfig[] = [
     categorias: [
       { key: 'especialidade', label: 'Especialidades Médicas', icon: Stethoscope, desc: 'Especialidades para encaminhamento TFD' },
       { key: 'tipo_procedimento', label: 'Tipos de Procedimento', icon: Activity, desc: 'Consulta, cirurgia, exame, tratamento' },
-      { key: 'cid10', label: 'CIDs Frequentes', icon: FileText, desc: 'Códigos CID-10 mais utilizados' },
       { key: 'origem_laudo', label: 'Origens de Laudo', icon: FileText, desc: 'Origem do laudo médico (estadual, municipal)' },
       { key: 'carater_atendimento', label: 'Caráter de Atendimento', icon: Activity, desc: 'Hospitalar, ambulatorial e outros' },
       { key: 'tipo_documento', label: 'Tipos de Documento', icon: FileText, desc: 'Categorias de documentos aceitos no sistema' },
@@ -542,6 +552,10 @@ function CadastrosPanel() {
   const [fUContatoTel, setFUContatoTel] = useState('');
   const [fUContatoEmail, setFUContatoEmail] = useState('');
   const [fUEndereco, setFUEndereco] = useState('');
+  const [fUCep, setFUCep] = useState('');
+
+  /* ---- Search for Unidades drawer ---- */
+  const [unidadeSearch, setUnidadeSearch] = useState('');
 
   /* ---- Form state — companhia ---- */
   const [fCModal, setFCModal] = useState('Aéreo');
@@ -623,6 +637,7 @@ function CadastrosPanel() {
     setFNome(''); setFDescricao(''); setFAtivo(true);
     setFUCnes(''); setFUCidade(''); setFUUf(''); setFUTipo('');
     setFUContatoNome(''); setFUContatoTel(''); setFUContatoEmail(''); setFUEndereco('');
+    setFUCep('');
     setFCModal('Aéreo'); setFCCnpj(''); setFCContato('');
     setEditingItem(null); setEditingUnidade(null); setEditingCompanhia(null);
   };
@@ -643,7 +658,7 @@ function CadastrosPanel() {
     setFNome(u.nome); setFUCnes(u.cnes ?? ''); setFUCidade(u.cidade); setFUUf(u.uf);
     setFUTipo(u.tipo ?? ''); setFUContatoNome(u.contato_nome ?? '');
     setFUContatoTel(u.contato_telefone ?? ''); setFUContatoEmail(u.contato_email ?? '');
-    setFUEndereco(u.endereco ?? ''); setFAtivo(u.ativo);
+    setFUEndereco(u.endereco ?? ''); setFUCep(u.cep ?? ''); setFAtivo(u.ativo);
     setFormMode(true);
   };
 
@@ -681,7 +696,7 @@ function CadastrosPanel() {
           nome: fNome, cnes: fUCnes || null, cidade: fUCidade, uf: fUUf,
           tipo: fUTipo || null, contato_nome: fUContatoNome || null,
           contato_telefone: fUContatoTel || null, contato_email: fUContatoEmail || null,
-          endereco: fUEndereco || null, ativo: fAtivo,
+          endereco: fUEndereco || null, cep: fUCep || null, ativo: fAtivo,
         };
         if (editingUnidade) {
           result = await atualizarUnidadeDestino(editingUnidade.id, payload);
@@ -718,7 +733,7 @@ function CadastrosPanel() {
   };
 
   /* ---- Delete ---- */
-  const handleDelete = async (type: 'generic' | 'unidade' | 'companhia', item: any) => {
+  const handleDelete = async (type: 'generic' | 'unidade' | 'companhia', item: TabelaAuxiliar | UnidadeDestino | CompanhiaTransporte) => {
     const nome = item.nome ?? 'este item';
     if (!window.confirm(`Excluir "${nome}"? Esta ação não pode ser desfeita.`)) return;
     let error: { message: string } | null = null;
@@ -794,35 +809,60 @@ function CadastrosPanel() {
     }
 
     if (isUnidades) {
+      const filteredUnidades = unidadeSearch
+        ? unidades.filter((u) => {
+            const q = unidadeSearch.toLowerCase();
+            return u.nome.toLowerCase().includes(q) || (u.cnes && u.cnes.includes(q));
+          })
+        : unidades;
       return (
-        <div className="space-y-2">
-          {unidades.map((u) => (
-            <div
-              key={u.id}
-              className="flex items-center justify-between gap-3 p-3 rounded-lg transition-colors"
-              style={{ backgroundColor: 'var(--tfd-surface-50)' }}
-              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-100)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-50)'; }}
-            >
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{u.nome}</p>
-                <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-                  {u.cidade}/{u.uf} {u.cnes ? `· CNES: ${u.cnes}` : ''}
-                </p>
+        <div>
+          {/* Search */}
+          <div className="mb-3">
+            <input
+              type="text"
+              className="tfd-input text-sm"
+              placeholder="Buscar por nome ou CNES..."
+              value={unidadeSearch}
+              onChange={(e) => setUnidadeSearch(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            {filteredUnidades.map((u) => (
+              <div
+                key={u.id}
+                className="flex items-center justify-between gap-3 p-3 rounded-lg transition-colors"
+                style={{ backgroundColor: 'var(--tfd-surface-50)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-100)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-50)'; }}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{u.nome}</p>
+                  <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+                    {u.cidade}/{u.uf}
+                    {u.cnes ? ` · CNES: ${u.cnes}` : ''}
+                    {u.tipo ? ` · ${u.tipo}` : ''}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {!u.ativo && (
+                    <span className="tfd-tag tfd-tag--rounded tfd-tag--dot tfd-tag--secondary text-[10px]">Inativo</span>
+                  )}
+                  <button className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only" title="Editar" style={{ color: 'var(--tfd-primary-500)' }} onClick={() => handleEditUnidade(u)}>
+                    <Pencil size={14} />
+                  </button>
+                  <button className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only" title="Excluir" style={{ color: 'var(--tfd-status-danger)' }} onClick={() => handleDelete('unidade', u)}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                {!u.ativo && (
-                  <span className="tfd-tag tfd-tag--rounded tfd-tag--dot tfd-tag--secondary text-[10px]">Inativo</span>
-                )}
-                <button className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only" title="Editar" style={{ color: 'var(--tfd-primary-500)' }} onClick={() => handleEditUnidade(u)}>
-                  <Pencil size={14} />
-                </button>
-                <button className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only" title="Excluir" style={{ color: 'var(--tfd-status-danger)' }} onClick={() => handleDelete('unidade', u)}>
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
+            ))}
+            {filteredUnidades.length === 0 && unidadeSearch && (
+              <p className="text-sm text-center py-4" style={{ color: 'var(--tfd-text-muted)' }}>
+                Nenhuma unidade encontrada para &quot;{unidadeSearch}&quot;
+              </p>
+            )}
+          </div>
         </div>
       );
     }
@@ -918,8 +958,21 @@ function CadastrosPanel() {
       <FormField label="Nome" required>
         <input type="text" className="tfd-input" placeholder="Nome da unidade" value={fNome} onChange={(e) => setFNome(e.target.value)} />
       </FormField>
-      <FormField label="CNES">
-        <input type="text" className="tfd-input" placeholder="Código CNES" value={fUCnes} onChange={(e) => setFUCnes(e.target.value)} />
+      <FormField label="Código CNES">
+        <input type="text" className="tfd-input" placeholder="0000000" maxLength={7} value={fUCnes} onChange={(e) => setFUCnes(e.target.value.replace(/\D/g, '').slice(0, 7))} />
+        <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>Cadastro Nacional de Estabelecimentos de Saúde (7 dígitos)</p>
+      </FormField>
+      <FormField label="Tipo de Unidade">
+        <select className="tfd-input" value={fUTipo} onChange={(e) => setFUTipo(e.target.value)}>
+          <option value="">Selecione...</option>
+          <option value="Hospital Geral">Hospital Geral</option>
+          <option value="Hospital Especializado">Hospital Especializado</option>
+          <option value="Clínica">Clínica</option>
+          <option value="Centro de Referência">Centro de Referência</option>
+          <option value="Instituto">Instituto</option>
+          <option value="UPA">UPA</option>
+          <option value="Outro">Outro</option>
+        </select>
       </FormField>
       <div className="grid grid-cols-2 gap-3">
         <FormField label="Cidade" required>
@@ -929,8 +982,11 @@ function CadastrosPanel() {
           <input type="text" className="tfd-input" placeholder="UF" maxLength={2} value={fUUf} onChange={(e) => setFUUf(e.target.value.toUpperCase())} />
         </FormField>
       </div>
-      <FormField label="Tipo">
-        <input type="text" className="tfd-input" placeholder="Ex: Hospital, Clínica" value={fUTipo} onChange={(e) => setFUTipo(e.target.value)} />
+      <FormField label="CEP">
+        <input type="text" className="tfd-input" placeholder="00000-000" value={fUCep} onChange={(e) => setFUCep(maskCEP(e.target.value))} />
+      </FormField>
+      <FormField label="Endereço">
+        <textarea className="tfd-input" rows={2} placeholder="Endereço completo" value={fUEndereco} onChange={(e) => setFUEndereco(e.target.value)} />
       </FormField>
       <hr className="tfd-divider" />
       <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Contato</h3>
@@ -942,9 +998,6 @@ function CadastrosPanel() {
       </FormField>
       <FormField label="E-mail">
         <input type="email" className="tfd-input" placeholder="contato@unidade.com" value={fUContatoEmail} onChange={(e) => setFUContatoEmail(e.target.value)} />
-      </FormField>
-      <FormField label="Endereço">
-        <textarea className="tfd-input" rows={2} placeholder="Endereço completo" value={fUEndereco} onChange={(e) => setFUEndereco(e.target.value)} />
       </FormField>
       <div className="mb-4">
         <label className="flex items-center gap-2 cursor-pointer">
@@ -1165,6 +1218,10 @@ export default function SistemaConfiguracoesPage() {
       {/* ========== Tab Panels ========== */}
       {activeTab === 'tabelas' && <CadastrosPanel />}
       {activeTab === 'parametros' && <ParametrosPanel />}
+      {activeTab === 'cid10' && <Cid10Panel />}
+      {activeTab === 'sigtap' && <SigtapPanel />}
+
+      {activeTab === 'rotas' && <RotasPanel />}
     </>
   );
 }
