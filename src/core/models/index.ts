@@ -9,3 +9,8 @@ export * from './navigation.model';
 export * from './faturamento.model';
 export * from './teto-financeiro.model';
 export * from './termo-compromisso.model';
+export * from './cid10.model';
+export * from './sigtap.model';
+export * from './medico.model';
+export * from './rota-deslocamento.model';
+export * from './unidade-saude.model';
