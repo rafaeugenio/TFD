@@ -31,6 +31,7 @@ const routeLabels: Record<string, string> = {
   'ajuda-custo': 'Ajuda de Custo',
   permanencia: 'Permanência',
   'alta-encerramento': 'Alta / Encerramento',
+  'unidades-saude': 'Unidades de Saude',
   relatorios: 'Relatórios',
   sistema: 'Sistema',
   configuracoes: 'Configurações',
