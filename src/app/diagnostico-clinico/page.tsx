@@ -35,6 +35,11 @@ import DevolverModal from '@/shared/components/devolver-modal/DevolverModal';
 import { useDevolucoesPendentes } from '@/shared/hooks/useDevolucoesPendentes';
 import type { StatusSolicitacao } from '@/core/models';
 
+/* ── TODO AGENTE-4: Descomentar quando Agentes 1 e 2 concluírem ──
+import CidAutocomplete from '@/shared/components/cid-autocomplete/CidAutocomplete';
+import MedicoSelect from '@/shared/components/medico-select/MedicoSelect';
+── Esses componentes substituem os inputs de texto livre de CID e médico ── */
+
 /* -------------------------------------------------- */
 /*  Helpers                                            */
 /* -------------------------------------------------- */
@@ -82,13 +87,22 @@ export default function DiagnosticoClinicoPage() {
   /* ---- Form state: Dados do Laudo (Onda 1: B7-B12) ---- */
   const [origemLaudo, setOrigemLaudo] = useState<'ESTADUAL' | 'MUNICIPAL' | ''>('');
   const [dataLaudo, setDataLaudo] = useState('');
-  const [medicoNome, setMedicoNome] = useState('');
-  const [medicoCRM, setMedicoCRM] = useState('');
-  const [medicoUF, setMedicoUF] = useState('MA');
   const [codigoProcedimentoSUS, setCodigoProcedimentoSUS] = useState('');
   const [caracterAtendimento, setCaracterAtendimento] = useState<'HOSPITALAR' | 'AMBULATORIAL' | ''>('');
 
+  /* ---- Form state: Médico Solicitante ---- */
+  /* TODO AGENTE-4: Quando MedicoSelect estiver pronto, trocar por:
+     const [selectedMedico, setSelectedMedico] = useState<{ id: string; nome_completo: string; crm: string; crm_uf: string; especialidade?: string } | null>(null);
+     E derivar medicoNome, medicoCRM, medicoUF do objeto selecionado. */
+  const [medicoNome, setMedicoNome] = useState('');
+  const [medicoCRM, setMedicoCRM] = useState('');
+  const [medicoUF, setMedicoUF] = useState('MA');
+
   /* ---- Form state: Diagnóstico ---- */
+  /* TODO AGENTE-4: Quando CidAutocomplete estiver pronto, trocar por:
+     const [cidPrincipal, setCidPrincipal] = useState<{ codigo: string; descricao: string } | null>(null);
+     const [cidSec, setCidSec] = useState<{ codigo: string; descricao: string } | null>(null);
+     E usar cidPrincipal.codigo / cidSec.codigo no payload. */
   const [cid, setCid] = useState('');
   const [cidSecundario, setCidSecundario] = useState('');
   const [descricaoDiagnostico, setDescricaoDiagnostico] = useState('');
@@ -663,13 +677,29 @@ export default function DiagnosticoClinicoPage() {
           })()}
         </FormField>
 
+        {/* TODO AGENTE-4: Substituir os 3 campos abaixo (nome, CRM, UF) por:
+            <FormField label="Médico solicitante" required>
+              <MedicoSelect
+                value={selectedMedico}
+                onChange={(medico) => {
+                  setSelectedMedico(medico);
+                  setMedicoNome(medico?.nome_completo ?? '');
+                  setMedicoCRM(medico?.crm ?? '');
+                  setMedicoUF(medico?.crm_uf ?? 'MA');
+                }}
+                label="Médico solicitante"
+                required
+              />
+            </FormField>
+            Ao selecionar, preenche automaticamente nome, CRM e UF.
+            O campo "Cadastrar novo" no MedicoSelect permite cadastro rápido inline. */}
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-2">
-            <FormField label="M&eacute;dico solicitante" required>
+            <FormField label="Médico solicitante" required>
               <input
                 type="text"
                 className="tfd-input"
-                placeholder="Nome do m&eacute;dico"
+                placeholder="Nome do médico"
                 value={medicoNome}
                 onChange={(e) => setMedicoNome(e.target.value)}
               />
@@ -700,7 +730,7 @@ export default function DiagnosticoClinicoPage() {
               ))}
             </select>
           </FormField>
-          <FormField label="C&oacute;d. procedimento SUS">
+          <FormField label="Cód. procedimento SUS">
             <input
               type="text"
               className="tfd-input"
@@ -745,6 +775,20 @@ export default function DiagnosticoClinicoPage() {
           Diagn&oacute;stico Cl&iacute;nico
         </h3>
 
+        {/* TODO AGENTE-4: Substituir os 2 inputs abaixo por CidAutocomplete:
+            <CidAutocomplete
+              value={cidPrincipal}
+              onChange={(selected) => { setCidPrincipal(selected); setCid(selected?.codigo ?? ''); }}
+              label="CID-10 principal"
+              required
+            />
+            <CidAutocomplete
+              value={cidSec}
+              onChange={(selected) => { setCidSec(selected); setCidSecundario(selected?.codigo ?? ''); }}
+              label="CID-10 secundário"
+            />
+            O CidAutocomplete busca por código ("C50") ou descrição ("neoplasia mama")
+            e exibe "{codigo} — {descricao}" no dropdown. */}
         <FormField label="CID-10 principal" required>
           <input
             type="text"
@@ -755,7 +799,7 @@ export default function DiagnosticoClinicoPage() {
           />
         </FormField>
 
-        <FormField label="CID-10 secund&aacute;rio">
+        <FormField label="CID-10 secundário">
           <input
             type="text"
             className="tfd-input"

@@ -9,6 +9,7 @@ interface LookupOption {
   value: string;
   label: string;
   descricao?: string | null;
+  codigo_ibge?: string;
 }
 
 // Cache em memória para evitar requisições repetidas na mesma sessão
@@ -119,18 +120,19 @@ export function useMunicipios() {
 
     createClient()
       .from('municipios')
-      .select('id, nome, regional')
+      .select('id, nome, regional, codigo_ibge')
       .eq('ativo', true)
       .order('nome')
       .then(({ data, error }) => {
         if (error || !data) {
           setOptions([]);
         } else {
-          const rows = data as unknown as { id: string; nome: string; regional: string }[];
+          const rows = data as unknown as { id: string; nome: string; regional: string; codigo_ibge: string }[];
           const mapped = rows.map((m) => ({
             value: m.id,
             label: m.nome,
             descricao: m.regional,
+            codigo_ibge: m.codigo_ibge,
           }));
           cache.set('_municipios', { data: mapped, ts: Date.now() });
           setOptions(mapped);

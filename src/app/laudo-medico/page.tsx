@@ -28,6 +28,12 @@ import { listarSolicitacoes, contarPorStatus } from '@/services/solicitacoes.ser
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import { formatCPF, maskCPF, maskPhone } from '@/shared/pipes/formatters';
 
+/* ── TODO AGENTE-4: Descomentar quando Agentes 1 e 2 concluírem ──
+import UnidadeSaudeSelect from '@/shared/components/unidade-saude-select/UnidadeSaudeSelect';
+import MedicoSelect from '@/shared/components/medico-select/MedicoSelect';
+── UnidadeSaudeSelect substitui o input de texto de "Unidade de Saúde Solicitante SUS".
+── MedicoSelect pode preencher automaticamente CPF e telefone do médico. ── */
+
 import {
   Accordion,
   AccordionItem,
@@ -186,7 +192,13 @@ export default function LaudoMedicoPage() {
   const [saving, setSaving] = useState(false);
 
   /* ---- Cabeçalho fields (editable) ---- */
+  /* TODO AGENTE-4: Quando UnidadeSaudeSelect estiver pronto, trocar por:
+     const [selectedUnidade, setSelectedUnidade] = useState<{ id: string; nome: string; codigo_cnes?: string; cidade?: string; uf?: string } | null>(null);
+     E derivar unidadeSaude do nome da unidade selecionada. */
   const [unidadeSaude, setUnidadeSaude] = useState('');
+  /* TODO AGENTE-4: Quando MedicoSelect estiver pronto, trocar por:
+     const [selectedMedicoLaudo, setSelectedMedicoLaudo] = useState<{ id: string; nome_completo: string; crm: string; crm_uf: string; cpf?: string } | null>(null);
+     E derivar medicoCPF automaticamente do medico selecionado. */
   const [medicoCPF, setMedicoCPF] = useState('');
   const [medicoTelefone, setMedicoTelefone] = useState('');
 
@@ -591,21 +603,37 @@ export default function LaudoMedicoPage() {
               </div>
 
               {/* Editable header fields */}
+              {/* TODO AGENTE-4: Substituir campo "Unidade de Saúde" por:
+                  <UnidadeSaudeSelect
+                    value={selectedUnidade}
+                    onChange={(unidade) => { setSelectedUnidade(unidade); setUnidadeSaude(unidade?.nome ?? ''); }}
+                    label="Unidade de Saúde Solicitante SUS"
+                    required
+                  />
+                  Busca por nome ou código CNES. Exibe: "{nome} — {cidade}/{uf} (CNES: {codigo_cnes})". */}
+              {/* TODO AGENTE-4: Substituir campo "CPF do Médico" por MedicoSelect:
+                  <MedicoSelect
+                    value={selectedMedicoLaudo}
+                    onChange={(medico) => { setSelectedMedicoLaudo(medico); setMedicoCPF(medico?.cpf ?? ''); }}
+                    label="Médico Solicitante"
+                    required
+                  />
+                  Ao selecionar médico, preenche CPF automaticamente. */}
               <div
                 className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 mt-4"
                 style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
               >
-                <FormField label="Unidade de Sa\u00fade Solicitante SUS" required error={errors.unidadeSaude}>
+                <FormField label="Unidade de Saúde Solicitante SUS" required error={errors.unidadeSaude}>
                   <input
                     type="text"
                     className="tfd-input"
-                    placeholder="Nome da unidade de sa\u00fade SUS"
+                    placeholder="Nome da unidade de saúde SUS"
                     value={unidadeSaude}
                     onChange={(e) => { setUnidadeSaude(e.target.value); if (errors.unidadeSaude) setErrors((p) => { const n = { ...p }; delete n.unidadeSaude; return n; }); }}
                     disabled={isReadOnly}
                   />
                 </FormField>
-                <FormField label="CPF do M\u00e9dico Solicitante" required error={errors.medicoCPF}>
+                <FormField label="CPF do Médico Solicitante" required error={errors.medicoCPF}>
                   <input
                     type="text"
                     className="tfd-input"
@@ -615,7 +643,7 @@ export default function LaudoMedicoPage() {
                     disabled={isReadOnly}
                   />
                 </FormField>
-                <FormField label="Telefone do M\u00e9dico">
+                <FormField label="Telefone do Médico">
                   <input
                     type="text"
                     className="tfd-input"

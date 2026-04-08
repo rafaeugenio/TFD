@@ -22,6 +22,7 @@ import { useToast } from '@/shared/components/toast/Toast';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import { useMunicipios } from '@/shared/hooks/useLookup';
 import { maskPhone, maskCEP } from '@/shared/pipes/formatters';
+import CepAutofill from '@/shared/components/cep-autofill/CepAutofill';
 import { createClient } from '@/lib/supabase/client';
 
 import {
@@ -626,15 +627,17 @@ function UnidadesSaudePage() {
           Endereco
         </h3>
 
-        <FormField label="CEP">
-          <input
-            type="text"
-            className="tfd-input"
-            placeholder="00000-000"
-            value={cep}
-            onChange={(e) => setCep(maskCEP(e.target.value))}
-          />
-        </FormField>
+        <CepAutofill
+          initialCep={cep}
+          onAddressFound={(address) => {
+            setCep(maskCEP(address.cep));
+            setLogradouro(address.logradouro);
+            setBairro(address.bairro);
+            setUf(address.uf);
+            const match = municipios.find((m) => m.codigo_ibge === address.codigo_ibge);
+            if (match) setMunicipio(match.label);
+          }}
+        />
 
         <FormField label="Logradouro">
           <input

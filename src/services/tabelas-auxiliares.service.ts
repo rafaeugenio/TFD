@@ -28,6 +28,7 @@ export interface UnidadeDestino {
   contato_telefone: string | null;
   contato_email: string | null;
   endereco: string | null;
+  cep: string | null;
   ativo: boolean;
   created_at: string;
   updated_at: string;

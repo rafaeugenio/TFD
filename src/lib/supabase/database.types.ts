@@ -1494,6 +1494,7 @@ export type Database = {
           contato_telefone: string | null;
           contato_email: string | null;
           endereco: string | null;
+          cep: string | null;
           ativo: boolean;
           created_at: string;
           updated_at: string;
@@ -1509,6 +1510,7 @@ export type Database = {
           contato_telefone?: string | null;
           contato_email?: string | null;
           endereco?: string | null;
+          cep?: string | null;
           ativo?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -1524,6 +1526,7 @@ export type Database = {
           contato_telefone?: string | null;
           contato_email?: string | null;
           endereco?: string | null;
+          cep?: string | null;
           ativo?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -1765,6 +1768,179 @@ export type Database = {
           local_registro?: string | null;
           data_registro?: string;
           registrado_por?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      // ── CID-10 ──────────────────────────────────────────────
+      cid10: {
+        Row: {
+          id: number;
+          codigo: string;
+          descricao: string;
+          capitulo: string | null;
+          grupo: string | null;
+          categoria: string | null;
+          subcategoria: string | null;
+          ativo: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          codigo: string;
+          descricao: string;
+          capitulo?: string | null;
+          grupo?: string | null;
+          categoria?: string | null;
+          subcategoria?: string | null;
+          ativo?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          codigo?: string;
+          descricao?: string;
+          capitulo?: string | null;
+          grupo?: string | null;
+          categoria?: string | null;
+          subcategoria?: string | null;
+          ativo?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+
+      // ── SIGTAP Procedimentos ────────────────────────────────
+      sigtap_procedimentos: {
+        Row: {
+          id: number;
+          codigo: string;
+          descricao: string;
+          tipo: string;
+          subtipo: string | null;
+          beneficiario: string;
+          valor_unitario: number;
+          unidade_medida: string | null;
+          cnrac: boolean;
+          portaria_referencia: string | null;
+          data_vigencia: string | null;
+          ativo: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: number;
+          codigo: string;
+          descricao: string;
+          tipo: string;
+          subtipo?: string | null;
+          beneficiario: string;
+          valor_unitario: number;
+          unidade_medida?: string | null;
+          cnrac?: boolean;
+          portaria_referencia?: string | null;
+          data_vigencia?: string | null;
+          ativo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: number;
+          codigo?: string;
+          descricao?: string;
+          tipo?: string;
+          subtipo?: string | null;
+          beneficiario?: string;
+          valor_unitario?: number;
+          unidade_medida?: string | null;
+          cnrac?: boolean;
+          portaria_referencia?: string | null;
+          data_vigencia?: string | null;
+          ativo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      // ── Médicos ─────────────────────────────────────────────
+      medicos: {
+        Row: {
+          id: string;
+          nome_completo: string;
+          crm: string;
+          crm_uf: string;
+          cpf: string | null;
+          especialidade: string | null;
+          ativo: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          nome_completo: string;
+          crm: string;
+          crm_uf: string;
+          cpf?: string | null;
+          especialidade?: string | null;
+          ativo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          nome_completo?: string;
+          crm?: string;
+          crm_uf?: string;
+          cpf?: string | null;
+          especialidade?: string | null;
+          ativo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      // ── Rotas de Deslocamento ───────────────────────────────
+      rotas_deslocamento: {
+        Row: {
+          id: number;
+          cidade_origem: string;
+          uf_origem: string;
+          cidade_destino: string;
+          uf_destino: string;
+          distancia_milhas: number | null;
+          distancia_km: number | null;
+          distancia_milhas_nauticas: number | null;
+          ativo: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: number;
+          cidade_origem: string;
+          uf_origem: string;
+          cidade_destino: string;
+          uf_destino: string;
+          distancia_milhas?: number | null;
+          distancia_km?: number | null;
+          distancia_milhas_nauticas?: number | null;
+          ativo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: number;
+          cidade_origem?: string;
+          uf_origem?: string;
+          cidade_destino?: string;
+          uf_destino?: string;
+          distancia_milhas?: number | null;
+          distancia_km?: number | null;
+          distancia_milhas_nauticas?: number | null;
+          ativo?: boolean;
           created_at?: string;
           updated_at?: string;
         };

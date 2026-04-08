@@ -49,6 +49,13 @@ import { useLookup, useCompanhias } from '@/shared/hooks/useLookup';
 import DevolverModal from '@/shared/components/devolver-modal/DevolverModal';
 import { useDevolucoesPendentes } from '@/shared/hooks/useDevolucoesPendentes';
 
+/* ── TODO AGENTE-4: Descomentar quando Agentes 1 e 2 concluírem ──
+import RotaSelect from '@/shared/components/rota-select/RotaSelect';
+── RotaSelect substitui os 2 UfCidadeSelect (origem+destino) por um componente único
+── que busca rotas cadastradas e calcula automaticamente distância e procedimentos SIGTAP.
+── Ao selecionar rota + modal de transporte, exibe preview:
+── "Distância: X milhas → Y procedimentos → R$ Z (SIGTAP 08.03.01.008-7)" ── */
+
 /* -------------------------------------------------- */
 /*  Page-level tabs                                    */
 /* -------------------------------------------------- */
@@ -535,6 +542,20 @@ export default function ViagensPage() {
   ) {
     return (
       <>
+        {/* TODO AGENTE-4: Substituir os 2 UfCidadeSelect abaixo (Origem + Destino) por:
+            <RotaSelect
+              onRotaSelect={(rota) => {
+                setOrigemUf(rota.uf_origem); setOrigem(rota.cidade_origem);
+                setDestinoUf(rota.uf_destino); setDestino(rota.cidade_destino);
+              }}
+              modalTransporte={modal}
+            />
+            O RotaSelect:
+            - Usa UfCidadeSelect internamente para origem e destino
+            - Ao selecionar origem+destino, busca na tabela rotas_deslocamento
+            - Se encontrar, exibe distâncias e cálculo de procedimentos SIGTAP
+            - Se não encontrar, permite digitar distância e "Salvar nova rota"
+            - Exibe preview: "Distância: X milhas → Y procedimentos → R$ Z" */}
         <h4 className="text-xs font-semibold mb-1" style={{ color: 'var(--tfd-text-muted)' }}>Origem</h4>
         <UfCidadeSelect ufLabel="UF Origem" cidadeLabel="Cidade Origem" uf={origemUf} cidade={origem} onUfChange={setOrigemUf} onCidadeChange={setOrigem} required />
 

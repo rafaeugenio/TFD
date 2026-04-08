@@ -40,6 +40,15 @@ import type { StatusSolicitacao } from '@/core/models';
 import { formatCPF, maskCPF, maskCNS, maskPhone } from '@/shared/pipes/formatters';
 import { useMunicipios } from '@/shared/hooks/useLookup';
 
+/* ── AGENTE-4: Análise de refactoring ──
+   Esta página NÃO tem campos de texto livre para CID ou médico no formulário:
+   - Paciente: selecionado via select (dados puxados do cadastro via pacientes.service) ✓
+   - Município: selecionado via select (useMunicipios) ✓
+   - Especialidade/transporte: NÃO existem aqui — são preenchidos em /diagnostico-clinico ✓
+   - CID: exibido read-only na tabela (sol.cid10_principal) — não é input ✓
+   Conclusão: NENHUMA refatoração de campos necessária nesta página.
+   Os selects já usam lookups corretamente. */
+
 /* -------------------------------------------------- */
 /*  Filter options                                     */
 /* -------------------------------------------------- */

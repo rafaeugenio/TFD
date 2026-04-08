@@ -7,7 +7,6 @@ import {
   Building2,
   Sliders,
   MapPin,
-  Shield,
   Clock,
   DollarSign,
   Plane,
@@ -44,20 +43,15 @@ import {
   criarItemAuxiliar,
   atualizarItemAuxiliar,
   excluirItemAuxiliar,
-  listarUnidadesDestinoAdmin,
-  criarUnidadeDestino,
-  atualizarUnidadeDestino,
-  excluirUnidadeDestino,
   listarCompanhiasAdmin,
   criarCompanhia,
   atualizarCompanhia,
   excluirCompanhia,
   type TabelaAuxiliar,
-  type UnidadeDestino,
   type CompanhiaTransporte,
 } from '@/services/tabelas-auxiliares.service';
 import { invalidateCache } from '@/shared/hooks/useLookup';
-import { maskCNPJ, maskPhone, maskCEP } from '@/shared/pipes/formatters';
+import { maskCNPJ } from '@/shared/pipes/formatters';
 
 /* -------------------------------------------------- */
 /*  Tab config                                         */
@@ -141,7 +135,6 @@ const SECOES: SecaoConfig[] = [
     icon: Navigation,
     categorias: [
       { key: 'origem_agendamento', label: 'Origens de Agendamento', icon: MapPin, desc: 'Como o agendamento foi obtido' },
-      { key: '_unidades_destino', label: 'Unidades de Destino', icon: Building2, desc: 'Hospitais e clínicas de referência' },
       { key: 'destinatario_rota', label: 'Destinatários de Rota', icon: Navigation, desc: 'Instituições de encaminhamento na regulação' },
     ],
   },
@@ -168,7 +161,6 @@ const SECOES: SecaoConfig[] = [
     icon: Settings,
     categorias: [
       { key: 'canal_comunicacao', label: 'Canais de Comunicação', icon: MessageSquare, desc: 'Canais de notificação ao paciente' },
-      { key: 'perfil_usuario', label: 'Perfis de Usuário', icon: Shield, desc: 'Funções e permissões do sistema' },
       { key: 'regional', label: 'Regionais', icon: Building2, desc: 'Regionais de saúde do estado' },
     ],
   },
@@ -387,11 +379,6 @@ function ParametrosPanel() {
       >
         {editingParam && (
           <>
-            <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: 'var(--tfd-surface-50)' }}>
-              <p className="text-xs font-medium" style={{ color: 'var(--tfd-text-muted)' }}>Chave</p>
-              <p className="text-sm font-mono" style={{ color: 'var(--tfd-text-primary)' }}>{editingParam.chave}</p>
-            </div>
-
             {editingParam.descricao && (
               <div className="tfd-message tfd-message--info mb-4">
                 <span className="tfd-message-icon mt-0.5 shrink-0" style={{ color: 'var(--tfd-status-info)' }}>
@@ -432,9 +419,6 @@ function ParametrosPanel() {
               )}
             </FormField>
 
-            <p className="text-xs mt-2" style={{ color: 'var(--tfd-text-muted)' }}>
-              Tipo: <strong>{editingParam.tipo}</strong> · Grupo: <strong>{GRUPO_LABELS[editingParam.grupo] ?? editingParam.grupo}</strong>
-            </p>
           </>
         )}
       </Drawer>
@@ -522,40 +506,23 @@ function CadastrosPanel() {
   /* ---- Active category drawer ---- */
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [items, setItems] = useState<TabelaAuxiliar[]>([]);
-  const [unidades, setUnidades] = useState<UnidadeDestino[]>([]);
   const [companhias, setCompanhias] = useState<CompanhiaTransporte[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const isUnidades = activeKey === '_unidades_destino';
   const isCompanhias = activeKey === '_companhias';
-  const isGeneric = activeKey != null && !isUnidades && !isCompanhias;
+  const isGeneric = activeKey != null && !isCompanhias;
   const activeCat = ALL_CATEGORIAS.find((c) => c.key === activeKey);
 
   /* ---- Editing state ---- */
   const [editingItem, setEditingItem] = useState<TabelaAuxiliar | null>(null);
-  const [editingUnidade, setEditingUnidade] = useState<UnidadeDestino | null>(null);
   const [editingCompanhia, setEditingCompanhia] = useState<CompanhiaTransporte | null>(null);
 
   /* ---- Form state — generic ---- */
   const [fNome, setFNome] = useState('');
   const [fDescricao, setFDescricao] = useState('');
   const [fAtivo, setFAtivo] = useState(true);
-
-  /* ---- Form state — unidade destino ---- */
-  const [fUCnes, setFUCnes] = useState('');
-  const [fUCidade, setFUCidade] = useState('');
-  const [fUUf, setFUUf] = useState('');
-  const [fUTipo, setFUTipo] = useState('');
-  const [fUContatoNome, setFUContatoNome] = useState('');
-  const [fUContatoTel, setFUContatoTel] = useState('');
-  const [fUContatoEmail, setFUContatoEmail] = useState('');
-  const [fUEndereco, setFUEndereco] = useState('');
-  const [fUCep, setFUCep] = useState('');
-
-  /* ---- Search for Unidades drawer ---- */
-  const [unidadeSearch, setUnidadeSearch] = useState('');
 
   /* ---- Form state — companhia ---- */
   const [fCModal, setFCModal] = useState('Aéreo');
@@ -572,17 +539,15 @@ function CadastrosPanel() {
   useEffect(() => {
     const loadCounts = async () => {
       const newCounts: Record<string, number> = {};
-      const genericKeys = ALL_CATEGORIAS.filter((c) => c.key !== '_unidades_destino' && c.key !== '_companhias').map((c) => c.key);
+      const genericKeys = ALL_CATEGORIAS.filter((c) => c.key !== '_companhias').map((c) => c.key);
       const promises = genericKeys.map(async (key) => {
         const { data } = await listarPorCategoriaAdmin(key);
         newCounts[key] = data?.length ?? 0;
       });
-      const [uRes, cRes] = await Promise.all([
-        listarUnidadesDestinoAdmin(),
+      const [cRes] = await Promise.all([
         listarCompanhiasAdmin(),
         ...promises,
       ]);
-      newCounts['_unidades_destino'] = (uRes as { data: UnidadeDestino[] | null }).data?.length ?? 0;
       newCounts['_companhias'] = (cRes as { data: CompanhiaTransporte[] | null }).data?.length ?? 0;
       setCounts(newCounts);
     };
@@ -593,11 +558,7 @@ function CadastrosPanel() {
   const loadItems = async (key: string) => {
     setLoading(true);
     setErrorMsg(null);
-    if (key === '_unidades_destino') {
-      const { data, error } = await listarUnidadesDestinoAdmin();
-      if (error) setErrorMsg(error.message);
-      setUnidades((data as UnidadeDestino[]) ?? []);
-    } else if (key === '_companhias') {
+    if (key === '_companhias') {
       const { data, error } = await listarCompanhiasAdmin();
       if (error) setErrorMsg(error.message);
       setCompanhias((data as CompanhiaTransporte[]) ?? []);
@@ -617,7 +578,6 @@ function CadastrosPanel() {
   const handleCloseCategory = () => {
     setActiveKey(null);
     setItems([]);
-    setUnidades([]);
     setCompanhias([]);
     setErrorMsg(null);
     setFormMode(false);
@@ -627,19 +587,15 @@ function CadastrosPanel() {
   // Update count when items change
   useEffect(() => {
     if (!activeKey) return;
-    if (isUnidades) setCounts((prev) => ({ ...prev, [activeKey]: unidades.length }));
-    else if (isCompanhias) setCounts((prev) => ({ ...prev, [activeKey]: companhias.length }));
+    if (isCompanhias) setCounts((prev) => ({ ...prev, [activeKey]: companhias.length }));
     else setCounts((prev) => ({ ...prev, [activeKey]: items.length }));
-  }, [items, unidades, companhias, activeKey, isUnidades, isCompanhias]);
+  }, [items, companhias, activeKey, isCompanhias]);
 
   /* ---- Reset form ---- */
   const resetForm = () => {
     setFNome(''); setFDescricao(''); setFAtivo(true);
-    setFUCnes(''); setFUCidade(''); setFUUf(''); setFUTipo('');
-    setFUContatoNome(''); setFUContatoTel(''); setFUContatoEmail(''); setFUEndereco('');
-    setFUCep('');
     setFCModal('Aéreo'); setFCCnpj(''); setFCContato('');
-    setEditingItem(null); setEditingUnidade(null); setEditingCompanhia(null);
+    setEditingItem(null); setEditingCompanhia(null);
   };
 
   const handleNew = () => { resetForm(); setFormMode(true); };
@@ -649,16 +605,6 @@ function CadastrosPanel() {
     setEditingItem(item);
     setFNome(item.nome);
     setFDescricao(item.descricao ?? ''); setFAtivo(item.ativo);
-    setFormMode(true);
-  };
-
-  const handleEditUnidade = (u: UnidadeDestino) => {
-    resetForm();
-    setEditingUnidade(u);
-    setFNome(u.nome); setFUCnes(u.cnes ?? ''); setFUCidade(u.cidade); setFUUf(u.uf);
-    setFUTipo(u.tipo ?? ''); setFUContatoNome(u.contato_nome ?? '');
-    setFUContatoTel(u.contato_telefone ?? ''); setFUContatoEmail(u.contato_email ?? '');
-    setFUEndereco(u.endereco ?? ''); setFUCep(u.cep ?? ''); setFAtivo(u.ativo);
     setFormMode(true);
   };
 
@@ -691,20 +637,6 @@ function CadastrosPanel() {
         }
         if (result.error) { setErrorMsg(result.error.message); setSaving(false); return; }
         invalidateCache(activeKey);
-      } else if (isUnidades) {
-        const payload = {
-          nome: fNome, cnes: fUCnes || null, cidade: fUCidade, uf: fUUf,
-          tipo: fUTipo || null, contato_nome: fUContatoNome || null,
-          contato_telefone: fUContatoTel || null, contato_email: fUContatoEmail || null,
-          endereco: fUEndereco || null, cep: fUCep || null, ativo: fAtivo,
-        };
-        if (editingUnidade) {
-          result = await atualizarUnidadeDestino(editingUnidade.id, payload);
-        } else {
-          result = await criarUnidadeDestino(payload);
-        }
-        if (result.error) { setErrorMsg(result.error.message); setSaving(false); return; }
-        invalidateCache('_unidades_destino');
       } else {
         const payload = {
           nome: fNome, tipo_modal: fCModal as import('@/lib/supabase/database.types').ModalTransporte,
@@ -719,7 +651,7 @@ function CadastrosPanel() {
         invalidateCache('_companhias');
       }
 
-      const isEditing = !!(editingItem || editingUnidade || editingCompanhia);
+      const isEditing = !!(editingItem || editingCompanhia);
       toast.success(isEditing ? 'Item atualizado!' : 'Item criado!', isEditing ? 'As alterações foram salvas.' : 'O novo registro foi salvo com sucesso.');
       resetForm();
       setFormMode(false);
@@ -733,7 +665,7 @@ function CadastrosPanel() {
   };
 
   /* ---- Delete ---- */
-  const handleDelete = async (type: 'generic' | 'unidade' | 'companhia', item: TabelaAuxiliar | UnidadeDestino | CompanhiaTransporte) => {
+  const handleDelete = async (type: 'generic' | 'companhia', item: TabelaAuxiliar | CompanhiaTransporte) => {
     const nome = item.nome ?? 'este item';
     if (!window.confirm(`Excluir "${nome}"? Esta ação não pode ser desfeita.`)) return;
     let error: { message: string } | null = null;
@@ -741,10 +673,6 @@ function CadastrosPanel() {
       const res = await excluirItemAuxiliar(item.id);
       error = res.error;
       if (!error && activeKey) invalidateCache(activeKey);
-    } else if (type === 'unidade') {
-      const res = await excluirUnidadeDestino(item.id);
-      error = res.error;
-      if (!error) invalidateCache('_unidades_destino');
     } else {
       const res = await excluirCompanhia(item.id);
       error = res.error;
@@ -757,20 +685,18 @@ function CadastrosPanel() {
 
   /* ---- Drawer titles ---- */
   const formDrawerTitle = (() => {
-    if (isUnidades) return editingUnidade ? 'Editar Unidade' : 'Nova Unidade';
     if (isCompanhias) return editingCompanhia ? 'Editar Companhia' : 'Nova Companhia';
     return editingItem ? 'Editar Item' : 'Novo Item';
   })();
 
   const formDrawerSubtitle = (() => {
-    if (isUnidades && editingUnidade) return editingUnidade.nome;
     if (isCompanhias && editingCompanhia) return editingCompanhia.nome;
     if (isGeneric && editingItem) return editingItem.nome;
     return activeCat?.label ?? '';
   })();
 
   /* ---- Item list inside category drawer ---- */
-  const currentItems = isUnidades ? unidades : isCompanhias ? companhias : items;
+  const currentItems = isCompanhias ? companhias : items;
   const isEmpty = currentItems.length === 0 && !loading;
 
   const renderItemList = () => {
@@ -804,65 +730,6 @@ function CadastrosPanel() {
             <Plus size={14} />
             Adicionar primeiro item
           </button>
-        </div>
-      );
-    }
-
-    if (isUnidades) {
-      const filteredUnidades = unidadeSearch
-        ? unidades.filter((u) => {
-            const q = unidadeSearch.toLowerCase();
-            return u.nome.toLowerCase().includes(q) || (u.cnes && u.cnes.includes(q));
-          })
-        : unidades;
-      return (
-        <div>
-          {/* Search */}
-          <div className="mb-3">
-            <input
-              type="text"
-              className="tfd-input text-sm"
-              placeholder="Buscar por nome ou CNES..."
-              value={unidadeSearch}
-              onChange={(e) => setUnidadeSearch(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            {filteredUnidades.map((u) => (
-              <div
-                key={u.id}
-                className="flex items-center justify-between gap-3 p-3 rounded-lg transition-colors"
-                style={{ backgroundColor: 'var(--tfd-surface-50)' }}
-                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-100)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-50)'; }}
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{u.nome}</p>
-                  <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-                    {u.cidade}/{u.uf}
-                    {u.cnes ? ` · CNES: ${u.cnes}` : ''}
-                    {u.tipo ? ` · ${u.tipo}` : ''}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {!u.ativo && (
-                    <span className="tfd-tag tfd-tag--rounded tfd-tag--dot tfd-tag--secondary text-[10px]">Inativo</span>
-                  )}
-                  <button className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only" title="Editar" style={{ color: 'var(--tfd-primary-500)' }} onClick={() => handleEditUnidade(u)}>
-                    <Pencil size={14} />
-                  </button>
-                  <button className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only" title="Excluir" style={{ color: 'var(--tfd-status-danger)' }} onClick={() => handleDelete('unidade', u)}>
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            ))}
-            {filteredUnidades.length === 0 && unidadeSearch && (
-              <p className="text-sm text-center py-4" style={{ color: 'var(--tfd-text-muted)' }}>
-                Nenhuma unidade encontrada para &quot;{unidadeSearch}&quot;
-              </p>
-            )}
-          </div>
         </div>
       );
     }
@@ -948,61 +815,6 @@ function CadastrosPanel() {
         <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={fAtivo} onChange={(e) => setFAtivo(e.target.checked)} className="w-4 h-4 rounded" style={{ accentColor: 'var(--tfd-primary-600)' }} />
           <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>Item ativo</span>
-        </label>
-      </div>
-    </div>
-  );
-
-  const renderUnidadeForm = () => (
-    <div>
-      <FormField label="Nome" required>
-        <input type="text" className="tfd-input" placeholder="Nome da unidade" value={fNome} onChange={(e) => setFNome(e.target.value)} />
-      </FormField>
-      <FormField label="Código CNES">
-        <input type="text" className="tfd-input" placeholder="0000000" maxLength={7} value={fUCnes} onChange={(e) => setFUCnes(e.target.value.replace(/\D/g, '').slice(0, 7))} />
-        <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>Cadastro Nacional de Estabelecimentos de Saúde (7 dígitos)</p>
-      </FormField>
-      <FormField label="Tipo de Unidade">
-        <select className="tfd-input" value={fUTipo} onChange={(e) => setFUTipo(e.target.value)}>
-          <option value="">Selecione...</option>
-          <option value="Hospital Geral">Hospital Geral</option>
-          <option value="Hospital Especializado">Hospital Especializado</option>
-          <option value="Clínica">Clínica</option>
-          <option value="Centro de Referência">Centro de Referência</option>
-          <option value="Instituto">Instituto</option>
-          <option value="UPA">UPA</option>
-          <option value="Outro">Outro</option>
-        </select>
-      </FormField>
-      <div className="grid grid-cols-2 gap-3">
-        <FormField label="Cidade" required>
-          <input type="text" className="tfd-input" placeholder="Cidade" value={fUCidade} onChange={(e) => setFUCidade(e.target.value)} />
-        </FormField>
-        <FormField label="UF" required>
-          <input type="text" className="tfd-input" placeholder="UF" maxLength={2} value={fUUf} onChange={(e) => setFUUf(e.target.value.toUpperCase())} />
-        </FormField>
-      </div>
-      <FormField label="CEP">
-        <input type="text" className="tfd-input" placeholder="00000-000" value={fUCep} onChange={(e) => setFUCep(maskCEP(e.target.value))} />
-      </FormField>
-      <FormField label="Endereço">
-        <textarea className="tfd-input" rows={2} placeholder="Endereço completo" value={fUEndereco} onChange={(e) => setFUEndereco(e.target.value)} />
-      </FormField>
-      <hr className="tfd-divider" />
-      <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Contato</h3>
-      <FormField label="Nome do contato">
-        <input type="text" className="tfd-input" placeholder="Nome" value={fUContatoNome} onChange={(e) => setFUContatoNome(e.target.value)} />
-      </FormField>
-      <FormField label="Telefone">
-        <input type="text" className="tfd-input" placeholder="(00) 00000-0000" value={fUContatoTel} onChange={(e) => setFUContatoTel(maskPhone(e.target.value))} />
-      </FormField>
-      <FormField label="E-mail">
-        <input type="email" className="tfd-input" placeholder="contato@unidade.com" value={fUContatoEmail} onChange={(e) => setFUContatoEmail(e.target.value)} />
-      </FormField>
-      <div className="mb-4">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" checked={fAtivo} onChange={(e) => setFAtivo(e.target.checked)} className="w-4 h-4 rounded" style={{ accentColor: 'var(--tfd-primary-600)' }} />
-          <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>Unidade ativa</span>
         </label>
       </div>
     </div>
@@ -1138,7 +950,7 @@ function CadastrosPanel() {
                 {saving ? (
                   <><Loader2 size={14} className="animate-spin" /> Salvando...</>
                 ) : (
-                  editingItem || editingUnidade || editingCompanhia ? 'Salvar Alterações' : 'Criar'
+                  editingItem || editingCompanhia ? 'Salvar Alterações' : 'Criar'
                 )}
               </button>
             </>
@@ -1160,7 +972,6 @@ function CadastrosPanel() {
         {formMode ? (
           <>
             {isGeneric && renderGenericForm()}
-            {isUnidades && renderUnidadeForm()}
             {isCompanhias && renderCompanhiaForm()}
           </>
         ) : (

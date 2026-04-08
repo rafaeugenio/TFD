@@ -32,6 +32,11 @@ import {
 } from '@/core/mocks/relatorio-atendimento.mock';
 import type { RelatorioAtendimento } from '@/core/models/relatorio-atendimento.model';
 
+/* ── TODO AGENTE-4: Descomentar quando Agentes 1 e 2 concluírem ──
+import MedicoSelect from '@/shared/components/medico-select/MedicoSelect';
+── MedicoSelect substitui os inputs de texto livre medicoNome e medicoCRM.
+── Ao selecionar médico, preenche automaticamente nome e CRM. ── */
+
 /* -------------------------------------------------- */
 /*  Constants                                          */
 /* -------------------------------------------------- */
@@ -125,6 +130,9 @@ export default function RelatorioAtendimentoPage() {
   const [retornoPrevistoPara, setRetornoPrevistoPara] = useState('');
   const [necessidadeAcompanhante, setNecessidadeAcompanhante] = useState('');
   const [tempoEstimadoFora, setTempoEstimadoFora] = useState('');
+  /* TODO AGENTE-4: Quando MedicoSelect estiver pronto, trocar por:
+     const [selectedMedicoRA, setSelectedMedicoRA] = useState<{ id: string; nome_completo: string; crm: string; crm_uf: string } | null>(null);
+     E derivar medicoNome e medicoCRM do objeto selecionado. */
   const [medicoNome, setMedicoNome] = useState('');
   const [medicoCRM, setMedicoCRM] = useState('');
 
@@ -971,6 +979,18 @@ export default function RelatorioAtendimentoPage() {
         <div className="tfd-divider mb-5" />
 
         {/* Médico */}
+        {/* TODO AGENTE-4: Substituir os 2 campos abaixo (nome + CRM) por:
+            <MedicoSelect
+              value={selectedMedicoRA}
+              onChange={(medico) => {
+                setSelectedMedicoRA(medico);
+                setMedicoNome(medico?.nome_completo ?? '');
+                setMedicoCRM(medico ? `CRM/${medico.crm_uf} ${medico.crm}` : '');
+              }}
+              label="Médico Assistente"
+              required
+            />
+            Ao selecionar, preenche nome e CRM automaticamente. */}
         <p className="text-xs font-semibold mb-3" style={{ color: 'var(--tfd-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           Médico Assistente
         </p>

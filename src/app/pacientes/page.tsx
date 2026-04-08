@@ -28,6 +28,8 @@ import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import { useMunicipios } from '@/shared/hooks/useLookup';
 import { formatCPF, maskCPF, maskCNS, maskPhone, maskCEP } from '@/shared/pipes/formatters';
 
+import CepAutofill from '@/shared/components/cep-autofill/CepAutofill';
+
 import { listarPacientes, buscarPaciente, criarPaciente, atualizarPaciente } from '@/services/pacientes.service';
 import { listarPorPaciente, criarAcompanhante, atualizarAcompanhante, excluirAcompanhante } from '@/services/acompanhantes.service';
 import { uploadDocumento, listarDocumentosPaciente, excluirDocumento } from '@/services/documentos.service';
@@ -902,15 +904,17 @@ function PacientesPage() {
         </h3>
 
         <div className="grid grid-cols-3 gap-4">
-          <FormField label="CEP">
-            <input
-              type="text"
-              className="tfd-input"
-              placeholder="00000-000"
-              value={cep}
-              onChange={(e) => setCep(maskCEP(e.target.value))}
-            />
-          </FormField>
+          <CepAutofill
+            initialCep={cep}
+            onAddressFound={(address) => {
+              setCep(maskCEP(address.cep));
+              setLogradouro(address.logradouro);
+              setBairro(address.bairro);
+              setUf(address.uf);
+              const match = municipios.find((m) => m.codigo_ibge === address.codigo_ibge);
+              if (match) setMunicipio(match.value);
+            }}
+          />
 
           <div className="col-span-2">
             <FormField label="Logradouro">
@@ -969,6 +973,18 @@ function PacientesPage() {
             ))}
           </select>
         </FormField>
+
+        {/* TODO AGENTE-4: Adicionar campo "Regional de Saúde" derivado do município:
+            - Quando o município for selecionado (ou derivado do CEP via ViaCEP),
+              consultar a tabela auxiliar categoria='regional' para mapear município → regional
+            - Exibir campo read-only com a regional correspondente
+            - Salvar o código da regional junto ao paciente para filtros por regional
+            Exemplo de implementação:
+            <FormField label="Regional de Saúde">
+              <input type="text" className="tfd-input" value={regionalDerived} readOnly
+                style={{ backgroundColor: 'var(--tfd-surface-50)' }} />
+            </FormField>
+            Depende do Agente 1 ter populado as 19 regionais completas (migration 00025). */}
 
         {/* ── Section: Documentos Pessoais ── */}
         <hr className="tfd-divider" />

@@ -28,6 +28,15 @@ import type { DecisaoParecer, TipoDocumento, StatusSolicitacao } from '@/lib/sup
 import DevolverModal from '@/shared/components/devolver-modal/DevolverModal';
 import { useDevolucoesPendentes } from '@/shared/hooks/useDevolucoesPendentes';
 
+/* ── AGENTE-4: Análise de refactoring ──
+   Esta página é majoritariamente READ-ONLY para dados clínicos:
+   - CID: exibido como texto read-only (sol.cid10_principal) — NÃO precisa de CidAutocomplete
+   - Médico auditor: vem de currentUser.id — NÃO precisa de MedicoSelect
+   - Diagnóstico/justificativa: exibidos em blocos read-only
+   - Campos editáveis: apenas decisão (select) e observações (textarea)
+   Conclusão: NENHUMA refatoração de campos necessária nesta página.
+   Os novos componentes serão úteis apenas nas telas de entrada de dados. */
+
 /* -------------------------------------------------- */
 /*  Helpers                                            */
 /* -------------------------------------------------- */

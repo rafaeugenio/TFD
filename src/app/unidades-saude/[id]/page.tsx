@@ -9,7 +9,6 @@ import {
   Phone,
   Mail,
   MapPin,
-  Hash,
   FileText,
   Activity,
   CheckCircle2,
@@ -19,7 +18,6 @@ import {
   Loader2,
   XCircle,
   Pencil,
-  Briefcase,
   Globe,
 } from 'lucide-react';
 
@@ -198,8 +196,6 @@ export default function UnidadeSaudeDetalhePage({
 
             {/* Dados da unidade */}
             <div className="space-y-3">
-              {cnes && <InfoRow icon={<Hash size={14} />} label="CNES" value={cnes} />}
-              {tipo && <InfoRow icon={<Briefcase size={14} />} label="Tipo" value={tipo} />}
               {regional && <InfoRow icon={<Globe size={14} />} label="Regional" value={regional} />}
               {responsavel && <InfoRow icon={<User size={14} />} label="Responsável" value={responsavel} />}
               {telefone && <InfoRow icon={<Phone size={14} />} label="Telefone" value={telefone} />}
