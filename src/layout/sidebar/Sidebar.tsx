@@ -23,6 +23,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Microscope,
+  Building2,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -51,7 +52,6 @@ const navSections: NavSection[] = [
   {
     title: 'FLUXO DO PROCESSO',
     items: [
-      { icon: Contact, label: 'Pacientes', href: '/pacientes' },
       { icon: FileText, label: 'Solicitações', href: '/solicitacoes' },
       { icon: Microscope, label: 'Diagnóstico Clínico', href: '/diagnostico-clinico' },
       { icon: Stethoscope, label: 'Parecer Médico', href: '/parecer-medico' },
@@ -61,6 +61,14 @@ const navSections: NavSection[] = [
       { icon: Wallet, label: 'Ajuda de Custo', href: '/ajuda-custo' },
       { icon: CalendarClock, label: 'Permanência', href: '/permanencia' },
       { icon: LogOut, label: 'Alta / Encerramento', href: '/alta-encerramento' },
+    ],
+  },
+  {
+    title: 'CADASTROS',
+    items: [
+      { icon: Contact, label: 'Pacientes', href: '/pacientes' },
+      { icon: Stethoscope, label: 'Médicos', href: '/medicos' },
+      { icon: Building2, label: 'Unidades de Saúde', href: '/unidades-saude' },
     ],
   },
   {
