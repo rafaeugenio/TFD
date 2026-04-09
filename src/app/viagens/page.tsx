@@ -18,17 +18,21 @@ import {
   X,
   Loader2,
   FileText,
-  Filter,
   RefreshCcw,
   Ban,
   UserX,
   List,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
-import UfCidadeSelect from '@/shared/components/uf-cidade-select/UfCidadeSelect';
+import RotaSelect from '@/shared/components/rota-select/RotaSelect';
+import CompanhiaSelect from '@/shared/components/companhia-select/CompanhiaSelect';
+import type { RotaDeslocamento } from '@/core/models/rota-deslocamento.model';
 import { useToast } from '@/shared/components/toast/Toast';
 import {
   listarViagens,
@@ -45,16 +49,14 @@ import { uploadDocumento, listarDocumentosPorViagem } from '@/services/documento
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import type { SituacaoViagem, TipoDocumento } from '@/lib/supabase/database.types';
 import { formatCurrency, maskCurrency, parseCurrency } from '@/shared/pipes/formatters';
-import { useLookup, useCompanhias } from '@/shared/hooks/useLookup';
+import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import DevolverModal from '@/shared/components/devolver-modal/DevolverModal';
 import { useDevolucoesPendentes } from '@/shared/hooks/useDevolucoesPendentes';
+import { slaBadge } from '@/shared/utils/sla';
+import { useDevolucoeRecebidas } from '@/shared/hooks/useDevolucoeRecebidas';
+import SortableHeader from '@/shared/components/table/SortableHeader';
+import { useTableControls } from '@/shared/hooks/useTableControls';
 
-/* ── TODO AGENTE-4: Descomentar quando Agentes 1 e 2 concluírem ──
-import RotaSelect from '@/shared/components/rota-select/RotaSelect';
-── RotaSelect substitui os 2 UfCidadeSelect (origem+destino) por um componente único
-── que busca rotas cadastradas e calcula automaticamente distância e procedimentos SIGTAP.
-── Ao selecionar rota + modal de transporte, exibe preview:
-── "Distância: X milhas → Y procedimentos → R$ Z (SIGTAP 08.03.01.008-7)" ── */
 
 /* -------------------------------------------------- */
 /*  Page-level tabs                                    */
@@ -62,21 +64,6 @@ import RotaSelect from '@/shared/components/rota-select/RotaSelect';
 
 type PageTab = 'disponiveis' | 'passagens';
 
-/* -------------------------------------------------- */
-/*  Filter config (passagens tab only)                 */
-/* -------------------------------------------------- */
-
-type FilterKey = 'TODAS' | 'AGUARDANDO_EMISSAO' | 'EMITIDA' | 'UTILIZADA' | 'NAO_COMPARECEU' | 'REMARCADA' | 'CANCELADA';
-
-const FILTER_OPTIONS: { key: FilterKey; label: string }[] = [
-  { key: 'TODAS', label: 'Todas as situações' },
-  { key: 'AGUARDANDO_EMISSAO', label: 'Pendentes' },
-  { key: 'EMITIDA', label: 'Emitidas' },
-  { key: 'UTILIZADA', label: 'Utilizadas' },
-  { key: 'NAO_COMPARECEU', label: 'Não Compareceu' },
-  { key: 'REMARCADA', label: 'Remarcadas' },
-  { key: 'CANCELADA', label: 'Canceladas' },
-];
 
 /* -------------------------------------------------- */
 /*  Status styling                                     */
@@ -126,8 +113,6 @@ type InlineConfirmType = 'embarque' | 'nao_compareceu' | 'cancelar' | null;
 export default function ViagensPage() {
   const toast = useToast();
   const [pageTab, setPageTab] = useState<PageTab>('disponiveis');
-  const [filterSituacao, setFilterSituacao] = useState<FilterKey>('TODAS');
-  const [search, setSearch] = useState('');
 
   /* ---- Drawer state ---- */
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -157,19 +142,21 @@ export default function ViagensPage() {
 
   /* ---- Devoluções pendentes ---- */
   const { mapa: devolucoesEnviadas, labelDestino, refresh: refreshDevolucoes } = useDevolucoesPendentes('PASSAGENS');
+  const { mapa: devolucoesRecebidas, labelOrigem } = useDevolucoeRecebidas('PASSAGENS');
 
   /* ---- Disponíveis (solicitações aguardando emissão sem viagem ativa) ---- */
   const [solDisp, setSolDisp] = useState<any[]>([]);
   const [solDispLoading, setSolDispLoading] = useState(false);
+  const devolvedIds = useMemo(() => Array.from(devolucoesEnviadas.keys()), [devolucoesEnviadas]);
 
   async function refreshDisp() {
     setSolDispLoading(true);
-    const { data } = await listarSolicitacoesAguardandoEmissao();
+    const { data } = await listarSolicitacoesAguardandoEmissao({ includeIds: devolvedIds });
     setSolDisp(data ?? []);
     setSolDispLoading(false);
   }
 
-  useEffect(() => { refreshDisp(); }, []);
+  useEffect(() => { refreshDisp(); }, [devolvedIds]);
 
   /* ---- Form state: Paciente ---- */
   const [solicitacaoId, setSolicitacaoId] = useState('');
@@ -177,10 +164,7 @@ export default function ViagensPage() {
   const [pacienteNome, setPacienteNome] = useState('');
 
   /* ---- Form state: IDA ---- */
-  const [idaOrigemUf, setIdaOrigemUf] = useState('MA');
-  const [idaOrigem, setIdaOrigem] = useState('');
-  const [idaDestinoUf, setIdaDestinoUf] = useState('');
-  const [idaDestino, setIdaDestino] = useState('');
+  const [idaRota, setIdaRota] = useState<RotaDeslocamento | null>(null);
   const [idaDataEmbarque, setIdaDataEmbarque] = useState('');
   const [idaModalTransporte, setIdaModalTransporte] = useState('');
   const [idaCompanhia, setIdaCompanhia] = useState('');
@@ -190,10 +174,7 @@ export default function ViagensPage() {
   const [idaObservacoes, setIdaObservacoes] = useState('');
 
   /* ---- Form state: VOLTA ---- */
-  const [voltaOrigemUf, setVoltaOrigemUf] = useState('');
-  const [voltaOrigem, setVoltaOrigem] = useState('');
-  const [voltaDestinoUf, setVoltaDestinoUf] = useState('MA');
-  const [voltaDestino, setVoltaDestino] = useState('');
+  const [voltaRota, setVoltaRota] = useState<RotaDeslocamento | null>(null);
   const [voltaDataEmbarque, setVoltaDataEmbarque] = useState('');
   const [voltaModalTransporte, setVoltaModalTransporte] = useState('');
   const [voltaCompanhia, setVoltaCompanhia] = useState('');
@@ -207,21 +188,47 @@ export default function ViagensPage() {
   const [voltaPendingFile, setVoltaPendingFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  /* ---- Lookup hooks ---- */
-  const { options: modais, loading: loadingModais } = useLookup('modal_transporte');
-  const { options: companhias, loading: loadingComp } = useCompanhias();
-
   /* ---- Data fetch ---- */
-  const filterForApi = filterSituacao === 'NAO_COMPARECEU' ? 'NO_SHOW' : filterSituacao;
   const { data: viagens, loading, count: totalCount, refresh } = useSupabaseData(
-    () => listarViagens({ situacao: filterForApi === 'TODAS' ? undefined : filterForApi, search }),
-    [filterForApi, search]
+    () => listarViagens({}),
+    []
   );
 
   function refreshAll() {
     refresh();
     refreshDisp();
   }
+
+  /* ---- Table controls: Disponíveis tab ---- */
+  const tableDisp = useTableControls({
+    data: solDisp as unknown as Record<string, unknown>[],
+    searchFields: ['numero_processo', 'pacientes'],
+    dateField: 'created_at',
+  });
+
+  /* ---- Table controls: Passagens tab ---- */
+  const tablePass = useTableControls({
+    data: viagens as unknown as Record<string, unknown>[],
+    searchFields: ['solicitacoes', 'origem_cidade', 'destino_cidade', 'numero_bilhete', 'companhia'],
+    dateField: 'data_embarque_prevista',
+  });
+
+  /* Typed paginated helpers */
+  const paginatedDisp = tableDisp.paginated as unknown as any[];
+  const filteredDisp = tableDisp.filtered as unknown as any[];
+  const paginatedPass = tablePass.paginated as unknown as any[];
+  const filteredPass = tablePass.filtered as unknown as any[];
+
+  /* ---- Filter options for Passagens columns ---- */
+  const situacaoFilterOptions = tablePass.getFilterOptions('situacao').map((v) => ({
+    value: v,
+    label: (situacaoMap[v as SituacaoViagem] ?? { label: v }).label,
+  }));
+  const tipoFilterOptions = tablePass.getFilterOptions('tipo').map((v) => ({
+    value: v,
+    label: v === 'IDA' ? 'Ida' : 'Volta',
+  }));
+  const modalFilterOptions = tablePass.getFilterOptions('modal');
 
   /* ---- Summary counters ---- */
   const counts = useMemo(() => {
@@ -262,12 +269,10 @@ export default function ViagensPage() {
 
   function resetForm() {
     setSolicitacaoId(''); setNumProcesso(''); setPacienteNome('');
-    setIdaOrigem(''); setIdaDestino(''); setIdaDataEmbarque(''); setIdaModalTransporte('');
+    setIdaRota(null); setIdaDataEmbarque(''); setIdaModalTransporte('');
     setIdaCompanhia(''); setIdaLocalizador(''); setIdaValor(''); setIdaMedif(false); setIdaObservacoes('');
-    setIdaOrigemUf('MA'); setIdaDestinoUf('');
-    setVoltaOrigem(''); setVoltaDestino(''); setVoltaDataEmbarque(''); setVoltaModalTransporte('');
+    setVoltaRota(null); setVoltaDataEmbarque(''); setVoltaModalTransporte('');
     setVoltaCompanhia(''); setVoltaLocalizador(''); setVoltaValor(''); setVoltaMedif(false); setVoltaObservacoes('');
-    setVoltaOrigemUf(''); setVoltaDestinoUf('MA');
     setIdaPendingFile(null);
     setVoltaPendingFile(null);
     setEditingId(null);
@@ -290,14 +295,14 @@ export default function ViagensPage() {
       return;
     }
 
-    if (!idaOrigem || !idaDestino || !idaDataEmbarque) {
-      toast.warning('Dados incompletos', 'Preencha origem, destino e data da IDA.');
+    if (!idaRota || !idaDataEmbarque) {
+      toast.warning('Dados incompletos', 'Selecione a rota e a data de embarque da IDA.');
       setDrawerTab('ida');
       return;
     }
 
-    if (!voltaOrigem || !voltaDestino || !voltaDataEmbarque) {
-      toast.warning('Dados incompletos', 'Preencha origem, destino e data da VOLTA.');
+    if (!voltaRota || !voltaDataEmbarque) {
+      toast.warning('Dados incompletos', 'Selecione a rota e a data de embarque da VOLTA.');
       setDrawerTab('volta');
       return;
     }
@@ -311,26 +316,26 @@ export default function ViagensPage() {
           solicitacao_id: solicitacaoId,
           tipo: 'IDA' as const,
           modal: (idaModalTransporte as any) || 'AEREO',
-          origem_cidade: idaOrigem, origem_uf: idaOrigemUf,
-          destino_cidade: idaDestino, destino_uf: idaDestinoUf,
+          origem_cidade: idaRota!.cidade_origem, origem_uf: idaRota!.uf_origem,
+          destino_cidade: idaRota!.cidade_destino, destino_uf: idaRota!.uf_destino,
           com_pernoite: false,
           data_embarque_prevista: idaDataEmbarque,
           medif_necessario: idaMedif,
           valor: idaValor ? parseCurrency(idaValor) : undefined,
-          companhia: (companhias.find((c) => c.id === idaCompanhia)?.nome ?? idaCompanhia) || undefined,
+          companhia: idaCompanhia || undefined,
           numero_bilhete: idaLocalizador || undefined,
           observacoes: idaObservacoes || undefined,
         } : {
           solicitacao_id: solicitacaoId,
           tipo: 'RETORNO' as const,
           modal: (voltaModalTransporte as any) || 'AEREO',
-          origem_cidade: voltaOrigem, origem_uf: voltaOrigemUf,
-          destino_cidade: voltaDestino, destino_uf: voltaDestinoUf,
+          origem_cidade: voltaRota!.cidade_origem, origem_uf: voltaRota!.uf_origem,
+          destino_cidade: voltaRota!.cidade_destino, destino_uf: voltaRota!.uf_destino,
           com_pernoite: false,
           data_embarque_prevista: voltaDataEmbarque,
           medif_necessario: voltaMedif,
           valor: voltaValor ? parseCurrency(voltaValor) : undefined,
-          companhia: (companhias.find((c) => c.id === voltaCompanhia)?.nome ?? voltaCompanhia) || undefined,
+          companhia: voltaCompanhia || undefined,
           numero_bilhete: voltaLocalizador || undefined,
           observacoes: voltaObservacoes || undefined,
         };
@@ -357,13 +362,13 @@ export default function ViagensPage() {
         solicitacao_id: solicitacaoId,
         tipo: 'IDA' as const,
         modal: (idaModalTransporte as any) || 'AEREO',
-        origem_cidade: idaOrigem, origem_uf: idaOrigemUf,
-        destino_cidade: idaDestino, destino_uf: idaDestinoUf,
+        origem_cidade: idaRota!.cidade_origem, origem_uf: idaRota!.uf_origem,
+        destino_cidade: idaRota!.cidade_destino, destino_uf: idaRota!.uf_destino,
         com_pernoite: false,
         data_embarque_prevista: idaDataEmbarque,
         medif_necessario: idaMedif,
         valor: idaValor ? parseCurrency(idaValor) : undefined,
-        companhia: (companhias.find((c) => c.id === idaCompanhia)?.nome ?? idaCompanhia) || undefined,
+        companhia: idaCompanhia || undefined,
         numero_bilhete: idaLocalizador || undefined,
         observacoes: idaObservacoes || undefined,
       };
@@ -379,13 +384,13 @@ export default function ViagensPage() {
         solicitacao_id: solicitacaoId,
         tipo: 'RETORNO' as const,
         modal: (voltaModalTransporte as any) || 'AEREO',
-        origem_cidade: voltaOrigem, origem_uf: voltaOrigemUf,
-        destino_cidade: voltaDestino, destino_uf: voltaDestinoUf,
+        origem_cidade: voltaRota!.cidade_origem, origem_uf: voltaRota!.uf_origem,
+        destino_cidade: voltaRota!.cidade_destino, destino_uf: voltaRota!.uf_destino,
         com_pernoite: false,
         data_embarque_prevista: voltaDataEmbarque,
         medif_necessario: voltaMedif,
         valor: voltaValor ? parseCurrency(voltaValor) : undefined,
-        companhia: (companhias.find((c) => c.id === voltaCompanhia)?.nome ?? voltaCompanhia) || undefined,
+        companhia: voltaCompanhia || undefined,
         numero_bilhete: voltaLocalizador || undefined,
         observacoes: voltaObservacoes || undefined,
       };
@@ -517,20 +522,14 @@ export default function ViagensPage() {
 
   /* ---- Auto-fill volta from ida ---- */
   function autoFillVolta() {
-    if (!voltaOrigem && idaDestino) setVoltaOrigem(idaDestino);
-    if (!voltaDestino && idaOrigem) setVoltaDestino(idaOrigem);
     if (!voltaModalTransporte && idaModalTransporte) setVoltaModalTransporte(idaModalTransporte);
-    if (!voltaOrigemUf && idaDestinoUf) setVoltaOrigemUf(idaDestinoUf);
-    if (!voltaDestinoUf && idaOrigemUf) setVoltaDestinoUf(idaOrigemUf);
   }
 
   /* ---- Render travel form fields ---- */
   function renderTravelFields(
     prefix: 'ida' | 'volta',
-    origemUf: string, setOrigemUf: (v: string) => void,
-    origem: string, setOrigem: (v: string) => void,
-    destinoUf: string, setDestinoUf: (v: string) => void,
-    destino: string, setDestino: (v: string) => void,
+    rota: RotaDeslocamento | null,
+    setRota: (r: RotaDeslocamento | null) => void,
     dataEmbarque: string, setDataEmbarque: (v: string) => void,
     modal: string, setModal: (v: string) => void,
     comp: string, setComp: (v: string) => void,
@@ -542,46 +541,31 @@ export default function ViagensPage() {
   ) {
     return (
       <>
-        {/* TODO AGENTE-4: Substituir os 2 UfCidadeSelect abaixo (Origem + Destino) por:
-            <RotaSelect
-              onRotaSelect={(rota) => {
-                setOrigemUf(rota.uf_origem); setOrigem(rota.cidade_origem);
-                setDestinoUf(rota.uf_destino); setDestino(rota.cidade_destino);
-              }}
-              modalTransporte={modal}
-            />
-            O RotaSelect:
-            - Usa UfCidadeSelect internamente para origem e destino
-            - Ao selecionar origem+destino, busca na tabela rotas_deslocamento
-            - Se encontrar, exibe distâncias e cálculo de procedimentos SIGTAP
-            - Se não encontrar, permite digitar distância e "Salvar nova rota"
-            - Exibe preview: "Distância: X milhas → Y procedimentos → R$ Z" */}
-        <h4 className="text-xs font-semibold mb-1" style={{ color: 'var(--tfd-text-muted)' }}>Origem</h4>
-        <UfCidadeSelect ufLabel="UF Origem" cidadeLabel="Cidade Origem" uf={origemUf} cidade={origem} onUfChange={setOrigemUf} onCidadeChange={setOrigem} required />
-
-        <h4 className="text-xs font-semibold mb-1 mt-2" style={{ color: 'var(--tfd-text-muted)' }}>Destino</h4>
-        <UfCidadeSelect ufLabel="UF Destino" cidadeLabel="Cidade Destino" uf={destinoUf} cidade={destino} onUfChange={setDestinoUf} onCidadeChange={setDestino} required />
+        <RotaSelect
+          value={rota?.id ?? null}
+          onChange={setRota}
+          label="Rota de deslocamento"
+          required
+        />
 
         <FormField label="Data de embarque" required>
           <input type="date" className="tfd-input" value={dataEmbarque} onChange={(e) => setDataEmbarque(e.target.value)} />
         </FormField>
 
-        <FormField label="Modal de transporte">
-          <select className="tfd-input" value={modal} onChange={(e) => setModal(e.target.value)} disabled={loadingModais}>
-            <option value="">{loadingModais ? 'Carregando...' : 'Selecione...'}</option>
-            {modais.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-          </select>
-        </FormField>
+        <LookupSelect
+          categoria="modal_transporte"
+          label="Modal de transporte"
+          value={modal}
+          onChange={setModal}
+        />
 
-        <FormField label="Companhia">
-          <select className="tfd-input" value={comp} onChange={(e) => setComp(e.target.value)} disabled={loadingComp}>
-            <option value="">{loadingComp ? 'Carregando...' : 'Selecione...'}</option>
-            {companhias.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-          </select>
-        </FormField>
+        <CompanhiaSelect
+          value={comp}
+          onChange={setComp}
+        />
 
         <FormField label="Localizador / Bilhete">
-          <input type="text" className="tfd-input" placeholder="Código do bilhete" value={loc} onChange={(e) => setLoc(e.target.value)} />
+          <input type="text" className="tfd-input" placeholder="Codigo do bilhete" value={loc} onChange={(e) => setLoc(e.target.value)} />
         </FormField>
 
         <FormField label="Valor da passagem">
@@ -590,10 +574,10 @@ export default function ViagensPage() {
 
         <div className="mb-4 flex items-center gap-2">
           <input type="checkbox" id={`${prefix}Medif`} checked={medif} onChange={(e) => setMedif(e.target.checked)} style={{ accentColor: 'var(--tfd-primary-500)' }} />
-          <label htmlFor={`${prefix}Medif`} className="tfd-label" style={{ marginBottom: 0 }}>MEDIF necessário</label>
+          <label htmlFor={`${prefix}Medif`} className="tfd-label" style={{ marginBottom: 0 }}>MEDIF necessario</label>
         </div>
 
-        <FormField label="Observações">
+        <FormField label="Observacoes">
           <textarea className="tfd-input" rows={2} value={obs} onChange={(e) => setObs(e.target.value)} />
         </FormField>
 
@@ -624,7 +608,7 @@ export default function ViagensPage() {
           </label>
         )}
         <p className="text-xs mb-1" style={{ color: 'var(--tfd-text-muted)' }}>
-          PDF, PNG, JPG — este documento ficará vinculado à passagem de {prefix === 'ida' ? 'ida' : 'volta'}.
+          PDF, PNG, JPG — este documento ficara vinculado a passagem de {prefix === 'ida' ? 'ida' : 'volta'}.
         </p>
       </>
     );
@@ -843,6 +827,7 @@ export default function ViagensPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Disponíveis</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.disponiveis}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Com agendamento confirmado, prontos para emissão</p>
           </div>
         </div>
 
@@ -853,6 +838,7 @@ export default function ViagensPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Pend. Emissão</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.pendentes}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Passagens solicitadas aguardando emissão</p>
           </div>
         </div>
 
@@ -863,6 +849,7 @@ export default function ViagensPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Emitidas</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.emitidas}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Bilhetes emitidos aguardando embarque</p>
           </div>
         </div>
 
@@ -873,6 +860,7 @@ export default function ViagensPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Confirmadas</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.confirmadas}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Embarque confirmado — paciente viajou</p>
           </div>
         </div>
 
@@ -883,6 +871,7 @@ export default function ViagensPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Não Compareceu</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-danger)' }}>{counts.naoCompareceu}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>NO-SHOW: data passou sem confirmação</p>
           </div>
         </div>
 
@@ -893,6 +882,7 @@ export default function ViagensPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Valor Total</p>
             <p className="text-lg font-semibold" style={{ color: 'var(--tfd-primary-700)' }}>{formatCurrency(counts.valorTotal)}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Soma de todas as passagens emitidas</p>
           </div>
         </div>
       </div>
@@ -932,79 +922,140 @@ export default function ViagensPage() {
 
       {/* ========== Tab: Disponíveis ========== */}
       {pageTab === 'disponiveis' && (
-        <div className="tfd-card p-0 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="tfd-table">
-              <thead>
-                <tr>
-                  <th>Solicitação</th>
-                  <th>Paciente</th>
-                  <th className="hidden lg:table-cell">Data Solicitação</th>
-                  <th className="w-[100px]">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {solDispLoading ? (
+        <>
+          {/* Toolbar */}
+          <div className="tfd-toolbar mb-4 flex-wrap gap-3">
+            <div className="relative flex-1 min-w-[220px] max-w-sm">
+              <Search size={16} className="tfd-input-leading-icon" style={{ color: 'var(--tfd-text-muted)' }} />
+              <input type="text" className="tfd-input tfd-input--sm tfd-input--with-leading-icon" placeholder="Buscar solicitação, paciente..."
+                value={tableDisp.search} onChange={(e) => tableDisp.setSearch(e.target.value)} />
+            </div>
+            <div className="flex items-center gap-2">
+              <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
+              <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
+                value={tableDisp.dateStart} onChange={(e) => tableDisp.setDateStart(e.target.value)} title="Data início" />
+              <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>até</span>
+              <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
+                value={tableDisp.dateEnd} onChange={(e) => tableDisp.setDateEnd(e.target.value)} title="Data fim" />
+            </div>
+          </div>
+
+          <div className="tfd-card p-0 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="tfd-table">
+                <thead>
                   <tr>
-                    <td colSpan={4} className="text-center py-12">
-                      <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Carregando...</p>
-                    </td>
+                    <SortableHeader
+                      label="Solicitação"
+                      sortDirection={tableDisp.getSortDirection('numero_processo')}
+                      onSort={() => tableDisp.toggleSort('numero_processo')}
+                    />
+                    <SortableHeader
+                      label="Paciente"
+                      sortDirection={tableDisp.getSortDirection('pacientes')}
+                      onSort={() => tableDisp.toggleSort('pacientes')}
+                    />
+                    <SortableHeader
+                      label="Data Solicitação"
+                      className="hidden lg:table-cell"
+                      sortDirection={tableDisp.getSortDirection('created_at')}
+                      onSort={() => tableDisp.toggleSort('created_at')}
+                    />
+                    <th>Tempo</th>
+                    <th className="w-[100px]">Ações</th>
                   </tr>
-                ) : solDisp.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="text-center py-12">
-                      <div className="flex flex-col items-center gap-2">
-                        <CheckCircle2 size={32} style={{ color: 'var(--tfd-text-muted)' }} />
-                        <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Nenhuma solicitação aguardando emissão</p>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  solDisp.map((sol: any) => (
-                    <tr key={sol.id} className="cursor-pointer" onClick={() => handleOpenNew(sol)}>
-                      <td>
-                        <Link href={`/solicitacoes/${sol.id}`} className="font-medium text-sm hover:underline" style={{ color: 'var(--tfd-primary-500)' }} onClick={(e) => e.stopPropagation()}>
-                          {sol.numero_processo}
-                        </Link>
+                </thead>
+                <tbody>
+                  {solDispLoading ? (
+                    <tr>
+                      <td colSpan={5} className="text-center py-12">
+                        <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Carregando...</p>
                       </td>
-                      <td className="max-w-[200px] truncate font-medium">{sol.pacientes?.nome_completo ?? '—'}</td>
-                      <td className="hidden lg:table-cell">
-                        <span className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>{formatDate(sol.created_at)}</span>
-                      </td>
-                      <td>
-                        <div className="flex items-center gap-1">
-                          <button type="button" className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={(e) => { e.stopPropagation(); handleOpenNew(sol); }}>
-                            <Ticket size={13} /> Emitir
-                          </button>
+                    </tr>
+                  ) : paginatedDisp.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="text-center py-12">
+                        <div className="flex flex-col items-center gap-2">
+                          <CheckCircle2 size={32} style={{ color: 'var(--tfd-text-muted)' }} />
+                          <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Nenhuma solicitação aguardando emissão</p>
                         </div>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    paginatedDisp.map((sol: any) => (
+                      <tr key={sol.id} className="cursor-pointer" onClick={() => handleOpenNew(sol)}>
+                        <td>
+                          <Link href={`/solicitacoes/${sol.id}?from=viagens`} className="font-medium text-sm hover:underline" style={{ color: 'var(--tfd-primary-500)' }} onClick={(e) => e.stopPropagation()}>
+                            {sol.numero_processo}
+                          </Link>
+                        </td>
+                        <td className="max-w-[200px] truncate font-medium">{sol.pacientes?.nome_completo ?? '—'}</td>
+                        <td className="hidden lg:table-cell">
+                          <span className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>{formatDate(sol.created_at)}</span>
+                        </td>
+                        <td>
+                          {(() => { const b = slaBadge(sol.created_at); return (
+                            <span className="tfd-tag tfd-tag--rounded text-xs font-semibold" style={b.style}>{b.label}</span>
+                          ); })()}
+                        </td>
+                        <td>
+                          <div className="flex items-center gap-1">
+                            <button type="button" className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={(e) => { e.stopPropagation(); handleOpenNew(sol); }}>
+                              <Ticket size={13} /> Emitir
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {!solDispLoading && filteredDisp.length > 0 && (
+              <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: '1px solid var(--tfd-surface-border)' }}>
+                <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
+                  Exibindo{' '}
+                  <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{(tableDisp.page - 1) * 20 + 1}</span>
+                  {' '}&ndash;{' '}
+                  <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{Math.min(tableDisp.page * 20, filteredDisp.length)}</span>
+                  {' '}de{' '}
+                  <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{filteredDisp.length}</span>
+                  {' '}registros
+                </p>
+                <div className="flex items-center gap-1">
+                  <button className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only" onClick={() => tableDisp.setPage(Math.max(1, tableDisp.page - 1))} disabled={tableDisp.page === 1} aria-label="Página anterior">
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span className="text-sm px-3 font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{tableDisp.page} / {tableDisp.totalPages}</span>
+                  <button className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only" onClick={() => tableDisp.setPage(Math.min(tableDisp.totalPages, tableDisp.page + 1))} disabled={tableDisp.page === tableDisp.totalPages} aria-label="Próxima página">
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        </>
       )}
 
       {/* ========== Tab: Passagens ========== */}
       {pageTab === 'passagens' && (
         <>
-          {/* Search + Filter */}
+          {/* Search + Date Range */}
           <div className="tfd-toolbar mb-4 flex-wrap gap-3">
-            <div className="relative flex-1 max-w-xs min-w-[200px]">
+            <div className="relative flex-1 min-w-[220px] max-w-sm">
               <Search size={16} className="tfd-input-leading-icon" style={{ color: 'var(--tfd-text-muted)' }} />
-              <input type="text" className="tfd-input tfd-input--sm tfd-input--with-leading-icon" placeholder="Buscar paciente, localizador..."
-                value={search} onChange={(e) => setSearch(e.target.value)} />
+              <input type="text" className="tfd-input tfd-input--sm tfd-input--with-leading-icon" placeholder="Buscar paciente, localizador, trecho..."
+                value={tablePass.search} onChange={(e) => tablePass.setSearch(e.target.value)} />
             </div>
-
             <div className="flex items-center gap-2">
-              <Filter size={16} style={{ color: 'var(--tfd-text-muted)' }} />
-              <select className="tfd-input tfd-input--sm" style={{ minWidth: '200px', maxWidth: '240px' }} value={filterSituacao} onChange={(e) => setFilterSituacao(e.target.value as FilterKey)}>
-                {FILTER_OPTIONS.map((opt) => (
-                  <option key={opt.key} value={opt.key}>{opt.label}</option>
-                ))}
-              </select>
+              <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
+              <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
+                value={tablePass.dateStart} onChange={(e) => tablePass.setDateStart(e.target.value)} title="Data início" />
+              <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>até</span>
+              <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
+                value={tablePass.dateEnd} onChange={(e) => tablePass.setDateEnd(e.target.value)} title="Data fim" />
             </div>
           </div>
 
@@ -1014,12 +1065,44 @@ export default function ViagensPage() {
               <table className="tfd-table">
                 <thead>
                   <tr>
-                    <th>Solicitação</th>
-                    <th>Paciente</th>
-                    <th>Tipo</th>
-                    <th>Trecho</th>
-                    <th className="hidden lg:table-cell">Data Embarque</th>
-                    <th>Situação</th>
+                    <SortableHeader
+                      label="Solicitação"
+                      sortDirection={tablePass.getSortDirection('solicitacoes')}
+                      onSort={() => tablePass.toggleSort('solicitacoes')}
+                    />
+                    <SortableHeader
+                      label="Paciente"
+                      sortDirection={tablePass.getSortDirection('solicitacoes')}
+                      onSort={() => tablePass.toggleSort('solicitacoes')}
+                    />
+                    <SortableHeader
+                      label="Tipo"
+                      sortDirection={tablePass.getSortDirection('tipo')}
+                      onSort={() => tablePass.toggleSort('tipo')}
+                      filterOptions={tipoFilterOptions}
+                      activeFilters={tablePass.getActiveFilters('tipo')}
+                      onFilterChange={(v) => tablePass.setColumnFilter('tipo', v)}
+                    />
+                    <SortableHeader
+                      label="Trecho"
+                      sortDirection={tablePass.getSortDirection('origem_cidade')}
+                      onSort={() => tablePass.toggleSort('origem_cidade')}
+                    />
+                    <SortableHeader
+                      label="Data Embarque"
+                      className="hidden lg:table-cell"
+                      sortDirection={tablePass.getSortDirection('data_embarque_prevista')}
+                      onSort={() => tablePass.toggleSort('data_embarque_prevista')}
+                    />
+                    <SortableHeader
+                      label="Situação"
+                      sortDirection={tablePass.getSortDirection('situacao')}
+                      onSort={() => tablePass.toggleSort('situacao')}
+                      filterOptions={situacaoFilterOptions}
+                      activeFilters={tablePass.getActiveFilters('situacao')}
+                      onFilterChange={(v) => tablePass.setColumnFilter('situacao', v)}
+                    />
+                    <th>Tempo</th>
                     <th className="w-[100px]">Ações</th>
                   </tr>
                 </thead>
@@ -1030,7 +1113,7 @@ export default function ViagensPage() {
                         <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Carregando...</p>
                       </td>
                     </tr>
-                  ) : viagens.length === 0 ? (
+                  ) : paginatedPass.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="text-center py-12">
                         <div className="flex flex-col items-center gap-2">
@@ -1040,11 +1123,13 @@ export default function ViagensPage() {
                       </td>
                     </tr>
                   ) : (
-                    (viagens as any[]).map((v: any) => {
+                    paginatedPass.map((v: any) => {
                       const isTerminal = SITUACOES_TERMINAIS.includes(v.situacao);
                       const style = situacaoMap[v.situacao as SituacaoViagem] ?? situacaoMap.AGUARDANDO_EMISSAO;
                       const aguardandoRetorno = labelDestino(v.solicitacao_id);
                       const devolucaoInfo = devolucoesEnviadas.get(v.solicitacao_id);
+                      const retornoRecebido = labelOrigem(v.solicitacao_id);
+                      const retornoInfo = devolucoesRecebidas.get(v.solicitacao_id);
                       const tipoLabel = v.tipo === 'IDA' ? 'IDA' : 'VOLTA';
                       const seq = v.numero_sequencial ?? 1;
 
@@ -1054,22 +1139,33 @@ export default function ViagensPage() {
                           className={aguardandoRetorno ? '' : 'cursor-pointer'}
                           style={{
                             opacity: aguardandoRetorno ? 0.55 : isTerminal ? 0.5 : undefined,
-                            backgroundColor: aguardandoRetorno ? '#FFFBEB' : undefined,
+                            backgroundColor: aguardandoRetorno ? '#F8F9FA' : retornoRecebido ? '#FFFBEB' : undefined,
+                            borderLeft: retornoRecebido ? '4px solid #F59E0B' : undefined,
                             pointerEvents: aguardandoRetorno ? 'none' : undefined,
                           }}
                           onClick={aguardandoRetorno ? undefined : () => handleOpenView(v)}
                         >
                           <td>
                             <div className="flex flex-col gap-0.5">
-                              <Link href={`/solicitacoes/${v.solicitacao_id}`} className="font-medium text-sm hover:underline" style={{ color: aguardandoRetorno ? 'var(--tfd-text-muted)' : 'var(--tfd-primary-500)' }} onClick={(e) => e.stopPropagation()}>
+                              <Link href={`/solicitacoes/${v.solicitacao_id}?from=viagens`} className="font-medium text-sm hover:underline" style={{ color: aguardandoRetorno ? 'var(--tfd-text-muted)' : 'var(--tfd-primary-500)' }} onClick={(e) => e.stopPropagation()}>
                                 {v.solicitacoes?.numero_processo ?? '—'}
                               </Link>
                               {aguardandoRetorno && devolucaoInfo && (
                                 <div className="flex items-center gap-1.5 mt-1">
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
-                                    Devolvido p/ {aguardandoRetorno}
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#F0F2F5', color: '#6B7280' }}>
+                                    Enviado p/ {aguardandoRetorno}
                                   </span>
                                   {devolucaoInfo.urgencia === 'URGENTE' && (
+                                    <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: '#FEE2E2', color: '#B91C1C' }}>URGENTE</span>
+                                  )}
+                                </div>
+                              )}
+                              {retornoRecebido && retornoInfo && !aguardandoRetorno && (
+                                <div className="flex items-center gap-1.5 mt-1" title={`Retorno recebido de ${retornoRecebido} em ${new Date(retornoInfo.created_at).toLocaleDateString('pt-BR')} — ${retornoInfo.motivo}`}>
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+                                ↩ Retorno de {retornoRecebido}
+                                  </span>
+                                  {retornoInfo.urgencia === 'URGENTE' && (
                                     <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: '#FEE2E2', color: '#B91C1C' }}>URGENTE</span>
                                   )}
                                 </div>
@@ -1102,8 +1198,13 @@ export default function ViagensPage() {
                             <span className="tfd-tag tfd-tag--rounded tfd-tag--dot" style={{ backgroundColor: style.bg, color: style.text }}>{style.label}</span>
                           </td>
                           <td>
+                            {(() => { const b = slaBadge(v.created_at); return (
+                              <span className="tfd-tag tfd-tag--rounded text-xs font-semibold" style={b.style}>{b.label}</span>
+                            ); })()}
+                          </td>
+                          <td>
                             <div className="flex items-center gap-1" style={{ pointerEvents: 'auto' }}>
-                              <Link href={`/solicitacoes/${v.solicitacao_id}`} className="tfd-btn tfd-btn-ghost tfd-btn--icon-only" title="Ver processo" onClick={(e) => e.stopPropagation()}><Eye size={15} /></Link>
+                              <Link href={`/solicitacoes/${v.solicitacao_id}?from=viagens`} className="tfd-btn tfd-btn-ghost tfd-btn--icon-only" title="Ver processo" onClick={(e) => e.stopPropagation()}><Eye size={15} /></Link>
                               {!aguardandoRetorno && (
                                 <>
                                   <button type="button" className="tfd-btn tfd-btn-ghost tfd-btn--icon-only" title="Anexo" onClick={(e) => { e.stopPropagation(); handleOpenAnexo(v.id, v.tipo === 'IDA' ? 'ida' : 'volta', v.solicitacoes?.pacientes?.nome_completo ?? ''); }}>
@@ -1123,6 +1224,30 @@ export default function ViagensPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination */}
+            {!loading && filteredPass.length > 0 && (
+              <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: '1px solid var(--tfd-surface-border)' }}>
+                <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
+                  Exibindo{' '}
+                  <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{(tablePass.page - 1) * 20 + 1}</span>
+                  {' '}&ndash;{' '}
+                  <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{Math.min(tablePass.page * 20, filteredPass.length)}</span>
+                  {' '}de{' '}
+                  <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{filteredPass.length}</span>
+                  {' '}registros
+                </p>
+                <div className="flex items-center gap-1">
+                  <button className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only" onClick={() => tablePass.setPage(Math.max(1, tablePass.page - 1))} disabled={tablePass.page === 1} aria-label="Página anterior">
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span className="text-sm px-3 font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{tablePass.page} / {tablePass.totalPages}</span>
+                  <button className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only" onClick={() => tablePass.setPage(Math.min(tablePass.totalPages, tablePass.page + 1))} disabled={tablePass.page === tablePass.totalPages} aria-label="Próxima página">
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -1255,10 +1380,10 @@ export default function ViagensPage() {
                 >
                   {tab.icon}
                   {tab.label}
-                  {tab.key === 'ida' && idaOrigem && idaDestino && idaDataEmbarque && (
+                  {tab.key === 'ida' && idaRota && idaDataEmbarque && (
                     <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--tfd-status-success)' }} />
                   )}
-                  {tab.key === 'volta' && voltaOrigem && voltaDestino && voltaDataEmbarque && (
+                  {tab.key === 'volta' && voltaRota && voltaDataEmbarque && (
                     <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--tfd-status-success)' }} />
                   )}
                   {tab.key === 'ida' && idaPendingFile && <Paperclip size={11} style={{ color: 'var(--tfd-primary-500)' }} />}
@@ -1268,16 +1393,28 @@ export default function ViagensPage() {
             </div>
 
             {drawerTab === 'ida' && renderTravelFields(
-              'ida', idaOrigemUf, setIdaOrigemUf, idaOrigem, setIdaOrigem, idaDestinoUf, setIdaDestinoUf, idaDestino, setIdaDestino, idaDataEmbarque, setIdaDataEmbarque,
-              idaModalTransporte, setIdaModalTransporte, idaCompanhia, setIdaCompanhia, idaLocalizador, setIdaLocalizador,
-              idaValor, setIdaValor, idaMedif, setIdaMedif, idaObservacoes, setIdaObservacoes,
+              'ida',
+              idaRota, setIdaRota,
+              idaDataEmbarque, setIdaDataEmbarque,
+              idaModalTransporte, setIdaModalTransporte,
+              idaCompanhia, setIdaCompanhia,
+              idaLocalizador, setIdaLocalizador,
+              idaValor, setIdaValor,
+              idaMedif, setIdaMedif,
+              idaObservacoes, setIdaObservacoes,
               idaPendingFile, setIdaPendingFile,
             )}
 
             {drawerTab === 'volta' && renderTravelFields(
-              'volta', voltaOrigemUf, setVoltaOrigemUf, voltaOrigem, setVoltaOrigem, voltaDestinoUf, setVoltaDestinoUf, voltaDestino, setVoltaDestino, voltaDataEmbarque, setVoltaDataEmbarque,
-              voltaModalTransporte, setVoltaModalTransporte, voltaCompanhia, setVoltaCompanhia, voltaLocalizador, setVoltaLocalizador,
-              voltaValor, setVoltaValor, voltaMedif, setVoltaMedif, voltaObservacoes, setVoltaObservacoes,
+              'volta',
+              voltaRota, setVoltaRota,
+              voltaDataEmbarque, setVoltaDataEmbarque,
+              voltaModalTransporte, setVoltaModalTransporte,
+              voltaCompanhia, setVoltaCompanhia,
+              voltaLocalizador, setVoltaLocalizador,
+              voltaValor, setVoltaValor,
+              voltaMedif, setVoltaMedif,
+              voltaObservacoes, setVoltaObservacoes,
               voltaPendingFile, setVoltaPendingFile,
             )}
           </>
