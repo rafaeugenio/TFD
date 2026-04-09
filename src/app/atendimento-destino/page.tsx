@@ -15,11 +15,16 @@ import {
   Trash2,
   SendHorizonal,
   ExternalLink,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import DevolverModal from '@/shared/components/devolver-modal/DevolverModal';
 import { useDevolucoesPendentes } from '@/shared/hooks/useDevolucoesPendentes';
+import { slaBadge } from '@/shared/utils/sla';
+import { useDevolucoeRecebidas } from '@/shared/hooks/useDevolucoeRecebidas';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import { useToast } from '@/shared/components/toast/Toast';
@@ -28,8 +33,10 @@ import { uploadDocumento } from '@/services/documentos.service';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import type { StatusAgendamento, TipoAtendimento, OrigemAgendamento } from '@/lib/supabase/database.types';
 import { formatDate } from '@/shared/pipes/formatters';
-import { useLookup, useUnidadesDestino } from '@/shared/hooks/useLookup';
-import UfCidadeSelect from '@/shared/components/uf-cidade-select/UfCidadeSelect';
+import { useUnidadesDestino } from '@/shared/hooks/useLookup';
+import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
+import SortableHeader from '@/shared/components/table/SortableHeader';
+import { useTableControls } from '@/shared/hooks/useTableControls';
 
 /* -------------------------------------------------- */
 /*  Status styling                                     */
@@ -86,6 +93,22 @@ const origemStyleMap: Record<OrigemAgendamento, OrigemStyle> = {
   OUTRO: { bg: 'var(--tfd-surface-100)', text: 'var(--tfd-surface-500)', label: 'Outro' },
 };
 
+const ROTA_LABELS: Record<string, string> = {
+  APROVADO_DIRETO: 'Aprovado Diretamente',
+  CNRAC: 'Encaminhado CNRAC',
+  SETI: 'Encaminhado SETI',
+  RESPOSTA_EXTERNA: 'Consulta SAAS/Dutra',
+  SERVICO_SOCIAL: 'Encaminhado Serviço Social',
+  REPROVADO_PRORROGACAO: 'Reprovado/Prorrogação',
+  APROVADO_PRORROGACAO: 'Aprovado Prorrogação',
+};
+
+const CANAL_LABELS: Record<string, string> = {
+  EMAIL: 'E-mail',
+  SISTEMA: 'Sistema',
+  TELEFONE: 'Telefone',
+};
+
 /* -------------------------------------------------- */
 /*  Helpers                                            */
 /* -------------------------------------------------- */
@@ -105,15 +128,13 @@ function isAlertaSla(ag: any): boolean {
 
 export default function AtendimentoDestinoPage() {
   const toast = useToast();
-  const { options: tipoOptions, loading: tipoLoading } = useLookup('tipo_procedimento');
-  const { options: origemOptions, loading: origemLoading } = useLookup('origem_agendamento');
   const { options: unidadesOptions } = useUnidadesDestino();
 
-  const [search, setSearch] = useState('');
   const [devolverItem, setDevolverItem] = useState<any>(null);
 
   /* ---- Devoluções pendentes ---- */
   const { mapa: devolucoesEnviadas, labelDestino, refresh: refreshDevolucoes } = useDevolucoesPendentes('AGENDAMENTO');
+  const { mapa: devolucoesRecebidas, labelOrigem } = useDevolucoeRecebidas('AGENDAMENTO');
 
   /* ---- Drawer state ---- */
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -133,6 +154,8 @@ export default function AtendimentoDestinoPage() {
   const [numCnrac, setNumCnrac] = useState('');
   const [comprovante, setComprovante] = useState<File | null>(null);
   const [comprovanteExistente, setComprovanteExistente] = useState<{ url: string; nome: string } | null>(null);
+  const [rotaInfo, setRotaInfo] = useState<{ tipo_rota: string; justificativa?: string | null } | null>(null);
+  const [cobrancaInfo, setCobrancaInfo] = useState<{ canal: string; contato_canal?: string | null; conteudo_envio?: string | null; destinatario?: string | null } | null>(null);
 
 
   /* ---- Edit / Delete state ---- */
@@ -157,6 +180,8 @@ export default function AtendimentoDestinoPage() {
     setNumCnrac('');
     setComprovante(null);
     setComprovanteExistente(null);
+    setRotaInfo(null);
+    setCobrancaInfo(null);
     setEditingId(null);
   };
 
@@ -187,10 +212,19 @@ export default function AtendimentoDestinoPage() {
     if (rota) {
       const origem = ROTA_TO_ORIGEM[rota.tipo_rota] ?? '';
       setOrigemAgendamento(origem);
+      setRotaInfo({ tipo_rota: rota.tipo_rota, justificativa: rota.justificativa });
+      const cobrancas = (rota as any).cobrancas_externas;
+      if (Array.isArray(cobrancas) && cobrancas.length > 0) {
+        setCobrancaInfo(cobrancas[0]);
+        if (cobrancas[0].canal && cobrancas[0].contato_canal) {
+          setTipoContato(cobrancas[0].canal);
+          setContatoUnidade(cobrancas[0].contato_canal);
+        }
+      }
     }
   }
 
-  function handleOpenEdit(ag: any) {
+  async function handleOpenEdit(ag: any) {
     setEditingId(ag.id);
     setSolicitacaoId(ag.solicitacao_id);
     setNumProcesso(ag.solicitacoes?.numero_processo ?? '');
@@ -220,6 +254,16 @@ export default function AtendimentoDestinoPage() {
       setComprovanteExistente(null);
     }
     setDrawerOpen(true);
+
+    // Fetch rota for display
+    const { data: rota } = await buscarRotaParaAgendamento(ag.solicitacao_id);
+    if (rota) {
+      setRotaInfo({ tipo_rota: rota.tipo_rota, justificativa: rota.justificativa });
+      const cobrancas = (rota as any).cobrancas_externas;
+      if (Array.isArray(cobrancas) && cobrancas.length > 0) {
+        setCobrancaInfo(cobrancas[0]);
+      }
+    }
   }
 
   function handleOpenDelete(ag: any) {
@@ -250,24 +294,33 @@ export default function AtendimentoDestinoPage() {
   const [solDisp, setSolDisp] = useState<any[]>([]);
   const [solDispLoading, setSolDispLoading] = useState(false);
 
+  const devolvedIds = useMemo(() => Array.from(devolucoesEnviadas.keys()), [devolucoesEnviadas]);
+
   async function refreshDisp() {
     setSolDispLoading(true);
-    const { data } = await listarSolicitacoesAguardandoAgendamento();
+    const { data } = await listarSolicitacoesAguardandoAgendamento({ includeIds: devolvedIds });
     setSolDisp(data ?? []);
     setSolDispLoading(false);
   }
 
-  useEffect(() => { refreshDisp(); }, []);
+  useEffect(() => { refreshDisp(); }, [devolvedIds]);
 
   /** Unified rows: disponíveis + agendamentos (sem filtro de aba) */
-  const allRows = useMemo(() => {
+  const allRowsRaw = useMemo(() => {
     const dispRows = solDisp.map((sol: any) => ({
       _type: 'DISPONIVEL' as const,
       id: sol.id,
       solicitacao_id: sol.id,
-      numero_processo: sol.numero_processo,
+      numero_processo: sol.numero_processo ?? '',
       paciente_nome: sol.pacientes?.nome_completo ?? '—',
+      unidade_executante: '',
+      cidade_destino: '',
+      tipo_atendimento: '',
+      origem_agendamento: '',
+      status_display: 'Disponível',
+      comprovante_display: '—',
       created_at: sol.created_at,
+      data_hora_agendamento: '',
       raw: sol,
     }));
     const agRows = agendamentos.map((ag: any) => ({
@@ -276,25 +329,34 @@ export default function AtendimentoDestinoPage() {
       solicitacao_id: ag.solicitacao_id,
       numero_processo: ag.solicitacoes?.numero_processo ?? '—',
       paciente_nome: ag.solicitacoes?.pacientes?.nome_completo ?? '—',
+      unidade_executante: ag.unidade_executante ?? '',
+      cidade_destino: ag.cidade_destino ?? '',
+      tipo_atendimento: ag.tipo_atendimento ?? '',
+      origem_agendamento: ag.origem_agendamento ?? '',
+      status_display: ag.status === 'CONFIRMADO' ? 'Confirmado' : 'Pendente',
+      comprovante_display: ag.documentos ? 'Sim' : 'Não',
       created_at: ag.created_at,
+      data_hora_agendamento: ag.data_hora_agendamento ?? '',
       raw: ag,
     }));
 
-    // Filtro local: paciente, processo, hospital, cidade
-    const combined = [...dispRows, ...agRows];
-    if (!search) return combined;
-    const term = search.toLowerCase();
-    return combined.filter((r) => {
-      if (r.paciente_nome.toLowerCase().includes(term)) return true;
-      if (r.numero_processo.toLowerCase().includes(term)) return true;
-      if (r._type === 'AGENDADO') {
-        const ag = r.raw;
-        if (ag.unidade_executante?.toLowerCase().includes(term)) return true;
-        if (ag.cidade_destino?.toLowerCase().includes(term)) return true;
-      }
-      return false;
-    });
-  }, [solDisp, agendamentos, search]);
+    return [...dispRows, ...agRows];
+  }, [solDisp, agendamentos]);
+
+  /* ---- Table controls (search, sort, column filters, pagination) ---- */
+  const table = useTableControls({
+    data: allRowsRaw as unknown as Record<string, unknown>[],
+    searchFields: ['paciente_nome', 'numero_processo', 'unidade_executante', 'cidade_destino'] as (keyof Record<string, unknown>)[],
+    dateField: 'created_at' as keyof Record<string, unknown>,
+  });
+
+  type UnifiedRow = (typeof allRowsRaw)[number];
+  const items = table.paginated as unknown as UnifiedRow[];
+
+  /* Column filter options */
+  const statusFilterOptions = table.getFilterOptions('status_display');
+  const tipoFilterOptions = table.getFilterOptions('tipo_atendimento');
+  const comprovanteFilterOptions = table.getFilterOptions('comprovante_display');
 
   function refreshAll() {
     refresh();
@@ -366,13 +428,17 @@ export default function AtendimentoDestinoPage() {
     }
   }
 
+  /* ---- Unidade selecionada (para card de informações) ---- */
+  const selectedUnidade = useMemo(
+    () => unidadesOptions.find((u) => u.value === selectedUnidadeId) ?? null,
+    [selectedUnidadeId, unidadesOptions],
+  );
+
   /* ---- Summary counters ---- */
   const summary = useMemo(() => {
     return {
       disponiveis: solDisp.length,
-      aguardando: agendamentos.filter((ag: any) => ag.status === 'AGUARDANDO_CONFIRMACAO').length,
-      confirmados: agendamentos.filter((ag: any) => ag.status === 'CONFIRMADO').length,
-      alertaSla: agendamentos.filter((ag: any) => isAlertaSla(ag)).length,
+      confirmados: agendamentos.length,
     };
   }, [agendamentos, solDisp]);
 
@@ -396,61 +462,31 @@ export default function AtendimentoDestinoPage() {
       </div>
 
       {/* ========== Summary Cards ========== */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 xl:grid-cols-2 gap-4 mb-6">
         <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: '#DBEAFE', color: '#3B82F6' }}
-          >
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: '#DBEAFE', color: '#3B82F6' }}>
             <CalendarClock size={20} />
           </div>
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Disponíveis p/ agendamento</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{summary.disponiveis}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Processos aprovados aguardando registro do agendamento</p>
           </div>
         </div>
 
         <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: '#FEF3C7', color: '#F59E0B' }}
-          >
-            <Clock size={20} />
-          </div>
-          <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Aguardando Confirmação</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{summary.aguardando}</p>
-          </div>
-        </div>
-
-        <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: '#DCFCE7', color: '#16A34A' }}
-          >
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: '#DCFCE7', color: '#16A34A' }}>
             <FileCheck size={20} />
           </div>
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Confirmados</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{summary.confirmados}</p>
-          </div>
-        </div>
-
-        <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: '#FEE2E2', color: '#EF4444' }}
-          >
-            <AlertTriangle size={20} />
-          </div>
-          <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Alerta SLA</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-danger)' }}>{summary.alertaSla}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Agendamentos completos — prontos para emissão de passagem</p>
           </div>
         </div>
       </div>
 
-      {/* ========== Search ========== */}
+      {/* ========== Toolbar: Search + Date Range ========== */}
       <div className="tfd-toolbar mb-4">
         <div className="relative flex-1 max-w-md">
           <Search
@@ -462,9 +498,17 @@ export default function AtendimentoDestinoPage() {
             type="text"
             className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
             placeholder="Buscar por paciente, nº do processo ou hospital..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={table.search}
+            onChange={(e) => table.setSearch(e.target.value)}
           />
+        </div>
+        <div className="flex items-center gap-2">
+          <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
+          <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
+            value={table.dateStart} onChange={(e) => table.setDateStart(e.target.value)} title="Data início" />
+          <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>até</span>
+          <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
+            value={table.dateEnd} onChange={(e) => table.setDateEnd(e.target.value)} title="Data fim" />
         </div>
       </div>
 
@@ -474,29 +518,30 @@ export default function AtendimentoDestinoPage() {
           <table className="tfd-table">
             <thead>
               <tr>
-                <th>Nº Processo</th>
-                <th>Paciente</th>
-                <th>Destino</th>
-                <th className="hidden md:table-cell">Tipo</th>
-                <th className="hidden lg:table-cell">Origem</th>
-                <th className="hidden md:table-cell">Data Agendamento</th>
-                <th>Comprovante</th>
-                <th>Status</th>
+                <SortableHeader label="Nº Processo" sortDirection={table.getSortDirection('numero_processo')} onSort={() => table.toggleSort('numero_processo')} />
+                <SortableHeader label="Paciente" sortDirection={table.getSortDirection('paciente_nome')} onSort={() => table.toggleSort('paciente_nome')} />
+                <SortableHeader label="Destino" sortDirection={table.getSortDirection('unidade_executante')} onSort={() => table.toggleSort('unidade_executante')} />
+                <SortableHeader label="Tipo" className="hidden md:table-cell" sortDirection={table.getSortDirection('tipo_atendimento')} onSort={() => table.toggleSort('tipo_atendimento')} filterOptions={tipoFilterOptions} activeFilters={table.getActiveFilters('tipo_atendimento')} onFilterChange={(v) => table.setColumnFilter('tipo_atendimento', v)} />
+                <SortableHeader label="Origem" className="hidden lg:table-cell" sortDirection={table.getSortDirection('origem_agendamento')} onSort={() => table.toggleSort('origem_agendamento')} />
+                <SortableHeader label="Data Agendamento" className="hidden md:table-cell" sortDirection={table.getSortDirection('data_hora_agendamento')} onSort={() => table.toggleSort('data_hora_agendamento')} />
+                <SortableHeader label="Comprovante" filterOptions={comprovanteFilterOptions} activeFilters={table.getActiveFilters('comprovante_display')} onFilterChange={(v) => table.setColumnFilter('comprovante_display', v)} />
+                <SortableHeader label="Status" filterOptions={statusFilterOptions} activeFilters={table.getActiveFilters('status_display')} onFilterChange={(v) => table.setColumnFilter('status_display', v)} />
+                <th>Tempo</th>
                 <th className="w-[100px]">Ações</th>
               </tr>
             </thead>
             <tbody>
               {(loading || solDispLoading) ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-12">
+                  <td colSpan={10} className="text-center py-12">
                     <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
                       Carregando...
                     </p>
                   </td>
                 </tr>
-              ) : allRows.length === 0 ? (
+              ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-12">
+                  <td colSpan={10} className="text-center py-12">
                     <div className="flex flex-col items-center gap-2">
                       <XCircle size={32} style={{ color: 'var(--tfd-text-muted)' }} />
                       <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
@@ -506,7 +551,7 @@ export default function AtendimentoDestinoPage() {
                   </td>
                 </tr>
               ) : (
-                allRows.map((row) => {
+                items.map((row) => {
                   const ag = row._type === 'AGENDADO' ? row.raw : null;
                   const statusStyle = ag ? statusStyleMap[ag.status as StatusAgendamento] : null;
                   const tipoStyle = ag?.tipo_atendimento ? tipoStyleMap[ag.tipo_atendimento as TipoAtendimento] : null;
@@ -514,12 +559,14 @@ export default function AtendimentoDestinoPage() {
                   const alertaSla = ag ? isAlertaSla(ag) : false;
                   const aguardandoRetorno = labelDestino(row.solicitacao_id);
                   const devolucaoInfo = devolucoesEnviadas.get(row.solicitacao_id);
+                  const retornoRecebido = labelOrigem(row.solicitacao_id);
+                  const retornoInfo = devolucoesRecebidas.get(row.solicitacao_id);
 
                   return (
                     <tr
                       key={`${row._type}-${row.id}`}
                       className={aguardandoRetorno ? '' : 'cursor-pointer'}
-                      style={{ opacity: aguardandoRetorno ? 0.55 : undefined, backgroundColor: aguardandoRetorno ? '#FFFBEB' : undefined, pointerEvents: aguardandoRetorno ? 'none' : undefined }}
+                      style={{ opacity: aguardandoRetorno ? 0.55 : undefined, backgroundColor: aguardandoRetorno ? '#F8F9FA' : retornoRecebido ? '#FFFBEB' : undefined, borderLeft: retornoRecebido ? '4px solid #F59E0B' : undefined, pointerEvents: aguardandoRetorno ? 'none' : undefined }}
                       onClick={aguardandoRetorno ? undefined : () => row._type === 'DISPONIVEL' ? handleOpenNew(row.raw) : handleOpenEdit(row.raw)}
                     >
                       {/* Nº Processo */}
@@ -532,7 +579,7 @@ export default function AtendimentoDestinoPage() {
                               </span>
                             )}
                             <Link
-                              href={`/solicitacoes/${row.solicitacao_id}`}
+                              href={`/solicitacoes/${row.solicitacao_id}?from=atendimento-destino`}
                               className="font-medium text-sm hover:underline"
                               style={{ color: aguardandoRetorno ? 'var(--tfd-text-muted)' : 'var(--tfd-primary-500)', pointerEvents: 'auto' }}
                               onClick={(e) => e.stopPropagation()}
@@ -549,7 +596,7 @@ export default function AtendimentoDestinoPage() {
                                 className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded"
                                 style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
                               >
-                                Devolvido p/ {aguardandoRetorno}
+                                Enviado p/ {aguardandoRetorno}
                               </span>
                               {devolucaoInfo.urgencia === 'URGENTE' && (
                                 <span
@@ -558,6 +605,16 @@ export default function AtendimentoDestinoPage() {
                                 >
                                   URGENTE
                                 </span>
+                              )}
+                            </div>
+                          )}
+                          {retornoRecebido && retornoInfo && !aguardandoRetorno && (
+                            <div className="flex items-center gap-1.5 mt-1" title={`Retorno recebido de ${retornoRecebido} em ${new Date(retornoInfo.created_at).toLocaleDateString('pt-BR')} — ${retornoInfo.motivo}`}>
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+                                ↩ Retorno de {retornoRecebido}
+                              </span>
+                              {retornoInfo.urgencia === 'URGENTE' && (
+                                <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: '#FEE2E2', color: '#B91C1C' }}>URGENTE</span>
                               )}
                             </div>
                           )}
@@ -638,11 +695,18 @@ export default function AtendimentoDestinoPage() {
                         )}
                       </td>
 
+                      {/* Tempo */}
+                      <td>
+                        {(() => { const b = slaBadge(row.created_at as string); return (
+                          <span className="tfd-tag tfd-tag--rounded text-xs font-semibold" style={b.style}>{b.label}</span>
+                        ); })()}
+                      </td>
+
                       {/* Ações */}
                       <td>
                         <div className="flex items-center gap-1">
                           <Link
-                            href={`/solicitacoes/${row.solicitacao_id}`}
+                            href={`/solicitacoes/${row.solicitacao_id}?from=atendimento-destino`}
                             className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
                             title="Ver processo"
                             style={{ pointerEvents: 'auto' }}
@@ -660,14 +724,6 @@ export default function AtendimentoDestinoPage() {
                               >
                                 <SendHorizonal size={15} />
                               </button>
-                              <button
-                                type="button"
-                                className="tfd-btn tfd-btn-danger tfd-btn--icon-only"
-                                title="Excluir agendamento"
-                                onClick={(e) => { e.stopPropagation(); handleOpenDelete(ag); }}
-                              >
-                                <Trash2 size={15} />
-                              </button>
                             </>
                           )}
                         </div>
@@ -679,40 +735,35 @@ export default function AtendimentoDestinoPage() {
             </tbody>
           </table>
         </div>
-      </div>
 
-      {/* ========== Modal de Confirmação de Exclusão ========== */}
-      {deleteConfirmId && (
-        <>
-          <div className="tfd-overlay-backdrop" onClick={() => setDeleteConfirmId(null)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="tfd-dialog w-full max-w-sm">
-              <div className="tfd-dialog-header">
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[#FEF2F2]">
-                    <Trash2 size={16} className="text-[#EF4444]" />
-                  </div>
-                  <span>Excluir agendamento</span>
-                </div>
-              </div>
-              <div className="tfd-dialog-content">
-                <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
-                  Tem certeza que deseja excluir o agendamento de <strong>{deleteConfirmName}</strong>? Esta ação não pode ser desfeita.
-                </p>
-              </div>
-              <div className="tfd-dialog-footer">
-                <button className="tfd-btn tfd-btn-secondary" onClick={() => setDeleteConfirmId(null)}>
-                  Cancelar
-                </button>
-                <button className="tfd-btn" style={{ background: '#EF4444', color: 'white' }} onClick={handleConfirmDelete}>
-                  <Trash2 size={14} />
-                  Excluir
-                </button>
-              </div>
+        {/* Pagination */}
+        {table.totalPages > 1 && (
+          <div
+            className="flex items-center justify-between px-4 py-3"
+            style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
+          >
+            <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
+              Página {table.page} de {table.totalPages}
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
+                disabled={table.page <= 1}
+                onClick={() => table.setPage(table.page - 1)}
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
+                disabled={table.page >= table.totalPages}
+                onClick={() => table.setPage(table.page + 1)}
+              >
+                <ChevronRight size={16} />
+              </button>
             </div>
           </div>
-        </>
-      )}
+        )}
+      </div>
 
       {/* ========== Drawer Agendamento (Criar / Editar) ========== */}
       <Drawer
@@ -739,6 +790,59 @@ export default function AtendimentoDestinoPage() {
             <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Processo: <strong style={{ color: 'var(--tfd-primary-500)' }}>{numProcesso}</strong></p>
           </div>
         </div>
+
+        {/* Card: Regulação (decision + contact from regulation sector) */}
+        {rotaInfo && (
+          <>
+            <div className="rounded-lg px-3 py-3 mb-3" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+              <p className="text-xs font-semibold mb-2" style={{ color: '#1D4ED8' }}>Decisão da Regulação</p>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs" style={{ color: '#3B82F6', minWidth: 80 }}>Encaminhamento</span>
+                  <span className="text-xs font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                    {ROTA_LABELS[rotaInfo.tipo_rota] ?? rotaInfo.tipo_rota}
+                  </span>
+                </div>
+                {cobrancaInfo && (
+                  <>
+                    {cobrancaInfo.destinatario && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs" style={{ color: '#3B82F6', minWidth: 80 }}>Destinatário</span>
+                        <span className="text-xs font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{cobrancaInfo.destinatario}</span>
+                      </div>
+                    )}
+                    {cobrancaInfo.canal && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs" style={{ color: '#3B82F6', minWidth: 80 }}>Tipo de contato</span>
+                        <span className="text-xs font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                          {CANAL_LABELS[cobrancaInfo.canal] ?? cobrancaInfo.canal}
+                        </span>
+                      </div>
+                    )}
+                    {cobrancaInfo.contato_canal && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs" style={{ color: '#3B82F6', minWidth: 80 }}>Contato</span>
+                        <span className="text-xs font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{cobrancaInfo.contato_canal}</span>
+                      </div>
+                    )}
+                    {cobrancaInfo.conteudo_envio && (
+                      <div className="flex flex-col gap-0.5 mt-1">
+                        <span className="text-xs" style={{ color: '#3B82F6' }}>Observação</span>
+                        <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>{cobrancaInfo.conteudo_envio}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+                {rotaInfo.justificativa && (
+                  <div className="flex flex-col gap-0.5 mt-1">
+                    <span className="text-xs" style={{ color: '#3B82F6' }}>Justificativa</span>
+                    <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>{rotaInfo.justificativa}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
 
         <hr className="tfd-divider" />
 
@@ -768,86 +872,58 @@ export default function AtendimentoDestinoPage() {
             ))}
           </select>
         </FormField>
-        <FormField label="CNES">
-          <input
-            type="text"
-            className="tfd-input"
-            placeholder="0000000"
-            maxLength={7}
-            value={cnes}
-            readOnly={!!selectedUnidadeId}
-            onChange={(e) => {
-              const v = e.target.value.replace(/\D/g, '').slice(0, 7);
-              setCnes(v);
-            }}
-            style={{ fontFamily: 'var(--tfd-font-mono)' }}
-          />
-        </FormField>
-        <UfCidadeSelect
-          uf={uf}
-          cidade={cidade}
-          onUfChange={setUf}
-          onCidadeChange={setCidade}
-          required
-        />
-        <FormField label="Tipo de contato">
-          <select
-            className="tfd-input"
-            value={tipoContato}
-            onChange={(e) => { setTipoContato(e.target.value); setContatoUnidade(''); }}
-          >
-            <option value="">Selecione...</option>
-            <option value="TELEFONE">Telefone</option>
-            <option value="WHATSAPP">WhatsApp</option>
-            <option value="SMS">SMS</option>
-            <option value="EMAIL">E-mail</option>
-          </select>
-        </FormField>
-        {tipoContato && (
-          <FormField label={tipoContato === 'EMAIL' ? 'E-mail' : 'Número'}>
-            {tipoContato === 'EMAIL' ? (
-              <input
-                type="email"
-                className="tfd-input"
-                placeholder="contato@hospital.com.br"
-                value={contatoUnidade}
-                onChange={(e) => setContatoUnidade(e.target.value)}
-              />
-            ) : (
-              <input
-                type="tel"
-                className="tfd-input"
-                placeholder="(00) 00000-0000"
-                value={contatoUnidade}
-                onChange={(e) => {
-                  let v = e.target.value.replace(/\D/g, '').slice(0, 11);
-                  if (v.length > 6) v = `(${v.slice(0, 2)}) ${v.slice(2, 7)}-${v.slice(7)}`;
-                  else if (v.length > 2) v = `(${v.slice(0, 2)}) ${v.slice(2)}`;
-                  else if (v.length > 0) v = `(${v}`;
-                  setContatoUnidade(v);
-                }}
-              />
-            )}
-          </FormField>
+
+        {/* Unit info card (replaces separate CNES / UF / Cidade fields) */}
+        {selectedUnidade ? (
+          <div className="rounded-lg px-3 py-3 mb-3" style={{ backgroundColor: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}>
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs" style={{ color: 'var(--tfd-text-muted)', minWidth: 56 }}>CNES</span>
+                <span className="text-xs font-medium" style={{ color: 'var(--tfd-text-primary)', fontFamily: 'var(--tfd-font-mono)' }}>{selectedUnidade.cnes ?? '—'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs" style={{ color: 'var(--tfd-text-muted)', minWidth: 56 }}>Cidade/UF</span>
+                <span className="text-xs font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{selectedUnidade.cidade}/{selectedUnidade.uf}</span>
+              </div>
+              {selectedUnidade.tipo && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs" style={{ color: 'var(--tfd-text-muted)', minWidth: 56 }}>Tipo</span>
+                  <span className="text-xs font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{selectedUnidade.tipo}</span>
+                </div>
+              )}
+              {selectedUnidade.endereco && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs" style={{ color: 'var(--tfd-text-muted)', minWidth: 56 }}>Endereço</span>
+                  <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>{selectedUnidade.endereco}</span>
+                </div>
+              )}
+              {(selectedUnidade.contato_nome || selectedUnidade.contato_telefone || selectedUnidade.contato_email) && (
+                <div className="flex items-start gap-2">
+                  <span className="text-xs" style={{ color: 'var(--tfd-text-muted)', minWidth: 56 }}>Contato</span>
+                  <div className="flex flex-col gap-0.5">
+                    {selectedUnidade.contato_nome && <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>{selectedUnidade.contato_nome}</span>}
+                    {selectedUnidade.contato_telefone && <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>{selectedUnidade.contato_telefone}</span>}
+                    {selectedUnidade.contato_email && <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>{selectedUnidade.contato_email}</span>}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs mb-3" style={{ color: 'var(--tfd-text-muted)' }}>Selecione uma unidade para ver os dados cadastrados.</p>
         )}
 
         <hr className="tfd-divider" />
 
         {/* Section: Agendamento */}
         <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Agendamento</h3>
-        <FormField label="Tipo de atendimento" required>
-          <select
-            className="tfd-input"
-            value={tipoAtendimento}
-            onChange={(e) => setTipoAtendimento(e.target.value)}
-            disabled={tipoLoading}
-          >
-            <option value="">{tipoLoading ? 'Carregando...' : 'Selecione...'}</option>
-            {tipoOptions.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </FormField>
+        <LookupSelect
+          categoria="tipo_procedimento"
+          label="Tipo de atendimento"
+          value={tipoAtendimento}
+          onChange={setTipoAtendimento}
+          required
+        />
         <FormField label="Data do agendamento" required>
           <input
             type="date"
@@ -855,28 +931,6 @@ export default function AtendimentoDestinoPage() {
             value={dataAgendamento}
             onChange={(e) => setDataAgendamento(e.target.value)}
           />
-        </FormField>
-        <FormField label="Origem do agendamento">
-          {origemAgendamento ? (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}>
-              <span className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                {origemStyleMap[origemAgendamento as OrigemAgendamento]?.label ?? origemAgendamento}
-              </span>
-              <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>(definido na regulação)</span>
-            </div>
-          ) : (
-            <select
-              className="tfd-input"
-              value={origemAgendamento}
-              onChange={(e) => setOrigemAgendamento(e.target.value)}
-              disabled={origemLoading}
-            >
-              <option value="">{origemLoading ? 'Carregando...' : 'Selecione...'}</option>
-              {origemOptions.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          )}
         </FormField>
         {origemAgendamento === 'CNRAC' && (
           <FormField label="Nº CNRAC">

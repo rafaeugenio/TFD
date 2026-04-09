@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import {
   Search,
@@ -13,20 +13,26 @@ import {
   AlertTriangle,
   Clock,
   Eye,
+  ChevronLeft,
   ChevronRight,
   SendHorizonal,
+  Calendar,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import { useToast } from '@/shared/components/toast/Toast';
-import { listarSolicitacoesPendentes, criarParecer } from '@/services/pareceres.service';
+import { listarSolicitacoesPendentes, criarParecer, contarPareceresPorDecisao } from '@/services/pareceres.service';
+import { slaBadge } from '@/shared/utils/sla';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
 import type { DecisaoParecer, TipoDocumento, StatusSolicitacao } from '@/lib/supabase/database.types';
 import DevolverModal from '@/shared/components/devolver-modal/DevolverModal';
 import { useDevolucoesPendentes } from '@/shared/hooks/useDevolucoesPendentes';
+import { useDevolucoeRecebidas } from '@/shared/hooks/useDevolucoeRecebidas';
+import SortableHeader from '@/shared/components/table/SortableHeader';
+import { useTableControls } from '@/shared/hooks/useTableControls';
 
 /* ── AGENTE-4: Análise de refactoring ──
    Esta página é majoritariamente READ-ONLY para dados clínicos:
@@ -66,11 +72,6 @@ const docTypeLabels: Record<string, string> = {
   OUTROS: 'Outros',
 };
 
-const prioridadeStyle: Record<string, { bg: string; text: string; label: string }> = {
-  NORMAL: { bg: '#F0F2F8', text: '#6B7280', label: 'Normal' },
-  URGENTE: { bg: '#FEF3C7', text: '#92400E', label: 'Urgente' },
-  EMERGENCIAL: { bg: '#FEE2E2', text: '#B91C1C', label: 'Emergencial' },
-};
 
 /* -------------------------------------------------- */
 /*  Component                                          */
@@ -79,13 +80,27 @@ const prioridadeStyle: Record<string, { bg: string; text: string; label: string 
 export default function ParecerMedicoPage() {
   const toast = useToast();
   const { user: currentUser } = useCurrentUser();
-  const [search, setSearch] = useState('');
+
+  /* ---- Devoluções pendentes (must be before data fetch for includeIds) ---- */
+  const { mapa: devolucoesEnviadas, labelDestino, refresh: refreshDevolucoes } = useDevolucoesPendentes('PARECER_MEDICO');
+  const { mapa: devolucoesRecebidas, labelOrigem } = useDevolucoeRecebidas('PARECER_MEDICO');
+  const devolvedIds = useMemo(() => Array.from(devolucoesEnviadas.keys()), [devolucoesEnviadas]);
 
   /* ---- Data fetch ---- */
-  const { data: solicitacoes, loading, refresh } = useSupabaseData(
-    () => listarSolicitacoesPendentes({ search }),
-    [search],
+  const { data: allSolicitacoes, loading, refresh } = useSupabaseData(
+    () => listarSolicitacoesPendentes({ search: '', includeIds: devolvedIds }),
+    [devolvedIds],
   );
+
+  /* ---- Table controls (client-side search, filter, sort, pagination) ---- */
+  const table = useTableControls({
+    data: allSolicitacoes as unknown as Record<string, unknown>[],
+    searchFields: ['numero_processo', 'cid10_principal'],
+    dateField: 'created_at',
+  });
+
+  const items = table.paginated as unknown as any[];
+  const filtered = table.filtered as unknown as any[];
 
   /* ---- Drawer state ---- */
   const [selectedSol, setSelectedSol] = useState<any>(null);
@@ -94,11 +109,15 @@ export default function ParecerMedicoPage() {
   const [autorizaAcompanhante, setAutorizaAcompanhante] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  /* ---- Parecer counts ---- */
+  const [parecerCounts, setParecerCounts] = useState({ deferidos: 0, indeferidos: 0, exigencias: 0 });
+  const refreshCounts = useCallback(() => {
+    contarPareceresPorDecisao().then(setParecerCounts);
+  }, []);
+  useEffect(() => { refreshCounts(); }, [refreshCounts]);
+
   /* ---- Devolver state ---- */
   const [devolverSol, setDevolverSol] = useState<any>(null);
-
-  /* ---- Devoluções pendentes ---- */
-  const { mapa: devolucoesEnviadas, labelDestino, refresh: refreshDevolucoes } = useDevolucoesPendentes('PARECER_MEDICO');
 
   function handleOpenParecer(sol: any) {
     setSelectedSol(sol);
@@ -152,6 +171,7 @@ export default function ParecerMedicoPage() {
       toast.success('Parecer registrado!', `Solicitação ${labels[decisao]}.`);
       handleCloseParecer();
       refresh();
+      refreshCounts();
     } catch (err: unknown) {
       const e = err as { message?: string };
       toast.error('Erro inesperado', e.message ?? 'Tente novamente');
@@ -168,8 +188,8 @@ export default function ParecerMedicoPage() {
         subtitle="Solicitações aguardando análise e decisão do médico auditor"
       />
 
-      {/* ========== Summary ========== */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      {/* ========== Summary Cards ========== */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         <div className="tfd-card flex items-center gap-3">
           <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
             style={{ backgroundColor: '#FEF3C7', color: '#F59E0B' }}>
@@ -177,38 +197,49 @@ export default function ParecerMedicoPage() {
           </div>
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Aguardando Parecer</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{solicitacoes.length}</p>
+            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{filtered.length}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Solicitações na fila do médico auditor</p>
+          </div>
+        </div>
+
+        <div className="tfd-card flex items-center gap-3">
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
+            style={{ backgroundColor: '#DCFCE7', color: '#16A34A' }}>
+            <CheckCircle2 size={20} />
+          </div>
+          <div>
+            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Deferidos</p>
+            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-success)' }}>{parecerCounts.deferidos}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Pareceres aprovados no período</p>
           </div>
         </div>
 
         <div className="tfd-card flex items-center gap-3">
           <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
             style={{ backgroundColor: '#FEE2E2', color: '#EF4444' }}>
-            <AlertTriangle size={20} />
+            <XCircle size={20} />
           </div>
           <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Urgentes / Emergenciais</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-danger)' }}>
-              {solicitacoes.filter((s: any) => s.prioridade === 'URGENTE' || s.prioridade === 'EMERGENCIAL').length}
-            </p>
+            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Indeferidos</p>
+            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-danger)' }}>{parecerCounts.indeferidos}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Pareceres negados no período</p>
           </div>
         </div>
 
         <div className="tfd-card flex items-center gap-3">
           <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: '#EBF0FF', color: '#4361EE' }}>
-            <FileText size={20} />
+            style={{ backgroundColor: '#FEF3C7', color: '#F59E0B' }}>
+            <SendHorizonal size={20} />
           </div>
           <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Com Documentos</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-              {solicitacoes.filter((s: any) => (s.documentos ?? []).length > 0).length}
-            </p>
+            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Devoluções Pendentes</p>
+            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-warning)' }}>{devolucoesEnviadas.size}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Processos devolvidos aguardando correção</p>
           </div>
         </div>
       </div>
 
-      {/* ========== Search ========== */}
+      {/* ========== Toolbar: Search + Date Range ========== */}
       <div className="tfd-toolbar mb-4">
         <div className="relative flex-1 max-w-sm min-w-[200px]">
           <Search size={16} className="tfd-input-leading-icon"
@@ -216,10 +247,19 @@ export default function ParecerMedicoPage() {
           <input
             type="text"
             className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
-            placeholder="Buscar por processo ou paciente..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por processo ou CID..."
+            value={table.search}
+            onChange={(e) => table.setSearch(e.target.value)}
           />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
+          <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
+            value={table.dateStart} onChange={(e) => table.setDateStart(e.target.value)} title="Data início" />
+          <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>até</span>
+          <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
+            value={table.dateEnd} onChange={(e) => table.setDateEnd(e.target.value)} title="Data fim" />
         </div>
       </div>
 
@@ -229,12 +269,35 @@ export default function ParecerMedicoPage() {
           <table className="tfd-table">
             <thead>
               <tr>
-                <th>Nº Processo</th>
-                <th>Paciente</th>
-                <th className="hidden md:table-cell">CID</th>
-                <th className="hidden md:table-cell">Documentos</th>
-                <th className="hidden lg:table-cell">Prioridade</th>
-                <th className="hidden lg:table-cell">Data Solicitação</th>
+                <SortableHeader
+                  label="Nº Processo"
+                  sortDirection={table.getSortDirection('numero_processo')}
+                  onSort={() => table.toggleSort('numero_processo')}
+                />
+                <SortableHeader
+                  label="Paciente"
+                  sortDirection={table.getSortDirection('pacientes.nome_completo')}
+                  onSort={() => table.toggleSort('pacientes.nome_completo')}
+                />
+                <SortableHeader
+                  label="CID"
+                  className="hidden md:table-cell"
+                  sortDirection={table.getSortDirection('cid10_principal')}
+                  onSort={() => table.toggleSort('cid10_principal')}
+                />
+                <SortableHeader
+                  label="Documentos"
+                  className="hidden md:table-cell"
+                  sortDirection={table.getSortDirection('documentos')}
+                  onSort={() => table.toggleSort('documentos')}
+                />
+                <SortableHeader
+                  label="Data Solicitação"
+                  className="hidden lg:table-cell"
+                  sortDirection={table.getSortDirection('created_at')}
+                  onSort={() => table.toggleSort('created_at')}
+                />
+                <th>Tempo</th>
                 <th className="w-[100px]">Ações</th>
               </tr>
             </thead>
@@ -245,7 +308,7 @@ export default function ParecerMedicoPage() {
                     <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Carregando...</p>
                   </td>
                 </tr>
-              ) : solicitacoes.length === 0 ? (
+              ) : items.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-center py-12">
                     <div className="flex flex-col items-center gap-2">
@@ -260,18 +323,19 @@ export default function ParecerMedicoPage() {
                   </td>
                 </tr>
               ) : (
-                solicitacoes.map((sol: any) => {
-                  const prio = prioridadeStyle[sol.prioridade] ?? prioridadeStyle.NORMAL;
+                items.map((sol: any) => {
                   const docsCount = (sol.documentos ?? []).length;
                   const aguardandoRetorno = labelDestino(sol.id);
 
                   const devolucaoInfo = devolucoesEnviadas.get(sol.id);
+                  const retornoRecebido = labelOrigem(sol.id);
+                  const retornoInfo = devolucoesRecebidas.get(sol.id);
 
                   return (
-                    <tr key={sol.id} style={{ opacity: aguardandoRetorno ? 0.55 : undefined, backgroundColor: aguardandoRetorno ? '#FFFBEB' : undefined, pointerEvents: aguardandoRetorno ? 'none' : undefined }}>
+                    <tr key={sol.id} style={{ opacity: aguardandoRetorno ? 0.55 : undefined, backgroundColor: aguardandoRetorno ? '#F8F9FA' : retornoRecebido ? '#FFFBEB' : undefined, borderLeft: retornoRecebido ? '4px solid #F59E0B' : undefined, pointerEvents: aguardandoRetorno ? 'none' : undefined }}>
                       <td>
                         <Link
-                          href={`/solicitacoes/${sol.id}`}
+                          href={`/solicitacoes/${sol.id}?from=parecer-medico`}
                           className="font-medium text-sm hover:underline"
                           style={{ color: aguardandoRetorno ? 'var(--tfd-text-muted)' : 'var(--tfd-primary-500)' }}
                         >
@@ -290,7 +354,7 @@ export default function ParecerMedicoPage() {
                                 className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded"
                                 style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
                               >
-                                Devolvido p/ {aguardandoRetorno}
+                                Enviado p/ {aguardandoRetorno}
                               </span>
                               {devolucaoInfo.urgencia === 'URGENTE' && (
                                 <span
@@ -299,6 +363,16 @@ export default function ParecerMedicoPage() {
                                 >
                                   URGENTE
                                 </span>
+                              )}
+                            </div>
+                          )}
+                          {retornoRecebido && retornoInfo && !aguardandoRetorno && (
+                            <div className="flex items-center gap-1.5 mt-1" title={`Retorno recebido de ${retornoRecebido} em ${new Date(retornoInfo.created_at).toLocaleDateString('pt-BR')} — ${retornoInfo.motivo}`}>
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+                                ↩ Retorno de {retornoRecebido}
+                              </span>
+                              {retornoInfo.urgencia === 'URGENTE' && (
+                                <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: '#FEE2E2', color: '#B91C1C' }}>URGENTE</span>
                               )}
                             </div>
                           )}
@@ -319,14 +393,13 @@ export default function ParecerMedicoPage() {
                           {docsCount} {docsCount === 1 ? 'documento' : 'documentos'}
                         </span>
                       </td>
-                      <td className="hidden lg:table-cell">
-                        <span className="tfd-tag tfd-tag--rounded"
-                          style={{ backgroundColor: prio.bg, color: prio.text }}>
-                          {prio.label}
-                        </span>
-                      </td>
                       <td className="hidden lg:table-cell whitespace-nowrap" style={{ color: 'var(--tfd-text-secondary)' }}>
                         {formatDate(sol.created_at)}
+                      </td>
+                      <td>
+                        {(() => { const b = slaBadge(sol.created_at); return (
+                          <span className="tfd-tag tfd-tag--rounded text-xs font-semibold" style={b.style}>{b.label}</span>
+                        ); })()}
                       </td>
                       <td>
                         <div className="flex items-center gap-1" style={{ pointerEvents: 'auto' }}>
@@ -355,6 +428,55 @@ export default function ParecerMedicoPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {table.totalPages > 1 && (
+          <div
+            className="flex items-center justify-between px-4 py-3"
+            style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
+          >
+            <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
+              Exibindo{' '}
+              <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                {(table.page - 1) * 20 + 1}
+              </span>
+              {' '}&ndash;{' '}
+              <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                {Math.min(table.page * 20, filtered.length)}
+              </span>
+              {' '}de{' '}
+              <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                {filtered.length}
+              </span>
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
+                onClick={() => table.setPage(Math.max(1, table.page - 1))}
+                disabled={table.page === 1}
+                aria-label="Página anterior"
+              >
+                <ChevronLeft size={16} />
+              </button>
+
+              <span
+                className="text-sm font-medium px-2"
+                style={{ color: 'var(--tfd-text-primary)' }}
+              >
+                {table.page} / {table.totalPages}
+              </span>
+
+              <button
+                className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
+                onClick={() => table.setPage(Math.min(table.totalPages, table.page + 1))}
+                disabled={table.page === table.totalPages}
+                aria-label="Próxima página"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ========== Parecer Drawer ========== */}

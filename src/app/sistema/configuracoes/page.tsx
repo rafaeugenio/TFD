@@ -121,6 +121,7 @@ const SECOES: SecaoConfig[] = [
       { key: 'origem_laudo', label: 'Origens de Laudo', icon: FileText, desc: 'Origem do laudo médico (estadual, municipal)' },
       { key: 'carater_atendimento', label: 'Caráter de Atendimento', icon: Activity, desc: 'Hospitalar, ambulatorial e outros' },
       { key: 'tipo_documento', label: 'Tipos de Documento', icon: FileText, desc: 'Categorias de documentos aceitos no sistema' },
+      { key: 'tipo_unidade', label: 'Tipos de Unidade de Saúde', icon: Building2, desc: 'Tipos oficiais CNES/DATASUS de estabelecimentos de saúde' },
     ],
   },
   {

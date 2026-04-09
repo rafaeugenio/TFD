@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Search,
   RefreshCw,
@@ -9,15 +9,29 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  ArrowRight,
+  Plus,
+  Trash2,
+  Calendar,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import { useToast } from '@/shared/components/toast/Toast';
 import { formatDateTime } from '@/shared/pipes/formatters';
+import Drawer from '@/shared/components/drawer/Drawer';
+import SortableHeader from '@/shared/components/table/SortableHeader';
+import { useTableControls } from '@/shared/hooks/useTableControls';
 
 /* -------------------------------------------------- */
 /*  Types                                              */
 /* -------------------------------------------------- */
+
+interface Alteracao {
+  campo: string;
+  label: string;
+  anterior: string | null;
+  novo: string | null;
+}
 
 interface LogEntry {
   id: string;
@@ -36,6 +50,8 @@ interface LogEntry {
   created_at: string;
   modulo: string;
   descricao: string;
+  referencia?: string;
+  alteracoes?: Alteracao[];
 }
 
 /* -------------------------------------------------- */
@@ -116,6 +132,25 @@ const ENTIDADE_ICONS: Record<string, string> = {
 
 function getEntidadeIcon(entidade: string): string {
   return ENTIDADE_ICONS[entidade.toLowerCase()] ?? '\u{1F4CB}';
+}
+
+const ENTIDADE_LABELS: Record<string, string> = {
+  solicitacoes: 'Solicitação',
+  viagens: 'Viagem',
+  regulacao: 'Regulação',
+  diarias: 'Diária',
+  usuarios: 'Usuário',
+  permanencias: 'Permanência',
+  encerramentos: 'Encerramento',
+  parametros: 'Parâmetro',
+  sessoes: 'Sessão',
+};
+
+function getResumoTabela(log: LogEntry): string {
+  const entidadeLabel =
+    ENTIDADE_LABELS[log.entidade_alterada.toLowerCase()] ?? log.entidade_alterada;
+  if (log.referencia) return `${entidadeLabel} · ${log.referencia}`;
+  return entidadeLabel;
 }
 
 /* -------------------------------------------------- */
@@ -226,6 +261,15 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-24T14:32:00',
     modulo: 'Operacional',
     descricao: 'Criou solicitação TFD-2026-0047 para paciente Maria das Graças',
+    referencia: 'TFD-2026-0047',
+    alteracoes: [
+      { campo: 'paciente', label: 'Paciente', anterior: null, novo: 'Maria das Graças Pereira' },
+      { campo: 'cid', label: 'CID', anterior: null, novo: 'C50.9 – Neoplasia maligna da mama' },
+      { campo: 'municipio_origem', label: 'Município de origem', anterior: null, novo: 'São Luís – MA' },
+      { campo: 'municipio_destino', label: 'Município de destino', anterior: null, novo: 'São Paulo – SP' },
+      { campo: 'prioridade', label: 'Prioridade', anterior: null, novo: 'NORMAL' },
+      { campo: 'status', label: 'Status', anterior: null, novo: 'NOVO' },
+    ],
   },
   {
     id: 'log-002',
@@ -244,6 +288,11 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-24T13:45:00',
     modulo: 'Regulação',
     descricao: 'Emitiu parecer DEFERIDO para solicitação TFD-2026-0047',
+    referencia: 'TFD-2026-0047',
+    alteracoes: [
+      { campo: 'parecer', label: 'Parecer', anterior: null, novo: 'DEFERIDO' },
+      { campo: 'justificativa', label: 'Justificativa', anterior: null, novo: 'Tratamento não disponível na rede municipal.' },
+    ],
   },
   {
     id: 'log-003',
@@ -262,6 +311,13 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-24T11:20:00',
     modulo: 'Passagens',
     descricao: 'Emitiu passagem aérea SLZ → BSB para paciente José Oliveira',
+    referencia: 'José Oliveira',
+    alteracoes: [
+      { campo: 'tipo', label: 'Tipo', anterior: null, novo: 'Aérea' },
+      { campo: 'origem', label: 'Origem', anterior: null, novo: 'SLZ – São Luís' },
+      { campo: 'destino', label: 'Destino', anterior: null, novo: 'BSB – Brasília' },
+      { campo: 'localizador', label: 'Localizador', anterior: null, novo: 'GLO-3321' },
+    ],
   },
   {
     id: 'log-004',
@@ -280,6 +336,11 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-24T10:15:00',
     modulo: 'Financeiro',
     descricao: 'Aprovou diária de R$ 320,00 para paciente Raimunda Ferreira',
+    referencia: 'Raimunda Ferreira',
+    alteracoes: [
+      { campo: 'status', label: 'Status', anterior: 'PENDENTE', novo: 'APROVADA' },
+      { campo: 'valor', label: 'Valor', anterior: null, novo: 'R$ 320,00' },
+    ],
   },
   {
     id: 'log-005',
@@ -298,6 +359,10 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-24T09:50:00',
     modulo: 'Operacional',
     descricao: 'Alterou status da solicitação TFD-2026-0032 para Regulada (Deferida)',
+    referencia: 'TFD-2026-0032',
+    alteracoes: [
+      { campo: 'status', label: 'Status', anterior: 'AGUARDANDO_REGULACAO', novo: 'REGULADA_DEFERIDA' },
+    ],
   },
   {
     id: 'log-006',
@@ -316,6 +381,13 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-23T16:30:00',
     modulo: 'Sistema',
     descricao: 'Criou usuário Fernanda Lima com perfil Atendente',
+    referencia: 'Fernanda Lima',
+    alteracoes: [
+      { campo: 'nome', label: 'Nome', anterior: null, novo: 'Fernanda Lima' },
+      { campo: 'email', label: 'E-mail', anterior: null, novo: 'fernanda.lima@saude.ma.gov.br' },
+      { campo: 'perfil', label: 'Perfil', anterior: null, novo: 'ATENDENTE' },
+      { campo: 'status', label: 'Status', anterior: null, novo: 'ATIVO' },
+    ],
   },
   {
     id: 'log-007',
@@ -334,6 +406,11 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-23T15:10:00',
     modulo: 'Passagens',
     descricao: 'Confirmou embarque do paciente Antonio Pereira no voo GLO-1234',
+    referencia: 'Antonio Pereira',
+    alteracoes: [
+      { campo: 'embarque', label: 'Embarque', anterior: 'PENDENTE', novo: 'CONFIRMADO' },
+      { campo: 'voo', label: 'Voo', anterior: null, novo: 'GLO-1234' },
+    ],
   },
   {
     id: 'log-008',
@@ -352,6 +429,11 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-23T14:05:00',
     modulo: 'Regulação',
     descricao: 'Alterou prioridade para URGENTE na solicitação TFD-2026-0041',
+    referencia: 'TFD-2026-0041',
+    alteracoes: [
+      { campo: 'prioridade', label: 'Prioridade', anterior: 'NORMAL', novo: 'URGENTE' },
+      { campo: 'justificativa_prioridade', label: 'Justificativa', anterior: null, novo: 'Piora do quadro clínico relatada pelo médico assistente.' },
+    ],
   },
   {
     id: 'log-009',
@@ -370,6 +452,11 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-23T11:45:00',
     modulo: 'Financeiro',
     descricao: 'Registrou pagamento de diária R$ 480,00 para paciente Luiza Santos',
+    referencia: 'Luiza Santos',
+    alteracoes: [
+      { campo: 'status', label: 'Status', anterior: 'APROVADA', novo: 'PAGA' },
+      { campo: 'valor', label: 'Valor pago', anterior: null, novo: 'R$ 480,00' },
+    ],
   },
   {
     id: 'log-010',
@@ -388,6 +475,14 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-23T10:20:00',
     modulo: 'Operacional',
     descricao: 'Criou solicitação TFD-2026-0048 para paciente Pedro Almeida',
+    referencia: 'TFD-2026-0048',
+    alteracoes: [
+      { campo: 'paciente', label: 'Paciente', anterior: null, novo: 'Pedro Almeida da Silva' },
+      { campo: 'cid', label: 'CID', anterior: null, novo: 'I25.1 – Doença aterosclerótica do coração' },
+      { campo: 'municipio_origem', label: 'Município de origem', anterior: null, novo: 'Imperatriz – MA' },
+      { campo: 'municipio_destino', label: 'Município de destino', anterior: null, novo: 'São Paulo – SP' },
+      { campo: 'status', label: 'Status', anterior: null, novo: 'NOVO' },
+    ],
   },
   {
     id: 'log-011',
@@ -406,6 +501,11 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-23T09:00:00',
     modulo: 'Passagens',
     descricao: 'Registrou NO-SHOW para paciente Raimunda Ferreira no voo AZU-5678',
+    referencia: 'Raimunda Ferreira',
+    alteracoes: [
+      { campo: 'situacao', label: 'Situação', anterior: 'EMITIDA', novo: 'NO_SHOW' },
+      { campo: 'voo', label: 'Voo', anterior: null, novo: 'AZU-5678' },
+    ],
   },
   {
     id: 'log-012',
@@ -424,6 +524,13 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-22T17:30:00',
     modulo: 'Operacional',
     descricao: 'Encerrou processo TFD-2026-0025 por alta médica',
+    referencia: 'TFD-2026-0025',
+    alteracoes: [
+      { campo: 'paciente', label: 'Paciente', anterior: 'Francisco Moraes', novo: null },
+      { campo: 'status_processo', label: 'Status do processo', anterior: 'EM_ANDAMENTO', novo: null },
+      { campo: 'motivo_encerramento', label: 'Motivo', anterior: 'Alta médica', novo: null },
+      { campo: 'data_encerramento', label: 'Data de encerramento', anterior: '22/03/2026', novo: null },
+    ],
   },
   {
     id: 'log-013',
@@ -442,6 +549,11 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-22T16:15:00',
     modulo: 'Regulação',
     descricao: 'Definiu rota SLZ → GRU para solicitação TFD-2026-0044',
+    referencia: 'TFD-2026-0044',
+    alteracoes: [
+      { campo: 'rota', label: 'Rota', anterior: null, novo: 'SLZ → GRU' },
+      { campo: 'modal', label: 'Modal', anterior: null, novo: 'Aérea' },
+    ],
   },
   {
     id: 'log-014',
@@ -460,6 +572,10 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-22T14:00:00',
     modulo: 'Sistema',
     descricao: 'Atualizou valor da diária padrão de R$ 300,00 para R$ 320,00',
+    referencia: 'Valor de Diária',
+    alteracoes: [
+      { campo: 'valor_diaria', label: 'Valor da diária', anterior: 'R$ 300,00', novo: 'R$ 320,00' },
+    ],
   },
   {
     id: 'log-015',
@@ -478,6 +594,7 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-22T11:30:00',
     modulo: 'Operacional',
     descricao: 'Criou solicitação TFD-2026-0049 para paciente Francisca Ribeiro',
+    referencia: 'TFD-2026-0049',
   },
   {
     id: 'log-016',
@@ -496,6 +613,12 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-22T10:05:00',
     modulo: 'Financeiro',
     descricao: 'Aprovou diária de R$ 640,00 para paciente Antonio Pereira (2 dias)',
+    referencia: 'Antonio Pereira',
+    alteracoes: [
+      { campo: 'status', label: 'Status', anterior: 'PENDENTE', novo: 'APROVADA' },
+      { campo: 'valor', label: 'Valor', anterior: null, novo: 'R$ 640,00' },
+      { campo: 'dias', label: 'Quantidade de dias', anterior: null, novo: '2 dias' },
+    ],
   },
   {
     id: 'log-017',
@@ -514,6 +637,7 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-21T15:45:00',
     modulo: 'Passagens',
     descricao: 'Emitiu passagem rodoviária SLZ → THE para paciente Marcos Sousa',
+    referencia: 'Marcos Sousa',
   },
   {
     id: 'log-018',
@@ -532,6 +656,11 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-21T14:10:00',
     modulo: 'Regulação',
     descricao: 'Emitiu parecer INDEFERIDO para solicitação TFD-2026-0038 — CID disponível em SLZ',
+    referencia: 'TFD-2026-0038',
+    alteracoes: [
+      { campo: 'parecer', label: 'Parecer', anterior: null, novo: 'INDEFERIDO' },
+      { campo: 'justificativa', label: 'Justificativa', anterior: null, novo: 'CID disponível na rede municipal de São Luís.' },
+    ],
   },
   {
     id: 'log-019',
@@ -550,6 +679,10 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-21T09:30:00',
     modulo: 'Operacional',
     descricao: 'Alterou status da solicitação TFD-2026-0047 de Novo para Em Análise',
+    referencia: 'TFD-2026-0047',
+    alteracoes: [
+      { campo: 'status', label: 'Status', anterior: 'NOVO', novo: 'EM_ANALISE' },
+    ],
   },
   {
     id: 'log-020',
@@ -568,6 +701,11 @@ const MOCK_LOGS: LogEntry[] = [
     created_at: '2026-03-21T08:15:00',
     modulo: 'Financeiro',
     descricao: 'Glosou diária de R$ 160,00 — documentação incompleta',
+    referencia: 'R$ 160,00',
+    alteracoes: [
+      { campo: 'status', label: 'Status', anterior: 'PENDENTE', novo: 'GLOSADA' },
+      { campo: 'motivo_glosa', label: 'Motivo da glosa', anterior: null, novo: 'Documentação incompleta' },
+    ],
   },
 ];
 
@@ -578,54 +716,251 @@ const MOCK_LOGS: LogEntry[] = [
 const PAGE_SIZE = 20;
 
 /* -------------------------------------------------- */
+/*  Acao tipo mapping (for drawer content labels)      */
+/* -------------------------------------------------- */
+
+type TipoAcao = 'criar' | 'editar' | 'encerrar';
+
+const ACAO_TIPO_MAP: Record<string, TipoAcao> = {
+  SOLICITACAO_CRIADA: 'criar',
+  USUARIO_CRIADO: 'criar',
+  PROCESSO_ENCERRADO: 'encerrar',
+};
+
+function getTipoAcao(acao: string): TipoAcao {
+  return ACAO_TIPO_MAP[acao] ?? 'editar';
+}
+
+/* -------------------------------------------------- */
+/*  LogDrawer component                                */
+/* -------------------------------------------------- */
+
+function LogDrawer({ log, onClose }: { log: LogEntry | null; onClose: () => void }) {
+  if (!log) return null;
+
+  const tipo = getTipoAcao(log.acao);
+  const severity = getAcaoSeverity(log.acao);
+  const severityStyle = SEVERITY_STYLES[severity];
+  const avatarColor = getAvatarColor(log.nome_usuario);
+  const entidadeLabel =
+    ENTIDADE_LABELS[log.entidade_alterada.toLowerCase()] ?? log.entidade_alterada;
+
+  // Build alteracoes: prefer explicit array, fallback to campo_alterado
+  const alteracoes: Alteracao[] =
+    log.alteracoes && log.alteracoes.length > 0
+      ? log.alteracoes
+      : log.campo_alterado
+      ? [
+          {
+            campo: log.campo_alterado,
+            label: log.campo_alterado,
+            anterior: log.valor_anterior,
+            novo: log.valor_novo,
+          },
+        ]
+      : [];
+
+  const secaoAlteracoesLabel =
+    tipo === 'criar'
+      ? 'Campos do item criado'
+      : tipo === 'encerrar'
+      ? 'Dados do item encerrado'
+      : 'Campos alterados';
+
+  return (
+    <Drawer
+      open={true}
+      onClose={onClose}
+      title={`${getAcaoLabel(log.acao)} · ${entidadeLabel}`}
+      subtitle={formatDateTime(log.created_at)}
+      width="540px"
+    >
+      <div className="flex flex-col gap-5">
+        {/* Badges */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className="tfd-tag tfd-tag--rounded"
+            style={{ backgroundColor: severityStyle.bg, color: severityStyle.color }}
+          >
+            {getAcaoLabel(log.acao)}
+          </span>
+          <span
+            className="tfd-tag tfd-tag--rounded"
+            style={{
+              backgroundColor: 'var(--tfd-surface-100)',
+              color: 'var(--tfd-surface-700)',
+            }}
+          >
+            {getEntidadeIcon(log.entidade_alterada)} {log.entidade_alterada}
+          </span>
+          {(() => {
+            const moduloStyle =
+              MODULO_STYLES[log.modulo] ?? MODULO_STYLES['Sistema'];
+            return (
+              <span
+                className="tfd-tag tfd-tag--rounded"
+                style={{ backgroundColor: moduloStyle.bg, color: moduloStyle.color }}
+              >
+                {log.modulo}
+              </span>
+            );
+          })()}
+        </div>
+
+        {/* Description */}
+        <div>
+          <p
+            className="text-xs font-semibold uppercase tracking-wide mb-1"
+            style={{ color: 'var(--tfd-text-muted)' }}
+          >
+            Descrição
+          </p>
+          <p className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>
+            {log.descricao}
+          </p>
+        </div>
+
+        {/* User */}
+        <div style={{ borderTop: '1px solid var(--tfd-surface-border)', paddingTop: '1.25rem' }}>
+          <p
+            className="text-xs font-semibold uppercase tracking-wide mb-3"
+            style={{ color: 'var(--tfd-text-muted)' }}
+          >
+            Usuário responsável
+          </p>
+          <div className="flex items-center gap-3">
+            <div
+              className="tfd-avatar tfd-avatar--circle shrink-0"
+              style={{
+                backgroundColor: avatarColor.bg,
+                color: avatarColor.color,
+                fontSize: '0.75rem',
+                width: '2.25rem',
+                height: '2.25rem',
+              }}
+            >
+              {getInitials(log.nome_usuario)}
+            </div>
+            <div className="min-w-0">
+              <p
+                className="text-sm font-medium"
+                style={{ color: 'var(--tfd-text-primary)' }}
+              >
+                {log.nome_usuario}
+              </p>
+              <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+                {log.perfil_usuario} · IP {log.ip}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Alterações */}
+        {alteracoes.length > 0 && (
+          <div style={{ borderTop: '1px solid var(--tfd-surface-border)', paddingTop: '1.25rem' }}>
+            <p
+              className="text-xs font-semibold uppercase tracking-wide mb-3"
+              style={{ color: 'var(--tfd-text-muted)' }}
+            >
+              {secaoAlteracoesLabel}
+            </p>
+            <div className="flex flex-col gap-2">
+              {alteracoes.map((alt) => (
+                <div
+                  key={alt.campo}
+                  className="rounded-md px-3 py-2.5"
+                  style={{ backgroundColor: 'var(--tfd-surface-50, var(--tfd-surface-100))' }}
+                >
+                  <p
+                    className="text-xs font-medium mb-1.5"
+                    style={{ color: 'var(--tfd-text-muted)' }}
+                  >
+                    {alt.label}
+                  </p>
+
+                  {tipo === 'criar' ? (
+                    /* Create: show only new value with + icon */
+                    <div className="flex items-center gap-2">
+                      <Plus size={13} style={{ color: '#15803D', flexShrink: 0 }} />
+                      <span
+                        className="text-sm font-medium"
+                        style={{ color: 'var(--tfd-text-primary)' }}
+                      >
+                        {alt.novo ?? '—'}
+                      </span>
+                    </div>
+                  ) : tipo === 'encerrar' ? (
+                    /* Encerrar: show only anterior value with - icon */
+                    <div className="flex items-center gap-2">
+                      <Trash2 size={13} style={{ color: '#B91C1C', flexShrink: 0 }} />
+                      <span
+                        className="text-sm"
+                        style={{ color: 'var(--tfd-text-secondary)' }}
+                      >
+                        {alt.anterior ?? '—'}
+                      </span>
+                    </div>
+                  ) : (
+                    /* Edit: show before → after */
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className="text-sm px-2 py-0.5 rounded"
+                        style={{
+                          backgroundColor: '#FEE2E2',
+                          color: '#B91C1C',
+                          textDecoration: alt.anterior ? 'line-through' : 'none',
+                        }}
+                      >
+                        {alt.anterior ?? '—'}
+                      </span>
+                      <ArrowRight
+                        size={14}
+                        style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }}
+                      />
+                      <span
+                        className="text-sm px-2 py-0.5 rounded font-medium"
+                        style={{ backgroundColor: '#DCFCE7', color: '#15803D' }}
+                      >
+                        {alt.novo ?? '—'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </Drawer>
+  );
+}
+
+/* -------------------------------------------------- */
 /*  Component                                          */
 /* -------------------------------------------------- */
 
 export default function LogsAuditoriaPage() {
   const toast = useToast();
-  const [search, setSearch] = useState('');
-  const [filterAcao, setFilterAcao] = useState('ALL');
-  const [filterModulo, setFilterModulo] = useState('ALL');
-  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
 
-  /* ---- Filter logic (local on mock data) ---- */
-  const filtered = useMemo(() => {
-    return MOCK_LOGS.filter((log) => {
-      const matchAcao = filterAcao === 'ALL' || log.acao === filterAcao;
-      const matchModulo = filterModulo === 'ALL' || log.modulo === filterModulo;
-      const matchSearch =
-        search === '' ||
-        log.nome_usuario.toLowerCase().includes(search.toLowerCase()) ||
-        log.descricao.toLowerCase().includes(search.toLowerCase()) ||
-        log.acao.toLowerCase().includes(search.toLowerCase()) ||
-        log.entidade_alterada.toLowerCase().includes(search.toLowerCase());
-      return matchAcao && matchModulo && matchSearch;
-    });
-  }, [search, filterAcao, filterModulo]);
+  const table = useTableControls({
+    data: MOCK_LOGS as unknown as Record<string, unknown>[],
+    searchFields: ['nome_usuario', 'descricao', 'entidade_alterada'],
+    dateField: 'created_at',
+  });
 
-  /* ---- Pagination ---- */
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginatedLogs = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return filtered.slice(start, start + PAGE_SIZE);
-  }, [filtered, page]);
+  /* Typed helpers */
+  const paginatedLogs = table.paginated as unknown as LogEntry[];
+  const filtered = table.filtered as unknown as LogEntry[];
 
-  /* Reset page when filters change */
-  const handleSearchChange = useCallback((value: string) => {
-    setSearch(value);
-    setPage(1);
-  }, []);
-
-  const handleAcaoChange = useCallback((value: string) => {
-    setFilterAcao(value);
-    setPage(1);
-  }, []);
-
-  const handleModuloChange = useCallback((value: string) => {
-    setFilterModulo(value);
-    setPage(1);
-  }, []);
+  /* Filter options for columns */
+  const acaoFilterOptions = table.getFilterOptions('acao').map((v) => ({
+    value: v,
+    label: ACAO_LABELS[v] ?? v,
+  }));
+  const moduloFilterOptions = table.getFilterOptions('modulo');
+  const entidadeFilterOptions = table.getFilterOptions('entidade_alterada');
 
   /* ---- Refresh simulation ---- */
   const handleRefresh = useCallback(() => {
@@ -707,38 +1042,34 @@ export default function LogsAuditoriaPage() {
             type="text"
             className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
             placeholder="Buscar por usuário, descrição..."
-            value={search}
-            onChange={(e) => handleSearchChange(e.target.value)}
+            value={table.search}
+            onChange={(e) => table.setSearch(e.target.value)}
           />
         </div>
 
-        {/* Filter: Ação */}
-        <select
-          className="tfd-input tfd-input--sm"
-          style={{ width: 'auto', minWidth: '160px' }}
-          value={filterAcao}
-          onChange={(e) => handleAcaoChange(e.target.value)}
-        >
-          {ACAO_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-
-        {/* Filter: Módulo */}
-        <select
-          className="tfd-input tfd-input--sm"
-          style={{ width: 'auto', minWidth: '150px' }}
-          value={filterModulo}
-          onChange={(e) => handleModuloChange(e.target.value)}
-        >
-          {MODULO_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+        {/* Date range */}
+        <div className="flex items-center gap-2">
+          <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
+          <input
+            type="date"
+            className="tfd-input tfd-input--sm"
+            style={{ width: 'auto' }}
+            value={table.dateStart}
+            onChange={(e) => table.setDateStart(e.target.value)}
+            placeholder="Início"
+            title="Data início"
+          />
+          <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>até</span>
+          <input
+            type="date"
+            className="tfd-input tfd-input--sm"
+            style={{ width: 'auto' }}
+            value={table.dateEnd}
+            onChange={(e) => table.setDateEnd(e.target.value)}
+            placeholder="Fim"
+            title="Data fim"
+          />
+        </div>
 
         {/* Action buttons */}
         <div className="flex items-center gap-2 ml-auto">
@@ -780,12 +1111,42 @@ export default function LogsAuditoriaPage() {
             <table className="tfd-table">
               <thead>
                 <tr>
-                  <th>Usuário</th>
-                  <th>Ação</th>
-                  <th>Entidade</th>
-                  <th className="hidden md:table-cell">Módulo</th>
+                  <SortableHeader
+                    label="Usuário"
+                    sortDirection={table.getSortDirection('nome_usuario')}
+                    onSort={() => table.toggleSort('nome_usuario')}
+                  />
+                  <SortableHeader
+                    label="Ação"
+                    sortDirection={table.getSortDirection('acao')}
+                    onSort={() => table.toggleSort('acao')}
+                    filterOptions={acaoFilterOptions}
+                    activeFilters={table.getActiveFilters('acao')}
+                    onFilterChange={(v) => table.setColumnFilter('acao', v)}
+                  />
+                  <SortableHeader
+                    label="Entidade"
+                    sortDirection={table.getSortDirection('entidade_alterada')}
+                    onSort={() => table.toggleSort('entidade_alterada')}
+                    filterOptions={entidadeFilterOptions}
+                    activeFilters={table.getActiveFilters('entidade_alterada')}
+                    onFilterChange={(v) => table.setColumnFilter('entidade_alterada', v)}
+                  />
+                  <SortableHeader
+                    label="Módulo"
+                    className="hidden md:table-cell"
+                    sortDirection={table.getSortDirection('modulo')}
+                    onSort={() => table.toggleSort('modulo')}
+                    filterOptions={moduloFilterOptions}
+                    activeFilters={table.getActiveFilters('modulo')}
+                    onFilterChange={(v) => table.setColumnFilter('modulo', v)}
+                  />
                   <th className="hidden lg:table-cell">Descrição</th>
-                  <th>Data/Hora</th>
+                  <SortableHeader
+                    label="Data/Hora"
+                    sortDirection={table.getSortDirection('created_at')}
+                    onSort={() => table.toggleSort('created_at')}
+                  />
                 </tr>
               </thead>
               <tbody>
@@ -814,7 +1175,19 @@ export default function LogsAuditoriaPage() {
                     const moduloStyle = MODULO_STYLES[log.modulo] ?? MODULO_STYLES['Sistema'];
 
                     return (
-                      <tr key={log.id}>
+                      <tr
+                        key={log.id}
+                        onClick={() => setSelectedLog(log)}
+                        className="cursor-pointer"
+                        style={{ transition: 'background-color 0.12s' }}
+                        onMouseEnter={(e) => {
+                          (e.currentTarget as HTMLTableRowElement).style.backgroundColor =
+                            'var(--tfd-surface-50, var(--tfd-surface-100))';
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '';
+                        }}
+                      >
                         {/* Usuário */}
                         <td>
                           <div className="flex items-center gap-2.5">
@@ -888,11 +1261,11 @@ export default function LogsAuditoriaPage() {
                         {/* Descrição */}
                         <td className="hidden lg:table-cell">
                           <p
-                            className="text-sm max-w-[320px] truncate"
+                            className="text-sm max-w-[280px] truncate"
                             style={{ color: 'var(--tfd-text-secondary)' }}
                             title={log.descricao}
                           >
-                            {log.descricao}
+                            {getResumoTabela(log)}
                           </p>
                         </td>
 
@@ -923,11 +1296,11 @@ export default function LogsAuditoriaPage() {
             <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
               Exibindo{' '}
               <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                {(page - 1) * PAGE_SIZE + 1}
+                {(table.page - 1) * 20 + 1}
               </span>
               {' '}&ndash;{' '}
               <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                {Math.min(page * PAGE_SIZE, filtered.length)}
+                {Math.min(table.page * 20, filtered.length)}
               </span>
               {' '}de{' '}
               <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
@@ -939,8 +1312,8 @@ export default function LogsAuditoriaPage() {
             <div className="flex items-center gap-1">
               <button
                 className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
+                onClick={() => table.setPage(Math.max(1, table.page - 1))}
+                disabled={table.page === 1}
                 aria-label="Página anterior"
               >
                 <ChevronLeft size={16} />
@@ -950,13 +1323,13 @@ export default function LogsAuditoriaPage() {
                 className="text-sm px-3 font-medium"
                 style={{ color: 'var(--tfd-text-primary)' }}
               >
-                {page} / {totalPages}
+                {table.page} / {table.totalPages}
               </span>
 
               <button
                 className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
+                onClick={() => table.setPage(Math.min(table.totalPages, table.page + 1))}
+                disabled={table.page === table.totalPages}
                 aria-label="Próxima página"
               >
                 <ChevronRight size={16} />
@@ -965,6 +1338,8 @@ export default function LogsAuditoriaPage() {
           </div>
         )}
       </div>
+
+      <LogDrawer log={selectedLog} onClose={() => setSelectedLog(null)} />
     </>
   );
 }

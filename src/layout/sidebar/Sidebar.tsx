@@ -69,6 +69,7 @@ const navSections: NavSection[] = [
       { icon: Contact, label: 'Pacientes', href: '/pacientes' },
       { icon: Stethoscope, label: 'Médicos', href: '/medicos' },
       { icon: Building2, label: 'Unidades de Saúde', href: '/unidades-saude' },
+      { icon: MapPin, label: 'Regionais', href: '/regionais-saude' },
     ],
   },
   {

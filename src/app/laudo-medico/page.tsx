@@ -18,6 +18,7 @@ import {
   ClipboardList,
   FileEdit,
   Loader2,
+  Calendar,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -27,6 +28,8 @@ import { useToast } from '@/shared/components/toast/Toast';
 import { listarSolicitacoes, contarPorStatus } from '@/services/solicitacoes.service';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import { formatCPF, maskCPF, maskPhone } from '@/shared/pipes/formatters';
+import SortableHeader from '@/shared/components/table/SortableHeader';
+import { useTableControls } from '@/shared/hooks/useTableControls';
 
 /* ── TODO AGENTE-4: Descomentar quando Agentes 1 e 2 concluírem ──
 import UnidadeSaudeSelect from '@/shared/components/unidade-saude-select/UnidadeSaudeSelect';
@@ -71,8 +74,6 @@ function timeSince(iso: string): string {
   const days = Math.floor(hours / 24);
   return `${days}d`;
 }
-
-const ITEMS_PER_PAGE = 8;
 
 /* ── Status Laudo tag ────────────────────────────── */
 
@@ -176,8 +177,6 @@ export default function LaudoMedicoPage() {
 
   /* ---- View state: 'list' or 'form' ---- */
   const [view, setView] = useState<'list' | 'form'>('list');
-  const [search, setSearch] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
 
   /* ---- Selected solicitação ---- */
   const [selectedSol, setSelectedSol] = useState<Record<string, unknown> | null>(null);
@@ -209,12 +208,28 @@ export default function LaudoMedicoPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   /* ---- Data: PENDENTE_DIAGNOSTICO ---- */
-  const { data: solicitacoes, loading, count: totalCount, refresh } = useSupabaseData(
-    () => listarSolicitacoes({ status: 'PENDENTE_DIAGNOSTICO', search, page: currentPage, pageSize: ITEMS_PER_PAGE }),
-    [search, currentPage],
+  const { data: solicitacoes, loading, refresh } = useSupabaseData(
+    () => listarSolicitacoes({ status: 'PENDENTE_DIAGNOSTICO' }),
+    [],
   );
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE));
+  /* ---- Table controls (search, sort, filter, pagination) ---- */
+  const table = useTableControls({
+    data: solicitacoes as Record<string, unknown>[],
+    searchFields: ['numero_processo', 'cid10_principal'] as (keyof Record<string, unknown>)[],
+    dateField: 'created_at' as keyof Record<string, unknown>,
+    pageSize: 20,
+  });
+
+  const items = table.paginated as unknown as Record<string, unknown>[];
+  const filtered = table.filtered as unknown as Record<string, unknown>[];
+
+  /* ---- Status Laudo filter options ---- */
+  const statusLaudoFilterOptions = [
+    { value: 'VAZIO', label: 'Sem laudo' },
+    { value: 'RASCUNHO', label: 'Rascunho' },
+    { value: 'CONCLUIDO', label: 'Concluído' },
+  ];
 
   /* ---- KPI refresh ---- */
   const refreshKpis = useCallback(() => {
@@ -1405,15 +1420,24 @@ export default function LaudoMedicoPage() {
             <input
               type="text"
               className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
-              placeholder="Buscar por paciente, CPF ou n\u00famero..."
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
+              placeholder="Buscar por processo ou CID-10..."
+              value={table.search}
+              onChange={(e) => table.setSearch(e.target.value)}
             />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
+            <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
+              value={table.dateStart} onChange={(e) => table.setDateStart(e.target.value)} title="Data início" />
+            <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>até</span>
+            <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
+              value={table.dateEnd} onChange={(e) => table.setDateEnd(e.target.value)} title="Data fim" />
           </div>
         </div>
 
         <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-          {totalCount} processo{totalCount !== 1 && 's'} pendente{totalCount !== 1 && 's'}
+          {filtered.length} processo{filtered.length !== 1 && 's'} pendente{filtered.length !== 1 && 's'}
         </p>
       </div>
 
@@ -1423,12 +1447,38 @@ export default function LaudoMedicoPage() {
           <table className="tfd-table">
             <thead>
               <tr>
-                <th>N\u00ba Processo</th>
-                <th>Paciente</th>
-                <th className="hidden md:table-cell">CID-10</th>
-                <th className="hidden lg:table-cell">Status Laudo</th>
-                <th className="hidden md:table-cell">Data</th>
-                <th className="w-[100px]">A\u00e7\u00e3o</th>
+                <SortableHeader
+                  label="Processo"
+                  sortDirection={table.getSortDirection('numero_processo')}
+                  onSort={() => table.toggleSort('numero_processo')}
+                />
+                <SortableHeader
+                  label="Paciente"
+                  sortDirection={table.getSortDirection('pacientes')}
+                  onSort={() => table.toggleSort('pacientes')}
+                />
+                <SortableHeader
+                  label="CID-10"
+                  className="hidden md:table-cell"
+                  sortDirection={table.getSortDirection('cid10_principal')}
+                  onSort={() => table.toggleSort('cid10_principal')}
+                />
+                <SortableHeader
+                  label="Status Laudo"
+                  className="hidden lg:table-cell"
+                  sortDirection={table.getSortDirection('status_laudo')}
+                  onSort={() => table.toggleSort('status_laudo')}
+                  filterOptions={statusLaudoFilterOptions}
+                  activeFilters={table.getActiveFilters('status_laudo')}
+                  onFilterChange={(v) => table.setColumnFilter('status_laudo', v)}
+                />
+                <SortableHeader
+                  label="Data"
+                  className="hidden md:table-cell"
+                  sortDirection={table.getSortDirection('created_at')}
+                  onSort={() => table.toggleSort('created_at')}
+                />
+                <th className="w-[100px]">Ação</th>
               </tr>
             </thead>
             <tbody>
@@ -1438,21 +1488,20 @@ export default function LaudoMedicoPage() {
                     <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Carregando...</p>
                   </td>
                 </tr>
-              ) : solicitacoes.length === 0 ? (
+              ) : items.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="text-center py-12">
                     <div className="flex flex-col items-center gap-2">
                       <Check size={32} style={{ color: 'var(--tfd-status-success)' }} />
                       <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-                        Nenhum processo pendente de laudo m\u00e9dico
+                        Nenhum processo pendente de laudo
                       </p>
                     </div>
                   </td>
                 </tr>
               ) : (
-                solicitacoes.map((sol: Record<string, unknown>) => {
+                items.map((sol) => {
                   const pacRow = sol.pacientes as Record<string, unknown> | undefined;
-                  // Determine laudo status from related data (in production, from laudos_medicos join)
                   const laudoStatusRow: StatusLaudo = 'VAZIO';
                   return (
                     <tr
@@ -1462,7 +1511,7 @@ export default function LaudoMedicoPage() {
                     >
                       <td>
                         <Link
-                          href={`/solicitacoes/${sol.id}`}
+                          href={`/solicitacoes/${sol.id}?from=laudo-medico`}
                           className="font-medium hover:underline"
                           style={{ color: 'var(--tfd-primary-500)' }}
                           onClick={(e) => e.stopPropagation()}
@@ -1493,7 +1542,7 @@ export default function LaudoMedicoPage() {
                             <span className="hidden sm:inline">Laudo</span>
                           </button>
                           <Link
-                            href={`/solicitacoes/${sol.id}`}
+                            href={`/solicitacoes/${sol.id}?from=laudo-medico`}
                             className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
                             title="Ver processo"
                             onClick={(e) => e.stopPropagation()}
@@ -1511,26 +1560,29 @@ export default function LaudoMedicoPage() {
         </div>
 
         {/* Pagination */}
-        {totalPages > 1 && (
+        {table.totalPages > 1 && (
           <div
             className="flex items-center justify-between px-4 py-3"
             style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
           >
             <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-              P\u00e1gina {currentPage} de {totalPages}
+              {(table.page - 1) * 20 + 1}&ndash;{Math.min(table.page * 20, filtered.length)} de {filtered.length}
             </p>
             <div className="flex items-center gap-1">
               <button
                 className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage((p) => p - 1)}
+                disabled={table.page <= 1}
+                onClick={() => table.setPage(table.page - 1)}
               >
                 <ChevronLeft size={16} />
               </button>
+              <span className="text-sm px-2" style={{ color: 'var(--tfd-text-secondary)' }}>
+                {table.page} / {table.totalPages}
+              </span>
               <button
                 className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage((p) => p + 1)}
+                disabled={table.page >= table.totalPages}
+                onClick={() => table.setPage(table.page + 1)}
               >
                 <ChevronRight size={16} />
               </button>

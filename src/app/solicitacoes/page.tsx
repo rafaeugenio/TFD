@@ -6,7 +6,7 @@ import {
   FileText,
   Plus,
   Search,
-  Filter,
+  Calendar,
   Clock,
   AlertTriangle,
   CheckCircle2,
@@ -24,6 +24,7 @@ import {
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import StatusTag from '@/shared/components/status-tag/StatusTag';
+import SortableHeader from '@/shared/components/table/SortableHeader';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import { useToast } from '@/shared/components/toast/Toast';
@@ -33,11 +34,12 @@ import { listarPorPaciente } from '@/services/acompanhantes.service';
 import { vincularAcompanhantes } from '@/services/solicitacao-acompanhantes.service';
 import { criarTermo } from '@/services/termo-compromisso.service';
 import { uploadDocumento } from '@/services/documentos.service';
-import type { TipoDocumento, ModalidadeAceite, GrauParentesco } from '@/lib/supabase/database.types';
+import type { TipoDocumento, ModalidadeAceite } from '@/lib/supabase/database.types';
 import { CLAUSULAS_TERMO } from '@/core/models/termo-compromisso.model';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
+import { useTableControls } from '@/shared/hooks/useTableControls';
 import type { StatusSolicitacao } from '@/core/models';
-import { formatCPF, maskCPF, maskCNS, maskPhone } from '@/shared/pipes/formatters';
+import { formatCPF, maskCNS, maskPhone } from '@/shared/pipes/formatters';
 import { useMunicipios } from '@/shared/hooks/useLookup';
 
 /* ── AGENTE-4: Análise de refactoring ──
@@ -50,25 +52,24 @@ import { useMunicipios } from '@/shared/hooks/useLookup';
    Os selects já usam lookups corretamente. */
 
 /* -------------------------------------------------- */
-/*  Filter options                                     */
+/*  Status label mapping (used by SortableHeader)      */
 /* -------------------------------------------------- */
 
-const STATUS_OPTIONS: { value: StatusSolicitacao | 'TODOS'; label: string }[] = [
-  { value: 'TODOS', label: 'Todos os status' },
-  { value: 'PENDENTE_DIAGNOSTICO', label: 'Pend. Diagnóstico' },
-  { value: 'NOVO', label: 'Novo' },
-  { value: 'EM_ANALISE', label: 'Em Análise' },
-  { value: 'EXIGENCIA', label: 'Exigência' },
-  { value: 'AGUARDANDO_REGULACAO', label: 'Ag. Regulação' },
-  { value: 'AGUARDANDO_AGENDAMENTO', label: 'Ag. Agendamento' },
-  { value: 'AGUARDANDO_EMISSAO', label: 'Ag. Emissão' },
-  { value: 'EMITIDA', label: 'Emitida' },
-  { value: 'EM_VIAGEM', label: 'Em Viagem' },
-  { value: 'EM_PERMANENCIA', label: 'Em Permanência' },
-  { value: 'CONCLUIDO', label: 'Concluído' },
-  { value: 'INDEFERIDO', label: 'Indeferido' },
-  { value: 'CANCELADO', label: 'Cancelado' },
-];
+const STATUS_LABELS: Record<string, string> = {
+  PENDENTE_DIAGNOSTICO: 'Pend. Diagnóstico',
+  NOVO: 'Novo',
+  EM_ANALISE: 'Em Análise',
+  EXIGENCIA: 'Exigência',
+  AGUARDANDO_REGULACAO: 'Ag. Regulação',
+  AGUARDANDO_AGENDAMENTO: 'Ag. Agendamento',
+  AGUARDANDO_EMISSAO: 'Ag. Emissão',
+  EMITIDA: 'Emitida',
+  EM_VIAGEM: 'Em Viagem',
+  EM_PERMANENCIA: 'Em Permanência',
+  CONCLUIDO: 'Concluído',
+  INDEFERIDO: 'Indeferido',
+  CANCELADO: 'Cancelado',
+};
 
 /* -------------------------------------------------- */
 /*  Helpers                                            */
@@ -80,8 +81,6 @@ function formatDate(iso: string): string {
   const [year, month, day] = datePart.split('-');
   return `${day}/${month}/${year}`;
 }
-
-const ITEMS_PER_PAGE = 8;
 
 const VINCULO_LABELS: Record<string, string> = {
   CONJUGE: 'Cônjuge',
@@ -97,9 +96,6 @@ const VINCULO_LABELS: Record<string, string> = {
 
 export default function SolicitacoesPage() {
   const toast = useToast();
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusSolicitacao | 'TODOS'>('TODOS');
-  const [currentPage, setCurrentPage] = useState(1);
 
   /* ---- Drawer state ---- */
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -134,13 +130,27 @@ export default function SolicitacoesPage() {
   /* ---- Lookup hooks ---- */
   const { options: municipios, loading: loadingMun } = useMunicipios();
 
-  /* ---- Data fetching via Supabase ---- */
-  const { data: solicitacoes, loading, count: totalCount, refresh } = useSupabaseData(
-    () => listarSolicitacoes({ status: statusFilter === 'TODOS' ? undefined : statusFilter, search, page: currentPage, pageSize: ITEMS_PER_PAGE }),
-    [statusFilter, search, currentPage],
+  /* ---- Data fetching via Supabase (all records for client-side filtering) ---- */
+  const { data: allSolicitacoes, loading, refresh } = useSupabaseData(
+    () => listarSolicitacoes({ pageSize: 2000 }),
+    [],
   );
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE));
+  /* ---- Table controls (client-side search, filter, sort, pagination) ---- */
+  const table = useTableControls({
+    data: allSolicitacoes as unknown as Record<string, unknown>[],
+    searchFields: ['numero_processo', 'cid10_principal'],
+    dateField: 'created_at',
+  });
+
+  const solicitacoes = table.paginated as unknown as Record<string, unknown>[];
+  const filtered = table.filtered as unknown as Record<string, unknown>[];
+
+  /* Status filter options for SortableHeader */
+  const statusFilterOptions = table.getFilterOptions('status').map((v) => ({
+    value: v,
+    label: STATUS_LABELS[v] ?? v,
+  }));
 
   /* ---- Summary counters ---- */
   const [counts, setCounts] = useState({ total: 0, emAndamento: 0, exigencias: 0, concluidos: 0 });
@@ -402,6 +412,7 @@ export default function SolicitacoesPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Total</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.total}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Todas as solicitações TFD cadastradas</p>
           </div>
         </div>
 
@@ -415,6 +426,7 @@ export default function SolicitacoesPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Em Andamento</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.emAndamento}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Processos em etapa ativa do fluxo</p>
           </div>
         </div>
 
@@ -428,6 +440,7 @@ export default function SolicitacoesPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Exigências</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-warning)' }}>{counts.exigencias}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Aguardando complemento de documentação</p>
           </div>
         </div>
 
@@ -441,58 +454,53 @@ export default function SolicitacoesPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Concluídos</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-success)' }}>{counts.concluidos}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Encerrados: alta, transferência, desistência, abandono ou óbito</p>
           </div>
         </div>
       </div>
 
       {/* ========== Toolbar ========== */}
-      <div className="tfd-toolbar mb-4 flex-wrap">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          {/* Search */}
-          <div className="relative flex-1 max-w-sm">
-            <Search
-              size={16}
-              className="tfd-input-leading-icon"
-              style={{ color: 'var(--tfd-text-muted)' }}
-            />
-            <input
-              type="text"
-              className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
-              placeholder="Buscar por número, paciente, CPF ou município..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setCurrentPage(1);
-              }}
-            />
-          </div>
-
-          {/* Status filter */}
-          <div className="relative">
-            <Filter
-              size={14}
-              className="tfd-input-leading-icon"
-              style={{ color: 'var(--tfd-text-muted)' }}
-            />
-            <select
-              className="tfd-input tfd-input--sm tfd-input--with-leading-icon pr-8 min-w-[180px] appearance-none cursor-pointer"
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value as StatusSolicitacao | 'TODOS');
-                setCurrentPage(1);
-              }}
-            >
-              {STATUS_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
+      <div className="tfd-toolbar mb-4 flex-wrap gap-3">
+        {/* Search */}
+        <div className="relative flex-1 min-w-[220px] max-w-sm">
+          <Search
+            size={16}
+            className="tfd-input-leading-icon"
+            style={{ color: 'var(--tfd-text-muted)' }}
+          />
+          <input
+            type="text"
+            className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
+            placeholder="Buscar por número, CID..."
+            value={table.search}
+            onChange={(e) => table.setSearch(e.target.value)}
+          />
         </div>
 
-        <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-          {totalCount} resultado{totalCount !== 1 && 's'}
+        {/* Date range */}
+        <div className="flex items-center gap-2">
+          <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
+          <input
+            type="date"
+            className="tfd-input tfd-input--sm"
+            style={{ width: 'auto' }}
+            value={table.dateStart}
+            onChange={(e) => table.setDateStart(e.target.value)}
+            title="Data início"
+          />
+          <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>até</span>
+          <input
+            type="date"
+            className="tfd-input tfd-input--sm"
+            style={{ width: 'auto' }}
+            value={table.dateEnd}
+            onChange={(e) => table.setDateEnd(e.target.value)}
+            title="Data fim"
+          />
+        </div>
+
+        <p className="text-sm ml-auto" style={{ color: 'var(--tfd-text-muted)' }}>
+          {filtered.length} resultado{filtered.length !== 1 && 's'}
         </p>
       </div>
 
@@ -502,14 +510,48 @@ export default function SolicitacoesPage() {
           <table className="tfd-table">
             <thead>
               <tr>
-                <th>Número</th>
-                <th>Paciente</th>
-                <th className="hidden md:table-cell">CPF</th>
-                <th className="hidden lg:table-cell">Município</th>
-                <th className="hidden lg:table-cell">CID</th>
-                <th>Status</th>
-                <th className="hidden lg:table-cell">SEI</th>
-                <th className="hidden md:table-cell">Data</th>
+                <SortableHeader
+                  label="Número"
+                  sortDirection={table.getSortDirection('numero_processo')}
+                  onSort={() => table.toggleSort('numero_processo')}
+                />
+                <SortableHeader
+                  label="Paciente"
+                  sortDirection={table.getSortDirection('pacientes')}
+                  onSort={() => table.toggleSort('pacientes')}
+                />
+                <SortableHeader
+                  label="CPF"
+                  className="hidden md:table-cell"
+                />
+                <SortableHeader
+                  label="Município"
+                  className="hidden lg:table-cell"
+                />
+                <SortableHeader
+                  label="CID"
+                  className="hidden lg:table-cell"
+                  sortDirection={table.getSortDirection('cid10_principal')}
+                  onSort={() => table.toggleSort('cid10_principal')}
+                />
+                <SortableHeader
+                  label="Status"
+                  sortDirection={table.getSortDirection('status')}
+                  onSort={() => table.toggleSort('status')}
+                  filterOptions={statusFilterOptions}
+                  activeFilters={table.getActiveFilters('status')}
+                  onFilterChange={(v) => table.setColumnFilter('status', v)}
+                />
+                <SortableHeader
+                  label="SEI"
+                  className="hidden lg:table-cell"
+                />
+                <SortableHeader
+                  label="Data"
+                  className="hidden md:table-cell"
+                  sortDirection={table.getSortDirection('created_at')}
+                  onSort={() => table.toggleSort('created_at')}
+                />
                 <th className="w-[120px]">Ações</th>
               </tr>
             </thead>
@@ -611,26 +653,26 @@ export default function SolicitacoesPage() {
         </div>
 
         {/* Pagination */}
-        {totalPages > 1 && (
+        {table.totalPages > 1 && (
           <div
             className="flex items-center justify-between px-4 py-3"
             style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
           >
             <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-              Página {currentPage} de {totalPages}
+              Página {table.page} de {table.totalPages}
             </p>
             <div className="flex items-center gap-1">
               <button
                 className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage((p) => p - 1)}
+                disabled={table.page <= 1}
+                onClick={() => table.setPage(Math.max(1, table.page - 1))}
               >
                 <ChevronLeft size={16} />
               </button>
               <button
                 className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage((p) => p + 1)}
+                disabled={table.page >= table.totalPages}
+                onClick={() => table.setPage(Math.min(table.totalPages, table.page + 1))}
               >
                 <ChevronRight size={16} />
               </button>

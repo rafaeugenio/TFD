@@ -11,7 +11,6 @@ export interface Papel {
   cor: string;
   created_at: string;
   updated_at: string;
-  telas?: string[];
   usuario_count?: number;
 }
 
@@ -21,6 +20,7 @@ export interface TelaSistema {
   modulo: string;
   rota: string;
   ordem: number;
+  acoes_disponiveis: string[];
 }
 
 export async function listarPapeis() {
@@ -67,21 +67,24 @@ export async function listarTelas() {
     .order('ordem');
 }
 
+/** Retorna todas as linhas (tela_id, acao) atribuídas a um papel. */
 export async function listarTelasDoPapel(papelId: string) {
   return getSupabase()
-    .from('papel_telas')
-    .select('tela_id')
+    .from('papel_tela_acoes')
+    .select('tela_id, acao')
     .eq('papel_id', papelId);
 }
 
-export async function salvarTelasDoPapel(papelId: string, telaIds: string[]) {
+/** Salva as permissões de um papel, substituindo completamente as anteriores. */
+export async function salvarTelasDoPapel(
+  papelId: string,
+  telaAcoes: { tela_id: string; acao: string }[],
+) {
   const supabase = getSupabase();
-  // Remove all existing
-  await supabase.from('papel_telas').delete().eq('papel_id', papelId);
-  // Insert new
-  if (telaIds.length > 0) {
-    const rows = telaIds.map((tela_id) => ({ papel_id: papelId, tela_id }));
-    return supabase.from('papel_telas').insert(rows);
+  await supabase.from('papel_tela_acoes').delete().eq('papel_id', papelId);
+  if (telaAcoes.length > 0) {
+    const rows = telaAcoes.map(({ tela_id, acao }) => ({ papel_id: papelId, tela_id, acao }));
+    return supabase.from('papel_tela_acoes').insert(rows);
   }
   return { data: null, error: null };
 }
@@ -106,9 +109,7 @@ export async function buscarCodigoAtivo() {
 
 export async function regenerarCodigo() {
   const supabase = getSupabase();
-  // Desativar todos os anteriores
   await supabase.from('codigos_convite').update({ ativo: false }).eq('ativo', true);
-  // Gerar novo
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   const part = (len: number) => Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
   const codigo = `${part(6)}-${part(6)}`;

@@ -28,9 +28,10 @@ import FormField from '@/shared/components/drawer/FormField';
 import { useToast } from '@/shared/components/toast/Toast';
 import { listarEncerramentos, criarEncerramento, atualizarEncerramento, excluirEncerramento, listarSolicitacoesParaEncerramento } from '@/services/encerramentos.service';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
-import { useLookup } from '@/shared/hooks/useLookup';
+import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import DevolverModal from '@/shared/components/devolver-modal/DevolverModal';
 import { useDevolucoesPendentes } from '@/shared/hooks/useDevolucoesPendentes';
+import { useDevolucoeRecebidas } from '@/shared/hooks/useDevolucoeRecebidas';
 
 /* -------------------------------------------------- */
 /*  Local types (previously from mock)                 */
@@ -73,16 +74,21 @@ interface EncerramentoItem {
 /*  Tab config                                         */
 /* -------------------------------------------------- */
 
-type TabKey = 'TODOS' | 'DISPONIVEIS' | 'ALTA_MEDICA' | 'TRANSFERENCIA' | 'DESISTENCIA' | 'ABANDONO' | 'OBITO';
+type TabKey = 'TODOS' | 'DISPONIVEIS' | 'ENCERRADOS';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'TODOS', label: 'Todos' },
   { key: 'DISPONIVEIS', label: 'Disponíveis' },
-  { key: 'ALTA_MEDICA', label: 'Alta Médica' },
-  { key: 'TRANSFERENCIA', label: 'Transferência' },
-  { key: 'DESISTENCIA', label: 'Desistência' },
-  { key: 'ABANDONO', label: 'Abandono' },
-  { key: 'OBITO', label: 'Óbito' },
+  { key: 'ENCERRADOS', label: 'Encerrados' },
+];
+
+const MOTIVO_OPTIONS: { value: MotivoEncerramento | 'TODOS'; label: string }[] = [
+  { value: 'TODOS', label: 'Todos os motivos' },
+  { value: 'ALTA_MEDICA', label: 'Alta Médica' },
+  { value: 'TRANSFERENCIA', label: 'Transferência' },
+  { value: 'DESISTENCIA', label: 'Desistência' },
+  { value: 'ABANDONO', label: 'Abandono' },
+  { value: 'OBITO', label: 'Óbito' },
 ];
 
 /* -------------------------------------------------- */
@@ -145,11 +151,10 @@ function canArchive(enc: EncerramentoItem): boolean {
 
 export default function AltaEncerramentoPage() {
   const toast = useToast();
-  const { options: motivoEncOptions, loading: motivoEncLoading } = useLookup('motivo_encerramento');
-
   const [activeTab, setActiveTab] = useState<TabKey>('TODOS');
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('TODOS');
+  const [filterMotivo, setFilterMotivo] = useState<MotivoEncerramento | 'TODOS'>('TODOS');
 
   /* ---- Disponíveis: solicitações EM_PERMANENCIA sem encerramento ---- */
   const [disponiveis, setDisponiveis] = useState<any[]>([]);
@@ -195,6 +200,7 @@ export default function AltaEncerramentoPage() {
 
   /* ---- Devoluções pendentes ---- */
   const { mapa: devolucoesEnviadas, labelDestino, refresh: refreshDevolucoes } = useDevolucoesPendentes('ENCERRAMENTO');
+  const { mapa: devolucoesRecebidas, labelOrigem } = useDevolucoeRecebidas('ENCERRAMENTO');
 
   const resetDrawerForm = () => {
     setSolicitacaoId('');
@@ -270,9 +276,10 @@ export default function AltaEncerramentoPage() {
 
     if (activeTab === 'DISPONIVEIS') return dispRows;
     if (activeTab === 'TODOS') return [...dispRows, ...encRows];
-    // Filter by motivo
-    return encRows.filter((r) => r._type === 'ENCERRAMENTO' && r.data.motivo === activeTab);
-  }, [disponiveis, items, activeTab]);
+    // ENCERRADOS: show all encerramentos, optionally filtered by motivo
+    if (filterMotivo === 'TODOS') return encRows;
+    return encRows.filter((r) => r._type === 'ENCERRAMENTO' && r.data.motivo === filterMotivo);
+  }, [disponiveis, items, activeTab, filterMotivo]);
 
   /* ---- Filter by search + status ---- */
   const filtered = useMemo(() => {
@@ -307,11 +314,7 @@ export default function AltaEncerramentoPage() {
     return {
       TODOS: disponiveis.length + items.length,
       DISPONIVEIS: disponiveis.length,
-      ALTA_MEDICA: items.filter((e) => e.motivo === 'ALTA_MEDICA').length,
-      TRANSFERENCIA: items.filter((e) => e.motivo === 'TRANSFERENCIA').length,
-      DESISTENCIA: items.filter((e) => e.motivo === 'DESISTENCIA').length,
-      ABANDONO: items.filter((e) => e.motivo === 'ABANDONO').length,
-      OBITO: items.filter((e) => e.motivo === 'OBITO').length,
+      ENCERRADOS: items.length,
     };
   }, [items, disponiveis]);
 
@@ -423,6 +426,7 @@ export default function AltaEncerramentoPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Alta Médica</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.altaMedica}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Tratamento concluído com sucesso</p>
           </div>
         </div>
 
@@ -436,6 +440,7 @@ export default function AltaEncerramentoPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Transferência</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.transferencia}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Tratamento continuado na rede local do MA</p>
           </div>
         </div>
 
@@ -449,6 +454,7 @@ export default function AltaEncerramentoPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Desistência</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.desistencia}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Paciente optou por não continuar</p>
           </div>
         </div>
 
@@ -462,6 +468,7 @@ export default function AltaEncerramentoPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Abandono</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.abandono}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Interrompeu sem comunicação</p>
           </div>
         </div>
 
@@ -475,6 +482,7 @@ export default function AltaEncerramentoPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Óbito</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-danger)' }}>{counts.obito}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Falecimento durante o tratamento</p>
           </div>
         </div>
       </div>
@@ -487,7 +495,7 @@ export default function AltaEncerramentoPage() {
           return (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => { setActiveTab(tab.key); setFilterMotivo('TODOS'); }}
               className="tfd-btn tfd-btn--sm"
               style={{
                 backgroundColor: isActive ? 'var(--tfd-primary-50)' : 'transparent',
@@ -546,6 +554,22 @@ export default function AltaEncerramentoPage() {
             </select>
           </div>
         )}
+
+        {activeTab === 'ENCERRADOS' && (
+          <div className="flex items-center gap-2">
+            <Filter size={16} style={{ color: 'var(--tfd-text-muted)' }} />
+            <select
+              className="tfd-input tfd-input--sm"
+              style={{ minWidth: '200px', maxWidth: '240px' }}
+              value={filterMotivo}
+              onChange={(e) => setFilterMotivo(e.target.value as MotivoEncerramento | 'TODOS')}
+            >
+              {MOTIVO_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* ========== Table ========== */}
@@ -597,7 +621,7 @@ export default function AltaEncerramentoPage() {
                       >
                         <td>
                           <Link
-                            href={`/solicitacoes/${sol.id}`}
+                            href={`/solicitacoes/${sol.id}?from=alta-encerramento`}
                             className="font-medium text-sm hover:underline"
                             style={{ color: 'var(--tfd-primary-500)' }}
                             onClick={(e) => e.stopPropagation()}
@@ -626,7 +650,7 @@ export default function AltaEncerramentoPage() {
                         <td>
                           <div className="flex items-center gap-1">
                             <Link
-                              href={`/solicitacoes/${sol.id}`}
+                              href={`/solicitacoes/${sol.id}?from=alta-encerramento`}
                               className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
                               title="Ver processo"
                               onClick={(e) => e.stopPropagation()}
@@ -644,6 +668,8 @@ export default function AltaEncerramentoPage() {
                   const statusStyle = statusStyleMap[enc.status];
                   const aguardandoRetorno = labelDestino(enc.solicitacaoId);
                   const devolucaoInfo = devolucoesEnviadas.get(enc.solicitacaoId);
+                  const retornoRecebido = labelOrigem(enc.solicitacaoId);
+                  const retornoInfo = devolucoesRecebidas.get(enc.solicitacaoId);
 
                   return (
                     <tr
@@ -651,7 +677,8 @@ export default function AltaEncerramentoPage() {
                       className={aguardandoRetorno ? '' : 'cursor-pointer'}
                       style={{
                         opacity: aguardandoRetorno ? 0.55 : undefined,
-                        backgroundColor: aguardandoRetorno ? '#FFFBEB' : undefined,
+                        backgroundColor: aguardandoRetorno ? '#F8F9FA' : retornoRecebido ? '#FFFBEB' : undefined,
+                        borderLeft: retornoRecebido ? '4px solid #F59E0B' : undefined,
                         pointerEvents: aguardandoRetorno ? 'none' : undefined,
                       }}
                       onClick={aguardandoRetorno ? undefined : () => handleOpenEdit(enc)}
@@ -659,7 +686,7 @@ export default function AltaEncerramentoPage() {
                       <td>
                         <div className="flex flex-col gap-0.5">
                           <Link
-                            href={`/solicitacoes/${enc.solicitacaoId}`}
+                            href={`/solicitacoes/${enc.solicitacaoId}?from=alta-encerramento`}
                             className="font-medium text-sm hover:underline"
                             style={{ color: aguardandoRetorno ? 'var(--tfd-text-muted)' : 'var(--tfd-primary-500)' }}
                             onClick={(e) => e.stopPropagation()}
@@ -672,12 +699,22 @@ export default function AltaEncerramentoPage() {
                                 className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded"
                                 style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
                               >
-                                Devolvido p/ {aguardandoRetorno}
+                                Enviado p/ {aguardandoRetorno}
                               </span>
                               {devolucaoInfo.urgencia === 'URGENTE' && (
                                 <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: '#FEE2E2', color: '#B91C1C' }}>
                                   URGENTE
                                 </span>
+                              )}
+                            </div>
+                          )}
+                          {retornoRecebido && retornoInfo && !aguardandoRetorno && (
+                            <div className="flex items-center gap-1.5 mt-1" title={`Retorno recebido de ${retornoRecebido} em ${new Date(retornoInfo.created_at).toLocaleDateString('pt-BR')} — ${retornoInfo.motivo}`}>
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+                                ↩ Retorno de {retornoRecebido}
+                              </span>
+                              {retornoInfo.urgencia === 'URGENTE' && (
+                                <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: '#FEE2E2', color: '#B91C1C' }}>URGENTE</span>
                               )}
                             </div>
                           )}
@@ -715,7 +752,7 @@ export default function AltaEncerramentoPage() {
                       <td>
                         <div className="flex items-center gap-1" style={{ pointerEvents: 'auto' }}>
                           <Link
-                            href={`/solicitacoes/${enc.solicitacaoId}`}
+                            href={`/solicitacoes/${enc.solicitacaoId}?from=alta-encerramento`}
                             className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
                             title="Ver processo"
                             onClick={(e) => e.stopPropagation()}
@@ -732,14 +769,6 @@ export default function AltaEncerramentoPage() {
                               <SendHorizonal size={15} />
                             </button>
                           )}
-                          <button
-                            type="button"
-                            className="tfd-btn tfd-btn-danger tfd-btn--icon-only"
-                            title="Excluir"
-                            onClick={(e) => { e.stopPropagation(); handleOpenDelete(enc); }}
-                          >
-                            <Trash2 size={15} />
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -785,19 +814,13 @@ export default function AltaEncerramentoPage() {
 
         {/* Section: Encerramento */}
         <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Encerramento</h3>
-        <FormField label="Motivo do encerramento" required>
-          <select
-            className="tfd-input"
-            value={motivo}
-            onChange={(e) => setMotivo(e.target.value)}
-            disabled={motivoEncLoading}
-          >
-            <option value="">{motivoEncLoading ? 'Carregando...' : 'Selecione...'}</option>
-            {motivoEncOptions.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </FormField>
+        <LookupSelect
+          categoria="motivo_encerramento"
+          label="Motivo do encerramento"
+          value={motivo}
+          onChange={setMotivo}
+          required
+        />
         <FormField label="Data da alta/encerramento" required>
           <input
             type="date"
@@ -857,39 +880,6 @@ export default function AltaEncerramentoPage() {
           Opcional — anexe relatório de alta, certidão de óbito ou outro documento relevante ao encerramento.
         </p>
       </Drawer>
-
-      {/* ========== Modal de Confirmação de Exclusão ========== */}
-      {deleteConfirmId && (
-        <>
-          <div className="tfd-overlay-backdrop" onClick={() => setDeleteConfirmId(null)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="tfd-dialog" style={{ maxWidth: '400px' }}>
-              <div className="tfd-dialog-header">
-                <div className="flex items-center gap-2">
-                  <Trash2 size={18} style={{ color: '#EF4444' }} />
-                  <span className="font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-                    Excluir Encerramento
-                  </span>
-                </div>
-              </div>
-              <div className="tfd-dialog-content">
-                <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
-                  Tem certeza que deseja excluir o encerramento de <strong>{deleteConfirmName}</strong>? Esta ação não pode ser desfeita.
-                </p>
-              </div>
-              <div className="tfd-dialog-footer">
-                <button className="tfd-btn tfd-btn-secondary" onClick={() => setDeleteConfirmId(null)}>
-                  Cancelar
-                </button>
-                <button className="tfd-btn" style={{ background: '#EF4444', color: 'white' }} onClick={handleConfirmDelete}>
-                  <Trash2 size={14} />
-                  Excluir
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
 
       {/* ========== Modal de Devolução ========== */}
       <DevolverModal

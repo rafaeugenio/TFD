@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   CalendarClock, Search, Clock, AlertTriangle, CheckCircle2, RefreshCw,
   Eye, Plus, Loader2, Trash2, Pencil, Plane, Wallet, Ban, XCircle,
+  Calendar, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -19,6 +20,8 @@ import {
 import { useParametroNumero } from '@/shared/hooks/useParametros';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import { formatCurrency, formatDate, maskCurrency, parseCurrency } from '@/shared/pipes/formatters';
+import SortableHeader from '@/shared/components/table/SortableHeader';
+import { useTableControls } from '@/shared/hooks/useTableControls';
 
 /* ── Status maps ────────────────────────────────────── */
 
@@ -65,9 +68,6 @@ function prorrogacaoSubStatus(p: any): string {
 
 export default function PermanenciaPage() {
   const toast = useToast();
-  const [search, setSearch] = useState('');
-  const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
-  const [filtroProrrogacao, setFiltroProrrogacao] = useState<string>('TODOS');
   const { valor: valorDiariaCompleta } = useParametroNumero('diaria_valor_completa');
 
   /* ── Main data ─────────────────────────────────────── */
@@ -264,6 +264,7 @@ export default function PermanenciaPage() {
       const viagens = sol.viagens ?? [];
       return {
         ...sol,
+        paciente_nome: (sol.pacientes as any)?.nome_completo ?? '',
         viagensCount: viagens.length,
         ajudasTotal: ajudas.reduce((s: number, a: any) => s + (a.valor_total ?? 0), 0),
         prorrogacoesCount: prorrogacoes.length,
@@ -277,22 +278,21 @@ export default function PermanenciaPage() {
     });
   }, [solicitacoes]);
 
-  const filtered = useMemo(() => {
-    return rows.filter((r: any) => {
-      const matchesStatus = filtroStatus === 'TODOS' || r.status === filtroStatus;
-      const matchesSearch = search === '' ||
-        r.numero_processo?.toLowerCase().includes(search.toLowerCase()) ||
-        (r.pacientes as any)?.nome_completo?.toLowerCase().includes(search.toLowerCase());
-      let matchesProrrogacao = true;
-      if (filtroProrrogacao === 'PENDENTE') matchesProrrogacao = r.prorrogacoesPendentes > 0;
-      else if (filtroProrrogacao === 'SEM_PASSAGEM') matchesProrrogacao = r.prorrogacoesSemPassagem > 0;
-      else if (filtroProrrogacao === 'SEM_AJUDA') matchesProrrogacao = r.prorrogacoesSemAjuda > 0;
-      else if (filtroProrrogacao === 'COMPLETA') matchesProrrogacao = r.prorrogacoesCompletas > 0;
-      else if (filtroProrrogacao === 'INDEFERIDA') matchesProrrogacao = r.prorrogacoesIndeferidas > 0;
-      else if (filtroProrrogacao === 'SEM_PRORROGACAO') matchesProrrogacao = r.prorrogacoesCount === 0;
-      return matchesStatus && matchesSearch && matchesProrrogacao;
-    });
-  }, [rows, filtroStatus, search, filtroProrrogacao]);
+  /* ── Table controls ───────────────────────────────── */
+  const table = useTableControls({
+    data: rows as unknown as Record<string, unknown>[],
+    searchFields: ['numero_processo', 'paciente_nome'] as any,
+    dateField: 'created_at' as any,
+  });
+
+  const items = table.paginated as unknown as any[];
+  const allFiltered = table.filtered as unknown as any[];
+
+  /* ── Filter options ───────────────────────────────── */
+  const statusFilterOptions = table.getFilterOptions('status').map((v) => ({
+    value: v,
+    label: (solStatusStyleMap[v] ?? { label: v }).label,
+  }));
 
   const counts = useMemo(() => {
     return {
@@ -322,6 +322,7 @@ export default function PermanenciaPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Processos Ativos</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.total}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Pacientes no destino com permanência comunicada</p>
           </div>
         </div>
         <div className="tfd-card flex items-center gap-3">
@@ -329,6 +330,7 @@ export default function PermanenciaPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Prorrog. Pendentes</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-warning)' }}>{counts.pendentes}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Prorrogações aguardando aprovação</p>
           </div>
         </div>
         <div className="tfd-card flex items-center gap-3">
@@ -336,6 +338,7 @@ export default function PermanenciaPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Sem Passagem</p>
             <p className="text-xl font-semibold" style={{ color: '#7C3AED' }}>{counts.semPassagem}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Aprovadas sem passagem de retorno emitida</p>
           </div>
         </div>
         <div className="tfd-card flex items-center gap-3">
@@ -343,35 +346,25 @@ export default function PermanenciaPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Sem Ajuda Custo</p>
             <p className="text-xl font-semibold" style={{ color: '#EA580C' }}>{counts.semAjuda}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Aprovadas sem complemento de diária registrado</p>
           </div>
         </div>
       </div>
 
-      {/* ── Search + Filter ── */}
-      <div className="tfd-toolbar mb-4">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <div className="relative flex-1 max-w-md">
-            <Search size={16} className="tfd-input-leading-icon" style={{ color: 'var(--tfd-text-muted)' }} />
-            <input type="text" className="tfd-input tfd-input--sm tfd-input--with-leading-icon" placeholder="Buscar paciente ou processo..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-          <select className="tfd-input tfd-input--sm" style={{ maxWidth: 200 }} value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)}>
-            <option value="TODOS">Status: Todos</option>
-            <option value="AGUARDANDO_AGENDAMENTO">Ag. Agendamento</option>
-            <option value="AGUARDANDO_EMISSAO">Ag. Emissao</option>
-            <option value="EM_VIAGEM">Em Viagem</option>
-            <option value="EM_PAGAMENTO">Em Pagamento</option>
-            <option value="EM_PERMANENCIA">Em Permanencia</option>
-            <option value="CONCLUIDO">Concluido</option>
-          </select>
-          <select className="tfd-input tfd-input--sm" style={{ maxWidth: 220 }} value={filtroProrrogacao} onChange={(e) => setFiltroProrrogacao(e.target.value)}>
-            <option value="TODOS">Prorrogacao: Todas</option>
-            <option value="SEM_PRORROGACAO">Sem prorrogacao</option>
-            <option value="PENDENTE">Pendente aprovacao ({counts.pendentes})</option>
-            <option value="SEM_PASSAGEM">Sem passagem ({counts.semPassagem})</option>
-            <option value="SEM_AJUDA">Sem ajuda custo ({counts.semAjuda})</option>
-            <option value="COMPLETA">Completas ({counts.completas})</option>
-            <option value="INDEFERIDA">Indeferidas ({counts.indeferidas})</option>
-          </select>
+      {/* ── Search + Date Range ── */}
+      <div className="tfd-toolbar mb-4 flex-wrap gap-3">
+        <div className="relative flex-1 max-w-xs min-w-[200px]">
+          <Search size={16} className="tfd-input-leading-icon" style={{ color: 'var(--tfd-text-muted)' }} />
+          <input type="text" className="tfd-input tfd-input--sm tfd-input--with-leading-icon" placeholder="Buscar paciente ou processo..."
+            value={table.search} onChange={(e) => table.setSearch(e.target.value)} />
+        </div>
+        <div className="flex items-center gap-2">
+          <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
+          <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
+            value={table.dateStart} onChange={(e) => table.setDateStart(e.target.value)} title="Data inicio" />
+          <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>ate</span>
+          <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
+            value={table.dateEnd} onChange={(e) => table.setDateEnd(e.target.value)} title="Data fim" />
         </div>
       </div>
 
@@ -381,24 +374,27 @@ export default function PermanenciaPage() {
           <table className="tfd-table">
             <thead>
               <tr>
-                <th>Processo</th>
-                <th>Paciente</th>
-                <th className="text-center">Passagens</th>
-                <th className="hidden md:table-cell">Ajuda de Custo</th>
-                <th className="text-center">Prorrogacoes</th>
-                <th>Status</th>
+                <SortableHeader label="Processo" sortDirection={table.getSortDirection('numero_processo')} onSort={() => table.toggleSort('numero_processo')} />
+                <SortableHeader label="Paciente" sortDirection={table.getSortDirection('paciente_nome')} onSort={() => table.toggleSort('paciente_nome')} />
+                <SortableHeader label="Passagens" className="text-center" sortDirection={table.getSortDirection('viagensCount')} onSort={() => table.toggleSort('viagensCount')} />
+                <SortableHeader label="Ajuda de Custo" className="hidden md:table-cell" sortDirection={table.getSortDirection('ajudasTotal')} onSort={() => table.toggleSort('ajudasTotal')} />
+                <SortableHeader label="Prorrogacoes" className="text-center" sortDirection={table.getSortDirection('prorrogacoesCount')} onSort={() => table.toggleSort('prorrogacoesCount')} />
+                <SortableHeader label="Status"
+                  filterOptions={statusFilterOptions}
+                  activeFilters={table.getActiveFilters('status')}
+                  onFilterChange={(v) => table.setColumnFilter('status', v)} />
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr><td colSpan={6} className="text-center py-12"><Loader2 size={32} className="animate-spin mx-auto mb-2" style={{ color: 'var(--tfd-primary-500)' }} /><p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Carregando...</p></td></tr>
-              ) : filtered.length === 0 ? (
+              ) : allFiltered.length === 0 ? (
                 <tr><td colSpan={6} className="text-center py-12"><Ban size={32} style={{ color: 'var(--tfd-text-muted)' }} className="mx-auto mb-2" /><p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Nenhum processo encontrado</p></td></tr>
-              ) : filtered.map((r: any) => {
+              ) : items.map((r: any) => {
                 const sStyle = solStatusStyleMap[r.status] ?? { bg: 'var(--tfd-surface-100)', text: 'var(--tfd-surface-500)', label: r.status };
                 return (
                   <tr key={r.id} className="cursor-pointer" onClick={() => handleOpenDrawer(r)}>
-                    <td><Link href={`/solicitacoes/${r.id}`} className="font-medium text-sm hover:underline" style={{ color: 'var(--tfd-primary-500)' }} onClick={(e) => e.stopPropagation()}>{r.numero_processo}</Link></td>
+                    <td><Link href={`/solicitacoes/${r.id}?from=permanencia`} className="font-medium text-sm hover:underline" style={{ color: 'var(--tfd-primary-500)' }} onClick={(e) => e.stopPropagation()}>{r.numero_processo}</Link></td>
                     <td className="max-w-[180px] truncate font-medium">{(r.pacientes as any)?.nome_completo ?? '—'}</td>
                     <td className="text-center">{r.viagensCount > 0 ? <span className="inline-flex items-center justify-center min-w-[24px] h-[22px] px-1.5 rounded-full text-xs font-semibold" style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}>{r.viagensCount}</span> : <span style={{ color: 'var(--tfd-text-muted)' }}>—</span>}</td>
                     <td className="hidden md:table-cell whitespace-nowrap">{r.ajudasTotal > 0 ? <span className="font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{formatCurrency(r.ajudasTotal)}</span> : <span style={{ color: 'var(--tfd-text-muted)' }}>—</span>}</td>
@@ -417,6 +413,30 @@ export default function PermanenciaPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {!loading && allFiltered.length > 0 && (
+          <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: '1px solid var(--tfd-surface-border)' }}>
+            <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
+              Exibindo{' '}
+              <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{(table.page - 1) * 20 + 1}</span>
+              {' '}&ndash;{' '}
+              <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{Math.min(table.page * 20, allFiltered.length)}</span>
+              {' '}de{' '}
+              <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{allFiltered.length}</span>
+              {' '}registros
+            </p>
+            <div className="flex items-center gap-1">
+              <button className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only" onClick={() => table.setPage(Math.max(1, table.page - 1))} disabled={table.page === 1} aria-label="Pagina anterior">
+                <ChevronLeft size={16} />
+              </button>
+              <span className="text-sm px-3 font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{table.page} / {table.totalPages}</span>
+              <button className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only" onClick={() => table.setPage(Math.min(table.totalPages, table.page + 1))} disabled={table.page === table.totalPages} aria-label="Proxima pagina">
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ══ Drawer ══ */}
@@ -427,7 +447,7 @@ export default function PermanenciaPage() {
             <p className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{drawerPaciente}</p>
             <p className="text-xs" style={{ color: '#1E40AF' }}>Processo: {drawerNumProcesso}</p>
           </div>
-          <Link href={`/solicitacoes/${drawerSolId}`} className="tfd-btn tfd-btn-ghost tfd-btn--icon-only" title="Ver processo"><Eye size={15} /></Link>
+          <Link href={`/solicitacoes/${drawerSolId}?from=permanencia`} className="tfd-btn tfd-btn-ghost tfd-btn--icon-only" title="Ver processo"><Eye size={15} /></Link>
         </div>
 
         {drawerLoading ? (
@@ -528,7 +548,6 @@ export default function PermanenciaPage() {
                             <>
                               <button type="button" className="tfd-btn tfd-btn--sm" style={{ backgroundColor: 'var(--tfd-status-success)', color: 'white', fontSize: '0.7rem', padding: '3px 8px' }} onClick={() => setInlineAction({ type: 'aprovar', id: p.id })}><CheckCircle2 size={12} /> Aprovar</button>
                               <button type="button" className="tfd-btn tfd-btn--sm" style={{ backgroundColor: '#FEE2E2', color: '#B91C1C', fontSize: '0.7rem', padding: '3px 8px' }} onClick={() => setInlineAction({ type: 'indeferir', id: p.id })}><XCircle size={12} /> Indeferir</button>
-                              <button type="button" className="tfd-btn tfd-btn-ghost tfd-btn--icon-only tfd-btn--sm ml-auto" title="Excluir" onClick={() => setInlineAction({ type: 'excluir', id: p.id })}><Trash2 size={13} style={{ color: '#EF4444' }} /></button>
                             </>
                           )}
                           {p.decisao === 'APROVADA' && !viagem && (
@@ -566,16 +585,6 @@ export default function PermanenciaPage() {
                         </div>
                       )}
 
-                      {/* ── INLINE: Excluir ── */}
-                      {isTarget && inlineAction?.type === 'excluir' && (
-                        <div className="mt-2 pt-2" style={{ borderTop: '1px solid #FCA5A5' }}>
-                          <p className="text-xs font-medium mb-2" style={{ color: '#B91C1C' }}>Excluir esta prorrogacao?</p>
-                          <div className="flex gap-2">
-                            <button className="tfd-btn tfd-btn-secondary tfd-btn--sm flex-1" disabled={actionLoading} onClick={resetInlineAction}>Cancelar</button>
-                            <button className="tfd-btn tfd-btn--sm flex-1" style={{ background: '#EF4444', color: 'white' }} disabled={actionLoading} onClick={() => handleConfirmExcluir(p.id)}>{actionLoading ? 'Excluindo...' : 'Confirmar'}</button>
-                          </div>
-                        </div>
-                      )}
 
                       {/* ── INLINE: Add Passagem ── */}
                       {isTarget && inlineAction?.type === 'add-passagem' && (

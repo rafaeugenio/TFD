@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import {
   Microscope,
   Search,
-  Clock,
+  Calendar,
   Eye,
   ChevronLeft,
   ChevronRight,
@@ -22,6 +22,7 @@ import {
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import StatusTag from '@/shared/components/status-tag/StatusTag';
+import SortableHeader from '@/shared/components/table/SortableHeader';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import { useToast } from '@/shared/components/toast/Toast';
@@ -29,16 +30,15 @@ import { listarSolicitacoes, atualizarSolicitacao, contarPorStatus } from '@/ser
 import { uploadDocumento } from '@/services/documentos.service';
 import type { TipoDocumento } from '@/lib/supabase/database.types';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
+import { useTableControls } from '@/shared/hooks/useTableControls';
 import { formatCPF } from '@/shared/pipes/formatters';
-import { useLookup } from '@/shared/hooks/useLookup';
+import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
+import { createClient } from '@/lib/supabase/client';
 import DevolverModal from '@/shared/components/devolver-modal/DevolverModal';
 import { useDevolucoesPendentes } from '@/shared/hooks/useDevolucoesPendentes';
+import { slaBadge } from '@/shared/utils/sla';
+import { useDevolucoeRecebidas } from '@/shared/hooks/useDevolucoeRecebidas';
 import type { StatusSolicitacao } from '@/core/models';
-
-/* ── TODO AGENTE-4: Descomentar quando Agentes 1 e 2 concluírem ──
-import CidAutocomplete from '@/shared/components/cid-autocomplete/CidAutocomplete';
-import MedicoSelect from '@/shared/components/medico-select/MedicoSelect';
-── Esses componentes substituem os inputs de texto livre de CID e médico ── */
 
 /* -------------------------------------------------- */
 /*  Helpers                                            */
@@ -61,15 +61,6 @@ function timeSince(iso: string): string {
   return `${days}d`;
 }
 
-function urgencyColor(iso: string): string | undefined {
-  if (!iso) return undefined;
-  const hours = (Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60);
-  if (hours > 48) return '#EF4444';
-  if (hours > 24) return '#F59E0B';
-  return undefined;
-}
-
-const ITEMS_PER_PAGE = 8;
 
 /* -------------------------------------------------- */
 /*  Component                                          */
@@ -77,32 +68,24 @@ const ITEMS_PER_PAGE = 8;
 
 export default function DiagnosticoClinicoPage() {
   const toast = useToast();
-  const [search, setSearch] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
 
   /* ---- Drawer state ---- */
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedSol, setSelectedSol] = useState<Record<string, unknown> | null>(null);
 
-  /* ---- Form state: Dados do Laudo (Onda 1: B7-B12) ---- */
-  const [origemLaudo, setOrigemLaudo] = useState<'ESTADUAL' | 'MUNICIPAL' | ''>('');
+  /* ---- Reference data (loaded on mount) ---- */
+  const [medicos, setMedicos] = useState<Array<{ id: string; nome_completo: string; crm: string; crm_uf: string }>>([]);
+  const [cidOptions, setCidOptions] = useState<Array<{ id: string; codigo: string; descricao: string }>>([]);
+
+  /* ---- Form state: Dados do Laudo ---- */
+  const [origemLaudo, setOrigemLaudo] = useState('');
   const [dataLaudo, setDataLaudo] = useState('');
-  const [codigoProcedimentoSUS, setCodigoProcedimentoSUS] = useState('');
-  const [caracterAtendimento, setCaracterAtendimento] = useState<'HOSPITALAR' | 'AMBULATORIAL' | ''>('');
+  const [caracterAtendimento, setCaracterAtendimento] = useState('');
 
   /* ---- Form state: Médico Solicitante ---- */
-  /* TODO AGENTE-4: Quando MedicoSelect estiver pronto, trocar por:
-     const [selectedMedico, setSelectedMedico] = useState<{ id: string; nome_completo: string; crm: string; crm_uf: string; especialidade?: string } | null>(null);
-     E derivar medicoNome, medicoCRM, medicoUF do objeto selecionado. */
-  const [medicoNome, setMedicoNome] = useState('');
-  const [medicoCRM, setMedicoCRM] = useState('');
-  const [medicoUF, setMedicoUF] = useState('MA');
+  const [medicoId, setMedicoId] = useState('');
 
   /* ---- Form state: Diagnóstico ---- */
-  /* TODO AGENTE-4: Quando CidAutocomplete estiver pronto, trocar por:
-     const [cidPrincipal, setCidPrincipal] = useState<{ codigo: string; descricao: string } | null>(null);
-     const [cidSec, setCidSec] = useState<{ codigo: string; descricao: string } | null>(null);
-     E usar cidPrincipal.codigo / cidSec.codigo no payload. */
   const [cid, setCid] = useState('');
   const [cidSecundario, setCidSecundario] = useState('');
   const [descricaoDiagnostico, setDescricaoDiagnostico] = useState('');
@@ -120,41 +103,70 @@ export default function DiagnosticoClinicoPage() {
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [uploading, setUploading] = useState(false);
 
+  function urgencyColor(iso: string): string | undefined {
+    if (!iso) return undefined;
+    const hours = (Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60);
+    if (hours > 48) return '#EF4444';
+    if (hours > 24) return '#F59E0B';
+    return undefined;
+  }
+
   /* ---- Devolver state ---- */
   const [devolverSol, setDevolverSol] = useState<Record<string, unknown> | null>(null);
 
   /* ---- Devoluções pendentes ---- */
   const { mapa: devolucoesEnviadas, labelDestino, refresh: refreshDevolucoes } = useDevolucoesPendentes('DIAGNOSTICO_CLINICO');
+  const { mapa: devolucoesRecebidas, labelOrigem } = useDevolucoeRecebidas('DIAGNOSTICO_CLINICO');
 
-  /* ---- Lookup hooks ---- */
-  const { options: especialidades, loading: loadingEsp } = useLookup('especialidade');
+  /* ---- IDs of devolved items ---- */
+  const devolvedIds = useMemo(() => Array.from(devolucoesEnviadas.keys()), [devolucoesEnviadas]);
 
-  /* ---- Data: only PENDENTE_DIAGNOSTICO ---- */
-  const { data: solicitacoes, loading, count: totalCount, refresh } = useSupabaseData(
-    () => listarSolicitacoes({ status: 'PENDENTE_DIAGNOSTICO', search, page: currentPage, pageSize: ITEMS_PER_PAGE }),
-    [search, currentPage],
+  /* ---- Data: only PENDENTE_DIAGNOSTICO + devolved items ---- */
+  const { data: allSolicitacoes, loading, refresh } = useSupabaseData(
+    () => listarSolicitacoes({ status: 'PENDENTE_DIAGNOSTICO', pageSize: 2000, includeIds: devolvedIds }),
+    [devolvedIds],
   );
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE));
+  /* ---- Table controls (client-side search, filter, sort, pagination) ---- */
+  const table = useTableControls({
+    data: allSolicitacoes as unknown as Record<string, unknown>[],
+    searchFields: ['numero_processo'],
+    dateField: 'created_at',
+  });
 
-  /* ---- Pending count ---- */
+  const items = table.paginated as unknown as Record<string, unknown>[];
+  const filtered = table.filtered as unknown as Record<string, unknown>[];
+
+  /* ---- Pending count + preenchidos hoje ---- */
   const [pendingCount, setPendingCount] = useState(0);
+  const [preenchidosHoje, setPreenchidosHoje] = useState(0);
   const refreshCount = useCallback(() => {
     contarPorStatus().then(({ data }) => {
-      if (data) setPendingCount(data['PENDENTE_DIAGNOSTICO'] || 0);
+      if (data) {
+        setPendingCount(data['PENDENTE_DIAGNOSTICO'] || 0);
+        // Preenchidos hoje = processos que saíram de PENDENTE_DIAGNOSTICO hoje (NOVO ou superior)
+        setPreenchidosHoje(data['_PREENCHIDOS_HOJE'] || 0);
+      }
     });
   }, []);
   useEffect(() => { refreshCount(); }, [refreshCount]);
+
+  /* ---- Load reference data ---- */
+  useEffect(() => {
+    const sb = createClient();
+    sb.from('medicos').select('id, nome_completo, crm, crm_uf').eq('ativo', true).order('nome_completo')
+      .then(({ data }) => { if (data) setMedicos(data as typeof medicos); });
+    sb.from('tabelas_auxiliares').select('id, codigo, descricao').eq('categoria', 'cid10').eq('ativo', true).order('codigo')
+      .then(({ data }) => { if (data) setCidOptions(data as typeof cidOptions); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* ---- Drawer helpers ---- */
 
   function resetForm() {
     setOrigemLaudo('');
     setDataLaudo('');
-    setMedicoNome('');
-    setMedicoCRM('');
-    setMedicoUF('MA');
-    setCodigoProcedimentoSUS('');
+    setMedicoId('');
     setCaracterAtendimento('');
     setCid('');
     setCidSecundario('');
@@ -175,15 +187,17 @@ export default function DiagnosticoClinicoPage() {
 
   function handleOpenDiagnostico(sol: Record<string, unknown>) {
     setSelectedSol(sol);
-    // Pre-fill laudo fields (rascunho)
-    setOrigemLaudo((sol.origem_laudo as 'ESTADUAL' | 'MUNICIPAL') ?? '');
+    setOrigemLaudo((sol.origem_laudo as string) ?? '');
     setDataLaudo((sol.data_laudo as string) ?? '');
-    setMedicoNome((sol.medico_solicitante_nome as string) ?? '');
-    setMedicoCRM((sol.medico_solicitante_crm as string) ?? '');
-    setMedicoUF((sol.medico_solicitante_uf as string) ?? 'MA');
-    setCodigoProcedimentoSUS((sol.codigo_procedimento_sus as string) ?? '');
-    setCaracterAtendimento((sol.carater_atendimento as 'HOSPITALAR' | 'AMBULATORIAL') ?? '');
-    // Pre-fill diagnosis fields (rascunho)
+    setCaracterAtendimento((sol.carater_atendimento as string) ?? '');
+    // Tenta casar médico pelo CRM salvo
+    const savedCrm = sol.medico_solicitante_crm as string;
+    if (savedCrm && medicos.length > 0) {
+      const found = medicos.find(m => m.crm === savedCrm);
+      setMedicoId(found?.id ?? '');
+    } else {
+      setMedicoId('');
+    }
     setCid((sol.cid10_principal as string) ?? '');
     setCidSecundario((sol.cid10_secundario as string) ?? '');
     setDescricaoDiagnostico((sol.descricao_diagnostico as string) ?? '');
@@ -198,13 +212,13 @@ export default function DiagnosticoClinicoPage() {
   async function handleSaveRascunho() {
     if (!selectedSol) return;
     try {
+      const selectedMedico = medicos.find(m => m.id === medicoId);
       const payload: Record<string, unknown> = {
         origem_laudo: origemLaudo || null,
         data_laudo: dataLaudo || null,
-        medico_solicitante_nome: medicoNome || null,
-        medico_solicitante_crm: medicoCRM || null,
-        medico_solicitante_uf: medicoUF || null,
-        codigo_procedimento_sus: codigoProcedimentoSUS || null,
+        medico_solicitante_nome: selectedMedico?.nome_completo || null,
+        medico_solicitante_crm: selectedMedico?.crm || null,
+        medico_solicitante_uf: selectedMedico?.crm_uf || null,
         carater_atendimento: caracterAtendimento || null,
         cid10_principal: cid || null,
         cid10_secundario: cidSecundario || null,
@@ -241,16 +255,12 @@ export default function DiagnosticoClinicoPage() {
     if (diasParaVencer <= 30) {
       toast.warning('Laudo próximo do vencimento', `O laudo vence em ${diasParaVencer} dia(s). Considere solicitar renovação.`);
     }
-    if (!medicoNome) { toast.warning('Campo obrigatório', 'Informe o nome do médico solicitante.'); return; }
-    if (!medicoCRM) { toast.warning('Campo obrigatório', 'Informe o CRM do médico solicitante.'); return; }
-    if (!caracterAtendimento) { toast.warning('Campo obrigatório', 'Selecione o caráter do atendimento (Hospitalar/Ambulatorial).'); return; }
+    if (!medicoId) { toast.warning('Campo obrigatório', 'Selecione o médico solicitante.'); return; }
+    if (!caracterAtendimento) { toast.warning('Campo obrigatório', 'Selecione o caráter do atendimento.'); return; }
 
     // Validações — Diagnóstico Clínico
     if (!cid) { toast.warning('Campo obrigatório', 'Preencha o CID-10 principal.'); return; }
-    if (!descricaoDiagnostico || descricaoDiagnostico.length < 20) { toast.warning('Campo obrigatório', 'Descrição do diagnóstico deve ter ao menos 20 caracteres.'); return; }
     if (!especialidade) { toast.warning('Campo obrigatório', 'Selecione a especialidade.'); return; }
-    if (!procedimento) { toast.warning('Campo obrigatório', 'Preencha o procedimento solicitado.'); return; }
-    if (!justificativa || justificativa.length < 20) { toast.warning('Campo obrigatório', 'Justificativa TFD deve ter ao menos 20 caracteres.'); return; }
     if (!tipoTransporte) { toast.warning('Campo obrigatório', 'Selecione o tipo de transporte.'); return; }
 
     // Check for laudo
@@ -258,14 +268,14 @@ export default function DiagnosticoClinicoPage() {
     if (!hasLaudo) { toast.warning('Documento obrigatório', 'Anexe ao menos um Laudo Médico.'); return; }
 
     try {
+      const selectedMedico = medicos.find(m => m.id === medicoId);
       const payload: Record<string, unknown> = {
         origem_laudo: origemLaudo,
         data_laudo: dataLaudo,
         data_validade_laudo: validadeDate.toISOString().split('T')[0],
-        medico_solicitante_nome: medicoNome,
-        medico_solicitante_crm: medicoCRM,
-        medico_solicitante_uf: medicoUF,
-        codigo_procedimento_sus: codigoProcedimentoSUS || null,
+        medico_solicitante_nome: selectedMedico?.nome_completo || null,
+        medico_solicitante_crm: selectedMedico?.crm || null,
+        medico_solicitante_uf: selectedMedico?.crm_uf || null,
         carater_atendimento: caracterAtendimento,
         cid10_principal: cid,
         cid10_secundario: cidSecundario || null,
@@ -318,7 +328,7 @@ export default function DiagnosticoClinicoPage() {
         subtitle="Processos aguardando preenchimento do diagn&oacute;stico"
       />
 
-      {/* ========== Summary ========== */}
+      {/* ========== Summary Cards ========== */}
       <div className="grid grid-cols-2 xl:grid-cols-3 gap-4 mb-6">
         <div className="tfd-card flex items-center gap-3">
           <div
@@ -330,6 +340,21 @@ export default function DiagnosticoClinicoPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Pendentes</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{pendingCount}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Aguardando preenchimento do diagnóstico clínico</p>
+          </div>
+        </div>
+
+        <div className="tfd-card flex items-center gap-3">
+          <div
+            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
+            style={{ backgroundColor: '#DCFCE7', color: '#16A34A' }}
+          >
+            <Check size={20} />
+          </div>
+          <div>
+            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Preenchidos Hoje</p>
+            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{preenchidosHoje}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Diagnósticos completados no dia</p>
           </div>
         </div>
 
@@ -338,59 +363,58 @@ export default function DiagnosticoClinicoPage() {
             className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
             style={{ backgroundColor: '#FEF3C7', color: '#F59E0B' }}
           >
-            <AlertTriangle size={20} />
+            <ArrowLeft size={20} />
           </div>
           <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>&gt; 24h pendente</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-              {solicitacoes.filter((s: Record<string, unknown>) => {
-                const hours = (Date.now() - new Date(s.created_at as string).getTime()) / (1000 * 60 * 60);
-                return hours > 24;
-              }).length}
-            </p>
-          </div>
-        </div>
-
-        <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: '#FEE2E2', color: '#EF4444' }}
-          >
-            <Clock size={20} />
-          </div>
-          <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>&gt; 48h pendente</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-              {solicitacoes.filter((s: Record<string, unknown>) => {
-                const hours = (Date.now() - new Date(s.created_at as string).getTime()) / (1000 * 60 * 60);
-                return hours > 48;
-              }).length}
-            </p>
+            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Devoluções Pendentes</p>
+            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-warning)' }}>{devolucoesEnviadas.size}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Processos devolvidos aguardando correção</p>
           </div>
         </div>
       </div>
 
       {/* ========== Toolbar ========== */}
-      <div className="tfd-toolbar mb-4 flex-wrap">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="relative flex-1 max-w-sm">
-            <Search
-              size={16}
-                className="tfd-input-leading-icon"
-              style={{ color: 'var(--tfd-text-muted)' }}
-            />
-            <input
-              type="text"
-              className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
-              placeholder="Buscar por paciente, CPF ou n&uacute;mero..."
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
-            />
-          </div>
+      <div className="tfd-toolbar mb-4 flex-wrap gap-3">
+        {/* Search */}
+        <div className="relative flex-1 min-w-[220px] max-w-sm">
+          <Search
+            size={16}
+            className="tfd-input-leading-icon"
+            style={{ color: 'var(--tfd-text-muted)' }}
+          />
+          <input
+            type="text"
+            className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
+            placeholder="Buscar por n&uacute;mero do processo..."
+            value={table.search}
+            onChange={(e) => table.setSearch(e.target.value)}
+          />
         </div>
 
-        <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-          {totalCount} processo{totalCount !== 1 && 's'} pendente{totalCount !== 1 && 's'}
+        {/* Date range */}
+        <div className="flex items-center gap-2">
+          <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
+          <input
+            type="date"
+            className="tfd-input tfd-input--sm"
+            style={{ width: 'auto' }}
+            value={table.dateStart}
+            onChange={(e) => table.setDateStart(e.target.value)}
+            title="Data início"
+          />
+          <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>até</span>
+          <input
+            type="date"
+            className="tfd-input tfd-input--sm"
+            style={{ width: 'auto' }}
+            value={table.dateEnd}
+            onChange={(e) => table.setDateEnd(e.target.value)}
+            title="Data fim"
+          />
+        </div>
+
+        <p className="text-sm ml-auto" style={{ color: 'var(--tfd-text-muted)' }}>
+          {filtered.length} processo{filtered.length !== 1 && 's'} pendente{filtered.length !== 1 && 's'}
         </p>
       </div>
 
@@ -400,13 +424,40 @@ export default function DiagnosticoClinicoPage() {
           <table className="tfd-table">
             <thead>
               <tr>
-                <th>N&uacute;mero</th>
-                <th>Paciente</th>
-                <th className="hidden md:table-cell">CPF</th>
-                <th className="hidden lg:table-cell">Munic&iacute;pio</th>
-                <th>Tempo pendente</th>
-                <th className="hidden md:table-cell">Data abertura</th>
-                <th className="w-[100px]">A&ccedil;&atilde;o</th>
+                <SortableHeader
+                  label="Número"
+                  sortDirection={table.getSortDirection('numero_processo')}
+                  onSort={() => table.toggleSort('numero_processo')}
+                />
+                <SortableHeader
+                  label="Paciente"
+                  sortDirection={table.getSortDirection('pacientes')}
+                  onSort={() => table.toggleSort('pacientes')}
+                />
+                <SortableHeader
+                  label="CPF"
+                  className="hidden md:table-cell"
+                  sortDirection={table.getSortDirection('cpf')}
+                  onSort={() => table.toggleSort('cpf')}
+                />
+                <SortableHeader
+                  label="Município"
+                  className="hidden lg:table-cell"
+                  sortDirection={table.getSortDirection('municipio')}
+                  onSort={() => table.toggleSort('municipio')}
+                />
+                <SortableHeader
+                  label="Tempo pendente"
+                  sortDirection={table.getSortDirection('created_at')}
+                  onSort={() => table.toggleSort('created_at')}
+                />
+                <SortableHeader
+                  label="Data abertura"
+                  className="hidden md:table-cell"
+                  sortDirection={table.getSortDirection('created_at_date')}
+                  onSort={() => table.toggleSort('created_at')}
+                />
+                <th className="w-[100px]">Ação</th>
               </tr>
             </thead>
             <tbody>
@@ -416,7 +467,7 @@ export default function DiagnosticoClinicoPage() {
                     <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Carregando...</p>
                   </td>
                 </tr>
-              ) : solicitacoes.length === 0 ? (
+              ) : items.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-center py-12">
                     <div className="flex flex-col items-center gap-2">
@@ -428,16 +479,18 @@ export default function DiagnosticoClinicoPage() {
                   </td>
                 </tr>
               ) : (
-                solicitacoes.map((sol: Record<string, unknown>) => {
+                items.map((sol: Record<string, unknown>) => {
                   const pacRow = sol.pacientes as Record<string, unknown> | undefined;
                   const urg = urgencyColor(sol.created_at as string);
                   const aguardandoRetorno = labelDestino(sol.id as string);
                   const devolucaoInfo = devolucoesEnviadas.get(sol.id as string);
+                  const retornoRecebido = labelOrigem(sol.id as string);
+                  const retornoInfo = devolucoesRecebidas.get(sol.id as string);
                   return (
-                    <tr key={sol.id as string} className={aguardandoRetorno ? '' : 'cursor-pointer'} style={{ opacity: aguardandoRetorno ? 0.55 : undefined, backgroundColor: aguardandoRetorno ? '#FFFBEB' : undefined, pointerEvents: aguardandoRetorno ? 'none' : undefined }} onClick={aguardandoRetorno ? undefined : () => handleOpenDiagnostico(sol)}>
+                    <tr key={sol.id as string} className={aguardandoRetorno ? '' : 'cursor-pointer'} style={{ opacity: aguardandoRetorno ? 0.55 : undefined, backgroundColor: aguardandoRetorno ? '#F8F9FA' : retornoRecebido ? '#FFFBEB' : undefined, pointerEvents: aguardandoRetorno ? 'none' : undefined, borderLeft: retornoRecebido ? '4px solid #F59E0B' : undefined }} onClick={aguardandoRetorno ? undefined : () => handleOpenDiagnostico(sol)}>
                       <td>
                         <Link
-                          href={`/solicitacoes/${sol.id}`}
+                          href={`/solicitacoes/${sol.id}?from=diagnostico-clinico`}
                           className="font-medium hover:underline"
                           style={{ color: aguardandoRetorno ? 'var(--tfd-text-muted)' : 'var(--tfd-primary-500)' }}
                         >
@@ -456,7 +509,7 @@ export default function DiagnosticoClinicoPage() {
                                 className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded"
                                 style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
                               >
-                                Devolvido p/ {aguardandoRetorno}
+                                Enviado p/ {aguardandoRetorno}
                               </span>
                               {devolucaoInfo.urgencia === 'URGENTE' && (
                                 <span
@@ -465,6 +518,16 @@ export default function DiagnosticoClinicoPage() {
                                 >
                                   URGENTE
                                 </span>
+                              )}
+                            </div>
+                          )}
+                          {retornoRecebido && retornoInfo && !aguardandoRetorno && (
+                            <div className="flex items-center gap-1.5 mt-1" title={`Retorno recebido de ${retornoRecebido} em ${new Date(retornoInfo.created_at).toLocaleDateString('pt-BR')} — ${retornoInfo.motivo}`}>
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+                                ↩ Retorno de {retornoRecebido}
+                              </span>
+                              {retornoInfo.urgencia === 'URGENTE' && (
+                                <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: '#FEE2E2', color: '#B91C1C' }}>URGENTE</span>
                               )}
                             </div>
                           )}
@@ -480,15 +543,9 @@ export default function DiagnosticoClinicoPage() {
                           || '\u2014'}
                       </td>
                       <td>
-                        <span
-                          className="tfd-tag tfd-tag--rounded text-xs font-semibold"
-                          style={{
-                            backgroundColor: urg ? (urg === '#EF4444' ? '#FEE2E2' : '#FEF3C7') : 'var(--tfd-surface-100)',
-                            color: urg ?? 'var(--tfd-text-secondary)',
-                          }}
-                        >
-                          {timeSince(sol.created_at as string)}
-                        </span>
+                        {(() => { const b = slaBadge(sol.created_at as string); return (
+                          <span className="tfd-tag tfd-tag--rounded text-xs font-semibold" style={b.style}>{b.label}</span>
+                        ); })()}
                       </td>
                       <td className="hidden md:table-cell whitespace-nowrap" style={{ color: 'var(--tfd-text-secondary)' }}>
                         {formatDate(sol.created_at as string)}
@@ -496,7 +553,7 @@ export default function DiagnosticoClinicoPage() {
                       <td>
                         <div className="flex items-center gap-1" style={{ pointerEvents: 'auto' }}>
                           <Link
-                            href={`/solicitacoes/${sol.id}`}
+                            href={`/solicitacoes/${sol.id}?from=diagnostico-clinico`}
                             className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
                             title="Ver processo"
                             onClick={(e) => e.stopPropagation()}
@@ -523,26 +580,26 @@ export default function DiagnosticoClinicoPage() {
         </div>
 
         {/* Pagination */}
-        {totalPages > 1 && (
+        {table.totalPages > 1 && (
           <div
             className="flex items-center justify-between px-4 py-3"
             style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
           >
             <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-              P&aacute;gina {currentPage} de {totalPages}
+              Página {table.page} de {table.totalPages}
             </p>
             <div className="flex items-center gap-1">
               <button
                 className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage((p) => p - 1)}
+                disabled={table.page <= 1}
+                onClick={() => table.setPage(table.page - 1)}
               >
                 <ChevronLeft size={16} />
               </button>
               <button
                 className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage((p) => p + 1)}
+                disabled={table.page >= table.totalPages}
+                onClick={() => table.setPage(table.page + 1)}
               >
                 <ChevronRight size={16} />
               </button>
@@ -610,40 +667,23 @@ export default function DiagnosticoClinicoPage() {
           Dados do Laudo
         </h3>
 
-        <FormField label="Origem do laudo" required>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="origemLaudo"
-                value="ESTADUAL"
-                checked={origemLaudo === 'ESTADUAL'}
-                onChange={() => setOrigemLaudo('ESTADUAL')}
-                className="accent-[var(--tfd-primary-500)]"
-              />
-              <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>Estadual</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="origemLaudo"
-                value="MUNICIPAL"
-                checked={origemLaudo === 'MUNICIPAL'}
-                onChange={() => setOrigemLaudo('MUNICIPAL')}
-                className="accent-[var(--tfd-primary-500)]"
-              />
-              <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>Municipal</span>
-            </label>
+        <LookupSelect
+          categoria="origem_laudo"
+          label="Origem do laudo"
+          value={origemLaudo}
+          onChange={setOrigemLaudo}
+          required
+          valueField="codigo"
+          orderBy="ordem"
+        />
+        {origemLaudo === 'MUNICIPAL' && (
+          <div className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEE2E2' }}>
+            <XCircle size={14} style={{ color: '#DC2626' }} />
+            <span className="text-xs font-medium" style={{ color: '#991B1B' }}>
+              O TFD interestadual exige laudo de origem estadual
+            </span>
           </div>
-          {origemLaudo === 'MUNICIPAL' && (
-            <div className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEE2E2' }}>
-              <XCircle size={14} style={{ color: '#DC2626' }} />
-              <span className="text-xs font-medium" style={{ color: '#991B1B' }}>
-                O TFD interestadual exige laudo de origem estadual
-              </span>
-            </div>
-          )}
-        </FormField>
+        )}
 
         <FormField label="Data do laudo" required>
           <input
@@ -677,96 +717,30 @@ export default function DiagnosticoClinicoPage() {
           })()}
         </FormField>
 
-        {/* TODO AGENTE-4: Substituir os 3 campos abaixo (nome, CRM, UF) por:
-            <FormField label="Médico solicitante" required>
-              <MedicoSelect
-                value={selectedMedico}
-                onChange={(medico) => {
-                  setSelectedMedico(medico);
-                  setMedicoNome(medico?.nome_completo ?? '');
-                  setMedicoCRM(medico?.crm ?? '');
-                  setMedicoUF(medico?.crm_uf ?? 'MA');
-                }}
-                label="Médico solicitante"
-                required
-              />
-            </FormField>
-            Ao selecionar, preenche automaticamente nome, CRM e UF.
-            O campo "Cadastrar novo" no MedicoSelect permite cadastro rápido inline. */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="col-span-2">
-            <FormField label="Médico solicitante" required>
-              <input
-                type="text"
-                className="tfd-input"
-                placeholder="Nome do médico"
-                value={medicoNome}
-                onChange={(e) => setMedicoNome(e.target.value)}
-              />
-            </FormField>
-          </div>
-          <div>
-            <FormField label="CRM" required>
-              <input
-                type="text"
-                className="tfd-input"
-                placeholder="000000"
-                value={medicoCRM}
-                onChange={(e) => setMedicoCRM(e.target.value)}
-              />
-            </FormField>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <FormField label="UF do CRM">
-            <select
-              className="tfd-input"
-              value={medicoUF}
-              onChange={(e) => setMedicoUF(e.target.value)}
-            >
-              {['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'].map(uf => (
-                <option key={uf} value={uf}>{uf}</option>
-              ))}
-            </select>
-          </FormField>
-          <FormField label="Cód. procedimento SUS">
-            <input
-              type="text"
-              className="tfd-input"
-              placeholder="ex: 0304010040"
-              value={codigoProcedimentoSUS}
-              onChange={(e) => setCodigoProcedimentoSUS(e.target.value)}
-            />
-          </FormField>
-        </div>
-
-        <FormField label="Car&aacute;ter do atendimento" required>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="caracterAtendimento"
-                value="HOSPITALAR"
-                checked={caracterAtendimento === 'HOSPITALAR'}
-                onChange={() => setCaracterAtendimento('HOSPITALAR')}
-                className="accent-[var(--tfd-primary-500)]"
-              />
-              <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>Hospitalar</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="caracterAtendimento"
-                value="AMBULATORIAL"
-                checked={caracterAtendimento === 'AMBULATORIAL'}
-                onChange={() => setCaracterAtendimento('AMBULATORIAL')}
-                className="accent-[var(--tfd-primary-500)]"
-              />
-              <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>Ambulatorial</span>
-            </label>
-          </div>
+        <FormField label="Médico solicitante" required>
+          <select
+            className="tfd-input"
+            value={medicoId}
+            onChange={(e) => setMedicoId(e.target.value)}
+          >
+            <option value="">{medicos.length === 0 ? 'Carregando...' : 'Selecione o médico...'}</option>
+            {medicos.map(m => (
+              <option key={m.id} value={m.id}>
+                {m.nome_completo} — CRM {m.crm}/{m.crm_uf}
+              </option>
+            ))}
+          </select>
         </FormField>
+
+        <LookupSelect
+          categoria="carater_atendimento"
+          label="Caráter do atendimento"
+          value={caracterAtendimento}
+          onChange={setCaracterAtendimento}
+          required
+          valueField="codigo"
+          orderBy="ordem"
+        />
 
         <hr className="tfd-divider" />
 
@@ -775,65 +749,50 @@ export default function DiagnosticoClinicoPage() {
           Diagn&oacute;stico Cl&iacute;nico
         </h3>
 
-        {/* TODO AGENTE-4: Substituir os 2 inputs abaixo por CidAutocomplete:
-            <CidAutocomplete
-              value={cidPrincipal}
-              onChange={(selected) => { setCidPrincipal(selected); setCid(selected?.codigo ?? ''); }}
-              label="CID-10 principal"
-              required
-            />
-            <CidAutocomplete
-              value={cidSec}
-              onChange={(selected) => { setCidSec(selected); setCidSecundario(selected?.codigo ?? ''); }}
-              label="CID-10 secundário"
-            />
-            O CidAutocomplete busca por código ("C50") ou descrição ("neoplasia mama")
-            e exibe "{codigo} — {descricao}" no dropdown. */}
         <FormField label="CID-10 principal" required>
-          <input
-            type="text"
-            className="tfd-input"
-            placeholder="ex: G40.0"
-            value={cid}
-            onChange={(e) => setCid(e.target.value)}
-          />
-        </FormField>
-
-        <FormField label="CID-10 secundário">
-          <input
-            type="text"
-            className="tfd-input"
-            placeholder="opcional"
-            value={cidSecundario}
-            onChange={(e) => setCidSecundario(e.target.value)}
-          />
-        </FormField>
-
-        <FormField label="Especialidade" required>
           <select
             className="tfd-input"
-            value={especialidade}
-            onChange={(e) => setEspecialidade(e.target.value)}
-            disabled={loadingEsp}
+            value={cid}
+            onChange={(e) => {
+              const val = e.target.value;
+              setCid(val);
+              const found = cidOptions.find(c => c.codigo === val);
+              setProcedimento(found?.descricao ?? '');
+            }}
           >
-            <option value="">{loadingEsp ? 'Carregando...' : 'Selecione...'}</option>
-            {especialidades.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            <option value="">{cidOptions.length === 0 ? 'Carregando...' : 'Selecione o CID-10...'}</option>
+            {cidOptions.map(c => (
+              <option key={c.id} value={c.codigo}>
+                {c.codigo} — {c.descricao}
+              </option>
             ))}
           </select>
         </FormField>
 
-        <FormField label="Tipo de procedimento" required>
-          <input
-            type="text"
+        <FormField label="CID-10 secundário">
+          <select
             className="tfd-input"
-            placeholder="Procedimento solicitado"
-            value={procedimento}
-            onChange={(e) => setProcedimento(e.target.value)}
-          />
+            value={cidSecundario}
+            onChange={(e) => setCidSecundario(e.target.value)}
+          >
+            <option value="">{cidOptions.length === 0 ? 'Carregando...' : 'Nenhum (opcional)'}</option>
+            {cidOptions.map(c => (
+              <option key={c.id} value={c.codigo}>
+                {c.codigo} — {c.descricao}
+              </option>
+            ))}
+          </select>
         </FormField>
 
-        <FormField label="Descri&ccedil;&atilde;o do diagn&oacute;stico" required>
+        <LookupSelect
+          categoria="especialidade"
+          label="Especialidade"
+          value={especialidade}
+          onChange={setEspecialidade}
+          required
+        />
+
+        <FormField label="Descri&ccedil;&atilde;o do diagn&oacute;stico">
           <textarea
             className="tfd-input"
             rows={3}
@@ -853,7 +812,7 @@ export default function DiagnosticoClinicoPage() {
           />
         </FormField>
 
-        <FormField label="Justificativa TFD" required>
+        <FormField label="Justificativa TFD">
           <textarea
             className="tfd-input"
             rows={3}

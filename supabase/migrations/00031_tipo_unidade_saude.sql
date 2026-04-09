@@ -1,0 +1,45 @@
+-- ============================================================
+-- Migration: Tipos de Unidade de Saúde (tabela oficial CNES/DATASUS)
+-- ============================================================
+
+-- ─── TIPOS DE UNIDADE DE SAÚDE ─────────────────────────────
+INSERT INTO tabelas_auxiliares (categoria, codigo, nome, descricao, ativo, ordem) VALUES
+  ('tipo_unidade', '01', 'Posto de Saúde',                                                 'Posto de Saúde',                                                 true, 1),
+  ('tipo_unidade', '02', 'Centro de Saúde/Unidade Básica',                                  'Centro de Saúde/Unidade Básica de Saúde',                        true, 2),
+  ('tipo_unidade', '04', 'Policlínica',                                                     'Policlínica',                                                    true, 3),
+  ('tipo_unidade', '05', 'Hospital Geral',                                                  'Hospital Geral',                                                 true, 4),
+  ('tipo_unidade', '07', 'Hospital Especializado',                                          'Hospital Especializado',                                         true, 5),
+  ('tipo_unidade', '15', 'Unidade Mista',                                                   'Unidade Mista',                                                  true, 6),
+  ('tipo_unidade', '20', 'Pronto Socorro Geral',                                            'Pronto Socorro Geral',                                           true, 7),
+  ('tipo_unidade', '21', 'Pronto Socorro Especializado',                                    'Pronto Socorro Especializado',                                   true, 8),
+  ('tipo_unidade', '22', 'Consultório Isolado',                                             'Consultório Isolado',                                            true, 9),
+  ('tipo_unidade', '32', 'Unidade Móvel Fluvial',                                           'Unidade Móvel Fluvial',                                          true, 10),
+  ('tipo_unidade', '36', 'Clínica/Centro de Especialidade',                                 'Clínica/Centro de Especialidade',                                true, 11),
+  ('tipo_unidade', '39', 'Unidade de Apoio Diagnose e Terapia (SADT Isolado)',               'Unidade de Apoio Diagnose e Terapia (SADT Isolado)',              true, 12),
+  ('tipo_unidade', '40', 'Unidade Móvel Terrestre',                                         'Unidade Móvel Terrestre',                                        true, 13),
+  ('tipo_unidade', '42', 'Unidade Móvel Pré-Hospitalar de Urgência',                        'Unidade Móvel de Nível Pré-Hospitalar na Área de Urgência',       true, 14),
+  ('tipo_unidade', '43', 'Farmácia',                                                        'Farmácia',                                                       true, 15),
+  ('tipo_unidade', '50', 'Unidade de Vigilância em Saúde',                                  'Unidade de Vigilância em Saúde',                                 true, 16),
+  ('tipo_unidade', '60', 'Cooperativa ou Empresa de Cessão de Trabalhadores na Saúde',      'Cooperativa ou Empresa de Cessão de Trabalhadores na Saúde',     true, 17),
+  ('tipo_unidade', '61', 'Centro de Parto Normal - Isolado',                                'Centro de Parto Normal - Isolado',                               true, 18),
+  ('tipo_unidade', '62', 'Hospital/Dia - Isolado',                                          'Hospital/Dia - Isolado',                                         true, 19),
+  ('tipo_unidade', '67', 'Laboratório Central de Saúde Pública (LACEN)',                    'Laboratório Central de Saúde Pública (LACEN)',                   true, 20),
+  ('tipo_unidade', '68', 'Central de Gestão em Saúde',                                      'Central de Gestão em Saúde',                                     true, 21),
+  ('tipo_unidade', '69', 'Centro de Atenção Hemoterapia e/ou Hematológica',                 'Centro de Atenção Hemoterapia e/ou Hematológica',                true, 22),
+  ('tipo_unidade', '70', 'Centro de Atenção Psicossocial (CAPS)',                           'Centro de Atenção Psicossocial (CAPS)',                          true, 23),
+  ('tipo_unidade', '71', 'Centro de Apoio à Saúde da Família',                              'Centro de Apoio à Saúde da Família',                             true, 24),
+  ('tipo_unidade', '72', 'Unidade de Atenção à Saúde Indígena',                             'Unidade de Atenção à Saúde Indígena',                            true, 25),
+  ('tipo_unidade', '73', 'Pronto Atendimento',                                              'Pronto Atendimento',                                             true, 26),
+  ('tipo_unidade', '74', 'Polo Academia da Saúde',                                          'Polo Academia da Saúde',                                         true, 27),
+  ('tipo_unidade', '75', 'Telessaúde',                                                      'Telessaúde',                                                     true, 28),
+  ('tipo_unidade', '76', 'Central de Regulação Médica das Urgências',                       'Central de Regulação Médica das Urgências',                      true, 29),
+  ('tipo_unidade', '77', 'Serviço de Atenção Domiciliar Isolado (Home Care)',               'Serviço de Atenção Domiciliar Isolado (Home Care)',              true, 30),
+  ('tipo_unidade', '78', 'Unidade de Atenção em Regime Residencial',                        'Unidade de Atenção em Regime Residencial',                       true, 31),
+  ('tipo_unidade', '79', 'Oficina Ortopédica',                                              'Oficina Ortopédica',                                             true, 32),
+  ('tipo_unidade', '80', 'Laboratório de Saúde Pública',                                    'Laboratório de Saúde Pública',                                   true, 33),
+  ('tipo_unidade', '81', 'Central de Regulação do Acesso',                                  'Central de Regulação do Acesso',                                 true, 34),
+  ('tipo_unidade', '82', 'Central de Notificação, Captação e Distribuição de Órgãos',       'Central de Notificação, Captação e Distribuição de Órgãos Estadual', true, 35),
+  ('tipo_unidade', '83', 'Polo de Prevenção de Doenças e Agravos e Promoção da Saúde',     'Polo de Prevenção de Doenças e Agravos e Promoção da Saúde',    true, 36),
+  ('tipo_unidade', '84', 'Central de Abastecimento',                                        'Central de Abastecimento',                                       true, 37),
+  ('tipo_unidade', '85', 'Centro de Imunização',                                            'Centro de Imunização',                                           true, 38)
+ON CONFLICT (categoria, codigo) DO NOTHING;

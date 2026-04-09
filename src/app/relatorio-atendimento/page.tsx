@@ -12,6 +12,9 @@ import {
   RotateCcw,
   Save,
   Trash2,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -19,6 +22,8 @@ import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
+import SortableHeader from '@/shared/components/table/SortableHeader';
+import { useTableControls } from '@/shared/hooks/useTableControls';
 import {
   listarRelatoriosAtendimento,
   criarRelatorioAtendimento,
@@ -41,12 +46,9 @@ import MedicoSelect from '@/shared/components/medico-select/MedicoSelect';
 /*  Constants                                          */
 /* -------------------------------------------------- */
 
-const ITEMS_PER_PAGE = 8;
-
-const TABS: { key: string; label: string }[] = [
-  { key: 'TODOS', label: 'Todos' },
-  { key: 'CONCLUIDO', label: 'Concluídos' },
-  { key: 'RASCUNHO', label: 'Rascunhos' },
+const STATUS_FILTER_OPTIONS = [
+  { value: 'CONCLUIDO', label: 'Concluído' },
+  { value: 'RASCUNHO', label: 'Rascunho' },
 ];
 
 /* -------------------------------------------------- */
@@ -105,9 +107,6 @@ interface RelatorioItem {
 
 export default function RelatorioAtendimentoPage() {
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState('TODOS');
-  const [search, setSearch] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
 
   /* ---- Drawer state ---- */
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -142,10 +141,10 @@ export default function RelatorioAtendimentoPage() {
   /* ---- Supabase data with mock fallback ---- */
   const { data: dbData, loading, refresh } = useSupabaseData(
     useCallback(
-      () => listarRelatoriosAtendimento({ search }),
-      [search],
+      () => listarRelatoriosAtendimento({}),
+      [],
     ),
-    [search],
+    [],
   );
 
   /* ---- Map to display items (Supabase or mock) ---- */
@@ -188,24 +187,15 @@ export default function RelatorioAtendimentoPage() {
     });
   }, [dbData]);
 
-  /* ---- Filtered + paginated ---- */
-  const filtered = useMemo(() => {
-    return items.filter((r) => {
-      const matchesTab = activeTab === 'TODOS' || r.status === activeTab;
-      const matchesSearch =
-        search === '' ||
-        r.paciente.toLowerCase().includes(search.toLowerCase()) ||
-        r.numero.toLowerCase().includes(search.toLowerCase()) ||
-        r.hospital.toLowerCase().includes(search.toLowerCase());
-      return matchesTab && matchesSearch;
-    });
-  }, [items, activeTab, search]);
+  /* ---- Table controls (client-side search, filter, sort, pagination) ---- */
+  const table = useTableControls({
+    data: items as unknown as Record<string, unknown>[],
+    searchFields: ['paciente', 'numero', 'hospital'],
+    dateField: 'dataRegistro',
+  });
 
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
-  const paginatedItems = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filtered.slice(start, start + ITEMS_PER_PAGE);
-  }, [filtered, currentPage]);
+  const paginatedItems = table.paginated as unknown as RelatorioItem[];
+  const filtered = table.filtered as unknown as RelatorioItem[];
 
   /* ---- Summary ---- */
   const summary = useMemo(() => ({
@@ -484,44 +474,10 @@ export default function RelatorioAtendimentoPage() {
         </div>
       </div>
 
-      {/* ========== Tabs + Search ========== */}
+      {/* ========== Toolbar ========== */}
       <div className="tfd-toolbar mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-1 flex-wrap">
-          {TABS.map((tab) => {
-            const isActive = activeTab === tab.key;
-            const count = tab.key === 'TODOS'
-              ? items.length
-              : items.filter((r) => r.status === tab.key).length;
-            return (
-              <button
-                key={tab.key}
-                onClick={() => { setActiveTab(tab.key); setCurrentPage(1); }}
-                className="tfd-btn tfd-btn--sm"
-                style={{
-                  backgroundColor: isActive ? 'var(--tfd-primary-50)' : 'transparent',
-                  color: isActive ? 'var(--tfd-primary-700)' : 'var(--tfd-text-secondary)',
-                  borderColor: isActive ? 'var(--tfd-primary-200)' : 'transparent',
-                  fontWeight: isActive ? 600 : 400,
-                }}
-              >
-                {tab.label}
-                <span
-                  className="text-xs ml-1 px-1.5 py-0.5 rounded-full"
-                  style={{
-                    backgroundColor: isActive ? 'var(--tfd-primary-100)' : 'var(--tfd-surface-100)',
-                    color: isActive ? 'var(--tfd-primary-700)' : 'var(--tfd-text-muted)',
-                    fontSize: '0.6875rem',
-                    fontWeight: 600,
-                  }}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="relative flex-1 max-w-xs min-w-[200px]">
+        {/* Search */}
+        <div className="relative flex-1 min-w-[220px] max-w-sm">
           <Search
             size={16}
             className="tfd-input-leading-icon"
@@ -531,10 +487,36 @@ export default function RelatorioAtendimentoPage() {
             type="text"
             className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
             placeholder="Buscar paciente, hospital ou nº processo..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
+            value={table.search}
+            onChange={(e) => table.setSearch(e.target.value)}
           />
         </div>
+
+        {/* Date range */}
+        <div className="flex items-center gap-2">
+          <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
+          <input
+            type="date"
+            className="tfd-input tfd-input--sm"
+            style={{ width: 'auto' }}
+            value={table.dateStart}
+            onChange={(e) => table.setDateStart(e.target.value)}
+            title="Data início"
+          />
+          <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>até</span>
+          <input
+            type="date"
+            className="tfd-input tfd-input--sm"
+            style={{ width: 'auto' }}
+            value={table.dateEnd}
+            onChange={(e) => table.setDateEnd(e.target.value)}
+            title="Data fim"
+          />
+        </div>
+
+        <p className="text-sm ml-auto" style={{ color: 'var(--tfd-text-muted)' }}>
+          {filtered.length} resultado{filtered.length !== 1 && 's'}
+        </p>
       </div>
 
       {/* ========== Table ========== */}
@@ -543,13 +525,34 @@ export default function RelatorioAtendimentoPage() {
           <table className="tfd-table">
             <thead>
               <tr>
-                <th>Nº Processo</th>
-                <th>Paciente</th>
-                <th className="hidden md:table-cell">Hospital</th>
-                <th className="hidden lg:table-cell">Período</th>
-                <th>Retorno</th>
-                <th className="hidden md:table-cell">Seq.</th>
-                <th>Status</th>
+                <SortableHeader
+                  label="Nº Processo"
+                  sortDirection={table.getSortDirection('numero')}
+                  onSort={() => table.toggleSort('numero')}
+                />
+                <SortableHeader
+                  label="Paciente"
+                  sortDirection={table.getSortDirection('paciente')}
+                  onSort={() => table.toggleSort('paciente')}
+                />
+                <SortableHeader
+                  label="Hospital"
+                  className="hidden md:table-cell"
+                  sortDirection={table.getSortDirection('hospital')}
+                  onSort={() => table.toggleSort('hospital')}
+                />
+                <SortableHeader
+                  label="Período"
+                  className="hidden lg:table-cell"
+                />
+                <SortableHeader label="Retorno" />
+                <SortableHeader label="Seq." className="hidden md:table-cell" />
+                <SortableHeader
+                  label="Status"
+                  filterOptions={STATUS_FILTER_OPTIONS}
+                  activeFilters={table.getActiveFilters('status')}
+                  onFilterChange={(values) => table.setColumnFilter('status', values)}
+                />
                 <th className="w-[100px]">Ações</th>
               </tr>
             </thead>
@@ -643,14 +646,6 @@ export default function RelatorioAtendimentoPage() {
                               >
                                 <FileText size={15} />
                               </button>
-                              <button
-                                className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only"
-                                title="Excluir rascunho"
-                                onClick={() => setDeleteConfirmId(r.id)}
-                                style={{ color: 'var(--tfd-status-danger)' }}
-                              >
-                                <Trash2 size={15} />
-                              </button>
                             </>
                           )}
                         </div>
@@ -664,67 +659,34 @@ export default function RelatorioAtendimentoPage() {
         </div>
 
         {/* Pagination */}
-        {totalPages > 1 && (
+        {table.totalPages > 1 && (
           <div
             className="flex items-center justify-between px-4 py-3"
             style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
           >
-            <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-              {filtered.length} relatório{filtered.length !== 1 ? 's' : ''} encontrado{filtered.length !== 1 ? 's' : ''}
+            <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
+              Página {table.page} de {table.totalPages}
             </p>
             <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  className="tfd-btn tfd-btn--sm"
-                  style={{
-                    minWidth: '32px',
-                    backgroundColor: page === currentPage ? 'var(--tfd-primary-500)' : 'transparent',
-                    color: page === currentPage ? '#fff' : 'var(--tfd-text-secondary)',
-                  }}
-                >
-                  {page}
-                </button>
-              ))}
+              <button
+                className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
+                disabled={table.page <= 1}
+                onClick={() => table.setPage(Math.max(1, table.page - 1))}
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
+                disabled={table.page >= table.totalPages}
+                onClick={() => table.setPage(Math.min(table.totalPages, table.page + 1))}
+              >
+                <ChevronRight size={16} />
+              </button>
             </div>
           </div>
         )}
       </div>
 
-      {/* ========== Delete Confirm Modal ========== */}
-      {deleteConfirmId && (
-        <>
-          <div
-            className="fixed inset-0 z-50"
-            style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
-            onClick={() => setDeleteConfirmId(null)}
-          />
-          <div
-            className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md rounded-lg p-6"
-            style={{ backgroundColor: 'var(--tfd-surface-card)', boxShadow: 'var(--tfd-shadow-modal)' }}
-          >
-            <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--tfd-text-primary)' }}>
-              Excluir rascunho?
-            </h3>
-            <p className="text-sm mb-6" style={{ color: 'var(--tfd-text-secondary)' }}>
-              Esta ação não pode ser desfeita. O rascunho será removido permanentemente.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button className="tfd-btn tfd-btn-secondary" onClick={() => setDeleteConfirmId(null)}>
-                Cancelar
-              </button>
-              <button
-                className="tfd-btn"
-                style={{ backgroundColor: 'var(--tfd-status-danger)', color: '#fff' }}
-                onClick={handleConfirmDelete}
-              >
-                Excluir
-              </button>
-            </div>
-          </div>
-        </>
-      )}
 
       {/* ========== Drawer (Create / Edit / View) ========== */}
       <Drawer

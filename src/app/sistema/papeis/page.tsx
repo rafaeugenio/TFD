@@ -41,6 +41,22 @@ const DEFAULT_COLORS = [
   '#10B981', '#EF4444', '#06B6D4', '#F97316',
 ];
 
+const ACAO_LABELS: Record<string, string> = {
+  visualizar: 'Visualizar',
+  criar: 'Criar',
+  editar: 'Editar',
+  excluir: 'Excluir',
+  encaminhar: 'Encaminhar',
+  encaminhar_setor_anterior: 'Setor Anterior',
+  aprovar: 'Aprovar',
+  reprovar: 'Reprovar',
+  analisar: 'Analisar',
+  emitir: 'Emitir',
+  gerenciar: 'Gerenciar',
+  adicionar_ajuda_custo: 'Aj. de Custo',
+  encerrar: 'Encerrar',
+};
+
 /* -------------------------------------------------- */
 /*  Helpers                                            */
 /* -------------------------------------------------- */
@@ -56,6 +72,16 @@ function groupTelasByModule(telas: TelaSistema[]): Record<string, TelaSistema[]>
     groups[tela.modulo].push(tela);
   }
   return groups;
+}
+
+/** Converte linhas { tela_id, acao } em mapa tela_id → acoes[]. */
+function rowsToAcoesMap(rows: { tela_id: string; acao: string }[]): Record<string, string[]> {
+  const map: Record<string, string[]> = {};
+  for (const row of rows) {
+    if (!map[row.tela_id]) map[row.tela_id] = [];
+    map[row.tela_id].push(row.acao);
+  }
+  return map;
 }
 
 /* -------------------------------------------------- */
@@ -108,7 +134,7 @@ export default function PapeisPage() {
 
   /* ---- Accordion state ---- */
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [expandedTelas, setExpandedTelas] = useState<string[]>([]);
+  const [expandedTelaAcoes, setExpandedTelaAcoes] = useState<Record<string, string[]>>({});
   const [loadingExpand, setLoadingExpand] = useState(false);
 
   /* ---- Drawer state ---- */
@@ -120,7 +146,8 @@ export default function PapeisPage() {
   const [formNome, setFormNome] = useState('');
   const [formDescricao, setFormDescricao] = useState('');
   const [formCor, setFormCor] = useState(DEFAULT_COLORS[0]);
-  const [formTelas, setFormTelas] = useState<string[]>([]);
+  /** tela_id → lista de ações selecionadas */
+  const [formTelas, setFormTelas] = useState<Record<string, string[]>>({});
 
   /* ---- Grouped telas ---- */
   const telasByModule = useMemo(() => groupTelasByModule(telas), [telas]);
@@ -143,14 +170,13 @@ export default function PapeisPage() {
       setPapeis(papeisData);
       setTelas(telasData);
 
-      // Count users per papel
       const counts: Record<string, number> = {};
       for (const row of usersData) {
         counts[row.papel_id] = (counts[row.papel_id] || 0) + 1;
       }
       setUserCounts(counts);
     } catch {
-      // Silently handle — empty state will show
+      // empty state will show
     } finally {
       setLoading(false);
     }
@@ -164,7 +190,7 @@ export default function PapeisPage() {
   async function handleToggleExpand(papelId: string) {
     if (expandedId === papelId) {
       setExpandedId(null);
-      setExpandedTelas([]);
+      setExpandedTelaAcoes({});
       return;
     }
 
@@ -172,10 +198,10 @@ export default function PapeisPage() {
     setLoadingExpand(true);
     try {
       const res = await listarTelasDoPapel(papelId);
-      const data = (res.data as unknown as { tela_id: string }[]) ?? [];
-      setExpandedTelas(data.map((r) => r.tela_id));
+      const rows = (res.data as unknown as { tela_id: string; acao: string }[]) ?? [];
+      setExpandedTelaAcoes(rowsToAcoesMap(rows));
     } catch {
-      setExpandedTelas([]);
+      setExpandedTelaAcoes({});
     } finally {
       setLoadingExpand(false);
     }
@@ -187,7 +213,7 @@ export default function PapeisPage() {
     setFormNome('');
     setFormDescricao('');
     setFormCor(DEFAULT_COLORS[Math.floor(Math.random() * DEFAULT_COLORS.length)]);
-    setFormTelas([]);
+    setFormTelas({});
     setDrawerOpen(true);
   }
 
@@ -197,13 +223,12 @@ export default function PapeisPage() {
     setFormDescricao(papel.descricao ?? '');
     setFormCor(papel.cor);
 
-    // Load telas for this papel
     try {
       const res = await listarTelasDoPapel(papel.id);
-      const data = (res.data as unknown as { tela_id: string }[]) ?? [];
-      setFormTelas(data.map((r) => r.tela_id));
+      const rows = (res.data as unknown as { tela_id: string; acao: string }[]) ?? [];
+      setFormTelas(rowsToAcoesMap(rows));
     } catch {
-      setFormTelas([]);
+      setFormTelas({});
     }
 
     setDrawerOpen(true);
@@ -214,31 +239,64 @@ export default function PapeisPage() {
     setEditingPapel(null);
   }
 
-  /* ---- Form: toggle telas ---- */
-  function toggleTela(telaId: string) {
-    setFormTelas((prev) =>
-      prev.includes(telaId) ? prev.filter((id) => id !== telaId) : [...prev, telaId],
-    );
+  /* ---- Form: toggle ações por tela ---- */
+
+  function toggleAcao(telaId: string, acao: string) {
+    setFormTelas((prev) => {
+      const current = prev[telaId] ?? [];
+
+      if (current.includes(acao)) {
+        // Tentando remover visualizar enquanto há outras ações: bloqueado
+        if (acao === 'visualizar' && current.filter((a) => a !== 'visualizar').length > 0) {
+          return prev;
+        }
+        const updated = current.filter((a) => a !== acao);
+        if (updated.length === 0) {
+          const { [telaId]: _, ...rest } = prev;
+          return rest;
+        }
+        return { ...prev, [telaId]: updated };
+      } else {
+        // Adicionando qualquer ação: garante que visualizar também está presente
+        const base = current.includes('visualizar') ? current : ['visualizar', ...current];
+        return { ...prev, [telaId]: [...base, acao] };
+      }
+    });
+  }
+
+  function toggleTela(tela: TelaSistema) {
+    setFormTelas((prev) => {
+      if ((prev[tela.id]?.length ?? 0) > 0) {
+        const { [tela.id]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [tela.id]: [...tela.acoes_disponiveis] };
+    });
   }
 
   function toggleModule(modulo: string) {
     const moduleTelas = telasByModule[modulo] ?? [];
-    const moduleTelaIds = moduleTelas.map((t) => t.id);
-    const allSelected = moduleTelaIds.every((id) => formTelas.includes(id));
+    const allSelected = moduleTelas.every((t) => (formTelas[t.id]?.length ?? 0) > 0);
 
-    if (allSelected) {
-      setFormTelas((prev) => prev.filter((id) => !moduleTelaIds.includes(id)));
-    } else {
-      setFormTelas((prev) => [...new Set([...prev, ...moduleTelaIds])]);
-    }
+    setFormTelas((prev) => {
+      const next = { ...prev };
+      if (allSelected) {
+        for (const t of moduleTelas) delete next[t.id];
+      } else {
+        for (const t of moduleTelas) next[t.id] = [...t.acoes_disponiveis];
+      }
+      return next;
+    });
   }
 
   function selectAllTelas() {
-    setFormTelas(telas.map((t) => t.id));
+    const all: Record<string, string[]> = {};
+    for (const tela of telas) all[tela.id] = [...tela.acoes_disponiveis];
+    setFormTelas(all);
   }
 
   function selectNoneTelas() {
-    setFormTelas([]);
+    setFormTelas({});
   }
 
   /* ---- Save ---- */
@@ -247,13 +305,17 @@ export default function PapeisPage() {
 
     setSaving(true);
     try {
+      const telaAcoes = Object.entries(formTelas).flatMap(([tela_id, acoes]) =>
+        acoes.map((acao) => ({ tela_id, acao })),
+      );
+
       if (editingPapel) {
         await atualizarPapel(editingPapel.id, {
           nome: formNome.trim(),
           descricao: formDescricao.trim() || undefined,
           cor: formCor,
         });
-        await salvarTelasDoPapel(editingPapel.id, formTelas);
+        await salvarTelasDoPapel(editingPapel.id, telaAcoes);
         toast.success('Papel atualizado!', 'As permissões foram salvas.');
       } else {
         const res = await criarPapel({
@@ -263,14 +325,16 @@ export default function PapeisPage() {
         });
         const newPapel = res.data as unknown as Papel;
         if (newPapel?.id) {
-          await salvarTelasDoPapel(newPapel.id, formTelas);
+          await salvarTelasDoPapel(newPapel.id, telaAcoes);
         }
         toast.success('Papel criado!', 'O novo papel de acesso está disponível.');
       }
       handleCloseDrawer();
+      setExpandedId(null);
+      setExpandedTelaAcoes({});
       await loadData();
     } catch {
-      // Error handling could be enhanced
+      // silently handle
     } finally {
       setSaving(false);
     }
@@ -287,28 +351,30 @@ export default function PapeisPage() {
       await excluirPapel(papel.id);
       if (expandedId === papel.id) {
         setExpandedId(null);
-        setExpandedTelas([]);
+        setExpandedTelaAcoes({});
       }
       toast.success('Papel excluído!', 'O papel foi removido do sistema.');
       await loadData();
     } catch {
-      // Silently handle
+      // silently handle
     }
   }
 
-  /* ---- Helper: screen count text for a papel ---- */
-  function getScreenCountText(papelTelaIds: string[]): string {
+  /* ---- Helpers ---- */
+
+  function getScreenCountText(telaAcoes: Record<string, string[]>): string {
     const total = telas.length;
-    const count = papelTelaIds.length;
+    const count = Object.values(telaAcoes).filter((a) => a.length > 0).length;
     if (count === total && total > 0) return 'Acesso total';
     return `${count} de ${total} telas`;
   }
 
-  /* ---- Module states for expanded view ---- */
-  function getModuleStats(moduleTelaIds: string[], selectedTelaIds: string[]) {
-    const selected = moduleTelaIds.filter((id) => selectedTelaIds.includes(id)).length;
-    return { selected, total: moduleTelaIds.length };
+  function getModuleStats(moduleTelas: TelaSistema[], telaAcoes: Record<string, string[]>) {
+    const selected = moduleTelas.filter((t) => (telaAcoes[t.id]?.length ?? 0) > 0).length;
+    return { selected, total: moduleTelas.length };
   }
+
+  const formTelaCount = Object.values(formTelas).filter((a) => a.length > 0).length;
 
   /* -------------------------------------------------- */
   /*  Render                                             */
@@ -318,7 +384,7 @@ export default function PapeisPage() {
     <>
       <PageHeader
         title="Permissões"
-        subtitle="Crie e configure permissões de acesso por tela"
+        subtitle="Crie e configure permissões de acesso por tela e ação"
         actions={
           <button className="tfd-btn tfd-btn-primary" onClick={handleOpenCreate}>
             <Plus size={16} />
@@ -343,7 +409,7 @@ export default function PapeisPage() {
         <EmptyState
           icon={<Shield />}
           title="Nenhum papel cadastrado"
-          description="Crie papéis para definir quais telas cada grupo de usuários pode acessar."
+          description="Crie papéis para definir quais telas e ações cada grupo de usuários pode acessar."
           action={
             <button className="tfd-btn tfd-btn-primary" onClick={handleOpenCreate}>
               <Plus size={16} />
@@ -362,25 +428,20 @@ export default function PapeisPage() {
 
             return (
               <div key={papel.id} className="tfd-card p-0 overflow-hidden">
-                {/* Card header — clickable */}
+                {/* Card header */}
                 <button
                   type="button"
                   className="w-full flex items-center gap-4 px-5 py-4 text-left"
                   style={{ background: 'transparent' }}
                   onClick={() => handleToggleExpand(papel.id)}
                 >
-                  {/* Avatar */}
                   <div
                     className="flex items-center justify-center w-10 h-10 rounded-full shrink-0 text-sm font-bold"
-                    style={{
-                      backgroundColor: papel.cor,
-                      color: '#FFFFFF',
-                    }}
+                    style={{ backgroundColor: papel.cor, color: '#FFFFFF' }}
                   >
                     {getInitials(papel.nome)}
                   </div>
 
-                  {/* Name */}
                   <span
                     className="font-semibold text-base flex-1 min-w-0 truncate"
                     style={{ color: 'var(--tfd-text-primary)' }}
@@ -388,7 +449,6 @@ export default function PapeisPage() {
                     {papel.nome}
                   </span>
 
-                  {/* Badges */}
                   <div className="flex items-center gap-2 shrink-0">
                     <span
                       className="tfd-tag tfd-tag--rounded text-xs"
@@ -400,24 +460,25 @@ export default function PapeisPage() {
                       {usrCount} usuário{usrCount !== 1 ? 's' : ''}
                     </span>
 
-                    {isExpanded && !loadingExpand ? (
+                    {isExpanded && !loadingExpand && (
                       <span
                         className="tfd-tag tfd-tag--rounded text-xs"
                         style={{
-                          backgroundColor: expandedTelas.length === telas.length && telas.length > 0
-                            ? 'var(--tfd-status-success-bg)'
-                            : 'var(--tfd-primary-50)',
-                          color: expandedTelas.length === telas.length && telas.length > 0
-                            ? 'var(--tfd-status-success)'
-                            : 'var(--tfd-primary-500)',
+                          backgroundColor:
+                            Object.values(expandedTelaAcoes).filter((a) => a.length > 0).length === telas.length && telas.length > 0
+                              ? 'var(--tfd-status-success-bg)'
+                              : 'var(--tfd-primary-50)',
+                          color:
+                            Object.values(expandedTelaAcoes).filter((a) => a.length > 0).length === telas.length && telas.length > 0
+                              ? 'var(--tfd-status-success)'
+                              : 'var(--tfd-primary-500)',
                         }}
                       >
-                        {getScreenCountText(expandedTelas)}
+                        {getScreenCountText(expandedTelaAcoes)}
                       </span>
-                    ) : null}
+                    )}
                   </div>
 
-                  {/* Chevron */}
                   {isExpanded ? (
                     <ChevronUp size={18} style={{ color: 'var(--tfd-text-muted)' }} />
                   ) : (
@@ -438,16 +499,13 @@ export default function PapeisPage() {
                       </div>
                     ) : (
                       <>
-                        {/* Screens grouped by module */}
                         <div className="px-5 py-4">
                           {moduleNames.map((modulo) => {
                             const moduleTelas = telasByModule[modulo];
-                            const moduleTelaIds = moduleTelas.map((t) => t.id);
-                            const stats = getModuleStats(moduleTelaIds, expandedTelas);
+                            const stats = getModuleStats(moduleTelas, expandedTelaAcoes);
 
                             return (
                               <div key={modulo} className="mb-4 last:mb-0">
-                                {/* Module header */}
                                 <div className="flex items-center gap-2 mb-2">
                                   <span
                                     className="text-sm font-semibold"
@@ -455,43 +513,59 @@ export default function PapeisPage() {
                                   >
                                     {modulo}
                                   </span>
-                                  <span
-                                    className="text-xs"
-                                    style={{ color: 'var(--tfd-text-muted)' }}
-                                  >
+                                  <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
                                     {stats.selected}/{stats.total}
                                   </span>
                                 </div>
 
-                                {/* Screens */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1 pl-2">
+                                <div className="flex flex-col gap-1.5 pl-2">
                                   {moduleTelas.map((tela) => {
-                                    const hasAccess = expandedTelas.includes(tela.id);
+                                    const acoes = expandedTelaAcoes[tela.id] ?? [];
+                                    const hasAccess = acoes.length > 0;
                                     return (
-                                      <div key={tela.id} className="flex items-center gap-2 py-0.5">
+                                      <div key={tela.id} className="flex items-start gap-2">
                                         {hasAccess ? (
                                           <CheckCircle2
                                             size={16}
-                                            style={{ color: 'var(--tfd-status-success)' }}
+                                            style={{ color: 'var(--tfd-status-success)', marginTop: 2 }}
                                             className="shrink-0"
                                           />
                                         ) : (
                                           <Circle
                                             size={16}
-                                            style={{ color: 'var(--tfd-text-muted)' }}
+                                            style={{ color: 'var(--tfd-text-muted)', marginTop: 2 }}
                                             className="shrink-0"
                                           />
                                         )}
-                                        <span
-                                          className="text-sm"
-                                          style={{
-                                            color: hasAccess
-                                              ? 'var(--tfd-text-primary)'
-                                              : 'var(--tfd-text-muted)',
-                                          }}
-                                        >
-                                          {tela.nome}
-                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                          <span
+                                            className="text-sm"
+                                            style={{
+                                              color: hasAccess
+                                                ? 'var(--tfd-text-primary)'
+                                                : 'var(--tfd-text-muted)',
+                                            }}
+                                          >
+                                            {tela.nome}
+                                          </span>
+                                          <div className="flex flex-wrap gap-1 mt-0.5">
+                                            {(tela.acoes_disponiveis ?? []).map((acao) => {
+                                              const isEnabled = acoes.includes(acao);
+                                              return (
+                                                <span
+                                                  key={acao}
+                                                  className="text-[10px] px-1.5 py-0.5 rounded"
+                                                  style={{
+                                                    background: isEnabled ? 'var(--tfd-primary-50)' : 'var(--tfd-surface-100)',
+                                                    color: isEnabled ? 'var(--tfd-primary-500)' : 'var(--tfd-text-muted)',
+                                                  }}
+                                                >
+                                                  {ACAO_LABELS[acao] ?? acao}
+                                                </span>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
                                       </div>
                                     );
                                   })}
@@ -501,7 +575,6 @@ export default function PapeisPage() {
                           })}
                         </div>
 
-                        {/* Footer actions */}
                         <div
                           className="flex items-center justify-between px-5 py-3"
                           style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
@@ -539,9 +612,9 @@ export default function PapeisPage() {
         subtitle={
           editingPapel
             ? `Editando "${editingPapel.nome}"`
-            : 'Defina o nome e as telas com acesso'
+            : 'Defina o nome e as permissões por tela'
         }
-        width="520px"
+        width="600px"
         footer={
           <>
             <button
@@ -609,11 +682,8 @@ export default function PapeisPage() {
 
         {/* Telas section */}
         <div className="flex items-center justify-between mb-3">
-          <h3
-            className="text-sm font-semibold"
-            style={{ color: 'var(--tfd-text-primary)' }}
-          >
-            Telas com acesso ({formTelas.length} de {telas.length})
+          <h3 className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+            Telas e ações ({formTelaCount} de {telas.length})
           </h3>
           <div className="flex items-center gap-2">
             <button
@@ -635,18 +705,17 @@ export default function PapeisPage() {
           </div>
         </div>
 
-        {/* Modules with checkboxes */}
+        {/* Modules with telas and action pills */}
         {moduleNames.map((modulo) => {
           const moduleTelas = telasByModule[modulo];
-          const moduleTelaIds = moduleTelas.map((t) => t.id);
-          const selectedCount = moduleTelaIds.filter((id) => formTelas.includes(id)).length;
-          const allSelected = selectedCount === moduleTelaIds.length;
+          const selectedCount = moduleTelas.filter((t) => (formTelas[t.id]?.length ?? 0) > 0).length;
+          const allSelected = selectedCount === moduleTelas.length;
           const someSelected = selectedCount > 0 && !allSelected;
 
           return (
-            <div key={modulo} className="mb-4">
+            <div key={modulo} className="mb-5">
               {/* Module parent checkbox */}
-              <div className="flex items-center gap-2 mb-1.5">
+              <div className="flex items-center gap-2 mb-2">
                 <IndeterminateCheckbox
                   id={`module-${modulo}`}
                   checked={allSelected}
@@ -661,34 +730,75 @@ export default function PapeisPage() {
                   {modulo}
                 </label>
                 <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-                  ({moduleTelaIds.length})
+                  ({moduleTelas.length})
                 </span>
               </div>
 
-              {/* Individual screen checkboxes */}
-              <div className="flex flex-col gap-1 pl-6">
+              {/* Telas com ação pills */}
+              <div className="flex flex-col gap-2 pl-6">
                 {moduleTelas.map((tela) => {
-                  const isChecked = formTelas.includes(tela.id);
+                  const selectedAcoes = formTelas[tela.id] ?? [];
+                  const hasAnyAcao = selectedAcoes.length > 0;
+
                   return (
-                    <div key={tela.id} className="flex items-center gap-2">
-                      <input
-                        id={`tela-${tela.id}`}
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => toggleTela(tela.id)}
-                        style={{ accentColor: 'var(--tfd-primary-500)' }}
-                      />
-                      <label
-                        htmlFor={`tela-${tela.id}`}
-                        className="text-sm cursor-pointer select-none"
-                        style={{
-                          color: isChecked
-                            ? 'var(--tfd-text-primary)'
-                            : 'var(--tfd-text-secondary)',
-                        }}
-                      >
-                        {tela.nome}
-                      </label>
+                    <div
+                      key={tela.id}
+                      className="rounded-lg p-2"
+                      style={{
+                        background: hasAnyAcao ? 'var(--tfd-primary-50)' : 'var(--tfd-surface-100)',
+                        border: `1px solid ${hasAnyAcao ? 'var(--tfd-primary-100, #DBEAFE)' : 'var(--tfd-surface-border)'}`,
+                      }}
+                    >
+                      {/* Row: checkbox + nome */}
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <input
+                          id={`tela-${tela.id}`}
+                          type="checkbox"
+                          checked={hasAnyAcao}
+                          onChange={() => toggleTela(tela)}
+                          style={{ accentColor: 'var(--tfd-primary-500)' }}
+                        />
+                        <label
+                          htmlFor={`tela-${tela.id}`}
+                          className="text-sm font-medium cursor-pointer select-none flex-1"
+                          style={{
+                            color: hasAnyAcao
+                              ? 'var(--tfd-text-primary)'
+                              : 'var(--tfd-text-secondary)',
+                          }}
+                        >
+                          {tela.nome}
+                        </label>
+                      </div>
+
+                      {/* Action pills */}
+                      <div className="flex flex-wrap gap-1">
+                        {(tela.acoes_disponiveis ?? []).map((acao) => {
+                          const isSelected = selectedAcoes.includes(acao);
+                          const otherActionsActive = selectedAcoes.filter((a) => a !== 'visualizar').length > 0;
+                          const isLocked = acao === 'visualizar' && isSelected && otherActionsActive;
+                          return (
+                            <button
+                              key={acao}
+                              type="button"
+                              className="text-[11px] px-2 py-0.5 rounded-full border transition-colors"
+                              style={{
+                                background: isSelected ? 'var(--tfd-primary-500)' : 'var(--tfd-surface-card)',
+                                color: isSelected ? '#FFFFFF' : 'var(--tfd-text-muted)',
+                                borderColor: isSelected
+                                  ? 'var(--tfd-primary-500)'
+                                  : 'var(--tfd-surface-border)',
+                                opacity: isLocked ? 0.7 : 1,
+                                cursor: isLocked ? 'not-allowed' : 'pointer',
+                              }}
+                              onClick={() => toggleAcao(tela.id, acao)}
+                              title={isLocked ? 'Visualizar é obrigatório quando outras ações estão ativas' : undefined}
+                            >
+                              {ACAO_LABELS[acao] ?? acao}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 })}

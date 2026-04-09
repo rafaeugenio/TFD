@@ -14,6 +14,7 @@ export async function listarSolicitacoesPendentes(filters?: {
   search?: string;
   page?: number;
   pageSize?: number;
+  includeIds?: string[];
 }) {
   const supabase = getSupabase();
 
@@ -22,9 +23,15 @@ export async function listarSolicitacoesPendentes(filters?: {
     .select(
       '*, pacientes(nome_completo, cpf, data_nascimento, sexo, cns, telefone_celular, municipio), documentos(id, tipo, nome_arquivo, url_arquivo, created_at), pareceres(id, decisao, observacoes_medicas, created_at)',
       { count: 'exact' },
-    )
-    .in('status', ['EM_ANALISE'])
-    .order('created_at', { ascending: true });
+    );
+
+  if (filters?.includeIds && filters.includeIds.length > 0) {
+    query = query.or(`status.in.(EM_ANALISE),id.in.(${filters.includeIds.join(',')})`);
+  } else {
+    query = query.in('status', ['EM_ANALISE']);
+  }
+
+  query = query.order('created_at', { ascending: true });
 
   if (filters?.search) {
     query = query.or(
@@ -37,6 +44,32 @@ export async function listarSolicitacoesPendentes(filters?: {
   query = query.range((page - 1) * size, page * size - 1);
 
   return query;
+}
+
+/**
+ * Conta pareceres por decisão no período (mês corrente por padrão).
+ */
+export async function contarPareceresPorDecisao() {
+  const supabase = getSupabase();
+  const now = new Date();
+  const inicioMes = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+  const { data, error } = await supabase
+    .from('pareceres')
+    .select('decisao')
+    .gte('created_at', inicioMes);
+
+  if (error || !data) return { deferidos: 0, indeferidos: 0, exigencias: 0 };
+
+  let deferidos = 0;
+  let indeferidos = 0;
+  let exigencias = 0;
+  for (const p of data) {
+    if (p.decisao === 'DEFERIDO') deferidos++;
+    else if (p.decisao === 'INDEFERIDO') indeferidos++;
+    else if (p.decisao === 'EXIGENCIA') exigencias++;
+  }
+  return { deferidos, indeferidos, exigencias };
 }
 
 /**

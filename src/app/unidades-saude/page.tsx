@@ -13,6 +13,8 @@ import {
   ChevronLeft,
   ChevronRight,
   XCircle,
+  Loader2,
+  Calendar,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -20,10 +22,13 @@ import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
-import { useMunicipios } from '@/shared/hooks/useLookup';
 import { maskPhone, maskCEP } from '@/shared/pipes/formatters';
 import CepAutofill from '@/shared/components/cep-autofill/CepAutofill';
+import UfCidadeSelect from '@/shared/components/uf-cidade-select/UfCidadeSelect';
+import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import { createClient } from '@/lib/supabase/client';
+import SortableHeader from '@/shared/components/table/SortableHeader';
+import { useTableControls } from '@/shared/hooks/useTableControls';
 
 import {
   listarUnidadesSaude,
@@ -32,31 +37,7 @@ import {
   atualizarUnidadeSaude,
   desativarUnidadeSaude,
 } from '@/services/unidades-saude.service';
-
-/* -------------------------------------------------- */
-/*  Constants & helpers                                */
-/* -------------------------------------------------- */
-
-const ITEMS_PER_PAGE = 10;
-
-const UF_OPTIONS = [
-  'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT',
-  'PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO',
-];
-
-const TIPO_OPTIONS = [
-  { value: 'UBS', label: 'UBS' },
-  { value: 'UPA', label: 'UPA' },
-  { value: 'HOSPITAL', label: 'Hospital' },
-  { value: 'CLINICA', label: 'Clinica' },
-  { value: 'CAPS', label: 'CAPS' },
-  { value: 'OUTRO', label: 'Outro' },
-];
-
-interface RegionalOption {
-  value: string;   // id (UUID)
-  label: string;    // nome
-}
+import { buscarRegionalPorMunicipio } from '@/services/regionais-saude.service';
 
 /* -------------------------------------------------- */
 /*  Component                                          */
@@ -73,8 +54,6 @@ export default function UnidadesSaudePageWrapper() {
 function UnidadesSaudePage() {
   const toast = useToast();
   const router = useRouter();
-  const [search, setSearch] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
 
   /* ---- Drawer state ---- */
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -103,35 +82,40 @@ function UnidadesSaudePage() {
   const [email, setEmail] = useState('');
   const [responsavel, setResponsavel] = useState('');
 
-  /* ---- Lookup hooks ---- */
-  const { options: municipios, loading: loadingMun } = useMunicipios();
+  /* ---- CNES autofill ---- */
+  const [cnesLoading, setCnesLoading] = useState(false);
 
-  /* ---- Regional options (from tabelas_auxiliares by id) ---- */
-  const [regionaisOptions, setRegionaisOptions] = useState<RegionalOption[]>([]);
+  /* ---- Regional options (regionais_saude) ---- */
+  const [regionaisOptions, setRegionaisOptions] = useState<{ value: string; label: string }[]>([]);
 
   useEffect(() => {
-    let cancelled = false;
     createClient()
-      .from('tabelas_auxiliares')
-      .select('id, nome')
-      .eq('categoria', 'regional')
+      .from('regionais_saude')
+      .select('id, codigo, nome')
       .eq('ativo', true)
-      .order('nome')
+      .order('ordem')
       .then(({ data, error }) => {
-        if (cancelled || error || !data) return;
-        const rows = data as unknown as { id: string; nome: string }[];
-        setRegionaisOptions(rows.map((r) => ({ value: r.id, label: r.nome })));
+        if (error || !data) return;
+        const rows = data as { id: string; codigo: string; nome: string }[];
+        setRegionaisOptions(rows.map((r) => ({ value: r.id, label: `${r.codigo} — ${r.nome}` })));
       });
-    return () => { cancelled = true; };
   }, []);
 
   /* ---- Data fetching via Supabase ---- */
-  const { data: unidades, loading, count: totalCount, refresh } = useSupabaseData(
-    () => listarUnidadesSaude({ search, page: currentPage, pageSize: ITEMS_PER_PAGE }),
-    [search, currentPage],
+  const { data: unidades, loading, refresh } = useSupabaseData(
+    () => listarUnidadesSaude({ pageSize: 1000 }),
+    [],
   );
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE));
+  /* ---- Table controls (client-side search, sort, filter, pagination) ---- */
+  const table = useTableControls({
+    data: unidades as unknown as Record<string, unknown>[],
+    searchFields: ['nome', 'cnes'],
+    dateField: 'created_at',
+  });
+
+  const items = table.paginated as unknown as Record<string, unknown>[];
+  const tipoFilterOptions = table.getFilterOptions('tipo');
 
   /* ---- Summary counters ---- */
   const [counts, setCounts] = useState({ total: 0, ativas: 0, regionais: 0 });
@@ -180,6 +164,62 @@ function UnidadesSaudePage() {
   }, [editarParam, loading, unidades]);
 
   /* -------------------------------------------------- */
+  /*  CNES autofill                                     */
+  /* -------------------------------------------------- */
+
+  async function fetchCnesData(codigo: string) {
+    setCnesLoading(true);
+    try {
+      const res = await fetch(`/api/cnes/${codigo}`);
+      if (!res.ok) throw new Error('not found');
+      const data = await res.json() as Record<string, string>;
+      if (data.nome) setNome(data.nome);
+      if (data.logradouro) setLogradouro(data.logradouro);
+      if (data.numero) setNumero(data.numero);
+      if (data.bairro) setBairro(data.bairro);
+      if (data.cep) setCep(maskCEP(data.cep));
+      if (data.telefone) setTelefone(maskPhone(data.telefone));
+      if (data.email) setEmail(data.email);
+      if (data.responsavel) setResponsavel(data.responsavel);
+      if (data.tipoDescricao) {
+        // Converte a descrição do CNES (UPPERCASE) para Title Case
+        setTipo(toTitleCase(data.tipoDescricao));
+      }
+      // UF primeiro para o UfCidadeSelect carregar os municípios, depois seta o município com delay
+      if (data.uf) setUf(data.uf);
+      if (data.municipio) {
+        const mun = toTitleCase(data.municipio);
+        // Aguarda o fetch de municípios do IBGE antes de setar o valor
+        setTimeout(() => setMunicipio(mun), 800);
+      }
+      toast.success('CNES encontrado', 'Dados importados automaticamente. Revise antes de salvar.');
+    } catch {
+      toast.error('CNES não encontrado', 'Verifique o código ou preencha os dados manualmente.');
+    } finally {
+      setCnesLoading(false);
+    }
+  }
+
+  function toTitleCase(str: string): string {
+    return str
+      .toLowerCase()
+      .split(' ')
+      .map((w) => {
+        if (['de', 'da', 'do', 'das', 'dos', 'e'].includes(w)) return w;
+        return w.charAt(0).toUpperCase() + w.slice(1);
+      })
+      .join(' ');
+  }
+
+  function handleCnesChange(value: string) {
+    const clean = value.replace(/\D/g, '').slice(0, 7);
+    setCnes(clean);
+    if (clean.length === 7 && !editingId) {
+      fetchCnesData(clean);
+    }
+  }
+
+  /* -------------------------------------------------- */
   /*  Form reset & drawer handlers                      */
   /* -------------------------------------------------- */
 
@@ -197,6 +237,7 @@ function UnidadesSaudePage() {
     setTelefone('');
     setEmail('');
     setResponsavel('');
+    setCnesLoading(false);
   }
 
   function handleCloseDrawer() {
@@ -211,7 +252,7 @@ function UnidadesSaudePage() {
     setNome((uni.nome as string) ?? '');
     setCnes((uni.cnes as string) ?? '');
     setTipo((uni.tipo as string) ?? '');
-    setRegionalId((uni.regional_id as string) ?? '');
+    setRegionalId((uni.regional_saude_id as string) ?? (uni.regional_id as string) ?? '');
     setCep(maskCEP((uni.cep as string) ?? ''));
     setLogradouro((uni.logradouro as string) ?? '');
     setNumero((uni.numero as string) ?? '');
@@ -271,7 +312,7 @@ function UnidadesSaudePage() {
         nome: nome.trim(),
         cnes: cleanCnes,
         tipo: tipo || null,
-        regional_id: regionalId || null,
+        regional_saude_id: regionalId || null,
         cep: cleanCep || null,
         logradouro: logradouro.trim() || null,
         numero: numero.trim() || null,
@@ -372,29 +413,47 @@ function UnidadesSaudePage() {
       </div>
 
       {/* ========== Toolbar ========== */}
-      <div className="tfd-toolbar mb-4 flex-wrap">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="relative flex-1 max-w-sm">
-            <Search
-              size={16}
-              className="tfd-input-leading-icon"
-              style={{ color: 'var(--tfd-text-muted)' }}
-            />
-            <input
-              type="text"
-              className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
-              placeholder="Buscar por nome ou CNES..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setCurrentPage(1);
-              }}
-            />
-          </div>
+      <div className="tfd-toolbar mb-4 flex-wrap gap-3">
+        {/* Search */}
+        <div className="relative flex-1 min-w-[220px] max-w-sm">
+          <Search
+            size={16}
+            className="tfd-input-leading-icon"
+            style={{ color: 'var(--tfd-text-muted)' }}
+          />
+          <input
+            type="text"
+            className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
+            placeholder="Buscar por nome ou CNES..."
+            value={table.search}
+            onChange={(e) => table.setSearch(e.target.value)}
+          />
         </div>
 
-        <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-          {totalCount} resultado{totalCount !== 1 && 's'}
+        {/* Date range */}
+        <div className="flex items-center gap-2">
+          <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
+          <input
+            type="date"
+            className="tfd-input tfd-input--sm"
+            style={{ width: 'auto' }}
+            value={table.dateStart}
+            onChange={(e) => table.setDateStart(e.target.value)}
+            title="Data início"
+          />
+          <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>até</span>
+          <input
+            type="date"
+            className="tfd-input tfd-input--sm"
+            style={{ width: 'auto' }}
+            value={table.dateEnd}
+            onChange={(e) => table.setDateEnd(e.target.value)}
+            title="Data fim"
+          />
+        </div>
+
+        <p className="text-sm ml-auto" style={{ color: 'var(--tfd-text-muted)' }}>
+          {table.filtered.length} resultado{table.filtered.length !== 1 && 's'}
         </p>
       </div>
 
@@ -404,11 +463,38 @@ function UnidadesSaudePage() {
           <table className="tfd-table">
             <thead>
               <tr>
-                <th>Nome</th>
-                <th className="hidden md:table-cell">CNES</th>
-                <th className="hidden lg:table-cell">Tipo</th>
-                <th className="hidden lg:table-cell">Regional</th>
-                <th className="hidden xl:table-cell">Municipio</th>
+                <SortableHeader
+                  label="Nome"
+                  sortDirection={table.getSortDirection('nome')}
+                  onSort={() => table.toggleSort('nome')}
+                />
+                <SortableHeader
+                  label="CNES"
+                  className="hidden md:table-cell"
+                  sortDirection={table.getSortDirection('cnes')}
+                  onSort={() => table.toggleSort('cnes')}
+                />
+                <SortableHeader
+                  label="Tipo"
+                  className="hidden lg:table-cell"
+                  sortDirection={table.getSortDirection('tipo')}
+                  onSort={() => table.toggleSort('tipo')}
+                  filterOptions={tipoFilterOptions}
+                  activeFilters={table.getActiveFilters('tipo')}
+                  onFilterChange={(v) => table.setColumnFilter('tipo', v)}
+                />
+                <SortableHeader
+                  label="Regional"
+                  className="hidden lg:table-cell"
+                  sortDirection={table.getSortDirection('regional_saude_id')}
+                  onSort={() => table.toggleSort('regional_saude_id')}
+                />
+                <SortableHeader
+                  label="Municipio"
+                  className="hidden xl:table-cell"
+                  sortDirection={table.getSortDirection('municipio')}
+                  onSort={() => table.toggleSort('municipio')}
+                />
                 <th className="hidden md:table-cell">Telefone</th>
                 <th className="w-[100px]">Acoes</th>
               </tr>
@@ -422,7 +508,7 @@ function UnidadesSaudePage() {
                     </p>
                   </td>
                 </tr>
-              ) : unidades.length === 0 ? (
+              ) : items.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-center py-12">
                     <div className="flex flex-col items-center gap-2">
@@ -434,7 +520,7 @@ function UnidadesSaudePage() {
                   </td>
                 </tr>
               ) : (
-                unidades.map((uni: Record<string, unknown>) => {
+                items.map((uni: Record<string, unknown>) => {
                   const regionalNome = (uni.tabelas_auxiliares as Record<string, unknown> | null)?.nome as string | undefined;
                   return (
                     <tr key={uni.id as string} className="cursor-pointer" onClick={() => router.push(`/unidades-saude/${uni.id}`)}>
@@ -483,26 +569,46 @@ function UnidadesSaudePage() {
         </div>
 
         {/* Pagination */}
-        {totalPages > 1 && (
+        {!loading && table.filtered.length > 0 && (
           <div
             className="flex items-center justify-between px-4 py-3"
             style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
           >
             <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-              Pagina {currentPage} de {totalPages}
+              Exibindo{' '}
+              <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                {(table.page - 1) * 20 + 1}
+              </span>
+              {' '}&ndash;{' '}
+              <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                {Math.min(table.page * 20, table.filtered.length)}
+              </span>
+              {' '}de{' '}
+              <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                {table.filtered.length}
+              </span>
+              {' '}registros
             </p>
             <div className="flex items-center gap-1">
               <button
                 className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage((p) => p - 1)}
+                onClick={() => table.setPage(Math.max(1, table.page - 1))}
+                disabled={table.page === 1}
+                aria-label="Página anterior"
               >
                 <ChevronLeft size={16} />
               </button>
+              <span
+                className="text-sm px-3 font-medium"
+                style={{ color: 'var(--tfd-text-primary)' }}
+              >
+                {table.page} / {table.totalPages}
+              </span>
               <button
                 className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage((p) => p + 1)}
+                onClick={() => table.setPage(Math.min(table.totalPages, table.page + 1))}
+                disabled={table.page === table.totalPages}
+                aria-label="Próxima página"
               >
                 <ChevronRight size={16} />
               </button>
@@ -583,28 +689,40 @@ function UnidadesSaudePage() {
 
         <div className="grid grid-cols-2 gap-4">
           <FormField label="CNES" required>
-            <input
-              type="text"
-              className="tfd-input"
-              placeholder="0000000"
-              maxLength={7}
-              value={cnes}
-              onChange={(e) => setCnes(e.target.value.replace(/\D/g, '').slice(0, 7))}
-            />
+            <div className="relative">
+              <input
+                type="text"
+                className="tfd-input"
+                placeholder="0000000"
+                maxLength={7}
+                value={cnes}
+                onChange={(e) => handleCnesChange(e.target.value)}
+                disabled={cnesLoading}
+              />
+              {cnesLoading && (
+                <span
+                  className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin"
+                  style={{ color: 'var(--tfd-primary-500)' }}
+                >
+                  <Loader2 size={16} />
+                </span>
+              )}
+            </div>
+            {!editingId && !cnesLoading && cnes.length < 7 && (
+              <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
+                Ao digitar 7 dígitos, os dados serão preenchidos automaticamente.
+              </p>
+            )}
           </FormField>
 
-          <FormField label="Tipo">
-            <select
-              className="tfd-input"
-              value={tipo}
-              onChange={(e) => setTipo(e.target.value)}
-            >
-              <option value="">Selecione...</option>
-              {TIPO_OPTIONS.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
-            </select>
-          </FormField>
+          <LookupSelect
+            categoria="tipo_unidade"
+            label="Tipo"
+            value={tipo}
+            onChange={setTipo}
+            valueField="nome"
+            orderBy="ordem"
+          />
         </div>
 
         <FormField label="Regional">
@@ -634,8 +752,15 @@ function UnidadesSaudePage() {
             setLogradouro(address.logradouro);
             setBairro(address.bairro);
             setUf(address.uf);
-            const match = municipios.find((m) => m.codigo_ibge === address.codigo_ibge);
-            if (match) setMunicipio(match.label);
+            if (address.cidade) {
+              setMunicipio(address.cidade);
+              // Auto-preenche a regional com base no município
+              if (address.uf === 'MA') {
+                buscarRegionalPorMunicipio(address.cidade).then(({ data }) => {
+                  if (data?.regional_saude_id) setRegionalId(data.regional_saude_id);
+                });
+              }
+            }
           }}
         />
 
@@ -669,31 +794,14 @@ function UnidadesSaudePage() {
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Municipio">
-            <select
-              className="tfd-input"
-              value={municipio}
-              onChange={(e) => setMunicipio(e.target.value)}
-              disabled={loadingMun}
-            >
-              <option value="">{loadingMun ? 'Carregando...' : 'Selecione...'}</option>
-              {municipios.map((m) => (
-                <option key={m.value} value={m.label}>{m.label}</option>
-              ))}
-            </select>
-          </FormField>
-
-          <FormField label="UF">
-            <select
-              className="tfd-input"
-              value={uf}
-              onChange={(e) => setUf(e.target.value)}
-            >
-              {UF_OPTIONS.map((u) => (
-                <option key={u} value={u}>{u}</option>
-              ))}
-            </select>
-          </FormField>
+          <UfCidadeSelect
+            ufLabel="UF"
+            cidadeLabel="Município"
+            uf={uf}
+            cidade={municipio}
+            onUfChange={(v) => { setUf(v); setMunicipio(''); }}
+            onCidadeChange={setMunicipio}
+          />
         </div>
 
         <hr className="tfd-divider" />

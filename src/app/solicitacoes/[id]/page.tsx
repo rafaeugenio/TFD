@@ -40,6 +40,7 @@ import {
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import StatusTag from '@/shared/components/status-tag/StatusTag';
+import { useReferrerBreadcrumb } from '@/shared/hooks/useReferrerBreadcrumb';
 import TimelineTFD, { type TimelineEvent } from '@/shared/components/timeline-tfd/TimelineTFD';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
@@ -55,8 +56,8 @@ import { buscarViagensPorSolicitacao } from '@/services/viagens.service';
 import { criarPermanencia, atualizarPermanencia, criarProrrogacao } from '@/services/permanencias.service';
 import { buscarAjudaCustoPorSolicitacao } from '@/services/ajuda-custo.service';
 import { uploadDocumento, excluirDocumento } from '@/services/documentos.service';
-import { useLookup } from '@/shared/hooks/useLookup';
 import { useCompanhias } from '@/shared/hooks/useLookup';
+import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
 import { useParametroNumero } from '@/shared/hooks/useParametros';
 import { formatCPF, formatCNS, formatCurrency, formatDate, formatDateTime, maskCPF, maskCNS, maskPhone, maskCurrency, parseCurrency } from '@/shared/pipes/formatters';
@@ -525,6 +526,7 @@ function buildTimeline(sol: any): TimelineEvent[] {
 
 export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const parentCrumb = useReferrerBreadcrumb({ label: 'Solicitações', href: '/solicitacoes' });
 
   const toast = useToast();
   const [sol, setSol] = useState<any>(null);
@@ -534,12 +536,6 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
   const [editingSection, setEditingSection] = useState<string | null>(null);
 
   /* ---- Lookups for edit forms ---- */
-  const { options: especialidades, loading: loadingEsp } = useLookup('especialidade');
-  const { options: canalOptions, loading: canalLoading } = useLookup('canal_comunicacao');
-  const { options: tipoAtendOptions, loading: tipoAtendLoading } = useLookup('tipo_procedimento');
-  const { options: origemAgendOptions, loading: origemAgendLoading } = useLookup('origem_agendamento');
-  const { options: modaisTransporte, loading: loadingModais } = useLookup('modal_transporte');
-  const { options: motivoPermOptions, loading: motivoPermLoading } = useLookup('motivo_permanencia');
   const { valor: valorDiariaCompleta } = useParametroNumero('diaria_valor_completa');
 
   /* ---- Edit form states ---- */
@@ -950,7 +946,7 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
         title={sol.numero_processo}
         subtitle={`${pac?.nome_completo ?? '—'} — ${municipioOrigem ?? municipioPaciente ?? '—'}`}
         breadcrumbs={[
-          { label: 'Solicitações', href: '/solicitacoes' },
+          { label: parentCrumb.label, href: parentCrumb.href },
           { label: sol.numero_processo },
         ]}
         actions={
@@ -1090,30 +1086,94 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
 
           {/* ── Diagnostico Clinico ── */}
           <Section title="Diagnóstico Clínico" icon={<Stethoscope size={18} />} onEdit={openEditDiagnostico}>
-            <div className="space-y-3">
-              <InfoRow
-                label="CID-10"
-                value={
-                  <span>
-                    <code
-                      className="px-1.5 py-0.5 rounded text-xs font-semibold"
-                      style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-700)', fontFamily: 'var(--tfd-font-mono)' }}
-                    >
-                      {sol.cid10_principal ?? '—'}
-                    </code>
-                    <span className="ml-2">{sol.descricao_diagnostico ?? ''}</span>
-                  </span>
-                }
-              />
-              <InfoRow label="Procedimento" value={sol.tipo_procedimento ?? '—'} />
+            <div className="space-y-5">
+              {/* Dados do Laudo */}
               <div>
-                <p className="text-sm font-medium mb-1" style={{ color: 'var(--tfd-text-secondary)' }}>
-                  Justificativa clínica
+                <p className="text-xs font-semibold uppercase tracking-wider mb-2.5" style={{ color: 'var(--tfd-text-muted)' }}>
+                  Dados do Laudo
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <InfoRow label="Origem do laudo" value={sol.origem_laudo?.replace(/_/g, ' ') ?? '—'} />
+                  <InfoRow
+                    label="Data do laudo"
+                    value={
+                      <span>
+                        {formatDate(sol.data_laudo)}
+                        {sol.data_validade_laudo && (
+                          <span className="ml-2 text-xs" style={{
+                            color: new Date(sol.data_validade_laudo) < new Date() ? '#B91C1C' :
+                              (new Date(sol.data_validade_laudo).getTime() - Date.now()) / (1000 * 60 * 60 * 24) <= 30 ? '#92400E' : 'var(--tfd-text-muted)',
+                          }}>
+                            (válido até {formatDate(sol.data_validade_laudo)})
+                          </span>
+                        )}
+                      </span>
+                    }
+                  />
+                  <InfoRow label="Médico solicitante" value={
+                    sol.medico_solicitante_nome
+                      ? <span>{sol.medico_solicitante_nome}{sol.medico_solicitante_crm ? <span className="ml-1.5 text-xs" style={{ color: 'var(--tfd-text-muted)', fontFamily: 'var(--tfd-font-mono)' }}>CRM {sol.medico_solicitante_crm}{sol.medico_solicitante_uf ? `/${sol.medico_solicitante_uf}` : ''}</span> : ''}</span>
+                      : '—'
+                  } />
+                  <InfoRow label="Caráter" value={sol.carater_atendimento?.replace(/_/g, ' ') ?? '—'} />
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--tfd-surface-border)' }} />
+
+              {/* Diagnóstico */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-2.5" style={{ color: 'var(--tfd-text-muted)' }}>
+                  Diagnóstico
+                </p>
+                <div className="space-y-3">
+                  <InfoRow
+                    label="CID-10 principal"
+                    value={
+                      <span>
+                        <code
+                          className="px-1.5 py-0.5 rounded text-xs font-semibold"
+                          style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-700)', fontFamily: 'var(--tfd-font-mono)' }}
+                        >
+                          {sol.cid10_principal ?? '—'}
+                        </code>
+                        {sol.descricao_diagnostico && <span className="ml-2">{sol.descricao_diagnostico}</span>}
+                      </span>
+                    }
+                  />
+                  {sol.cid10_secundario && (
+                    <InfoRow
+                      label="CID-10 secundário"
+                      value={
+                        <code
+                          className="px-1.5 py-0.5 rounded text-xs font-semibold"
+                          style={{ backgroundColor: 'var(--tfd-surface-100)', color: 'var(--tfd-text-secondary)', fontFamily: 'var(--tfd-font-mono)' }}
+                        >
+                          {sol.cid10_secundario}
+                        </code>
+                      }
+                    />
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <InfoRow label="Especialidade" value={sol.especialidade?.replace(/_/g, ' ') ?? '—'} />
+                    <InfoRow label="Procedimento" value={sol.tipo_procedimento ?? '—'} />
+                  </div>
+                  <InfoRow label="Transporte sugerido" value={sol.tipo_transporte_sugerido?.replace(/_/g, ' ') ?? '—'} />
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--tfd-surface-border)' }} />
+
+              {/* Justificativa */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--tfd-text-muted)' }}>
+                  Justificativa TFD
                 </p>
                 <p className="text-sm leading-relaxed" style={{ color: 'var(--tfd-text-primary)' }}>
                   {sol.justificativa_tfd ?? '—'}
                 </p>
               </div>
+
               <DocumentList docs={getDocsForSection(sol.documentos ?? [], 'diagnostico')} docTypeLabels={docTypeLabels} />
             </div>
           </Section>
@@ -1140,11 +1200,23 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
           >
             {parecer && (
               <div className="space-y-3">
-                <InfoRow label="Médico auditor" value={parecer.usuarios?.nome_completo ?? '—'} />
-                <InfoRow label="Data do parecer" value={formatDateTime(parecer.created_at)} />
-                <div>
-                  <p className="text-sm font-medium mb-1" style={{ color: 'var(--tfd-text-secondary)' }}>
-                    Observações
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <InfoRow label="Médico auditor" value={parecer.usuarios?.nome_completo ?? '—'} />
+                  <InfoRow label="Data do parecer" value={formatDateTime(parecer.created_at)} />
+                </div>
+                {parecer.autoriza_acompanhante && (
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="tfd-tag tfd-tag--rounded tfd-tag--dot"
+                      style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}
+                    >
+                      Acompanhante autorizado
+                    </span>
+                  </div>
+                )}
+                <div style={{ borderTop: '1px solid var(--tfd-surface-border)', paddingTop: '0.75rem' }}>
+                  <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--tfd-text-muted)' }}>
+                    Observações do parecer
                   </p>
                   <p className="text-sm leading-relaxed" style={{ color: 'var(--tfd-text-primary)' }}>
                     {parecer.observacoes_medicas ?? '—'}
@@ -1156,93 +1228,95 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
           </Section>
 
           {/* ── Regulacao ── */}
-          <Section
-            title="Regulação"
-            icon={<ClipboardCheck size={18} />}
-            empty={!(sol.rotas_regulacao?.length)}
-            onEdit={openEditRegulacao}
-            badge={
-              sol.rotas_regulacao?.[0] ? (
-                <span className="tfd-tag tfd-tag--rounded tfd-tag--dot" style={{
-                  backgroundColor: sol.rotas_regulacao[0].tipo_rota === 'APROVADO_DIRETO' ? '#DCFCE7' : '#DBEAFE',
-                  color: sol.rotas_regulacao[0].tipo_rota === 'APROVADO_DIRETO' ? '#15803D' : '#1D4ED8',
-                }}>
-                  {rotaLabels[sol.rotas_regulacao[0].tipo_rota as string] ?? sol.rotas_regulacao[0].tipo_rota}
-                </span>
-              ) : undefined
-            }
-          >
-            {(sol.rotas_regulacao ?? []).map((rota: any, idx: number) => (
-              <div key={rota.id} className={idx > 0 ? 'mt-4 pt-4' : ''} style={idx > 0 ? { borderTop: '1px solid var(--tfd-surface-border)' } : undefined}>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-                  <div>
-                    <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Decisão</p>
-                    <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+          {(() => {
+            const rota = sol.rotas_regulacao?.length
+              ? sol.rotas_regulacao.reduce((latest: any, r: any) => (!latest || new Date(r.created_at) > new Date(latest.created_at) ? r : latest), null)
+              : null;
+            const cob = rota?.cobrancas_externas?.[0] ?? null;
+            return (
+              <Section
+                title="Regulação"
+                icon={<ClipboardCheck size={18} />}
+                empty={!rota}
+                onEdit={openEditRegulacao}
+                badge={
+                  rota ? (
+                    <span className="tfd-tag tfd-tag--rounded tfd-tag--dot" style={{
+                      backgroundColor: rota.tipo_rota === 'APROVADO_DIRETO' ? '#DCFCE7' : '#DBEAFE',
+                      color: rota.tipo_rota === 'APROVADO_DIRETO' ? '#15803D' : '#1D4ED8',
+                    }}>
                       {rotaLabels[rota.tipo_rota as string] ?? rota.tipo_rota}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Data</p>
-                    <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>{formatDate(rota.created_at)}</p>
-                  </div>
-                  {rota.justificativa && (
-                    <div className="col-span-2">
-                      <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Justificativa</p>
-                      <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>{rota.justificativa}</p>
+                    </span>
+                  ) : undefined
+                }
+              >
+                {rota && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                      <div>
+                        <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Decisão</p>
+                        <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                          {rotaLabels[rota.tipo_rota as string] ?? rota.tipo_rota}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Data</p>
+                        <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>{formatDate(rota.created_at)}</p>
+                      </div>
                     </div>
-                  )}
-                  {rota.lembrete && (
-                    <div className="col-span-2">
-                      <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Observações de retorno</p>
-                      <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>{rota.lembrete}</p>
-                    </div>
-                  )}
-                </div>
+                    {rota.justificativa && (
+                      <div>
+                        <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Justificativa</p>
+                        <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>{rota.justificativa}</p>
+                      </div>
+                    )}
+                    {rota.lembrete && (
+                      <div>
+                        <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Observações de retorno</p>
+                        <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>{rota.lembrete}</p>
+                      </div>
+                    )}
 
-                {/* Cobranças externas vinculadas à rota */}
-                {rota.cobrancas_externas?.length > 0 && (
-                  <div className="mt-3">
-                    <p className="text-xs font-medium mb-2" style={{ color: 'var(--tfd-text-muted)' }}>Encaminhamento externo</p>
-                    {rota.cobrancas_externas.map((cob: any) => (
-                      <div
-                        key={cob.id}
-                        className="p-3 rounded-lg text-sm space-y-2"
-                        style={{ backgroundColor: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{cob.destinatario}</span>
-                            <span
-                              className="tfd-tag tfd-tag--rounded"
-                              style={{
-                                backgroundColor: cob.status_cobranca === 'RESPONDIDA' ? '#DCFCE7' : '#FEF3C7',
-                                color: cob.status_cobranca === 'RESPONDIDA' ? '#15803D' : '#92400E',
-                                fontSize: '0.625rem',
-                              }}
-                            >
-                              {cob.status_cobranca === 'RESPONDIDA' ? 'Respondida' : 'Aguardando'}
-                            </span>
+                    {/* Dados da cobrança externa (inline) */}
+                    {cob && (
+                      <>
+                        <div style={{ borderTop: '1px solid var(--tfd-surface-border)' }} />
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                          <div>
+                            <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Destinatário</p>
+                            <div className="flex items-center gap-2">
+                              {agendamento?.unidade_executante ? (
+                                <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{agendamento.unidade_executante}</p>
+                              ) : (
+                                <span
+                                  className="tfd-tag tfd-tag--rounded"
+                                  style={{ backgroundColor: '#FEF3C7', color: '#92400E', fontSize: '0.625rem' }}
+                                >
+                                  Aguardando agendamento
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                           <div>
                             <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Canal de envio</p>
                             <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>{cob.canal}</p>
                           </div>
                           <div>
-                            <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Data de envio</p>
-                            <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>{formatDate(cob.data_envio)}</p>
+                            <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Data do agendamento</p>
+                            <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
+                              {agendamento?.data_hora_agendamento ? formatDate(agendamento.data_hora_agendamento) : '—'}
+                            </p>
                           </div>
+                          {cob.contato_canal && (
+                            <div>
+                              <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Contato utilizado</p>
+                              <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)', fontFamily: 'var(--tfd-font-mono)' }}>{cob.contato_canal}</p>
+                            </div>
+                          )}
                         </div>
-                        {cob.contato_canal && (
-                          <div>
-                            <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Contato utilizado</p>
-                            <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)', fontFamily: 'var(--tfd-font-mono)' }}>{cob.contato_canal}</p>
-                          </div>
-                        )}
                         {cob.conteudo_envio && (
                           <div>
-                            <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Conteúdo da proposta / Resumo</p>
+                            <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Conteúdo da proposta</p>
                             <p className="text-sm mt-0.5" style={{ color: 'var(--tfd-text-secondary)' }}>{cob.conteudo_envio}</p>
                           </div>
                         )}
@@ -1252,14 +1326,15 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
                             <p className="text-sm mt-0.5" style={{ color: 'var(--tfd-text-secondary)' }}>{cob.conteudo_resposta}</p>
                           </div>
                         )}
-                      </div>
-                    ))}
+                      </>
+                    )}
+
+                    <DocumentList docs={getDocsForSection(sol.documentos ?? [], 'regulacao')} docTypeLabels={docTypeLabels} />
                   </div>
                 )}
-              </div>
-            ))}
-            <DocumentList docs={getDocsForSection(sol.documentos ?? [], 'regulacao')} docTypeLabels={docTypeLabels} />
-          </Section>
+              </Section>
+            );
+          })()}
 
           {/* ── Agendamento ── */}
           <Section
@@ -1615,6 +1690,22 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
                   {sol.tipo_procedimento ?? '—'}
                 </span>
               </div>
+              {sol.especialidade && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>Especialidade</span>
+                  <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>
+                    {sol.especialidade.replace(/_/g, ' ')}
+                  </span>
+                </div>
+              )}
+              {sol.tipo_transporte_sugerido && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>Transporte</span>
+                  <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>
+                    {sol.tipo_transporte_sugerido.replace(/_/g, ' ')}
+                  </span>
+                </div>
+              )}
               {(sol.viagens ?? []).length > 0 && (
                 <div className="flex items-center justify-between">
                   <span className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>Passagens</span>
@@ -1680,14 +1771,12 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
         <FormField label="Descrição do diagnóstico" required>
           <textarea className="tfd-input" rows={3} value={edDescDiag} onChange={(e) => setEdDescDiag(e.target.value)} />
         </FormField>
-        <FormField label="Especialidade">
-          <select className="tfd-input" value={edEspecialidade} onChange={(e) => setEdEspecialidade(e.target.value)} disabled={loadingEsp}>
-            <option value="">{loadingEsp ? 'Carregando...' : 'Selecione...'}</option>
-            {especialidades.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </FormField>
+        <LookupSelect
+          categoria="especialidade"
+          label="Especialidade"
+          value={edEspecialidade}
+          onChange={setEdEspecialidade}
+        />
         <FormField label="Procedimento solicitado" required>
           <input type="text" className="tfd-input" value={edProcedimento} onChange={(e) => setEdProcedimento(e.target.value)} />
         </FormField>
@@ -1952,19 +2041,13 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
               />
             </FormField>
 
-            <FormField label="Canal de envio" required>
-              <select
-                className="tfd-input tfd-input--sm"
-                disabled={canalLoading}
-                value={regCobCanal}
-                onChange={(e) => { setRegCobCanal(e.target.value); setRegCobContatoCanal(''); }}
-              >
-                <option value="">{canalLoading ? 'Carregando...' : 'Selecione...'}</option>
-                {canalOptions.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </FormField>
+            <LookupSelect
+              categoria="canal_comunicacao"
+              label="Canal de envio"
+              value={regCobCanal}
+              onChange={(v) => { setRegCobCanal(v); setRegCobContatoCanal(''); }}
+              required
+            />
 
             {regCobCanal && (
               <FormField label={regCobCanal === 'EMAIL' ? 'E-mail de contato' : regCobCanal === 'SISTEMA' ? 'Identificação no sistema' : 'Número de contato'} required>
@@ -2266,19 +2349,13 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
         <hr className="tfd-divider" />
 
         <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Agendamento</h3>
-        <FormField label="Tipo de atendimento" required>
-          <select
-            className="tfd-input"
-            value={agTipoAtendimento}
-            onChange={(e) => setAgTipoAtendimento(e.target.value)}
-            disabled={tipoAtendLoading}
-          >
-            <option value="">{tipoAtendLoading ? 'Carregando...' : 'Selecione...'}</option>
-            {tipoAtendOptions.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </FormField>
+        <LookupSelect
+          categoria="tipo_procedimento"
+          label="Tipo de atendimento"
+          value={agTipoAtendimento}
+          onChange={setAgTipoAtendimento}
+          required
+        />
         <FormField label="Data do agendamento" required>
           <input
             type="date"
@@ -2287,19 +2364,12 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
             onChange={(e) => setAgDataAgendamento(e.target.value)}
           />
         </FormField>
-        <FormField label="Origem do agendamento">
-          <select
-            className="tfd-input"
-            value={agOrigemAgendamento}
-            onChange={(e) => setAgOrigemAgendamento(e.target.value)}
-            disabled={origemAgendLoading}
-          >
-            <option value="">{origemAgendLoading ? 'Carregando...' : 'Selecione...'}</option>
-            {origemAgendOptions.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </FormField>
+        <LookupSelect
+          categoria="origem_agendamento"
+          label="Origem do agendamento"
+          value={agOrigemAgendamento}
+          onChange={setAgOrigemAgendamento}
+        />
         {agOrigemAgendamento === 'CNRAC' && (
           <FormField label="Nº CNRAC">
             <input
@@ -2511,12 +2581,12 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
             <FormField label="Data de embarque" required>
               <input type="date" className="tfd-input" value={idaDataEmbarque} onChange={(e) => setIdaDataEmbarque(e.target.value)} />
             </FormField>
-            <FormField label="Modal de transporte">
-              <select className="tfd-input" value={idaModalTransporte} onChange={(e) => setIdaModalTransporte(e.target.value)} disabled={loadingModais}>
-                <option value="">{loadingModais ? 'Carregando...' : 'Selecione...'}</option>
-                {modaisTransporte.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-              </select>
-            </FormField>
+            <LookupSelect
+              categoria="modal_transporte"
+              label="Modal de transporte"
+              value={idaModalTransporte}
+              onChange={setIdaModalTransporte}
+            />
             <FormField label="Companhia">
               <select className="tfd-input" value={idaCompanhia} onChange={(e) => setIdaCompanhia(e.target.value)} disabled={loadingCompanhias}>
                 <option value="">{loadingCompanhias ? 'Carregando...' : 'Selecione...'}</option>
@@ -2549,12 +2619,12 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
             <FormField label="Data de embarque" required>
               <input type="date" className="tfd-input" value={voltaDataEmbarque} onChange={(e) => setVoltaDataEmbarque(e.target.value)} />
             </FormField>
-            <FormField label="Modal de transporte">
-              <select className="tfd-input" value={voltaModalTransporte} onChange={(e) => setVoltaModalTransporte(e.target.value)} disabled={loadingModais}>
-                <option value="">{loadingModais ? 'Carregando...' : 'Selecione...'}</option>
-                {modaisTransporte.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-              </select>
-            </FormField>
+            <LookupSelect
+              categoria="modal_transporte"
+              label="Modal de transporte"
+              value={voltaModalTransporte}
+              onChange={setVoltaModalTransporte}
+            />
             <FormField label="Companhia">
               <select className="tfd-input" value={voltaCompanhia} onChange={(e) => setVoltaCompanhia(e.target.value)} disabled={loadingCompanhias}>
                 <option value="">{loadingCompanhias ? 'Carregando...' : 'Selecione...'}</option>
@@ -2827,19 +2897,13 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
           </select>
         </FormField>
 
-        <FormField label="Motivo" required>
-          <select
-            className="tfd-input"
-            value={permMotivo}
-            onChange={(e) => setPermMotivo(e.target.value)}
-            disabled={motivoPermLoading}
-          >
-            <option value="">{motivoPermLoading ? 'Carregando...' : 'Selecione...'}</option>
-            {motivoPermOptions.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </FormField>
+        <LookupSelect
+          categoria="motivo_permanencia"
+          label="Motivo"
+          value={permMotivo}
+          onChange={setPermMotivo}
+          required
+        />
 
         {permMotivo === 'OUTROS' && (
           <FormField label="Descrição do motivo" required>

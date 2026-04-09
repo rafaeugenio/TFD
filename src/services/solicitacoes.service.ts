@@ -10,6 +10,7 @@ export async function listarSolicitacoes(filters?: {
   search?: string;
   page?: number;
   pageSize?: number;
+  includeIds?: string[];
 }) {
   const supabase = getSupabase();
 
@@ -19,7 +20,11 @@ export async function listarSolicitacoes(filters?: {
     .order('created_at', { ascending: false });
 
   if (filters?.status && filters.status !== 'TODOS') {
-    query = query.eq('status', filters.status as StatusSolicitacao);
+    if (filters?.includeIds && filters.includeIds.length > 0) {
+      query = query.or(`status.eq.${filters.status},id.in.(${filters.includeIds.join(',')})`);
+    } else {
+      query = query.eq('status', filters.status as StatusSolicitacao);
+    }
   }
 
   if (filters?.search) {

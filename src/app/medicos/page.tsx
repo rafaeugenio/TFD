@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
+import { Suspense, useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Stethoscope,
@@ -15,6 +15,7 @@ import {
   UserRound,
   Loader2,
   XCircle,
+  Calendar,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -22,8 +23,10 @@ import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
-import { useLookup } from '@/shared/hooks/useLookup';
+import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import { maskCPF } from '@/shared/pipes/formatters';
+import SortableHeader from '@/shared/components/table/SortableHeader';
+import { useTableControls } from '@/shared/hooks/useTableControls';
 import {
   listarMedicosAdmin,
   buscarMedico,
@@ -36,8 +39,6 @@ import type { Medico } from '@/core/models';
 /* -------------------------------------------------- */
 /*  Constants                                          */
 /* -------------------------------------------------- */
-
-const ITEMS_PER_PAGE = 10;
 
 const UFS = [
   'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG',
@@ -63,8 +64,6 @@ export default function MedicosPageWrapper() {
 function MedicosPage() {
   const toast = useToast();
   const router = useRouter();
-  const [search, setSearch] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
 
   /* ---- Drawer state ---- */
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -79,32 +78,32 @@ function MedicosPage() {
   const [fEspecialidade, setFEspecialidade] = useState('');
   const [fAtivo, setFAtivo] = useState(true);
 
-  /* ---- Lookups ---- */
-  const { options: especialidades } = useLookup('especialidade');
-
-  /* ---- Data fetching ---- */
-  const { data: medicos, loading, count: totalCount, refresh } = useSupabaseData(
-    () => listarMedicosAdmin({ search, page: currentPage, pageSize: ITEMS_PER_PAGE }),
-    [search, currentPage],
+  /* ---- Data fetching (all records — client-side filtering) ---- */
+  const { data: medicos, loading, refresh } = useSupabaseData(
+    () => listarMedicosAdmin(),
+    [],
   );
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE));
+  /* ---- Table controls (search, sort, column filters, pagination) ---- */
+  const table = useTableControls({
+    data: medicos as unknown as Record<string, unknown>[],
+    searchFields: ['nome_completo', 'crm'],
+  });
 
-  /* ---- Summary counters ---- */
-  const [counts, setCounts] = useState({ total: 0, ativos: 0, especialidades: 0 });
+  const items = table.paginated as unknown as Medico[];
+  const allFiltered = table.filtered as unknown as Medico[];
 
-  const refreshCounts = useCallback(() => {
-    listarMedicosAdmin().then(({ data: allData }) => {
-      const all = (allData ?? []) as Medico[];
-      const numAtivos = all.filter((m) => m.ativo).length;
-      const uniqueEsp = new Set(all.map((m) => m.especialidade).filter(Boolean));
-      setCounts({ total: all.length, ativos: numAtivos, especialidades: uniqueEsp.size });
-    });
-  }, []);
+  /* Column filter options */
+  const especialidadeFilterOptions = table.getFilterOptions('especialidade');
+  const ufFilterOptions = table.getFilterOptions('crm_uf');
 
-  useEffect(() => {
-    refreshCounts();
-  }, [refreshCounts]);
+  /* ---- Summary counters (derived from loaded data) ---- */
+  const allMedicos = medicos as Medico[];
+  const counts = {
+    total: allMedicos.length,
+    ativos: allMedicos.filter((m) => m.ativo).length,
+    especialidades: new Set(allMedicos.map((m) => m.especialidade).filter(Boolean)).size,
+  };
 
   /* ---- Abrir drawer via query param ?editar=ID ---- */
   const searchParams = useSearchParams();
@@ -196,7 +195,6 @@ function MedicosPage() {
     setSaving(false);
     handleCloseDrawer();
     refresh();
-    refreshCounts();
   }
 
   async function handleDeactivate(item: Medico) {
@@ -208,7 +206,6 @@ function MedicosPage() {
     }
     toast.success('Medico desativado!');
     refresh();
-    refreshCounts();
   }
 
   /* -------------------------------------------------- */
@@ -271,29 +268,47 @@ function MedicosPage() {
       </div>
 
       {/* ========== Toolbar ========== */}
-      <div className="tfd-toolbar mb-4 flex-wrap">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="relative flex-1 max-w-sm">
-            <Search
-              size={16}
-              className="tfd-input-leading-icon"
-              style={{ color: 'var(--tfd-text-muted)' }}
-            />
-            <input
-              type="text"
-              className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
-              placeholder="Buscar por nome ou CRM..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setCurrentPage(1);
-              }}
-            />
-          </div>
+      <div className="tfd-toolbar mb-4 flex-wrap gap-3">
+        {/* Search */}
+        <div className="relative flex-1 min-w-[220px] max-w-sm">
+          <Search
+            size={16}
+            className="tfd-input-leading-icon"
+            style={{ color: 'var(--tfd-text-muted)' }}
+          />
+          <input
+            type="text"
+            className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
+            placeholder="Buscar por nome ou CRM..."
+            value={table.search}
+            onChange={(e) => table.setSearch(e.target.value)}
+          />
         </div>
 
-        <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-          {totalCount} resultado{totalCount !== 1 && 's'}
+        {/* Date range */}
+        <div className="flex items-center gap-2">
+          <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
+          <input
+            type="date"
+            className="tfd-input tfd-input--sm"
+            style={{ width: 'auto' }}
+            value={table.dateStart}
+            onChange={(e) => table.setDateStart(e.target.value)}
+            title="Data início"
+          />
+          <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>até</span>
+          <input
+            type="date"
+            className="tfd-input tfd-input--sm"
+            style={{ width: 'auto' }}
+            value={table.dateEnd}
+            onChange={(e) => table.setDateEnd(e.target.value)}
+            title="Data fim"
+          />
+        </div>
+
+        <p className="text-sm ml-auto" style={{ color: 'var(--tfd-text-muted)' }}>
+          {allFiltered.length} resultado{allFiltered.length !== 1 && 's'}
         </p>
       </div>
 
@@ -303,9 +318,29 @@ function MedicosPage() {
           <table className="tfd-table">
             <thead>
               <tr>
-                <th>Nome</th>
-                <th className="hidden md:table-cell">CRM</th>
-                <th className="hidden lg:table-cell">Especialidade</th>
+                <SortableHeader
+                  label="Nome"
+                  sortDirection={table.getSortDirection('nome_completo')}
+                  onSort={() => table.toggleSort('nome_completo')}
+                />
+                <SortableHeader
+                  label="CRM"
+                  className="hidden md:table-cell"
+                  sortDirection={table.getSortDirection('crm')}
+                  onSort={() => table.toggleSort('crm')}
+                  filterOptions={ufFilterOptions}
+                  activeFilters={table.getActiveFilters('crm_uf')}
+                  onFilterChange={(values) => table.setColumnFilter('crm_uf', values)}
+                />
+                <SortableHeader
+                  label="Especialidade"
+                  className="hidden lg:table-cell"
+                  sortDirection={table.getSortDirection('especialidade')}
+                  onSort={() => table.toggleSort('especialidade')}
+                  filterOptions={especialidadeFilterOptions}
+                  activeFilters={table.getActiveFilters('especialidade')}
+                  onFilterChange={(values) => table.setColumnFilter('especialidade', values)}
+                />
                 <th className="w-[100px]">Acoes</th>
               </tr>
             </thead>
@@ -318,7 +353,7 @@ function MedicosPage() {
                     </p>
                   </td>
                 </tr>
-              ) : medicos.length === 0 ? (
+              ) : items.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="text-center py-12">
                     <div className="flex flex-col items-center gap-2">
@@ -330,7 +365,7 @@ function MedicosPage() {
                   </td>
                 </tr>
               ) : (
-                (medicos as Medico[]).map((item) => (
+                items.map((item) => (
                   <tr
                     key={item.id}
                     className="cursor-pointer"
@@ -387,26 +422,26 @@ function MedicosPage() {
         </div>
 
         {/* Pagination */}
-        {totalPages > 1 && (
+        {table.totalPages > 1 && (
           <div
             className="flex items-center justify-between px-4 py-3"
             style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
           >
             <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-              Pagina {currentPage} de {totalPages}
+              Pagina {table.page} de {table.totalPages}
             </p>
             <div className="flex items-center gap-1">
               <button
                 className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage((p) => p - 1)}
+                disabled={table.page <= 1}
+                onClick={() => table.setPage(Math.max(1, table.page - 1))}
               >
                 <ChevronLeft size={16} />
               </button>
               <button
                 className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage((p) => p + 1)}
+                disabled={table.page >= table.totalPages}
+                onClick={() => table.setPage(Math.min(table.totalPages, table.page + 1))}
               >
                 <ChevronRight size={16} />
               </button>
@@ -480,17 +515,13 @@ function MedicosPage() {
           />
         </FormField>
 
-        <FormField label="Especialidade">
-          <select className="tfd-input" value={fEspecialidade} onChange={(e) => setFEspecialidade(e.target.value)}>
-            <option value="">Selecione...</option>
-            {especialidades.map((esp) => (
-              <option key={esp.value} value={esp.label}>{esp.label}</option>
-            ))}
-          </select>
-          <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
-            Especialidades configuradas em Tabelas Auxiliares &gt; Especialidades Medicas
-          </p>
-        </FormField>
+        <LookupSelect
+          categoria="especialidade"
+          label="Especialidade"
+          value={fEspecialidade}
+          onChange={setFEspecialidade}
+          valueField="nome"
+        />
 
         {editing && (
           <div className="mb-4">

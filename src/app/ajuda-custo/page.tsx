@@ -18,11 +18,16 @@ import {
   Pencil,
   AlertTriangle,
   CircleDollarSign,
+  Plane,
+  Calendar,
+  ArrowRight,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import DevolverModal from '@/shared/components/devolver-modal/DevolverModal';
 import { useDevolucoesPendentes } from '@/shared/hooks/useDevolucoesPendentes';
+import { slaBadge } from '@/shared/utils/sla';
+import { useDevolucoeRecebidas } from '@/shared/hooks/useDevolucoeRecebidas';
 import { useParametroNumero, useParametroBooleano } from '@/shared/hooks/useParametros';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
@@ -39,6 +44,7 @@ import {
   listarPeriodosPorSolicitacao,
 } from '@/services/ajuda-custo.service';
 import { buscarViagensPorSolicitacao } from '@/services/viagens.service';
+import { buscarAgendamentoPorSolicitacao } from '@/services/agendamentos.service';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import { formatCurrency, maskCurrency, parseCurrency, formatDate } from '@/shared/pipes/formatters';
 
@@ -128,21 +134,23 @@ export default function AjudaCustoPage() {
   const { valor: pacienteInternado } = useParametroBooleano('diaria_paciente_internado');
   const { valor: acompanhanteSempre } = useParametroBooleano('diaria_acompanhante_sempre');
 
+  /* ---- Devoluções ---- */
+  const { mapa: devolucoesEnviadas, labelDestino, refresh: refreshDevolucoes } = useDevolucoesPendentes('AJUDA_CUSTO');
+  const { mapa: devolucoesRecebidas, labelOrigem } = useDevolucoeRecebidas('AJUDA_CUSTO');
+  const devolvedIds = useMemo(() => Array.from(devolucoesEnviadas.keys()), [devolucoesEnviadas]);
+
   /* ---- Disponíveis ---- */
   const [disponiveis, setDisponiveis] = useState<any[]>([]);
   const [loadingDisponiveis, setLoadingDisponiveis] = useState(false);
 
   async function carregarDisponiveis() {
     setLoadingDisponiveis(true);
-    const { data } = await listarSolicitacoesParaAjudaCusto();
+    const { data } = await listarSolicitacoesParaAjudaCusto({ includeIds: devolvedIds });
     setDisponiveis(data ?? []);
     setLoadingDisponiveis(false);
   }
 
-  useEffect(() => { carregarDisponiveis(); }, []);
-
-  /* ---- Devoluções ---- */
-  const { mapa: devolucoesEnviadas, labelDestino, refresh: refreshDevolucoes } = useDevolucoesPendentes('AJUDA_CUSTO');
+  useEffect(() => { carregarDisponiveis(); }, [devolvedIds]);
 
   /* ---- Drawer state ---- */
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -151,6 +159,8 @@ export default function AjudaCustoPage() {
   const [drawerPacienteNome, setDrawerPacienteNome] = useState('');
   const [drawerPeriodos, setDrawerPeriodos] = useState<any[]>([]);
   const [drawerLoadingPeriodos, setDrawerLoadingPeriodos] = useState(false);
+  const [drawerViagens, setDrawerViagens] = useState<any[]>([]);
+  const [drawerAgendamento, setDrawerAgendamento] = useState<any>(null);
 
   /* ---- Add/Edit period form ---- */
   const [addingPeriodo, setAddingPeriodo] = useState(false);
@@ -211,6 +221,8 @@ export default function AjudaCustoPage() {
     setDrawerNumProcesso('');
     setDrawerPacienteNome('');
     setDrawerPeriodos([]);
+    setDrawerViagens([]);
+    setDrawerAgendamento(null);
     resetPeriodoForm();
     resetInlineAction();
   }
@@ -230,6 +242,8 @@ export default function AjudaCustoPage() {
     resetInlineAction();
     setDrawerOpen(true);
     await carregarPeriodosDrawer(solicitacaoId);
+    buscarViagensPorSolicitacao(solicitacaoId).then(({ data }) => setDrawerViagens(data ?? []));
+    buscarAgendamentoPorSolicitacao(solicitacaoId).then(({ data }) => setDrawerAgendamento(data ?? null));
   }
 
   function handleStartAdd() {
@@ -490,6 +504,7 @@ export default function AjudaCustoPage() {
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Pendentes</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{summary.pendentesCount}</p>
             <p className="text-xs" style={{ color: 'var(--tfd-status-warning)' }}>{formatCurrency(summary.pendentesTotal)}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Diárias aguardando aprovação do financeiro</p>
           </div>
         </div>
         <div className="tfd-card flex items-center gap-3">
@@ -499,6 +514,7 @@ export default function AjudaCustoPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Aprovadas</p>
             <p className="text-lg font-semibold" style={{ color: 'var(--tfd-primary-700)' }}>{formatCurrency(summary.aprovadasTotal)}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Aprovadas em processo de pagamento</p>
           </div>
         </div>
         <div className="tfd-card flex items-center gap-3">
@@ -508,6 +524,7 @@ export default function AjudaCustoPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Total Pago</p>
             <p className="text-lg font-semibold" style={{ color: 'var(--tfd-status-success)' }}>{formatCurrency(summary.pagasTotal)}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Valores efetivamente transferidos</p>
           </div>
         </div>
         <div className="tfd-card flex items-center gap-3">
@@ -517,6 +534,7 @@ export default function AjudaCustoPage() {
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Total Geral</p>
             <p className="text-lg font-semibold" style={{ color: 'var(--tfd-primary-700)' }}>{formatCurrency(summary.geral)}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Soma consolidada de todas as diárias</p>
           </div>
         </div>
       </div>
@@ -563,13 +581,14 @@ export default function AjudaCustoPage() {
                 <th className="text-center">Dias</th>
                 <th>Valor Total</th>
                 <th>Status</th>
+                <th>Tempo</th>
                 <th className="w-[100px]">Ações</th>
               </tr>
             </thead>
             <tbody>
               {(loading || loadingDisponiveis) ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12">
+                  <td colSpan={8} className="text-center py-12">
                     <div className="flex flex-col items-center gap-2">
                       <Loader2 size={32} className="animate-spin" style={{ color: 'var(--tfd-primary-500)' }} />
                       <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Carregando...</p>
@@ -578,7 +597,7 @@ export default function AjudaCustoPage() {
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12">
+                  <td colSpan={8} className="text-center py-12">
                     <div className="flex flex-col items-center gap-2">
                       <Ban size={32} style={{ color: 'var(--tfd-text-muted)' }} />
                       <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Nenhuma ajuda de custo encontrada</p>
@@ -591,24 +610,36 @@ export default function AjudaCustoPage() {
                   const style = statusStyleMap[g.statusDominante] ?? { bg: 'var(--tfd-surface-100)', text: 'var(--tfd-surface-500)', label: g.statusDominante };
                   const aguardandoRetorno = labelDestino(g.solicitacaoId);
                   const devolucaoInfo = devolucoesEnviadas.get(g.solicitacaoId);
+                  const retornoRecebido = labelOrigem(g.solicitacaoId);
+                  const retornoInfo = devolucoesRecebidas.get(g.solicitacaoId);
 
                   return (
                     <tr
                       key={g.solicitacaoId}
                       className={aguardandoRetorno ? '' : 'cursor-pointer'}
-                      style={{ opacity: aguardandoRetorno ? 0.55 : undefined, backgroundColor: aguardandoRetorno ? '#FFFBEB' : undefined, pointerEvents: aguardandoRetorno ? 'none' : undefined }}
+                      style={{ opacity: aguardandoRetorno ? 0.55 : undefined, backgroundColor: aguardandoRetorno ? '#F8F9FA' : retornoRecebido ? '#FFFBEB' : undefined, borderLeft: retornoRecebido ? '4px solid #F59E0B' : undefined, pointerEvents: aguardandoRetorno ? 'none' : undefined }}
                       onClick={aguardandoRetorno ? undefined : () => handleOpenDrawer(g.solicitacaoId, g.numeroProcesso, g.pacienteNome)}
                     >
                       <td>
                         <div className="flex flex-col gap-0.5">
-                          <Link href={`/solicitacoes/${g.solicitacaoId}`} className="font-medium text-sm hover:underline" style={{ color: aguardandoRetorno ? 'var(--tfd-text-muted)' : 'var(--tfd-primary-500)' }} onClick={(e) => e.stopPropagation()}>
+                          <Link href={`/solicitacoes/${g.solicitacaoId}?from=ajuda-custo`} className="font-medium text-sm hover:underline" style={{ color: aguardandoRetorno ? 'var(--tfd-text-muted)' : 'var(--tfd-primary-500)' }} onClick={(e) => e.stopPropagation()}>
                             {g.numeroProcesso}
                           </Link>
                           {aguardandoRetorno && devolucaoInfo && (
                             <div className="flex items-center gap-1.5 mt-1">
-                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
-                                Devolvido p/ {aguardandoRetorno}
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#F0F2F5', color: '#6B7280' }}>
+                                Enviado p/ {aguardandoRetorno}
                               </span>
+                            </div>
+                          )}
+                          {retornoRecebido && retornoInfo && !aguardandoRetorno && (
+                            <div className="flex items-center gap-1.5 mt-1" title={`Retorno recebido de ${retornoRecebido} em ${new Date(retornoInfo.created_at).toLocaleDateString('pt-BR')} — ${retornoInfo.motivo}`}>
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+                                ↩ Retorno de {retornoRecebido}
+                              </span>
+                              {retornoInfo.urgencia === 'URGENTE' && (
+                                <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: '#FEE2E2', color: '#B91C1C' }}>URGENTE</span>
+                              )}
                             </div>
                           )}
                         </div>
@@ -631,8 +662,13 @@ export default function AjudaCustoPage() {
                         <span className="tfd-tag tfd-tag--rounded tfd-tag--dot" style={{ backgroundColor: style.bg, color: style.text }}>{style.label}</span>
                       </td>
                       <td>
+                        {(() => { const b = slaBadge((g.periodos[0] as any)?.solicitacoes?.created_at ?? (g.periodos[0] as any)?.created_at); return (
+                          <span className="tfd-tag tfd-tag--rounded text-xs font-semibold" style={b.style}>{b.label}</span>
+                        ); })()}
+                      </td>
+                      <td>
                         <div className="flex items-center gap-1">
-                          <Link href={`/solicitacoes/${g.solicitacaoId}`} className="tfd-btn tfd-btn-ghost tfd-btn--icon-only" title="Ver processo" style={{ pointerEvents: 'auto' }} onClick={(e) => e.stopPropagation()}>
+                          <Link href={`/solicitacoes/${g.solicitacaoId}?from=ajuda-custo`} className="tfd-btn tfd-btn-ghost tfd-btn--icon-only" title="Ver processo" style={{ pointerEvents: 'auto' }} onClick={(e) => e.stopPropagation()}>
                             <Eye size={15} />
                           </Link>
                           {!isDisponivel && !aguardandoRetorno && (
@@ -668,10 +704,84 @@ export default function AjudaCustoPage() {
             <p className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{drawerPacienteNome || '—'}</p>
             <p className="text-xs" style={{ color: '#1E40AF' }}>Processo: {drawerNumProcesso || '—'}</p>
           </div>
-          <Link href={`/solicitacoes/${drawerSolicitacaoId}`} className="tfd-btn tfd-btn-ghost tfd-btn--icon-only" title="Ver processo">
+          <Link href={`/solicitacoes/${drawerSolicitacaoId}?from=ajuda-custo`} className="tfd-btn tfd-btn-ghost tfd-btn--icon-only" title="Ver processo">
             <Eye size={15} />
           </Link>
         </div>
+
+        {/* Agendamento info */}
+        {drawerAgendamento && (
+          <div className="rounded-lg mb-3 px-4 py-3" style={{ border: '1px solid var(--tfd-surface-border)', backgroundColor: 'var(--tfd-surface-50)' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <Calendar size={14} style={{ color: 'var(--tfd-primary-500)' }} />
+              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Agendamento</p>
+              <span
+                className="tfd-tag tfd-tag--rounded ml-auto"
+                style={{
+                  fontSize: '0.6rem',
+                  backgroundColor: drawerAgendamento.tipo_atendimento === 'CIRURGIA' ? '#F5F3FF' : '#DBEAFE',
+                  color: drawerAgendamento.tipo_atendimento === 'CIRURGIA' ? '#7C3AED' : '#1D4ED8',
+                }}
+              >
+                {drawerAgendamento.tipo_atendimento?.replace(/_/g, ' ') ?? '—'}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+              <div>
+                <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Unidade</p>
+                <p style={{ color: 'var(--tfd-text-primary)' }}>{drawerAgendamento.unidade_executante ?? '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Data</p>
+                <p style={{ color: 'var(--tfd-text-primary)' }}>{formatDate(drawerAgendamento.data_hora_agendamento)}</p>
+              </div>
+              {drawerAgendamento.cidade_destino && (
+                <div>
+                  <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Destino</p>
+                  <p style={{ color: 'var(--tfd-text-primary)' }}>{drawerAgendamento.cidade_destino}{drawerAgendamento.uf_destino ? `/${drawerAgendamento.uf_destino}` : ''}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Passagens emitidas */}
+        {drawerViagens.length > 0 && (
+          <div className="rounded-lg mb-3 px-4 py-3" style={{ border: '1px solid var(--tfd-surface-border)', backgroundColor: 'var(--tfd-surface-50)' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <Plane size={14} style={{ color: 'var(--tfd-primary-500)' }} />
+              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Passagens</p>
+            </div>
+            <div className="space-y-2">
+              {[...drawerViagens]
+                .sort((a: any, b: any) => (a.tipo === 'IDA' ? -1 : 1))
+                .map((v: any) => (
+                  <div key={v.id} className="flex items-center gap-3 text-sm">
+                    <span
+                      className="tfd-tag tfd-tag--rounded shrink-0"
+                      style={{
+                        fontSize: '0.6rem',
+                        backgroundColor: v.tipo === 'IDA' ? '#DBEAFE' : '#F5F3FF',
+                        color: v.tipo === 'IDA' ? '#1D4ED8' : '#7C3AED',
+                      }}
+                    >
+                      {v.tipo === 'IDA' ? 'Ida' : 'Volta'}
+                    </span>
+                    <span style={{ color: 'var(--tfd-text-primary)' }}>
+                      {v.origem_cidade ?? '—'}
+                    </span>
+                    <ArrowRight size={12} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
+                    <span style={{ color: 'var(--tfd-text-primary)' }}>
+                      {v.destino_cidade ?? '—'}
+                    </span>
+                    <span className="ml-auto shrink-0 font-medium" style={{ color: 'var(--tfd-text-secondary)' }}>
+                      {formatDate(v.data_embarque_prevista)}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
 
         {/* Summary totals */}
         {drawerPeriodos.length > 0 && (
@@ -784,9 +894,6 @@ export default function AjudaCustoPage() {
                           <button type="button" className="tfd-btn tfd-btn-ghost tfd-btn--icon-only tfd-btn--sm" title="Editar" onClick={() => handleStartEdit(p)}>
                             <Pencil size={13} />
                           </button>
-                          <button type="button" className="tfd-btn tfd-btn-ghost tfd-btn--icon-only tfd-btn--sm ml-auto" title="Excluir" onClick={() => setInlineAction({ type: 'excluir', periodoId: p.id })}>
-                            <Trash2 size={13} style={{ color: '#EF4444' }} />
-                          </button>
                         </>
                       )}
                       {p.status === 'APROVADA' && (
@@ -876,20 +983,6 @@ export default function AjudaCustoPage() {
                     </div>
                   )}
 
-                  {/* ---- INLINE: Excluir confirmation ---- */}
-                  {isActionTarget && inlineAction?.type === 'excluir' && (
-                    <div className="mt-2 pt-2" style={{ borderTop: '1px solid #FCA5A5' }}>
-                      <p className="text-xs font-medium mb-2" style={{ color: '#B91C1C' }}>
-                        Excluir este período? Esta ação não pode ser desfeita.
-                      </p>
-                      <div className="flex gap-2">
-                        <button className="tfd-btn tfd-btn-secondary tfd-btn--sm flex-1" disabled={actionLoading} onClick={resetInlineAction}>Cancelar</button>
-                        <button className="tfd-btn tfd-btn--sm flex-1" style={{ background: '#EF4444', color: 'white' }} disabled={actionLoading} onClick={() => handleConfirmExcluir(p.id)}>
-                          {actionLoading ? 'Excluindo...' : 'Confirmar Exclusão'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
               );
             })}

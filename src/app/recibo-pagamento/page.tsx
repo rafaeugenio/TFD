@@ -12,11 +12,14 @@ import {
   CheckCircle2,
   Clock,
   DollarSign,
+  Calendar,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import SortableHeader from '@/shared/components/table/SortableHeader';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
+import { useTableControls } from '@/shared/hooks/useTableControls';
 import { listarRecibos } from '@/services/recibo-pagamento.service';
 import { formatCurrency } from '@/shared/pipes/formatters';
 import { MOCK_RECIBOS } from '@/core/mocks/recibo-pagamento.mock';
@@ -26,13 +29,11 @@ import type { ReciboPagamento, ReciboItem, MemoriaCalculo } from '@/core/models/
 /*  Constants                                          */
 /* -------------------------------------------------- */
 
-const ITEMS_PER_PAGE = 8;
-
-const TABS: { key: string; label: string }[] = [
-  { key: 'TODOS', label: 'Todos' },
-  { key: 'GERADO', label: 'Gerados' },
-  { key: 'IMPRESSO', label: 'Impressos' },
-  { key: 'ENVIADO', label: 'Enviados' },
+const STATUS_FILTER_OPTIONS = [
+  { value: 'NAO_GERADO', label: 'Nao Gerado' },
+  { value: 'GERADO', label: 'Gerado' },
+  { value: 'IMPRESSO', label: 'Impresso' },
+  { value: 'ENVIADO', label: 'Enviado' },
 ];
 
 /* -------------------------------------------------- */
@@ -92,7 +93,7 @@ function calcularIdade(dataNasc: string): number {
 /*  Display item type                                  */
 /* -------------------------------------------------- */
 
-interface ReciboDisplayItem {
+interface ReciboDisplayItem extends Record<string, unknown> {
   id: string;
   numeroRecibo: string;
   numeroProcesso: string;
@@ -109,9 +110,6 @@ interface ReciboDisplayItem {
 
 export default function ReciboPagamentoPage() {
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState('TODOS');
-  const [search, setSearch] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
 
   /* ---- Detail view state ---- */
   const [selectedRecibo, setSelectedRecibo] = useState<ReciboPagamento | null>(null);
@@ -119,10 +117,10 @@ export default function ReciboPagamentoPage() {
   /* ---- Supabase data with mock fallback ---- */
   const { data: dbData, loading } = useSupabaseData(
     useCallback(
-      () => listarRecibos({ status: activeTab === 'TODOS' ? undefined : activeTab, search }),
-      [activeTab, search],
+      () => listarRecibos({}),
+      [],
     ),
-    [activeTab, search],
+    [],
   );
 
   /* ---- Map to display items ---- */
@@ -157,24 +155,15 @@ export default function ReciboPagamentoPage() {
     });
   }, [dbData]);
 
-  /* ---- Filtered + paginated ---- */
-  const filtered = useMemo(() => {
-    return items.filter((r) => {
-      const matchesTab = activeTab === 'TODOS' || r.status === activeTab;
-      const matchesSearch =
-        search === '' ||
-        r.pacienteNome.toLowerCase().includes(search.toLowerCase()) ||
-        r.numeroRecibo.toLowerCase().includes(search.toLowerCase()) ||
-        r.numeroProcesso.toLowerCase().includes(search.toLowerCase());
-      return matchesTab && matchesSearch;
-    });
-  }, [items, activeTab, search]);
+  /* ---- Table controls (search, sort, filter, pagination) ---- */
+  const table = useTableControls<ReciboDisplayItem>({
+    data: items,
+    searchFields: ['pacienteNome', 'numeroRecibo', 'numeroProcesso'],
+    dateField: 'dataGeracao',
+    pageSize: 20,
+  });
 
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
-  const paginatedItems = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filtered.slice(start, start + ITEMS_PER_PAGE);
-  }, [filtered, currentPage]);
+  const paginatedItems = table.paginated as unknown as ReciboDisplayItem[];
 
   /* ---- Summary ---- */
   const summary = useMemo(() => ({
@@ -243,43 +232,8 @@ export default function ReciboPagamentoPage() {
         </div>
       </div>
 
-      {/* ========== Tabs + Search ========== */}
+      {/* ========== Toolbar: Search + Date Range ========== */}
       <div className="tfd-toolbar mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-1 flex-wrap">
-          {TABS.map((tab) => {
-            const isActive = activeTab === tab.key;
-            const count = tab.key === 'TODOS'
-              ? items.length
-              : items.filter((r) => r.status === tab.key).length;
-            return (
-              <button
-                key={tab.key}
-                onClick={() => { setActiveTab(tab.key); setCurrentPage(1); }}
-                className="tfd-btn tfd-btn--sm"
-                style={{
-                  backgroundColor: isActive ? 'var(--tfd-primary-50)' : 'transparent',
-                  color: isActive ? 'var(--tfd-primary-700)' : 'var(--tfd-text-secondary)',
-                  borderColor: isActive ? 'var(--tfd-primary-200)' : 'transparent',
-                  fontWeight: isActive ? 600 : 400,
-                }}
-              >
-                {tab.label}
-                <span
-                  className="text-xs ml-1 px-1.5 py-0.5 rounded-full"
-                  style={{
-                    backgroundColor: isActive ? 'var(--tfd-primary-100)' : 'var(--tfd-surface-100)',
-                    color: isActive ? 'var(--tfd-primary-700)' : 'var(--tfd-text-muted)',
-                    fontSize: '0.6875rem',
-                    fontWeight: 600,
-                  }}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
         <div className="relative flex-1 max-w-xs min-w-[200px]">
           <Search
             size={16}
@@ -290,9 +244,18 @@ export default function ReciboPagamentoPage() {
             type="text"
             className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
             placeholder="Buscar paciente, recibo ou processo..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
+            value={table.search}
+            onChange={(e) => table.setSearch(e.target.value)}
           />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
+          <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
+            value={table.dateStart} onChange={(e) => table.setDateStart(e.target.value)} title="Data inicio" />
+          <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>ate</span>
+          <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
+            value={table.dateEnd} onChange={(e) => table.setDateEnd(e.target.value)} title="Data fim" />
         </div>
       </div>
 
@@ -302,12 +265,40 @@ export default function ReciboPagamentoPage() {
           <table className="tfd-table">
             <thead>
               <tr>
-                <th>Nº Recibo</th>
-                <th>Nº Processo</th>
-                <th>Paciente</th>
-                <th className="hidden md:table-cell">Data</th>
-                <th>Valor Líquido</th>
-                <th>Status</th>
+                <SortableHeader
+                  label="Nº Recibo"
+                  sortDirection={table.getSortDirection('numeroRecibo')}
+                  onSort={() => table.toggleSort('numeroRecibo')}
+                />
+                <SortableHeader
+                  label="Nº Processo"
+                  sortDirection={table.getSortDirection('numeroProcesso')}
+                  onSort={() => table.toggleSort('numeroProcesso')}
+                />
+                <SortableHeader
+                  label="Paciente"
+                  sortDirection={table.getSortDirection('pacienteNome')}
+                  onSort={() => table.toggleSort('pacienteNome')}
+                />
+                <SortableHeader
+                  label="Data"
+                  className="hidden md:table-cell"
+                  sortDirection={table.getSortDirection('dataGeracao')}
+                  onSort={() => table.toggleSort('dataGeracao')}
+                />
+                <SortableHeader
+                  label="Valor Líquido"
+                  sortDirection={table.getSortDirection('valorLiquido')}
+                  onSort={() => table.toggleSort('valorLiquido')}
+                />
+                <SortableHeader
+                  label="Status"
+                  sortDirection={table.getSortDirection('status')}
+                  onSort={() => table.toggleSort('status')}
+                  filterOptions={STATUS_FILTER_OPTIONS}
+                  activeFilters={table.getActiveFilters('status')}
+                  onFilterChange={(values) => table.setColumnFilter('status', values)}
+                />
                 <th className="w-[80px]">Ações</th>
               </tr>
             </thead>
@@ -380,27 +371,27 @@ export default function ReciboPagamentoPage() {
         </div>
 
         {/* Pagination */}
-        {totalPages > 1 && (
+        {table.totalPages > 1 && (
           <div
             className="flex items-center justify-between px-4 py-3"
             style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
           >
             <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-              {filtered.length} recibo{filtered.length !== 1 ? 's' : ''} encontrado{filtered.length !== 1 ? 's' : ''}
+              {table.filtered.length} recibo{table.filtered.length !== 1 ? 's' : ''} encontrado{table.filtered.length !== 1 ? 's' : ''}
             </p>
             <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+              {Array.from({ length: table.totalPages }, (_, i) => i + 1).map((pg) => (
                 <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
+                  key={pg}
+                  onClick={() => table.setPage(pg)}
                   className="tfd-btn tfd-btn--sm"
                   style={{
                     minWidth: '32px',
-                    backgroundColor: page === currentPage ? 'var(--tfd-primary-500)' : 'transparent',
-                    color: page === currentPage ? '#fff' : 'var(--tfd-text-secondary)',
+                    backgroundColor: pg === table.page ? 'var(--tfd-primary-500)' : 'transparent',
+                    color: pg === table.page ? '#fff' : 'var(--tfd-text-secondary)',
                   }}
                 >
-                  {page}
+                  {pg}
                 </button>
               ))}
             </div>

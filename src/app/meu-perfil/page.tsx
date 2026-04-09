@@ -1,18 +1,22 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   User,
-  Mail,
   Phone,
   Plus,
   Trash2,
   Save,
-  Shield,
   Stethoscope,
   Camera,
   Loader2,
   CheckCircle2,
+  Upload,
+  Video,
+  X,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -67,6 +71,22 @@ export default function MeuPerfilPage() {
   const [crmUf, setCrmUf] = useState('');
   const [especialidadeMedica, setEspecialidadeMedica] = useState('');
 
+  // Password reset
+  const [senhaAtual, setSenhaAtual] = useState('');
+  const [novaSenha, setNovaSenha] = useState('');
+  const [confirmarSenha, setConfirmarSenha] = useState('');
+  const [showSenhaAtual, setShowSenhaAtual] = useState(false);
+  const [showNovaSenha, setShowNovaSenha] = useState(false);
+  const [savingSenha, setSavingSenha] = useState(false);
+  const [senhaAtualError, setSenhaAtualError] = useState('');
+
+  // Photo / webcam
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [webcamActive, setWebcamActive] = useState(false);
+  const streamRef = useRef<MediaStream | null>(null);
+
   const isMedico = perfil === 'MEDICO_AUDITOR';
 
   useEffect(() => {
@@ -104,6 +124,16 @@ export default function MeuPerfilPage() {
     load();
   }, []);
 
+  /* ---- Cleanup webcam on unmount ---- */
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, []);
+
+  /* ---- Phone helpers ---- */
   function handleAddTelefone() {
     setTelefones([...telefones, '']);
   }
@@ -118,6 +148,114 @@ export default function MeuPerfilPage() {
     setTelefones(updated);
   }
 
+  /* ---- Photo: file upload ---- */
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Arquivo invalido', 'Selecione uma imagem (JPG, PNG, etc.).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setFotoUrl(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }
+
+  /* ---- Photo: webcam ---- */
+  const startWebcam = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: 640, height: 480 },
+      });
+      streamRef.current = stream;
+      setWebcamActive(true);
+
+      // Wait for ref to be available after state update
+      requestAnimationFrame(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+        }
+      });
+    } catch {
+      toast.error('Webcam indisponivel', 'Verifique as permissoes do navegador.');
+    }
+  }, [toast]);
+
+  function capturePhoto() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+    setFotoUrl(canvas.toDataURL('image/jpeg', 0.85));
+    stopWebcam();
+  }
+
+  function stopWebcam() {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setWebcamActive(false);
+  }
+
+  function handleRemovePhoto() {
+    setFotoUrl('');
+  }
+
+  /* ---- Password reset ---- */
+  async function handleAtualizarSenha() {
+    setSenhaAtualError('');
+
+    if (novaSenha.length < 6) {
+      toast.warning('Senha muito curta', 'A nova senha deve ter no mínimo 6 caracteres.');
+      return;
+    }
+    if (novaSenha !== confirmarSenha) {
+      toast.warning('Senhas não coincidem', 'A nova senha e a confirmação devem ser iguais.');
+      return;
+    }
+
+    setSavingSenha(true);
+    const supabase = createClient();
+
+    // Verificar senha atual via reautenticação
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password: senhaAtual,
+    });
+
+    if (authError) {
+      setSenhaAtualError('Senha atual incorreta');
+      setSavingSenha(false);
+      return;
+    }
+
+    // Atualizar para a nova senha
+    const { error: updateError } = await supabase.auth.updateUser({ password: novaSenha });
+
+    if (updateError) {
+      toast.error('Erro ao atualizar senha', updateError.message);
+    } else {
+      toast.success('Senha alterada!', 'Sua senha foi atualizada com sucesso.');
+      setSenhaAtual('');
+      setNovaSenha('');
+      setConfirmarSenha('');
+    }
+    setSavingSenha(false);
+  }
+
+  /* ---- Save ---- */
   async function handleSave() {
     if (!userId) return;
     setSaving(true);
@@ -173,141 +311,170 @@ export default function MeuPerfilPage() {
     <>
       <PageHeader title="Meu Perfil" subtitle="Informacoes pessoais e configuracoes" />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* ========== Left: Avatar + Role Card ========== */}
-        <div className="lg:col-span-1 space-y-4">
-          {/* Avatar card */}
-          <div className="tfd-card flex flex-col items-center py-8">
-            <div
-              className="flex items-center justify-center text-white text-2xl font-bold rounded-full mb-4"
-              style={{
-                width: 80,
-                height: 80,
-                background: 'var(--tfd-blue)',
-                border: '3px solid white',
-                boxShadow: '0 0 0 2px var(--tfd-primary-200)',
-              }}
-            >
-              {fotoUrl ? (
-                <img src={fotoUrl} alt={nomeCompleto} className="w-full h-full rounded-full object-cover" />
-              ) : (
-                iniciais
+      <div className="space-y-4 tfd-stagger">
+
+        {/* ========== Dados Pessoais ========== */}
+        <div className="tfd-card">
+          <div className="flex items-center gap-2 mb-6">
+            <User size={16} style={{ color: 'var(--tfd-primary-500)' }} />
+            <h3 className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>Dados Pessoais</h3>
+          </div>
+
+          {/* Avatar section — horizontal layout */}
+          <div className="flex items-start gap-6 mb-6 pb-6" style={{ borderBottom: '1px solid var(--tfd-border)' }}>
+            <div className="relative shrink-0">
+              <div
+                className="flex items-center justify-center text-white text-3xl font-bold rounded-full overflow-hidden"
+                style={{
+                  width: 120,
+                  height: 120,
+                  background: fotoUrl ? 'transparent' : 'var(--tfd-blue)',
+                  border: '4px solid white',
+                  boxShadow: '0 0 0 2px var(--tfd-primary-200), 0 4px 12px rgba(0,0,0,0.08)',
+                }}
+              >
+                {fotoUrl ? (
+                  <img src={fotoUrl} alt={nomeCompleto} className="w-full h-full object-cover" />
+                ) : (
+                  iniciais
+                )}
+              </div>
+              {fotoUrl && (
+                <button
+                  type="button"
+                  className="absolute -top-1 -right-1 flex items-center justify-center rounded-full"
+                  style={{
+                    width: 24,
+                    height: 24,
+                    background: 'var(--tfd-status-danger)',
+                    color: 'white',
+                    border: '2px solid white',
+                  }}
+                  title="Remover foto"
+                  onClick={handleRemovePhoto}
+                >
+                  <X size={12} />
+                </button>
               )}
             </div>
-            <p className="text-lg font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{nomeCompleto}</p>
-            <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>{email}</p>
 
-            <div className="mt-3">
-              <span
-                className="tfd-tag tfd-tag--rounded tfd-tag--dot"
-                style={{ backgroundColor: perfilInfo.bg, color: perfilInfo.text }}
-              >
-                {perfilInfo.label}
-              </span>
-            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-lg font-semibold mb-0.5" style={{ color: 'var(--tfd-text-primary)' }}>{nomeCompleto}</p>
+              <p className="text-sm mb-3" style={{ color: 'var(--tfd-text-muted)' }}>{email}</p>
 
-            {/* Photo URL input */}
-            <div className="w-full mt-6 px-4">
-              <label className="tfd-label">
-                <Camera size={12} className="inline mr-1" />
-                URL da foto
-              </label>
-              <input
-                type="url"
-                className="tfd-input tfd-input--sm"
-                placeholder="https://..."
-                value={fotoUrl}
-                onChange={(e) => setFotoUrl(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Role card */}
-          <div className="tfd-card">
-            <div className="flex items-center gap-2 mb-3">
-              <Shield size={16} style={{ color: 'var(--tfd-primary-500)' }} />
-              <h3 className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>Cargo e Setor</h3>
-            </div>
-            <div className="space-y-2">
-              <div>
-                <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Perfil</span>
-                <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{perfilInfo.label}</p>
+              <div className="mb-4">
+                <span
+                  className="tfd-tag tfd-tag--rounded tfd-tag--dot"
+                  style={{ backgroundColor: perfilInfo.bg, color: perfilInfo.text }}
+                >
+                  {perfilInfo.label}
+                </span>
               </div>
-              <div>
-                <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Status</span>
-                <p className="text-sm font-medium" style={{ color: 'var(--tfd-status-success)' }}>Ativo</p>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        {/* ========== Right: Form ========== */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* Personal info */}
-          <div className="tfd-card">
-            <div className="flex items-center gap-2 mb-4">
-              <User size={16} style={{ color: 'var(--tfd-primary-500)' }} />
-              <h3 className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>Dados Pessoais</h3>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4">
-              <FormField label="Nome completo">
-                <input
-                  type="text"
-                  className="tfd-input"
-                  value={nomeCompleto}
-                  disabled
-                  style={{ opacity: 0.7 }}
-                />
-                <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
-                  Alteracao via administrador
-                </p>
-              </FormField>
-
-              <FormField label="CPF">
-                <input
-                  type="text"
-                  className="tfd-input"
-                  value={cpf}
-                  disabled
-                  style={{ opacity: 0.7, fontFamily: 'var(--tfd-font-mono)' }}
-                />
-              </FormField>
-
-              <FormField label="E-mail">
-                <div className="flex items-center gap-2">
-                  <Mail size={14} style={{ color: 'var(--tfd-text-muted)' }} />
-                  <input
-                    type="email"
-                    className="tfd-input"
-                    value={email}
-                    disabled
-                    style={{ opacity: 0.7 }}
+              {/* Webcam capture area */}
+              {webcamActive && (
+                <div className="mb-3 rounded-lg overflow-hidden inline-block" style={{ border: '2px solid var(--tfd-primary-200)' }}>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    style={{ width: 280, height: 210, objectFit: 'cover', display: 'block' }}
                   />
+                  <div className="flex gap-2 p-2 justify-center" style={{ background: 'var(--tfd-surface-50)' }}>
+                    <button type="button" className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={capturePhoto}>
+                      <Camera size={14} /> Capturar
+                    </button>
+                    <button type="button" className="tfd-btn tfd-btn-secondary tfd-btn--sm" onClick={stopWebcam}>
+                      Cancelar
+                    </button>
+                  </div>
                 </div>
-                <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
-                  Vinculado a conta de acesso
-                </p>
-              </FormField>
-            </div>
+              )}
+              <canvas ref={canvasRef} className="hidden" />
 
-            <FormField label="Descricao">
-              <textarea
+              {/* Photo action buttons */}
+              <div className="flex gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+                <button
+                  type="button"
+                  className="tfd-btn tfd-btn-outline tfd-btn--sm"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload size={14} /> Importar foto
+                </button>
+                {!webcamActive && (
+                  <button
+                    type="button"
+                    className="tfd-btn tfd-btn-outline tfd-btn--sm"
+                    onClick={startWebcam}
+                  >
+                    <Video size={14} /> Usar webcam
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Form fields */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+            <FormField label="Nome completo">
+              <input
+                type="text"
                 className="tfd-input"
-                rows={3}
-                placeholder="Uma breve descricao sobre voce..."
-                value={descricao}
-                onChange={(e) => setDescricao(e.target.value)}
+                value={nomeCompleto}
+                disabled
               />
+              <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
+                Alteracao via administrador
+              </p>
+            </FormField>
+
+            <FormField label="CPF">
+              <input
+                type="text"
+                className="tfd-input"
+                value={cpf}
+                disabled
+                style={{ fontFamily: 'var(--tfd-font-mono)' }}
+              />
+            </FormField>
+
+            <FormField label="E-mail">
+              <input
+                type="email"
+                className="tfd-input"
+                value={email}
+                disabled
+              />
+              <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
+                Vinculado a conta de acesso
+              </p>
             </FormField>
           </div>
 
-          {/* Phones */}
-          <div className="tfd-card">
+          <FormField label="Descricao">
+            <textarea
+              className="tfd-input"
+              rows={3}
+              placeholder="Uma breve descricao sobre voce..."
+              value={descricao}
+              onChange={(e) => setDescricao(e.target.value)}
+            />
+          </FormField>
+
+          {/* Telefones — dentro de Dados Pessoais */}
+          <div className="pt-4 mt-2" style={{ borderTop: '1px solid var(--tfd-border)' }}>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <Phone size={16} style={{ color: 'var(--tfd-primary-500)' }} />
-                <h3 className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>Telefones</h3>
+                <Phone size={14} style={{ color: 'var(--tfd-primary-500)' }} />
+                <span className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>Telefones</span>
               </div>
               <button
                 type="button"
@@ -319,7 +486,7 @@ export default function MeuPerfilPage() {
             </div>
 
             {telefones.length === 0 ? (
-              <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
+              <p className="text-sm py-2 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
                 Nenhum telefone cadastrado (opcional)
               </p>
             ) : (
@@ -349,83 +516,171 @@ export default function MeuPerfilPage() {
               </div>
             )}
           </div>
+        </div>
 
-          {/* Medical data (MEDICO_AUDITOR only) */}
-          {isMedico && (
-            <div className="tfd-card" style={{ border: '1px solid #BBF7D0' }}>
-              <div className="flex items-center gap-2 mb-4">
-                <Stethoscope size={16} style={{ color: '#15803D' }} />
-                <h3 className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>Dados Medicos</h3>
-              </div>
+        {/* ========== Dados Medicos (MEDICO_AUDITOR only) ========== */}
+        {isMedico && (
+          <div className="tfd-card" style={{ border: '1px solid #BBF7D0' }}>
+            <div className="flex items-center gap-2 mb-4">
+              <Stethoscope size={16} style={{ color: '#15803D' }} />
+              <h3 className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>Dados Medicos</h3>
+            </div>
 
-              <div className="tfd-message tfd-message--info mb-4">
-                <span className="tfd-message-icon mt-0.5 shrink-0"><Stethoscope size={14} /></span>
-                <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>
-                  Essas informacoes sao obrigatorias para emissao de pareceres medicos e serao exibidas automaticamente no registro do parecer.
-                </p>
-              </div>
+            <div className="tfd-message tfd-message--info mb-4">
+              <span className="tfd-message-icon mt-0.5 shrink-0"><Stethoscope size={14} /></span>
+              <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>
+                Essas informacoes sao obrigatorias para emissao de pareceres medicos e serao exibidas automaticamente no registro do parecer.
+              </p>
+            </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4">
-                <FormField label="CRM" required>
-                  <input
-                    type="text"
-                    className="tfd-input"
-                    placeholder="000000"
-                    value={crm}
-                    onChange={(e) => setCrm(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                    style={{ fontFamily: 'var(--tfd-font-mono)' }}
-                  />
-                </FormField>
-
-                <FormField label="UF do CRM" required>
-                  <select
-                    className="tfd-input"
-                    value={crmUf}
-                    onChange={(e) => setCrmUf(e.target.value)}
-                  >
-                    <option value="">Selecione...</option>
-                    {UFS.map((uf) => (
-                      <option key={uf} value={uf}>{uf}</option>
-                    ))}
-                  </select>
-                </FormField>
-              </div>
-
-              <FormField label="Especialidade medica">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+              <FormField label="CRM" required>
                 <input
                   type="text"
                   className="tfd-input"
-                  placeholder="Ex: Cardiologia, Oncologia..."
-                  value={especialidadeMedica}
-                  onChange={(e) => setEspecialidadeMedica(e.target.value)}
+                  placeholder="000000"
+                  value={crm}
+                  onChange={(e) => setCrm(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  style={{ fontFamily: 'var(--tfd-font-mono)' }}
                 />
               </FormField>
 
-              {crm && crmUf && (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-                  <CheckCircle2 size={14} style={{ color: '#15803D' }} />
-                  <span className="text-xs font-medium" style={{ color: '#15803D' }}>
-                    CRM {crm}/{crmUf}{especialidadeMedica ? ` — ${especialidadeMedica}` : ''}
-                  </span>
-                </div>
-              )}
+              <FormField label="UF do CRM" required>
+                <select
+                  className="tfd-input"
+                  value={crmUf}
+                  onChange={(e) => setCrmUf(e.target.value)}
+                >
+                  <option value="">Selecione...</option>
+                  {UFS.map((uf) => (
+                    <option key={uf} value={uf}>{uf}</option>
+                  ))}
+                </select>
+              </FormField>
             </div>
-          )}
 
-          {/* Save button */}
+            <FormField label="Especialidade medica">
+              <input
+                type="text"
+                className="tfd-input"
+                placeholder="Ex: Cardiologia, Oncologia..."
+                value={especialidadeMedica}
+                onChange={(e) => setEspecialidadeMedica(e.target.value)}
+              />
+            </FormField>
+
+            {crm && crmUf && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                <CheckCircle2 size={14} style={{ color: '#15803D' }} />
+                <span className="text-xs font-medium" style={{ color: '#15803D' }}>
+                  CRM {crm}/{crmUf}{especialidadeMedica ? ` — ${especialidadeMedica}` : ''}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ========== Segurança ========== */}
+        <div className="tfd-card">
+          <div className="flex items-center gap-2 mb-6">
+            <KeyRound size={16} style={{ color: 'var(--tfd-primary-500)' }} />
+            <h3 className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>Segurança</h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+            <FormField label="Senha atual" required>
+              <div className="relative">
+                <input
+                  type={showSenhaAtual ? 'text' : 'password'}
+                  className="tfd-input pr-10"
+                  placeholder="Digite sua senha atual"
+                  value={senhaAtual}
+                  onChange={(e) => { setSenhaAtual(e.target.value); setSenhaAtualError(''); }}
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded"
+                  style={{ color: 'var(--tfd-text-muted)' }}
+                  onClick={() => setShowSenhaAtual((p) => !p)}
+                  tabIndex={-1}
+                >
+                  {showSenhaAtual ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              {senhaAtualError && (
+                <p className="text-xs mt-1" style={{ color: 'var(--tfd-status-danger)' }}>
+                  {senhaAtualError}
+                </p>
+              )}
+            </FormField>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+            <FormField label="Nova senha" required>
+              <div className="relative">
+                <input
+                  type={showNovaSenha ? 'text' : 'password'}
+                  className="tfd-input pr-10"
+                  placeholder="Mínimo 6 caracteres"
+                  value={novaSenha}
+                  onChange={(e) => setNovaSenha(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded"
+                  style={{ color: 'var(--tfd-text-muted)' }}
+                  onClick={() => setShowNovaSenha((p) => !p)}
+                  tabIndex={-1}
+                >
+                  {showNovaSenha ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </FormField>
+
+            <FormField label="Confirmar nova senha" required>
+              <input
+                type={showNovaSenha ? 'text' : 'password'}
+                className="tfd-input"
+                placeholder="Repita a nova senha"
+                value={confirmarSenha}
+                onChange={(e) => setConfirmarSenha(e.target.value)}
+              />
+              {novaSenha && confirmarSenha && novaSenha !== confirmarSenha && (
+                <p className="text-xs mt-1" style={{ color: 'var(--tfd-status-danger)' }}>
+                  As senhas não coincidem
+                </p>
+              )}
+            </FormField>
+          </div>
+
           <div className="flex justify-end">
             <button
               className="tfd-btn tfd-btn-primary"
-              disabled={saving}
-              onClick={handleSave}
+              disabled={savingSenha || !senhaAtual || !novaSenha || !confirmarSenha || novaSenha !== confirmarSenha}
+              onClick={handleAtualizarSenha}
             >
-              {saving ? (
-                <><Loader2 size={16} className="animate-spin" /> Salvando...</>
+              {savingSenha ? (
+                <><Loader2 size={16} className="animate-spin" /> Atualizando...</>
               ) : (
-                <><Save size={16} /> Salvar Alteracoes</>
+                <><KeyRound size={16} /> Redefinir Senha</>
               )}
             </button>
           </div>
+        </div>
+
+        {/* ========== Save button ========== */}
+        <div className="flex justify-end">
+          <button
+            className="tfd-btn tfd-btn-primary"
+            disabled={saving}
+            onClick={handleSave}
+          >
+            {saving ? (
+              <><Loader2 size={16} className="animate-spin" /> Salvando...</>
+            ) : (
+              <><Save size={16} /> Salvar Alteracoes</>
+            )}
+          </button>
         </div>
       </div>
     </>

@@ -20,7 +20,7 @@ import {
   atualizarMedico,
   desativarMedico,
 } from '@/services/medicos.service';
-import { useLookup } from '@/shared/hooks/useLookup';
+import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import type { Medico } from '@/core/models';
 import { maskCPF } from '@/shared/pipes/formatters';
 
@@ -45,8 +45,6 @@ export default function MedicosPanel() {
   const [fCpf, setFCpf] = useState('');
   const [fEspecialidade, setFEspecialidade] = useState('');
   const [fAtivo, setFAtivo] = useState(true);
-
-  const { options: especialidades } = useLookup('especialidade');
 
   const loadItems = async () => {
     setLoading(true);
@@ -261,17 +259,13 @@ export default function MedicosPanel() {
           <input type="text" className="tfd-input" placeholder="000.000.000-00" value={fCpf} onChange={(e) => setFCpf(maskCPF(e.target.value))} />
         </FormField>
 
-        <FormField label="Especialidade">
-          <select className="tfd-input" value={fEspecialidade} onChange={(e) => setFEspecialidade(e.target.value)}>
-            <option value="">Selecione...</option>
-            {especialidades.map((esp) => (
-              <option key={esp.value} value={esp.label}>{esp.label}</option>
-            ))}
-          </select>
-          <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
-            Especialidades configuradas em Tabelas Auxiliares &gt; Especialidades Médicas
-          </p>
-        </FormField>
+        <LookupSelect
+          categoria="especialidade"
+          label="Especialidade"
+          value={fEspecialidade}
+          onChange={setFEspecialidade}
+          valueField="nome"
+        />
 
         {editing && (
           <div className="mb-4">

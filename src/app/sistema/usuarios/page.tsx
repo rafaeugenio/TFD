@@ -9,19 +9,19 @@ import {
   Shield,
   ChevronDown,
   ChevronUp,
-  Copy,
-  Link2,
   Trash2,
   Loader2,
   AlertTriangle,
   Info,
   Monitor,
-  Mail,
-  CheckCircle2,
+  Eye,
+  EyeOff,
+  UserPlus,
 } from 'lucide-react';
 
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
+import { maskCPF } from '@/shared/pipes/formatters';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import EmptyState from '@/shared/components/empty-state/EmptyState';
@@ -139,13 +139,15 @@ export default function UsuariosPage() {
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  /* ---- Invite drawer state ---- */
-  const [inviteDrawerOpen, setInviteDrawerOpen] = useState(false);
-  const [inviteNome, setInviteNome] = useState('');
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteSending, setInviteSending] = useState(false);
-  const [inviteSuccess, setInviteSuccess] = useState(false);
-  const [inviteLink, setInviteLink] = useState('');
+  /* ---- Create user drawer state ---- */
+  const [createDrawerOpen, setCreateDrawerOpen] = useState(false);
+  const [createNome, setCreateNome] = useState('');
+  const [createCpf, setCreateCpf] = useState('');
+  const [createEmail, setCreateEmail] = useState('');
+  const [createSenha, setCreateSenha] = useState('');
+  const [createPapelId, setCreatePapelId] = useState('');
+  const [createSaving, setCreateSaving] = useState(false);
+  const [showCreateSenha, setShowCreateSenha] = useState(false);
 
   /* ---- Papel change loading ---- */
   const [savingPapelFor, setSavingPapelFor] = useState<string | null>(null);
@@ -200,7 +202,7 @@ export default function UsuariosPage() {
     if (!papelId) return;
     const res = await listarTelasDoPapel(papelId) as { data: unknown; error: unknown };
     if (!res.error && res.data) {
-      const telaIds = (res.data as { tela_id: string }[]).map((r) => r.tela_id);
+      const telaIds = [...new Set((res.data as { tela_id: string; acao: string }[]).map((r) => r.tela_id))];
       setTelasMap((prev) => ({ ...prev, [papelId]: telaIds }));
     }
   }, []);
@@ -319,57 +321,71 @@ export default function UsuariosPage() {
     toast.success('Usuário removido!', 'O usuário foi desvinculado do sistema.');
   };
 
-  /* ---- Invite drawer handlers ---- */
+  /* ---- Create user drawer handlers ---- */
 
-  function handleOpenInviteDrawer() {
-    setInviteNome('');
-    setInviteEmail('');
-    setInviteSending(false);
-    setInviteSuccess(false);
-    setInviteLink('');
-    setInviteDrawerOpen(true);
+  function handleOpenCreateDrawer() {
+    setCreateNome('');
+    setCreateCpf('');
+    setCreateEmail('');
+    setCreateSenha('');
+    setCreatePapelId('');
+    setCreateSaving(false);
+    setShowCreateSenha(false);
+    setCreateDrawerOpen(true);
   }
 
-  function handleCloseInviteDrawer() {
-    setInviteDrawerOpen(false);
-    setInviteNome('');
-    setInviteEmail('');
-    setInviteSending(false);
-    setInviteSuccess(false);
-    setInviteLink('');
+  function handleCloseCreateDrawer() {
+    setCreateDrawerOpen(false);
   }
 
-  async function handleSendInvite() {
-    if (!inviteNome.trim()) {
+  async function handleCreateUser() {
+    if (!createNome.trim()) {
       toast.warning('Campo obrigatório', 'Informe o nome do usuário.');
       return;
     }
-    if (!inviteEmail.trim() || !inviteEmail.includes('@')) {
+    if (createCpf.replace(/\D/g, '').length !== 11) {
+      toast.warning('CPF inválido', 'Informe um CPF com 11 dígitos.');
+      return;
+    }
+    if (!createEmail.trim() || !createEmail.includes('@')) {
       toast.warning('Campo obrigatório', 'Informe um e-mail válido.');
       return;
     }
+    if (createSenha.length < 6) {
+      toast.warning('Senha muito curta', 'A senha deve ter no mínimo 6 caracteres.');
+      return;
+    }
 
-    setInviteSending(true);
+    setCreateSaving(true);
+    setErrorMsg(null);
 
-    // Mock: gera um token de convite e simula o envio
-    const token = crypto.randomUUID();
-    const link = `${window.location.origin}/criar-conta?token=${token}&nome=${encodeURIComponent(inviteNome.trim())}&email=${encodeURIComponent(inviteEmail.trim())}`;
-
-    // Simula delay de envio do email
-    await new Promise((r) => setTimeout(r, 1200));
-
-    setInviteLink(link);
-    setInviteSuccess(true);
-    setInviteSending(false);
-    toast.success('Convite enviado!', `Um e-mail foi enviado para ${inviteEmail.trim()} com o link de cadastro.`);
-  }
-
-  async function handleCopyInviteLink() {
     try {
-      await navigator.clipboard.writeText(inviteLink);
-      toast.success('Link copiado!', 'O link de convite foi copiado para a área de transferência.');
+      const res = await fetch('/api/usuarios/criar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome: createNome.trim(),
+          cpf: createCpf,
+          email: createEmail.trim(),
+          senha: createSenha,
+          papelId: createPapelId || null,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        toast.error('Erro ao cadastrar', json.error ?? 'Tente novamente.');
+        setCreateSaving(false);
+        return;
+      }
+
+      toast.success('Usuário cadastrado!', `${createNome.trim()} foi adicionado ao sistema.`);
+      handleCloseCreateDrawer();
+      loadData();
     } catch {
-      toast.error('Erro', 'Não foi possível copiar o link.');
+      toast.error('Erro inesperado', 'Verifique sua conexão e tente novamente.');
+      setCreateSaving(false);
     }
   }
 
@@ -428,7 +444,7 @@ export default function UsuariosPage() {
           </Link>
           <button
             className="tfd-btn tfd-btn-primary tfd-btn--sm"
-            onClick={handleOpenInviteDrawer}
+            onClick={handleOpenCreateDrawer}
           >
             <Plus size={14} />
             Adicionar Usuario
@@ -449,120 +465,103 @@ export default function UsuariosPage() {
         </div>
       )}
 
-      {/* ========== Invite Drawer ========== */}
+      {/* ========== Create User Drawer ========== */}
       <Drawer
-        open={inviteDrawerOpen}
-        onClose={handleCloseInviteDrawer}
+        open={createDrawerOpen}
+        onClose={handleCloseCreateDrawer}
         title="Adicionar Usuário"
-        subtitle="Envie um convite por e-mail para um novo membro"
+        subtitle="Cadastre um novo membro diretamente no sistema"
         width="460px"
         footer={
-          inviteSuccess ? (
-            <button className="tfd-btn tfd-btn-secondary" onClick={handleCloseInviteDrawer}>
-              Fechar
+          <>
+            <button className="tfd-btn tfd-btn-secondary" onClick={handleCloseCreateDrawer} disabled={createSaving}>
+              Cancelar
             </button>
-          ) : (
-            <>
-              <button className="tfd-btn tfd-btn-secondary" onClick={handleCloseInviteDrawer}>
-                Cancelar
-              </button>
-              <button className="tfd-btn tfd-btn-primary" onClick={handleSendInvite} disabled={inviteSending}>
-                {inviteSending ? (
-                  <><Loader2 size={14} className="animate-spin" /> Enviando...</>
-                ) : (
-                  <><Mail size={14} /> Enviar Convite</>
-                )}
-              </button>
-            </>
-          )
+            <button className="tfd-btn tfd-btn-primary" onClick={handleCreateUser} disabled={createSaving}>
+              {createSaving ? (
+                <><Loader2 size={14} className="animate-spin" /> Cadastrando...</>
+              ) : (
+                <><UserPlus size={14} /> Cadastrar Usuário</>
+              )}
+            </button>
+          </>
         }
       >
-        {inviteSuccess ? (
-          /* ── Success state ── */
-          <div className="flex flex-col items-center gap-4 py-6">
-            <div
-              className="w-14 h-14 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: '#DCFCE7' }}
+        <div className="tfd-message tfd-message--info mb-4">
+          <span className="tfd-message-icon mt-0.5 shrink-0">
+            <Info size={16} />
+          </span>
+          <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
+            O usuário receberá acesso imediato ao sistema com a senha temporária definida aqui. Ele pode redefini-la no próprio perfil.
+          </p>
+        </div>
+
+        <FormField label="Nome completo" required>
+          <input
+            type="text"
+            className="tfd-input"
+            placeholder="Nome do novo usuário"
+            value={createNome}
+            onChange={(e) => setCreateNome(e.target.value)}
+          />
+        </FormField>
+
+        <FormField label="CPF" required>
+          <input
+            type="text"
+            className="tfd-input"
+            placeholder="000.000.000-00"
+            value={createCpf}
+            onChange={(e) => setCreateCpf(maskCPF(e.target.value))}
+            style={{ fontFamily: 'var(--tfd-font-mono)' }}
+          />
+        </FormField>
+
+        <FormField label="E-mail institucional" required>
+          <input
+            type="email"
+            className="tfd-input"
+            placeholder="email@exemplo.gov.br"
+            value={createEmail}
+            onChange={(e) => setCreateEmail(e.target.value)}
+          />
+        </FormField>
+
+        <FormField label="Senha temporária" required>
+          <div className="relative">
+            <input
+              type={showCreateSenha ? 'text' : 'password'}
+              className="tfd-input pr-10"
+              placeholder="Mínimo 6 caracteres"
+              value={createSenha}
+              onChange={(e) => setCreateSenha(e.target.value)}
+            />
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded"
+              style={{ color: 'var(--tfd-text-muted)' }}
+              onClick={() => setShowCreateSenha((p) => !p)}
+              tabIndex={-1}
             >
-              <CheckCircle2 size={28} style={{ color: '#16A34A' }} />
-            </div>
-            <div className="text-center">
-              <h3 className="text-base font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-                Convite enviado!
-              </h3>
-              <p className="text-sm mt-1" style={{ color: 'var(--tfd-text-secondary)' }}>
-                Um e-mail foi enviado para <strong>{inviteEmail}</strong> com um link de cadastro.
-              </p>
-              <p className="text-xs mt-2" style={{ color: 'var(--tfd-text-muted)' }}>
-                O link expira após o primeiro uso.
-              </p>
-            </div>
-
-            <hr className="tfd-divider w-full" />
-
-            <div className="w-full">
-              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--tfd-text-muted)' }}>
-                Ou copie o link manualmente:
-              </p>
-              <div
-                className="flex items-center gap-2 p-2.5 rounded-lg"
-                style={{ backgroundColor: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}
-              >
-                <Link2 size={14} style={{ color: 'var(--tfd-primary-500)' }} className="shrink-0" />
-                <p
-                  className="text-xs flex-1 min-w-0 truncate"
-                  style={{ color: 'var(--tfd-text-secondary)', fontFamily: 'var(--tfd-font-mono)' }}
-                >
-                  {inviteLink}
-                </p>
-                <button
-                  type="button"
-                  className="tfd-btn tfd-btn-ghost tfd-btn--sm shrink-0"
-                  onClick={handleCopyInviteLink}
-                >
-                  <Copy size={13} />
-                  Copiar
-                </button>
-              </div>
-            </div>
+              {showCreateSenha ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
           </div>
-        ) : (
-          /* ── Form state ── */
-          <>
-            <div className="tfd-message tfd-message--info mb-4">
-              <span className="tfd-message-icon mt-0.5 shrink-0">
-                <Info size={16} />
-              </span>
-              <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
-                O usuário receberá um e-mail com um link único para se cadastrar no sistema. O link expira após o primeiro uso.
-              </p>
-            </div>
+        </FormField>
 
-            <FormField label="Nome completo" required>
-              <input
-                type="text"
-                className="tfd-input"
-                placeholder="Nome do novo usuário"
-                value={inviteNome}
-                onChange={(e) => setInviteNome(e.target.value)}
-              />
-            </FormField>
-
-            <FormField label="E-mail" required>
-              <input
-                type="email"
-                className="tfd-input"
-                placeholder="email@exemplo.gov.br"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-              />
-            </FormField>
-
-            <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-              O e-mail deve ser institucional. O usuário usará este endereço para acessar o sistema.
-            </p>
-          </>
-        )}
+        <FormField label="Papel de acesso">
+          <select
+            className="tfd-input"
+            value={createPapelId}
+            onChange={(e) => setCreatePapelId(e.target.value)}
+          >
+            <option value="">Selecione um papel (opcional)...</option>
+            {papeis.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nome}
+              </option>
+            ))}
+          </select>
+        </FormField>
       </Drawer>
 
       {/* Loading */}

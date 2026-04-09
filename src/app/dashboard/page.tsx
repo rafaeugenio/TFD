@@ -1,54 +1,58 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import {
   FileText,
   Clock,
-  ClipboardCheck,
   CheckCircle2,
   ArrowUpRight,
-  AlertTriangle,
-  CircleAlert,
-  Info,
   Plane,
+  DollarSign,
+  Map,
+  CalendarRange,
+  Loader2,
   TrendingUp,
+  GitCompareArrows,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import StatusTag from '@/shared/components/status-tag/StatusTag';
 import { listarSolicitacoes, contarPorStatus } from '@/services/solicitacoes.service';
 import { listarViagens } from '@/services/viagens.service';
+import { listarEncerramentos } from '@/services/encerramentos.service';
+import { listarAjudasCusto } from '@/services/ajuda-custo.service';
 import { formatDate, formatCurrency } from '@/shared/pipes/formatters';
 import type { StatusSolicitacao } from '@/core/models';
 
-/* ── Alerts ──────────────────────────────────────── */
+/* ── Period filter presets ──────────────────────────── */
 
-interface Alert {
-  level: 'warning' | 'danger' | 'info';
-  message: string;
-}
+type PresetKey = '7d' | '30d' | '6m' | '1y' | 'all';
 
-const alerts: Alert[] = [
-  { level: 'warning', message: '3 solicitações com exigência pendente há mais de 5 dias' },
-  { level: 'danger', message: '2 passagens emitidas sem confirmação de embarque' },
-  { level: 'warning', message: '5 cobranças externas CNRAC sem resposta há 10+ dias' },
-  { level: 'info', message: '8 processos aguardando parecer médico' },
+const PRESETS: { key: PresetKey; label: string }[] = [
+  { key: '7d', label: '7 dias' },
+  { key: '30d', label: '30 dias' },
+  { key: '6m', label: 'Semestre' },
+  { key: '1y', label: 'Ano' },
+  { key: 'all', label: 'Todo período' },
 ];
 
-const alertIcons: Record<Alert['level'], React.ReactNode> = {
-  warning: <AlertTriangle size={15} />,
-  danger: <CircleAlert size={15} />,
-  info: <Info size={15} />,
-};
+function getPresetRange(key: PresetKey): { from: string; to: string } {
+  const to = new Date();
+  const toStr = to.toISOString().split('T')[0];
 
-const alertClasses: Record<Alert['level'], string> = {
-  warning: 'tfd-message tfd-message--warn',
-  danger: 'tfd-message tfd-message--danger',
-  info: 'tfd-message tfd-message--info',
-};
+  if (key === 'all') return { from: '', to: '' };
 
-/* ── Status map ──────────────────────────────────── */
+  const from = new Date();
+  if (key === '7d') from.setDate(from.getDate() - 7);
+  else if (key === '30d') from.setDate(from.getDate() - 30);
+  else if (key === '6m') from.setMonth(from.getMonth() - 6);
+  else if (key === '1y') from.setFullYear(from.getFullYear() - 1);
+
+  return { from: from.toISOString().split('T')[0], to: toStr };
+}
+
+/* ── Status styling ──────────────────────────────────── */
 
 const statusLabels: Record<string, { label: string; color: string }> = {
   NOVO: { label: 'Novo', color: '#475569' },
@@ -65,154 +69,327 @@ const statusLabels: Record<string, { label: string; color: string }> = {
   CANCELADO: { label: 'Cancelado', color: '#64748B' },
 };
 
+/* ── Motivo encerramento styling ─────────────────── */
+
+const motivoStyleMap: Record<string, { bg: string; color: string; label: string }> = {
+  ALTA_MEDICA: { bg: '#DCFCE7', color: '#15803D', label: 'Alta Médica' },
+  TRANSFERENCIA: { bg: '#DBEAFE', color: '#1D4ED8', label: 'Transferência' },
+  DESISTENCIA: { bg: '#FEF3C7', color: '#92400E', label: 'Desistência' },
+  ABANDONO: { bg: '#FFEDD5', color: '#C2410C', label: 'Abandono' },
+  OBITO: { bg: '#FEE2E2', color: '#B91C1C', label: 'Óbito' },
+};
+
 /* ── Component ───────────────────────────────────── */
 
 export default function DashboardPage() {
-  const [recentSolicitacoes, setRecentSolicitacoes] = useState<any[]>([]);
-  const [statusCounts, setStatusCounts] = useState<
-    { status: string; label: string; count: number; color: string }[]
-  >([]);
-  const [summaryCards, setSummaryCards] = useState({
-    total: 0,
-    emAndamento: 0,
-    aguardandoRegulacao: 0,
-    concluidos: 0,
-  });
-  const [viagensSummary, setViagensSummary] = useState({
-    emitidas: 0,
-    confirmadas: 0,
-    noshow: 0,
-    remarcadas: 0,
-    valorTotal: 0,
-  });
-  const [loading, setLoading] = useState(true);
+  /* ── Period filter state ── */
+  const [activePreset, setActivePreset] = useState<PresetKey>('30d');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   useEffect(() => {
-    async function load() {
-      setLoading(true);
-      const { data: recentData } = await listarSolicitacoes({ page: 1, pageSize: 6 });
-      if (recentData) setRecentSolicitacoes(recentData);
-
-      const { data: countsData } = await contarPorStatus();
-      if (countsData) {
-        const total = Object.values(countsData).reduce((s, v) => s + v, 0);
-        const emAndamento = [
-          'EM_ANALISE', 'AGUARDANDO_REGULACAO', 'AGUARDANDO_AGENDAMENTO',
-          'AGUARDANDO_EMISSAO', 'EMITIDA', 'EM_VIAGEM', 'EM_PERMANENCIA',
-        ].reduce((s, k) => s + (countsData[k] || 0), 0);
-
-        setSummaryCards({
-          total,
-          emAndamento,
-          aguardandoRegulacao: countsData['AGUARDANDO_REGULACAO'] || 0,
-          concluidos: countsData['CONCLUIDO'] || 0,
-        });
-
-        setStatusCounts(
-          Object.entries(statusLabels).map(([status, meta]) => ({
-            status,
-            label: meta.label,
-            count: countsData[status] || 0,
-            color: meta.color,
-          })),
-        );
-      }
-
-      const { data: viagensData } = await listarViagens({ pageSize: 100 });
-      if (viagensData) {
-        setViagensSummary({
-          emitidas: viagensData.filter((v: any) => v.situacao === 'EMITIDA').length,
-          confirmadas: viagensData.filter((v: any) => v.situacao === 'UTILIZADA').length,
-          noshow: viagensData.filter((v: any) => v.situacao === 'NO_SHOW').length,
-          remarcadas: viagensData.filter((v: any) => v.situacao === 'REMARCADA').length,
-          valorTotal: viagensData
-            .filter((v: any) => v.valor != null)
-            .reduce((s: number, v: any) => s + (v.valor ?? 0), 0),
-        });
-      }
-
-      setLoading(false);
-    }
-    load();
+    const range = getPresetRange('30d');
+    setDateFrom(range.from);
+    setDateTo(range.to);
   }, []);
 
-  const maxCount = Math.max(...statusCounts.map((s) => s.count), 1);
+  function handlePreset(key: PresetKey) {
+    setActivePreset(key);
+    const range = getPresetRange(key);
+    setDateFrom(range.from);
+    setDateTo(range.to);
+  }
 
+  function handleDateChange(field: 'from' | 'to', value: string) {
+    setActivePreset('all');
+    if (field === 'from') setDateFrom(value);
+    else setDateTo(value);
+  }
+
+  /* ── Data state ── */
+  const [recentSolicitacoes, setRecentSolicitacoes] = useState<any[]>([]);
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const [viagensData, setViagensData] = useState<any[]>([]);
+  const [encerramentosData, setEncerramentosData] = useState<any[]>([]);
+  const [ajudasData, setAjudasData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+
+    const [recentRes, countsRes, viagensRes, encRes, ajudasRes] = await Promise.all([
+      listarSolicitacoes({ page: 1, pageSize: 6 }),
+      contarPorStatus(),
+      listarViagens({ pageSize: 500 }),
+      listarEncerramentos({ pageSize: 500 }),
+      listarAjudasCusto({ pageSize: 500 }),
+    ]);
+
+    if (recentRes.data) setRecentSolicitacoes(recentRes.data);
+    if (countsRes.data) setStatusCounts(countsRes.data);
+    if (viagensRes.data) setViagensData(viagensRes.data);
+    if (encRes.data) setEncerramentosData(encRes.data);
+    if (ajudasRes.data) setAjudasData(ajudasRes.data);
+
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  /* ── Computed: filter by period ── */
+  function inPeriod(dateStr: string | null | undefined): boolean {
+    if (!dateStr) return true;
+    if (!dateFrom && !dateTo) return true;
+    const d = dateStr.split('T')[0];
+    if (dateFrom && d < dateFrom) return false;
+    if (dateTo && d > dateTo) return false;
+    return true;
+  }
+
+  const filteredViagens = useMemo(
+    () => viagensData.filter((v: any) => inPeriod(v.created_at)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [viagensData, dateFrom, dateTo],
+  );
+
+  const filteredEncerramentos = useMemo(
+    () => encerramentosData.filter((e: any) => inPeriod(e.created_at)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [encerramentosData, dateFrom, dateTo],
+  );
+
+  const filteredAjudas = useMemo(
+    () => ajudasData.filter((a: any) => inPeriod(a.created_at)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ajudasData, dateFrom, dateTo],
+  );
+
+  /* ── Computed: KPIs ── */
+  const totalSolicitacoes = Object.values(statusCounts).reduce((s, v) => s + v, 0);
+
+  const emAndamento = [
+    'EM_ANALISE', 'AGUARDANDO_REGULACAO', 'AGUARDANDO_AGENDAMENTO',
+    'AGUARDANDO_EMISSAO', 'EMITIDA', 'EM_VIAGEM', 'EM_PERMANENCIA',
+  ].reduce((s, k) => s + (statusCounts[k] || 0), 0);
+
+  const concluidos = (statusCounts['CONCLUIDO'] || 0);
+  const indeferidos = (statusCounts['INDEFERIDO'] || 0);
+  const deferidos = totalSolicitacoes - indeferidos - (statusCounts['CANCELADO'] || 0);
+  const taxaAprovacao = totalSolicitacoes > 0
+    ? Math.round((deferidos / (deferidos + indeferidos)) * 100)
+    : 0;
+
+  const passagensEmitidas = filteredViagens.length;
+  const valorPassagens = filteredViagens
+    .filter((v: any) => v.valor != null)
+    .reduce((s: number, v: any) => s + (v.valor ?? 0), 0);
+
+  const totalDiarias = filteredAjudas
+    .filter((a: any) => a.valor_total != null)
+    .reduce((s: number, a: any) => s + (a.valor_total ?? 0), 0);
+
+  const totalEncerramentos = filteredEncerramentos.length;
+
+  /* ── Computed: Status bars ── */
+  const statusBars = useMemo(() => {
+    return Object.entries(statusLabels).map(([status, meta]) => ({
+      status,
+      label: meta.label,
+      count: statusCounts[status] || 0,
+      color: meta.color,
+    }));
+  }, [statusCounts]);
+  const maxStatusCount = Math.max(...statusBars.map((s) => s.count), 1);
+
+  /* ── Computed: Encerramentos por motivo ── */
+  const encerramentoPorMotivo = useMemo(() => {
+    const counts: Record<string, number> = {};
+    filteredEncerramentos.forEach((e: any) => {
+      const m = e.motivo || 'ALTA_MEDICA';
+      counts[m] = (counts[m] || 0) + 1;
+    });
+    return Object.entries(motivoStyleMap).map(([key, style]) => ({
+      motivo: key,
+      ...style,
+      count: counts[key] || 0,
+    }));
+  }, [filteredEncerramentos]);
+  const maxEncCount = Math.max(...encerramentoPorMotivo.map((e) => e.count), 1);
+
+  /* ── Computed: Viagens por situação ── */
+  const viagensPorSituacao = useMemo(() => {
+    const emitidas = filteredViagens.filter((v: any) => v.situacao === 'EMITIDA').length;
+    const confirmadas = filteredViagens.filter((v: any) => v.situacao === 'UTILIZADA').length;
+    const remarcadas = filteredViagens.filter((v: any) => v.situacao === 'REMARCADA').length;
+    const canceladas = filteredViagens.filter((v: any) => v.situacao === 'CANCELADA').length;
+    return { emitidas, confirmadas, remarcadas, canceladas };
+  }, [filteredViagens]);
+
+  /* ── Computed: Top regionais (from solicitações recentes — simplified) ── */
+  const topRegionais = useMemo(() => {
+    const counts: Record<string, number> = {};
+    recentSolicitacoes.forEach((sol: any) => {
+      const mun = sol.pacientes?.municipio_pac?.nome || sol.municipios?.nome || '';
+      if (mun) counts[mun] = (counts[mun] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([name, count]) => ({ name, count }));
+  }, [recentSolicitacoes]);
+
+  /* ── Render ── */
   return (
     <>
       <PageHeader title="Painel" subtitle="Visão geral do TFD — SES Maranhão" />
 
-      {/* ═══ KPI Cards ═══ */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8 tfd-stagger">
-        {[
-          {
-            label: 'Total Solicitações',
-            value: summaryCards.total,
-            icon: <FileText size={22} />,
-            iconClass: 'tfd-kpi-icon--blue',
-            change: '+12 este mês',
-            changeDir: 'up' as const,
-          },
-          {
-            label: 'Em Andamento',
-            value: summaryCards.emAndamento,
-            icon: <Clock size={22} />,
-            iconClass: 'tfd-kpi-icon--amber',
-            sub: 'processos ativos',
-          },
-          {
-            label: 'Ag. Regulação',
-            value: summaryCards.aguardandoRegulacao,
-            icon: <ClipboardCheck size={22} />,
-            iconClass: 'tfd-kpi-icon--violet',
-            sub: '5 urgentes',
-            subDanger: true,
-          },
-          {
-            label: 'Concluídos',
-            value: summaryCards.concluidos,
-            icon: <CheckCircle2 size={22} />,
-            iconClass: 'tfd-kpi-icon--green',
-            change: '+8% vs mês anterior',
-            changeDir: 'up' as const,
-          },
-        ].map((card) => (
-          <div key={card.label} className="tfd-kpi">
-            <div>
-              <p className="tfd-kpi-label">{card.label}</p>
-              <p className="tfd-kpi-value tfd-number">
-                {loading ? '—' : card.value}
-              </p>
-              {card.change && (
-                <p className={`tfd-kpi-change tfd-kpi-change--${card.changeDir} mt-2`}>
-                  {card.changeDir === 'up' ? <ArrowUpRight size={11} /> : null}
-                  {card.change}
-                </p>
-              )}
-              {card.sub && (
-                <p className={`tfd-kpi-sub ${card.subDanger ? '!text-[#EF4444]' : ''}`}>
-                  {card.sub}
-                </p>
-              )}
-            </div>
-            <div className={`tfd-kpi-icon ${card.iconClass}`}>
-              {card.icon}
-            </div>
+      {/* ═══════════════════════════════════════════════
+          FILTRO DE PERÍODO
+          ═══════════════════════════════════════════════ */}
+      <div className="tfd-card mb-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <CalendarRange size={16} style={{ color: 'var(--tfd-text-muted)' }} />
+          <span className="text-xs font-medium" style={{ color: 'var(--tfd-text-secondary)' }}>
+            Período:
+          </span>
+
+          <div className="flex items-center gap-1">
+            {PRESETS.map((p) => (
+              <button
+                key={p.key}
+                onClick={() => handlePreset(p.key)}
+                className="tfd-btn tfd-btn--sm"
+                style={{
+                  backgroundColor: activePreset === p.key ? 'var(--tfd-primary-50)' : 'transparent',
+                  color: activePreset === p.key ? 'var(--tfd-primary-700)' : 'var(--tfd-text-secondary)',
+                  borderColor: activePreset === p.key ? 'var(--tfd-primary-200)' : 'transparent',
+                  fontWeight: activePreset === p.key ? 600 : 400,
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
-        ))}
+
+          <div className="h-4 w-px mx-1" style={{ background: 'var(--tfd-surface-border)' }} />
+
+          <div className="flex items-center gap-2">
+            <label className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>De</label>
+            <input
+              type="date"
+              className="tfd-input tfd-input--sm"
+              style={{ width: '140px' }}
+              value={dateFrom}
+              onChange={(e) => handleDateChange('from', e.target.value)}
+            />
+            <label className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>até</label>
+            <input
+              type="date"
+              className="tfd-input tfd-input--sm"
+              style={{ width: '140px' }}
+              value={dateTo}
+              onChange={(e) => handleDateChange('to', e.target.value)}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* ═══ Recent + Status ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-8 tfd-stagger">
+      {/* ═══════════════════════════════════════════════
+          KPI CARDS — 6 indicadores
+          ═══════════════════════════════════════════════ */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8 tfd-stagger">
+        {/* 1. Total Solicitações */}
+        <div className="tfd-kpi">
+          <div>
+            <p className="tfd-kpi-label">Total Solicitações</p>
+            <p className="tfd-kpi-value tfd-number">{loading ? '—' : totalSolicitacoes}</p>
+            <p className="tfd-kpi-change tfd-kpi-change--up mt-2">
+              <ArrowUpRight size={11} />
+              no período
+            </p>
+          </div>
+          <div className="tfd-kpi-icon tfd-kpi-icon--blue">
+            <FileText size={22} />
+          </div>
+        </div>
+
+        {/* 2. Em Andamento */}
+        <div className="tfd-kpi">
+          <div>
+            <p className="tfd-kpi-label">Em Andamento</p>
+            <p className="tfd-kpi-value tfd-number">{loading ? '—' : emAndamento}</p>
+            <p className="tfd-kpi-sub">processos ativos</p>
+          </div>
+          <div className="tfd-kpi-icon tfd-kpi-icon--amber">
+            <Clock size={22} />
+          </div>
+        </div>
+
+        {/* 3. Concluídos / Encerrados */}
+        <div className="tfd-kpi">
+          <div>
+            <p className="tfd-kpi-label">Concluídos</p>
+            <p className="tfd-kpi-value tfd-number">{loading ? '—' : concluidos + totalEncerramentos}</p>
+            <p className="tfd-kpi-sub">{totalEncerramentos} encerramento{totalEncerramentos !== 1 ? 's' : ''}</p>
+          </div>
+          <div className="tfd-kpi-icon tfd-kpi-icon--green">
+            <CheckCircle2 size={22} />
+          </div>
+        </div>
+
+        {/* 4. Taxa de Aprovação */}
+        <div className="tfd-kpi">
+          <div>
+            <p className="tfd-kpi-label">Taxa de Aprovação</p>
+            <p className="tfd-kpi-value tfd-number">{loading ? '—' : `${taxaAprovacao}%`}</p>
+            <p className="tfd-kpi-sub">{indeferidos} indeferido{indeferidos !== 1 ? 's' : ''}</p>
+          </div>
+          <div className="tfd-kpi-icon tfd-kpi-icon--violet">
+            <GitCompareArrows size={22} />
+          </div>
+        </div>
+
+        {/* 5. Passagens Emitidas */}
+        <div className="tfd-kpi">
+          <div>
+            <p className="tfd-kpi-label">Passagens Emitidas</p>
+            <p className="tfd-kpi-value tfd-number">{loading ? '—' : passagensEmitidas}</p>
+            <p className="tfd-kpi-sub">{loading ? '' : formatCurrency(valorPassagens)}</p>
+          </div>
+          <div className="tfd-kpi-icon tfd-kpi-icon--blue">
+            <Plane size={22} />
+          </div>
+        </div>
+
+        {/* 6. Diárias (R$) */}
+        <div className="tfd-kpi">
+          <div>
+            <p className="tfd-kpi-label">Diárias (Ajuda de Custo)</p>
+            <p className="tfd-kpi-value tfd-number" style={{ fontSize: '1.5rem' }}>
+              {loading ? '—' : formatCurrency(totalDiarias)}
+            </p>
+            <p className="tfd-kpi-sub">{filteredAjudas.length} registro{filteredAjudas.length !== 1 ? 's' : ''}</p>
+          </div>
+          <div className="tfd-kpi-icon tfd-kpi-icon--green">
+            <DollarSign size={22} />
+          </div>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════
+          LINHA 2: Solicitações Recentes + Por Status
+          ═══════════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6 tfd-stagger">
         {/* Solicitações Recentes */}
         <div className="tfd-card lg:col-span-3">
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-[15px] font-semibold text-[#0F172A]" style={{ letterSpacing: '-0.02em' }}>
+            <h2 className="text-[15px] font-semibold" style={{ color: 'var(--tfd-text-primary)', letterSpacing: '-0.02em' }}>
               Solicitações Recentes
             </h2>
             <Link
               href="/solicitacoes"
-              className="text-[12px] font-medium text-[#2563EB] hover:text-[#1D4ED8] transition-colors duration-150"
+              className="text-[12px] font-medium hover:opacity-80 transition-opacity duration-150"
+              style={{ color: 'var(--tfd-primary-500)' }}
             >
               Ver todas →
             </Link>
@@ -232,13 +409,13 @@ export default function DashboardPage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-10 text-[#94A3B8]" style={{ paddingLeft: '1.5rem' }}>
-                      Carregando...
+                    <td colSpan={5} className="text-center py-10">
+                      <Loader2 size={24} className="animate-spin mx-auto" style={{ color: 'var(--tfd-primary-500)' }} />
                     </td>
                   </tr>
                 ) : recentSolicitacoes.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-10 text-[#94A3B8]" style={{ paddingLeft: '1.5rem' }}>
+                    <td colSpan={5} className="text-center py-10" style={{ color: 'var(--tfd-text-muted)' }}>
                       Nenhuma solicitação encontrada.
                     </td>
                   </tr>
@@ -247,8 +424,9 @@ export default function DashboardPage() {
                     <tr key={sol.id}>
                       <td style={{ paddingLeft: '1.5rem' }}>
                         <Link
-                          href={`/solicitacoes/${sol.id}`}
-                          className="font-medium text-[#2563EB] hover:text-[#1D4ED8] transition-colors duration-150"
+                          href={`/solicitacoes/${sol.id}?from=dashboard`}
+                          className="font-medium hover:opacity-80 transition-opacity duration-150"
+                          style={{ color: 'var(--tfd-primary-500)' }}
                         >
                           {sol.numero_processo}
                         </Link>
@@ -259,11 +437,11 @@ export default function DashboardPage() {
                       <td>
                         <StatusTag status={sol.status as StatusSolicitacao} />
                       </td>
-                      <td className="hidden md:table-cell whitespace-nowrap text-[#64748B]">
+                      <td className="hidden md:table-cell whitespace-nowrap" style={{ color: 'var(--tfd-text-muted)' }}>
                         {sol.created_at ? formatDate(sol.created_at) : '—'}
                       </td>
-                      <td className="hidden lg:table-cell text-[#64748B]" style={{ paddingRight: '1.5rem' }}>
-                        {sol.pacientes?.municipio || (sol as any).municipios?.nome || '—'}
+                      <td className="hidden lg:table-cell" style={{ color: 'var(--tfd-text-muted)', paddingRight: '1.5rem' }}>
+                        {sol.pacientes?.municipio_pac?.nome || sol.municipios?.nome || '—'}
                       </td>
                     </tr>
                   ))
@@ -273,33 +451,33 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Por Status */}
+        {/* Distribuição por Status */}
         <div className="tfd-card lg:col-span-2">
-          <h2 className="text-[15px] font-semibold text-[#0F172A] mb-5" style={{ letterSpacing: '-0.02em' }}>
-            Por Status
+          <h2 className="text-[15px] font-semibold mb-5" style={{ color: 'var(--tfd-text-primary)', letterSpacing: '-0.02em' }}>
+            Distribuição por Status
           </h2>
 
           <div className="space-y-3">
-            {statusCounts.map((item) => (
+            {statusBars.map((item) => (
               <div key={item.status} className="flex items-center gap-2.5">
                 <span
                   className="w-[6px] h-[6px] rounded-full shrink-0"
                   style={{ background: item.color }}
                 />
-                <span className="text-[11px] w-24 shrink-0 truncate text-[#64748B]">
+                <span className="text-[11px] w-24 shrink-0 truncate" style={{ color: 'var(--tfd-text-muted)' }}>
                   {item.label}
                 </span>
-                <div className="flex-1 h-[3px] rounded-full bg-[#F1F5F9] overflow-hidden">
+                <div className="flex-1 h-[3px] rounded-full overflow-hidden" style={{ background: 'var(--tfd-surface-100)' }}>
                   <div
                     className="h-full rounded-full"
                     style={{
-                      width: `${(item.count / maxCount) * 100}%`,
+                      width: `${(item.count / maxStatusCount) * 100}%`,
                       background: item.color,
                       transition: 'width 800ms var(--tfd-ease)',
                     }}
                   />
                 </div>
-                <span className="text-[11px] font-semibold w-5 text-right text-[#0F172A]">
+                <span className="text-[11px] font-semibold w-5 text-right" style={{ color: 'var(--tfd-text-primary)' }}>
                   {item.count}
                 </span>
               </div>
@@ -308,60 +486,203 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ═══ Alerts + Viagens ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 tfd-stagger">
-        {/* Alertas */}
+      {/* ═══════════════════════════════════════════════
+          LINHA 3: Municípios de Origem + Encerramentos
+          ═══════════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6 tfd-stagger">
+        {/* Municípios de Origem (Top 5) */}
         <div className="tfd-card lg:col-span-3">
-          <h2 className="text-[15px] font-semibold text-[#0F172A] mb-5" style={{ letterSpacing: '-0.02em' }}>
-            Alertas e Pendências
-          </h2>
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-[15px] font-semibold" style={{ color: 'var(--tfd-text-primary)', letterSpacing: '-0.02em' }}>
+              <Map size={16} className="inline mr-1.5 -mt-0.5" style={{ color: 'var(--tfd-primary-500)' }} />
+              Municípios de Origem
+            </h2>
+            <Link
+              href="/relatorios"
+              className="text-[12px] font-medium hover:opacity-80 transition-opacity duration-150"
+              style={{ color: 'var(--tfd-primary-500)' }}
+            >
+              Relatório completo →
+            </Link>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 size={24} className="animate-spin" style={{ color: 'var(--tfd-primary-500)' }} />
+            </div>
+          ) : topRegionais.length === 0 ? (
+            <p className="text-sm py-6 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
+              Sem dados de município no período.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {topRegionais.map((item, idx) => {
+                const maxRegCount = topRegionais[0]?.count || 1;
+                const pct = (item.count / maxRegCount) * 100;
+                return (
+                  <div key={item.name} className="flex items-center gap-3">
+                    <span
+                      className="text-[11px] font-bold w-5 h-5 rounded flex items-center justify-center shrink-0"
+                      style={{
+                        background: idx === 0 ? 'var(--tfd-primary-50)' : 'var(--tfd-surface-100)',
+                        color: idx === 0 ? 'var(--tfd-primary-600)' : 'var(--tfd-text-muted)',
+                      }}
+                    >
+                      {idx + 1}
+                    </span>
+                    <span className="text-[13px] w-36 shrink-0 truncate" style={{ color: 'var(--tfd-text-secondary)' }}>
+                      {item.name}
+                    </span>
+                    <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'var(--tfd-surface-100)' }}>
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${pct}%`,
+                          background: idx === 0 ? 'var(--tfd-primary-500)' : 'var(--tfd-primary-300)',
+                          transition: 'width 800ms var(--tfd-ease)',
+                        }}
+                      />
+                    </div>
+                    <span className="text-[13px] font-semibold w-8 text-right" style={{ color: 'var(--tfd-text-primary)' }}>
+                      {item.count}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Encerramentos por Motivo */}
+        <div className="tfd-card lg:col-span-2">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-[15px] font-semibold" style={{ color: 'var(--tfd-text-primary)', letterSpacing: '-0.02em' }}>
+              Encerramentos
+            </h2>
+            <span
+              className="text-xs px-2 py-0.5 rounded-full font-semibold"
+              style={{ background: 'var(--tfd-surface-100)', color: 'var(--tfd-text-muted)' }}
+            >
+              {totalEncerramentos}
+            </span>
+          </div>
 
           <div className="space-y-2.5">
-            {alerts.map((alert, i) => (
-              <div key={i} className={alertClasses[alert.level]}>
-                <span className="tfd-message-icon mt-0.5">{alertIcons[alert.level]}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] text-[#0F172A]">{alert.message}</p>
-                  <button className="text-[11px] font-medium mt-1 opacity-70 hover:opacity-100 transition-opacity duration-150">
-                    Ver detalhes →
-                  </button>
+            {encerramentoPorMotivo.map((item) => (
+              <div key={item.motivo} className="flex items-center gap-2.5">
+                <span
+                  className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 w-24 text-center truncate"
+                  style={{ background: item.bg, color: item.color }}
+                >
+                  {item.label}
+                </span>
+                <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'var(--tfd-surface-100)' }}>
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${maxEncCount > 0 ? (item.count / maxEncCount) * 100 : 0}%`,
+                      background: item.color,
+                      opacity: 0.7,
+                      transition: 'width 800ms var(--tfd-ease)',
+                    }}
+                  />
                 </div>
+                <span className="text-[13px] font-semibold w-5 text-right" style={{ color: 'var(--tfd-text-primary)' }}>
+                  {item.count}
+                </span>
               </div>
             ))}
           </div>
         </div>
+      </div>
 
-        {/* Viagens do Mês */}
+      {/* ═══════════════════════════════════════════════
+          LINHA 4: Viagens + Resumo Financeiro
+          ═══════════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 tfd-stagger">
+        {/* Viagens */}
+        <div className="tfd-card lg:col-span-3">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-[15px] font-semibold" style={{ color: 'var(--tfd-text-primary)', letterSpacing: '-0.02em' }}>
+              <Plane size={16} className="inline mr-1.5 -mt-0.5" style={{ color: 'var(--tfd-primary-500)' }} />
+              Viagens no Período
+            </h2>
+            <Link
+              href="/viagens"
+              className="text-[12px] font-medium hover:opacity-80 transition-opacity duration-150"
+              style={{ color: 'var(--tfd-primary-500)' }}
+            >
+              Ver viagens →
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            {[
+              { label: 'Emitidas', value: viagensPorSituacao.emitidas, color: '#2563EB', bg: '#EFF6FF' },
+              { label: 'Confirmadas', value: viagensPorSituacao.confirmadas, color: '#16A34A', bg: '#F0FDF4' },
+              { label: 'Remarcadas', value: viagensPorSituacao.remarcadas, color: '#D97706', bg: '#FFFBEB' },
+              { label: 'Canceladas', value: viagensPorSituacao.canceladas, color: '#DC2626', bg: '#FEF2F2' },
+            ].map((stat) => (
+              <div
+                key={stat.label}
+                className="rounded-lg p-3 text-center"
+                style={{ background: stat.bg }}
+              >
+                <p className="text-2xl font-bold tfd-number" style={{ color: stat.color, letterSpacing: '-0.02em' }}>
+                  {loading ? '—' : stat.value}
+                </p>
+                <p className="text-[11px] font-medium mt-0.5" style={{ color: stat.color, opacity: 0.8 }}>
+                  {stat.label}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: '#EFF6FF' }}>
+            <span className="text-[13px] font-medium" style={{ color: '#1E40AF' }}>Valor total em passagens</span>
+            <span className="text-[17px] font-bold tfd-number" style={{ color: '#1E40AF', letterSpacing: '-0.03em' }}>
+              {loading ? '—' : formatCurrency(valorPassagens)}
+            </span>
+          </div>
+        </div>
+
+        {/* Resumo Financeiro */}
         <div className="tfd-card lg:col-span-2">
-          <h2 className="text-[15px] font-semibold text-[#0F172A] mb-5" style={{ letterSpacing: '-0.02em' }}>
-            Viagens do Mês
+          <h2 className="text-[15px] font-semibold mb-5" style={{ color: 'var(--tfd-text-primary)', letterSpacing: '-0.02em' }}>
+            <DollarSign size={16} className="inline mr-1.5 -mt-0.5" style={{ color: '#16A34A' }} />
+            Resumo Financeiro
           </h2>
 
           <div className="space-y-0">
             {[
-              { label: 'Passagens emitidas', value: viagensSummary.emitidas, icon: <Plane size={15} />, color: '#2563EB' },
-              { label: 'Embarques confirmados', value: viagensSummary.confirmadas, icon: <CheckCircle2 size={15} />, color: '#10B981' },
-              { label: 'NO-SHOW', value: viagensSummary.noshow, icon: <CircleAlert size={15} />, color: '#EF4444' },
-              { label: 'Remarcações', value: viagensSummary.remarcadas, icon: <Clock size={15} />, color: '#F59E0B' },
-            ].map((stat) => (
+              { label: 'Passagens emitidas', value: formatCurrency(valorPassagens), icon: <Plane size={15} />, color: '#2563EB' },
+              { label: 'Ajudas de custo', value: formatCurrency(totalDiarias), icon: <DollarSign size={15} />, color: '#16A34A' },
+            ].map((item) => (
               <div
-                key={stat.label}
-                className="flex items-center justify-between py-3 border-b border-[#F1F5F9] last:border-b-0"
+                key={item.label}
+                className="flex items-center justify-between py-3"
+                style={{ borderBottom: '1px solid var(--tfd-surface-100)' }}
               >
                 <div className="flex items-center gap-2.5">
-                  <span style={{ color: stat.color }}>{stat.icon}</span>
-                  <span className="text-[13px] text-[#64748B]">{stat.label}</span>
+                  <span style={{ color: item.color }}>{item.icon}</span>
+                  <span className="text-[13px]" style={{ color: 'var(--tfd-text-secondary)' }}>{item.label}</span>
                 </div>
-                <span className="text-[13px] font-semibold text-[#0F172A] tfd-number">
-                  {loading ? '—' : stat.value}
+                <span className="text-[13px] font-semibold tfd-number" style={{ color: 'var(--tfd-text-primary)' }}>
+                  {loading ? '—' : item.value}
                 </span>
               </div>
             ))}
+          </div>
 
-            <div className="flex items-center justify-between mt-4 p-3 rounded-xl bg-[#EFF6FF]">
-              <span className="text-[13px] font-medium text-[#1E40AF]">Valor total</span>
-              <span className="text-[17px] font-bold text-[#1E40AF] tfd-number" style={{ letterSpacing: '-0.03em' }}>
-                {loading ? '—' : formatCurrency(viagensSummary.valorTotal)}
+          <div className="mt-4 p-4 rounded-xl" style={{ background: '#F0FDF4' }}>
+            <p className="text-[11px] font-medium mb-1" style={{ color: '#15803D', opacity: 0.8 }}>Custo total no período</p>
+            <p className="text-2xl font-bold tfd-number" style={{ color: '#15803D', letterSpacing: '-0.03em' }}>
+              {loading ? '—' : formatCurrency(valorPassagens + totalDiarias)}
+            </p>
+            <div className="flex items-center gap-1 mt-1">
+              <TrendingUp size={12} style={{ color: '#16A34A' }} />
+              <span className="text-[11px] font-medium" style={{ color: '#16A34A' }}>
+                Passagens + Ajudas de Custo
               </span>
             </div>
           </div>

@@ -1613,9 +1613,9 @@ export type Database = {
 
       // ── RBAC (Migration 004) ──────────────────────────────
       telas_sistema: {
-        Row: { id: string; nome: string; modulo: string; rota: string; ordem: number };
-        Insert: { id: string; nome: string; modulo: string; rota: string; ordem?: number };
-        Update: { id?: string; nome?: string; modulo?: string; rota?: string; ordem?: number };
+        Row: { id: string; nome: string; modulo: string; rota: string; ordem: number; acoes_disponiveis: string[] };
+        Insert: { id: string; nome: string; modulo: string; rota: string; ordem?: number; acoes_disponiveis?: string[] };
+        Update: { id?: string; nome?: string; modulo?: string; rota?: string; ordem?: number; acoes_disponiveis?: string[] };
         Relationships: [];
       };
 
@@ -1626,10 +1626,10 @@ export type Database = {
         Relationships: [];
       };
 
-      papel_telas: {
-        Row: { papel_id: string; tela_id: string };
-        Insert: { papel_id: string; tela_id: string };
-        Update: { papel_id?: string; tela_id?: string };
+      papel_tela_acoes: {
+        Row: { papel_id: string; tela_id: string; acao: string };
+        Insert: { papel_id: string; tela_id: string; acao: string };
+        Update: { papel_id?: string; tela_id?: string; acao?: string };
         Relationships: [];
       };
 

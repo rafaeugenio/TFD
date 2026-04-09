@@ -63,15 +63,22 @@ export async function listarPeriodosPorSolicitacao(solicitacaoId: string) {
 
 /**
  * Lists solicitações eligible for ajuda de custo.
- * Includes EM_PAGAMENTO (first time) and EM_PERMANENCIA (additional periods).
+ * Includes EM_PAGAMENTO, EM_VIAGEM and EM_PERMANENCIA.
  */
-export async function listarSolicitacoesParaAjudaCusto() {
+export async function listarSolicitacoesParaAjudaCusto(filters?: { includeIds?: string[] }) {
   const supabase = getSupabase();
-  const { data: solicitacoes, error } = await supabase
+  const ELIGIBLE = ['EM_PAGAMENTO', 'EM_VIAGEM', 'EM_PERMANENCIA'];
+  let query = supabase
     .from('solicitacoes')
-    .select('id, numero_processo, status, created_at, pacientes(nome_completo)')
-    .in('status', ['EM_PAGAMENTO', 'EM_PERMANENCIA'])
-    .order('created_at', { ascending: true });
+    .select('id, numero_processo, status, created_at, pacientes(nome_completo)');
+
+  if (filters?.includeIds && filters.includeIds.length > 0) {
+    query = query.or(`status.in.(${ELIGIBLE.join(',')}),id.in.(${filters.includeIds.join(',')})`);
+  } else {
+    query = query.in('status', ELIGIBLE);
+  }
+
+  const { data: solicitacoes, error } = await query.order('created_at', { ascending: true });
   if (error || !solicitacoes) return { data: [], error };
 
   const { data: existentes } = await supabase.from('ajudas_custo').select('solicitacao_id');

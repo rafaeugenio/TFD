@@ -39,7 +39,6 @@ import {
   criarViagem,
   atualizarViagem,
   listarSolicitacoesAguardandoEmissao,
-  marcarComoEmitida,
   confirmarEmbarque,
   registrarNoShow,
   cancelarViagem,
@@ -53,6 +52,7 @@ import DevolverModal from '@/shared/components/devolver-modal/DevolverModal';
 import { useDevolucoesPendentes } from '@/shared/hooks/useDevolucoesPendentes';
 import { slaBadge } from '@/shared/utils/sla';
 import { useDevolucoeRecebidas } from '@/shared/hooks/useDevolucoeRecebidas';
+import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
 import SortableHeader from '@/shared/components/table/SortableHeader';
 import { useTableControls } from '@/shared/hooks/useTableControls';
 
@@ -111,6 +111,7 @@ type InlineConfirmType = 'embarque' | 'nao_compareceu' | 'cancelar' | null;
 
 export default function ViagensPage() {
   const toast = useToast();
+  const { user: currentUser } = useCurrentUser();
   const [pageTab, setPageTab] = useState<PageTab>('disponiveis');
 
   /* ---- Drawer state ---- */
@@ -360,6 +361,8 @@ export default function ViagensPage() {
       const idaPayload = {
         solicitacao_id: solicitacaoId,
         tipo: 'IDA' as const,
+        situacao: 'EMITIDA' as const,
+        emitido_em: new Date().toISOString(),
         modal: (idaModalTransporte as any) || 'AEREO',
         origem_cidade: idaRota!.cidade_origem, origem_uf: idaRota!.uf_origem,
         destino_cidade: idaRota!.cidade_destino, destino_uf: idaRota!.uf_destino,
@@ -382,6 +385,8 @@ export default function ViagensPage() {
       const voltaPayload = {
         solicitacao_id: solicitacaoId,
         tipo: 'RETORNO' as const,
+        situacao: 'EMITIDA' as const,
+        emitido_em: new Date().toISOString(),
         modal: (voltaModalTransporte as any) || 'AEREO',
         origem_cidade: voltaRota!.cidade_origem, origem_uf: voltaRota!.uf_origem,
         destino_cidade: voltaRota!.cidade_destino, destino_uf: voltaRota!.uf_destino,
@@ -428,29 +433,16 @@ export default function ViagensPage() {
   }
 
   /* ---- Action handlers (inline in drawer, no modal) ---- */
-  async function handleMarcarEmitida() {
-    if (!viewViagem) return;
-    setSubmitting(true);
-    const { error } = await marcarComoEmitida(viewViagem.id);
-    if (error) { toast.error('Erro', (error as any).message); }
-    else {
-      toast.success('Emitida!', 'Passagem marcada como emitida.');
-      handleCloseDrawer();
-      refreshAll();
-    }
-    setSubmitting(false);
-  }
-
   async function handleInlineConfirm() {
     if (!viewViagem || !inlineConfirm) return;
     setSubmitting(true);
     try {
       if (inlineConfirm === 'embarque') {
-        const { error } = await confirmarEmbarque(viewViagem.id, 'sistema');
+        const { error } = await confirmarEmbarque(viewViagem.id, currentUser?.id);
         if (error) { toast.error('Erro', (error as any).message); }
         else { toast.success('Embarque confirmado!', 'Paciente embarcou. Solicitação avançada para Em Viagem.'); }
       } else if (inlineConfirm === 'nao_compareceu') {
-        const { error } = await registrarNoShow(viewViagem.id, 'sistema');
+        const { error } = await registrarNoShow(viewViagem.id, currentUser?.id);
         if (error) { toast.error('Erro', (error as any).message); }
         else { toast.success('Não compareceu', 'Paciente não compareceu ao embarque.'); }
       } else if (inlineConfirm === 'cancelar') {
@@ -766,23 +758,7 @@ export default function ViagensPage() {
     if (!viewViagem || inlineConfirm || remarcarOpen) return null;
     const sit = viewViagem.situacao as SituacaoViagem;
 
-    if (sit === 'AGUARDANDO_EMISSAO') {
-      return (
-        <>
-          <button className="tfd-btn tfd-btn-primary" onClick={handleMarcarEmitida} disabled={submitting}>
-            {submitting ? <Loader2 size={14} className="animate-spin" /> : <><Ticket size={14} /> Marcar Emitida</>}
-          </button>
-          <button className="tfd-btn" style={{ background: '#4338CA', color: 'white' }} onClick={() => setRemarcarOpen(true)}>
-            <RefreshCcw size={14} /> Remarcar
-          </button>
-          <button className="tfd-btn" style={{ background: '#EF4444', color: 'white' }} onClick={() => setInlineConfirm('cancelar')}>
-            <Ban size={14} /> Cancelar
-          </button>
-        </>
-      );
-    }
-
-    if (sit === 'EMITIDA') {
+    if (sit === 'EMITIDA' || sit === 'AGUARDANDO_EMISSAO') {
       return (
         <>
           <button className="tfd-btn" style={{ background: '#16A34A', color: 'white' }} onClick={() => setInlineConfirm('embarque')}>
@@ -814,7 +790,7 @@ export default function ViagensPage() {
       />
 
       {/* ========== Summary Cards ========== */}
-      <div className="grid grid-cols-2 xl:grid-cols-6 gap-4 mb-6">
+      <div className="grid grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
         <div className="tfd-card flex items-center gap-3">
           <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: '#DBEAFE', color: '#3B82F6' }}>
             <Ticket size={20} />
@@ -823,17 +799,6 @@ export default function ViagensPage() {
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Disponíveis</p>
             <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.disponiveis}</p>
             <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Com agendamento confirmado, prontos para emissão</p>
-          </div>
-        </div>
-
-        <div className="tfd-card flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: '#FEF3C7', color: '#F59E0B' }}>
-            <Clock size={20} />
-          </div>
-          <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Pend. Emissão</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.pendentes}</p>
-            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Passagens solicitadas aguardando emissão</p>
           </div>
         </div>
 

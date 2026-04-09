@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
+import { Suspense, useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Users,
@@ -18,19 +18,24 @@ import {
   Paperclip,
   UserPlus,
   XCircle,
+  Calendar,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
+import SortableHeader from '@/shared/components/table/SortableHeader';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
+import { useTableControls } from '@/shared/hooks/useTableControls';
 import { useMunicipios } from '@/shared/hooks/useLookup';
 import { formatCPF, maskCPF, maskCNS, maskPhone, maskCEP } from '@/shared/pipes/formatters';
 
 import CepAutofill from '@/shared/components/cep-autofill/CepAutofill';
+import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 
 import { listarPacientes, buscarPaciente, criarPaciente, atualizarPaciente } from '@/services/pacientes.service';
+import { buscarRegionalPorMunicipio, listarRegionaisSaude } from '@/services/regionais-saude.service';
 import { listarPorPaciente, criarAcompanhante, atualizarAcompanhante, excluirAcompanhante } from '@/services/acompanhantes.service';
 import { uploadDocumento, listarDocumentosPaciente, excluirDocumento } from '@/services/documentos.service';
 import type { TipoDocumento, VinculoAcompanhante } from '@/lib/supabase/database.types';
@@ -94,8 +99,6 @@ export default function PacientesPageWrapper() {
 function PacientesPage() {
   const toast = useToast();
   const router = useRouter();
-  const [search, setSearch] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
 
   /* ---- Drawer state ---- */
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -123,6 +126,15 @@ function PacientesPage() {
   const [bairro, setBairro] = useState('');
   const [municipio, setMunicipio] = useState('');
   const [uf, setUf] = useState('MA');
+  const [regionalId, setRegionalId] = useState('');
+
+  /* ---- Municípios via IBGE API (filtrados por UF) ---- */
+  const [cidadesIbge, setCidadesIbge] = useState<{ id: number; nome: string }[]>([]);
+  const [cidadesLoading, setCidadesLoading] = useState(false);
+
+  /* ---- Regionais cadastradas ---- */
+  const [regionaisOptions, setRegionaisOptions] = useState<{ id: string; codigo: string; nome: string }[]>([]);
+  const [regionaisLoading, setRegionaisLoading] = useState(true);
 
   /* ---- Form state: Documentos (pending uploads) ---- */
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
@@ -145,27 +157,56 @@ function PacientesPage() {
   /* ---- Lookup hooks ---- */
   const { options: municipios, loading: loadingMun } = useMunicipios();
 
-  /* ---- Data fetching via Supabase ---- */
-  const { data: pacientes, loading, count: totalCount, refresh } = useSupabaseData(
-    () => listarPacientes({ search, page: currentPage, pageSize: ITEMS_PER_PAGE }),
-    [search, currentPage],
-  );
+  /* ---- Buscar cidades do IBGE quando UF muda ---- */
+  useEffect(() => {
+    if (!uf) { setCidadesIbge([]); return; }
+    let cancelled = false;
+    setCidadesLoading(true);
+    fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios?orderBy=nome`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setCidadesIbge(data.map((m: any) => ({ id: m.id, nome: m.nome })));
+      })
+      .catch(() => { if (!cancelled) setCidadesIbge([]); })
+      .finally(() => { if (!cancelled) setCidadesLoading(false); });
+    return () => { cancelled = true; };
+  }, [uf]);
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE));
-
-  /* ---- Summary counters ---- */
-  const [counts, setCounts] = useState({ total: 0, ativos: 0 });
-
-  const refreshCounts = useCallback(() => {
-    listarPacientes({ pageSize: 1 }).then(({ count }) => {
-      const total = count ?? 0;
-      setCounts({ total, ativos: total });
+  /* ---- Carregar todas as regionais do banco ---- */
+  useEffect(() => {
+    listarRegionaisSaude({ pageSize: 100 }).then(({ data }) => {
+      setRegionaisOptions(
+        (data ?? []).map((r: any) => ({ id: r.id, codigo: r.codigo, nome: r.nome })),
+      );
+      setRegionaisLoading(false);
     });
   }, []);
 
+  /* ---- Auto-selecionar regional quando município muda ---- */
   useEffect(() => {
-    refreshCounts();
-  }, [refreshCounts]);
+    if (!municipio) return;
+    buscarRegionalPorMunicipio(municipio).then(({ data }) => {
+      const reg = data?.regionais_saude as { id?: string } | null;
+      if (reg?.id) setRegionalId(reg.id);
+    }).catch(() => {});
+  }, [municipio]);
+
+  /* ---- Data fetching via Supabase (fetch all, filter client-side) ---- */
+  const { data: pacientesRaw, loading, refresh } = useSupabaseData(
+    () => listarPacientes({ pageSize: 9999 }),
+    [],
+  );
+
+  /* ---- Table controls (search, sort, filter, pagination) ---- */
+  const table = useTableControls({
+    data: pacientesRaw as unknown as Record<string, unknown>[],
+    searchFields: ['nome_completo', 'cpf', 'cns'],
+    dateField: 'created_at',
+    pageSize: ITEMS_PER_PAGE,
+  });
+
+  /* ---- Summary counters (derived from raw data) ---- */
+  const counts = { total: pacientesRaw.length, ativos: pacientesRaw.length };
 
   /* ---- Abrir drawer via query param ?editar=ID ---- */
   const searchParams = useSearchParams();
@@ -173,9 +214,9 @@ function PacientesPage() {
   const editarHandled = useRef<string | null>(null);
 
   useEffect(() => {
-    if (editarParam && editarParam !== editarHandled.current && !loading && pacientes.length > 0) {
+    if (editarParam && editarParam !== editarHandled.current && !loading && pacientesRaw.length > 0) {
       editarHandled.current = editarParam;
-      const pac = pacientes.find((p: Record<string, unknown>) => p.id === editarParam);
+      const pac = pacientesRaw.find((p: Record<string, unknown>) => p.id === editarParam);
       if (pac) {
         handleOpenEdit(pac as Record<string, unknown>);
       } else {
@@ -188,7 +229,7 @@ function PacientesPage() {
       router.replace('/pacientes', { scroll: false });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editarParam, loading, pacientes]);
+  }, [editarParam, loading, pacientesRaw]);
 
   /* -------------------------------------------------- */
   /*  Form reset & drawer handlers                      */
@@ -210,6 +251,7 @@ function PacientesPage() {
     setBairro('');
     setMunicipio('');
     setUf('MA');
+    setRegionalId('');
     setPendingFiles([]);
     setExistingDocs([]);
     setAcompanhantes([]);
@@ -251,8 +293,9 @@ function PacientesPage() {
     setLogradouro((pac.logradouro as string) ?? '');
     setNumero((pac.numero as string) ?? '');
     setBairro((pac.bairro as string) ?? '');
-    setMunicipio((pac.municipio_residencia_id as string) ?? '');
     setUf((pac.uf as string) ?? 'MA');
+    setMunicipio((pac.municipio as string) ?? '');
+    setRegionalId('');
     setPendingFiles([]);
 
     // Fetch existing documents
@@ -284,7 +327,6 @@ function PacientesPage() {
       setDeleteConfirmId(null);
       setDeleteConfirmName('');
       refresh();
-      refreshCounts();
     } catch (err: unknown) {
       const e = err as { message?: string };
       toast.error('Erro inesperado', e.message ?? 'Tente novamente');
@@ -328,7 +370,10 @@ function PacientesPage() {
       const cleanPhoneCel = telefoneCelular.replace(/\D/g, '');
       const cleanPhoneFix = telefoneFixo.replace(/\D/g, '');
       const cleanCep = cep.replace(/\D/g, '');
-      const munSelecionado = municipios.find((m) => m.value === municipio);
+      // Tenta achar o município na tabela local para manter o FK
+      const munLocal = municipios.find(
+        (m) => m.label.toLowerCase() === municipio.toLowerCase(),
+      );
 
       const pacData: Record<string, unknown> = {
         nome_completo: nome.trim(),
@@ -343,9 +388,9 @@ function PacientesPage() {
         numero: numero.trim(),
         bairro: bairro.trim(),
         cep: cleanCep,
-        municipio: munSelecionado?.label ?? '',
+        municipio: municipio,
         uf: uf || 'MA',
-        municipio_residencia_id: municipio,
+        municipio_residencia_id: munLocal?.value ?? null,
       };
 
       let pacienteId: string;
@@ -407,7 +452,6 @@ function PacientesPage() {
       );
       handleCloseDrawer();
       refresh();
-      refreshCounts();
     } catch (err: unknown) {
       const e = err as { message?: string };
       toast.error('Erro inesperado', e.message ?? 'Tente novamente');
@@ -615,17 +659,23 @@ function PacientesPage() {
               type="text"
               className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
               placeholder="Buscar por nome, CPF ou CNS..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setCurrentPage(1);
-              }}
+              value={table.search}
+              onChange={(e) => table.setSearch(e.target.value)}
             />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
+            <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
+              value={table.dateStart} onChange={(e) => table.setDateStart(e.target.value)} title="Data inicio" />
+            <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>ate</span>
+            <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
+              value={table.dateEnd} onChange={(e) => table.setDateEnd(e.target.value)} title="Data fim" />
           </div>
         </div>
 
         <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-          {totalCount} resultado{totalCount !== 1 && 's'}
+          {table.filtered.length} resultado{table.filtered.length !== 1 && 's'}
         </p>
       </div>
 
@@ -635,12 +685,44 @@ function PacientesPage() {
           <table className="tfd-table">
             <thead>
               <tr>
-                <th>Nome</th>
-                <th className="hidden md:table-cell">CPF</th>
-                <th className="hidden lg:table-cell">CNS</th>
-                <th className="hidden lg:table-cell">Municipio</th>
-                <th className="hidden md:table-cell">Telefone</th>
-                <th className="hidden md:table-cell">Data Cadastro</th>
+                <SortableHeader
+                  label="Nome"
+                  sortDirection={table.getSortDirection('nome_completo')}
+                  onSort={() => table.toggleSort('nome_completo')}
+                />
+                <SortableHeader
+                  label="CPF"
+                  className="hidden md:table-cell"
+                  sortDirection={table.getSortDirection('cpf')}
+                  onSort={() => table.toggleSort('cpf')}
+                />
+                <SortableHeader
+                  label="CNS"
+                  className="hidden lg:table-cell"
+                  sortDirection={table.getSortDirection('cns')}
+                  onSort={() => table.toggleSort('cns')}
+                />
+                <SortableHeader
+                  label="Municipio"
+                  className="hidden lg:table-cell"
+                  sortDirection={table.getSortDirection('municipio')}
+                  onSort={() => table.toggleSort('municipio')}
+                  filterOptions={table.getFilterOptions('municipio')}
+                  activeFilters={table.getActiveFilters('municipio')}
+                  onFilterChange={(values) => table.setColumnFilter('municipio', values)}
+                />
+                <SortableHeader
+                  label="Telefone"
+                  className="hidden md:table-cell"
+                  sortDirection={table.getSortDirection('telefone_celular')}
+                  onSort={() => table.toggleSort('telefone_celular')}
+                />
+                <SortableHeader
+                  label="Data Cadastro"
+                  className="hidden md:table-cell"
+                  sortDirection={table.getSortDirection('created_at')}
+                  onSort={() => table.toggleSort('created_at')}
+                />
                 <th className="w-[100px]">Acoes</th>
               </tr>
             </thead>
@@ -653,7 +735,7 @@ function PacientesPage() {
                     </p>
                   </td>
                 </tr>
-              ) : pacientes.length === 0 ? (
+              ) : (table.paginated as unknown as Record<string, unknown>[]).length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-center py-12">
                     <div className="flex flex-col items-center gap-2">
@@ -665,7 +747,7 @@ function PacientesPage() {
                   </td>
                 </tr>
               ) : (
-                pacientes.map((pac: Record<string, unknown>) => (
+                (table.paginated as unknown as Record<string, unknown>[]).map((pac: Record<string, unknown>) => (
                   <tr key={pac.id as string} className="cursor-pointer" onClick={() => router.push(`/pacientes/${pac.id}`)}>
                     <td className="max-w-[200px] truncate font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
                       {pac.nome_completo as string}
@@ -711,26 +793,26 @@ function PacientesPage() {
         </div>
 
         {/* Pagination */}
-        {totalPages > 1 && (
+        {table.totalPages > 1 && (
           <div
             className="flex items-center justify-between px-4 py-3"
             style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
           >
             <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-              Pagina {currentPage} de {totalPages}
+              Pagina {table.page} de {table.totalPages}
             </p>
             <div className="flex items-center gap-1">
               <button
                 className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage((p) => p - 1)}
+                disabled={table.page <= 1}
+                onClick={() => table.setPage(table.page - 1)}
               >
                 <ChevronLeft size={16} />
               </button>
               <button
                 className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage((p) => p + 1)}
+                disabled={table.page >= table.totalPages}
+                onClick={() => table.setPage(table.page + 1)}
               >
                 <ChevronRight size={16} />
               </button>
@@ -911,8 +993,7 @@ function PacientesPage() {
               setLogradouro(address.logradouro);
               setBairro(address.bairro);
               setUf(address.uf);
-              const match = municipios.find((m) => m.codigo_ibge === address.codigo_ibge);
-              if (match) setMunicipio(match.value);
+              if (address.cidade) setMunicipio(address.cidade);
             }}
           />
 
@@ -951,7 +1032,7 @@ function PacientesPage() {
             <select
               className="tfd-input"
               value={uf}
-              onChange={(e) => setUf(e.target.value)}
+              onChange={(e) => { setUf(e.target.value); setMunicipio(''); setRegionalId(''); }}
             >
               {UF_OPTIONS.map((u) => (
                 <option key={u} value={u}>{u}</option>
@@ -960,31 +1041,37 @@ function PacientesPage() {
           </FormField>
         </div>
 
-        <FormField label="Municipio de Residencia" required>
+        <FormField label="Município de Residência" required>
           <select
             className="tfd-input"
             value={municipio}
-            onChange={(e) => setMunicipio(e.target.value)}
-            disabled={loadingMun}
+            onChange={(e) => { setMunicipio(e.target.value); setRegionalId(''); }}
+            disabled={cidadesLoading}
           >
-            <option value="">{loadingMun ? 'Carregando...' : 'Selecione...'}</option>
-            {municipios.map((m) => (
-              <option key={m.value} value={m.value}>{m.label}</option>
+            <option value="">
+              {cidadesLoading ? 'Carregando municípios...' : uf ? 'Selecione o município...' : 'Selecione a UF primeiro'}
+            </option>
+            {cidadesIbge.map((c) => (
+              <option key={c.id} value={c.nome}>{c.nome}</option>
             ))}
           </select>
         </FormField>
 
-        {/* TODO AGENTE-4: Adicionar campo "Regional de Saúde" derivado do município:
-            - Quando o município for selecionado (ou derivado do CEP via ViaCEP),
-              consultar a tabela auxiliar categoria='regional' para mapear município → regional
-            - Exibir campo read-only com a regional correspondente
-            - Salvar o código da regional junto ao paciente para filtros por regional
-            Exemplo de implementação:
-            <FormField label="Regional de Saúde">
-              <input type="text" className="tfd-input" value={regionalDerived} readOnly
-                style={{ backgroundColor: 'var(--tfd-surface-50)' }} />
-            </FormField>
-            Depende do Agente 1 ter populado as 19 regionais completas (migration 00025). */}
+        <FormField label="Regional">
+          <select
+            className="tfd-input"
+            value={regionalId}
+            onChange={(e) => setRegionalId(e.target.value)}
+            disabled={regionaisLoading}
+          >
+            <option value="">
+              {regionaisLoading ? 'Carregando...' : 'Selecione a regional...'}
+            </option>
+            {regionaisOptions.map((r) => (
+              <option key={r.id} value={r.id}>{r.codigo} — {r.nome}</option>
+            ))}
+          </select>
+        </FormField>
 
         {/* ── Section: Documentos Pessoais ── */}
         <hr className="tfd-divider" />
@@ -1255,20 +1342,13 @@ function PacientesPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <FormField label="Vinculo" required>
-                <select
-                  className="tfd-input"
-                  value={acompVinculo}
-                  onChange={(e) => setAcompVinculo(e.target.value as VinculoAcompanhante | '')}
-                >
-                  <option value="">Selecione...</option>
-                  <option value="CONJUGE">Conjuge</option>
-                  <option value="FILHO">Filho(a)</option>
-                  <option value="PAI_MAE">Pai/Mae</option>
-                  <option value="RESPONSAVEL_LEGAL">Responsavel Legal</option>
-                  <option value="OUTRO">Outro</option>
-                </select>
-              </FormField>
+              <LookupSelect
+                categoria="vinculo_acompanhante"
+                label="Vinculo"
+                value={acompVinculo}
+                onChange={(v) => setAcompVinculo(v as VinculoAcompanhante | '')}
+                required
+              />
 
               <FormField label="Telefone" required>
                 <input

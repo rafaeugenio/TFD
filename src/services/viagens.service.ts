@@ -53,13 +53,19 @@ export async function buscarViagem(id: string) {
 /**
  * Lists solicitações with AGUARDANDO_EMISSAO that don't have an active viagem yet.
  */
-export async function listarSolicitacoesAguardandoEmissao() {
+export async function listarSolicitacoesAguardandoEmissao(filters?: { includeIds?: string[] }) {
   const supabase = getSupabase();
-  const { data: solicitacoes, error } = await supabase
+  let query = supabase
     .from('solicitacoes')
-    .select('id, numero_processo, status, created_at, pacientes(nome_completo)')
-    .eq('status', 'AGUARDANDO_EMISSAO')
-    .order('created_at', { ascending: true });
+    .select('id, numero_processo, status, created_at, pacientes(nome_completo)');
+
+  if (filters?.includeIds && filters.includeIds.length > 0) {
+    query = query.or(`status.eq.AGUARDANDO_EMISSAO,id.in.(${filters.includeIds.join(',')})`);
+  } else {
+    query = query.eq('status', 'AGUARDANDO_EMISSAO');
+  }
+
+  const { data: solicitacoes, error } = await query.order('created_at', { ascending: true });
   if (error || !solicitacoes) return { data: [], error };
   // Excluir solicitações que já possuem viagem ATIVA (não-terminal)
   const { data: existentes } = await supabase
@@ -80,7 +86,7 @@ export async function listarTodasViagensSolicitacao(solicitacaoId: string) {
     .select('*, remarcacoes(*)')
     .eq('solicitacao_id', solicitacaoId)
     .order('tipo', { ascending: true })
-    .order('numero_sequencial', { ascending: true });
+    .order('created_at', { ascending: true });
 }
 
 // ─── HELPERS INTERNOS ────────────────────────────────────────
@@ -112,17 +118,13 @@ async function verificarEAvancarSolicitacao(solicitacaoId: string) {
   }
 }
 
-async function proximoSequencial(solicitacaoId: string, tipo: TipoViagem) {
-  const supabase = getSupabase();
-  const { count } = await supabase
-    .from('viagens')
-    .select('id', { count: 'exact', head: true })
-    .eq('solicitacao_id', solicitacaoId)
-    .eq('tipo', tipo);
-  return (count ?? 0) + 1;
-}
-
 // ─── CRIAÇÃO ─────────────────────────────────────────────────
+
+/** Remove numero_sequencial do payload se presente — a coluna pode não existir no banco. */
+function stripSequencial<T extends Record<string, unknown>>(data: T): T {
+  const { numero_sequencial: _, ...rest } = data as any;
+  return rest as T;
+}
 
 /**
  * Cria uma viagem. Avança para EM_PAGAMENTO quando existem IDA + VOLTA ativas.
@@ -130,12 +132,7 @@ async function proximoSequencial(solicitacaoId: string, tipo: TipoViagem) {
 export async function criarViagem(data: InsertDTO<'viagens'>) {
   const supabase = getSupabase();
 
-  // Calcular numero_sequencial automaticamente
-  if (!data.numero_sequencial && data.solicitacao_id) {
-    data.numero_sequencial = await proximoSequencial(data.solicitacao_id, data.tipo);
-  }
-
-  const result = await supabase.from('viagens').insert(data).select().single();
+  const result = await supabase.from('viagens').insert(stripSequencial(data)).select().single();
 
   if (!result.error && data.solicitacao_id) {
     await verificarEAvancarSolicitacao(data.solicitacao_id);
@@ -153,16 +150,10 @@ export async function criarViagemIdaVolta(
 ) {
   const supabase = getSupabase();
 
-  // Sequencial
-  if (ida.solicitacao_id) {
-    ida.numero_sequencial = await proximoSequencial(ida.solicitacao_id, ida.tipo);
-    volta.numero_sequencial = await proximoSequencial(ida.solicitacao_id, volta.tipo);
-  }
-
-  const idaResult = await supabase.from('viagens').insert(ida).select().single();
+  const idaResult = await supabase.from('viagens').insert(stripSequencial(ida)).select().single();
   if (idaResult.error) return { ida: idaResult, volta: null, error: idaResult.error };
 
-  const voltaResult = await supabase.from('viagens').insert(volta).select().single();
+  const voltaResult = await supabase.from('viagens').insert(stripSequencial(volta)).select().single();
   if (voltaResult.error) return { ida: idaResult, volta: voltaResult, error: voltaResult.error };
 
   if (ida.solicitacao_id) {
@@ -198,14 +189,14 @@ export async function marcarComoEmitida(id: string, numeroBilhete?: string, comp
 /**
  * EMITIDA → UTILIZADA. Auto-transiciona solicitação → EM_VIAGEM.
  */
-export async function confirmarEmbarque(id: string, registradoPor: string) {
+export async function confirmarEmbarque(id: string, registradoPor?: string | null) {
   const supabase = getSupabase();
   const result = await supabase
     .from('viagens')
     .update({
       situacao: 'UTILIZADA',
       embarcou: true,
-      embarcou_registrado_por: registradoPor,
+      embarcou_registrado_por: registradoPor || null,
       embarcou_registrado_em: new Date().toISOString(),
       data_embarque_real: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -227,14 +218,14 @@ export async function confirmarEmbarque(id: string, registradoPor: string) {
 /**
  * EMITIDA → NO_SHOW
  */
-export async function registrarNoShow(id: string, registradoPor: string) {
+export async function registrarNoShow(id: string, registradoPor?: string | null) {
   const supabase = getSupabase();
   return supabase
     .from('viagens')
     .update({
       situacao: 'NO_SHOW',
       embarcou: false,
-      embarcou_registrado_por: registradoPor,
+      embarcou_registrado_por: registradoPor || null,
       embarcou_registrado_em: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
@@ -290,18 +281,16 @@ export async function remarcarViagem(
     })
     .eq('id', viagemAnteriorId);
 
-  // 3. Calcular sequencial e criar nova viagem
-  const seq = await proximoSequencial(anterior.solicitacao_id, anterior.tipo);
+  // 3. Criar nova viagem
   const result = await supabase
     .from('viagens')
-    .insert({
+    .insert(stripSequencial({
       ...novaViagem,
       solicitacao_id: anterior.solicitacao_id,
       tipo: anterior.tipo,
       viagem_anterior_id: viagemAnteriorId,
-      numero_sequencial: seq,
       situacao: 'AGUARDANDO_EMISSAO' as SituacaoViagem,
-    })
+    }))
     .select()
     .single();
 
@@ -354,18 +343,16 @@ export async function criarNovaVolta(
   }
 
   // 2. Criar nova volta
-  const seq = await proximoSequencial(solicitacaoId, viagemData.tipo ?? 'RETORNO');
   const result = await supabase
     .from('viagens')
-    .insert({
+    .insert(stripSequencial({
       ...viagemData,
       solicitacao_id: solicitacaoId,
       tipo: viagemData.tipo ?? ('RETORNO' as any),
       prorrogacao_id: prorrogacaoId,
       viagem_anterior_id: viagemAnteriorId,
-      numero_sequencial: seq,
       situacao: 'AGUARDANDO_EMISSAO' as SituacaoViagem,
-    })
+    }))
     .select()
     .single();
 
@@ -378,9 +365,9 @@ export async function buscarViagensPorSolicitacao(solicitacaoId: string) {
   const supabase = getSupabase();
   return supabase
     .from('viagens')
-    .select('id, tipo, data_embarque_prevista, situacao')
+    .select('id, tipo, data_embarque_prevista, situacao, origem_cidade, origem_uf, destino_cidade, destino_uf')
     .eq('solicitacao_id', solicitacaoId)
-    .in('situacao', ['EMITIDA', 'UTILIZADA'])
+    .not('situacao', 'in', '("CANCELADA","NO_SHOW")')
     .order('data_embarque_prevista', { ascending: true });
 }
 

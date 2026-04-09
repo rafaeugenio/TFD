@@ -12,11 +12,16 @@ import {
   Shield,
   Building2,
   Activity,
-  Clock,
-  AlertTriangle,
   Users,
   Stethoscope,
-  Briefcase,
+  MapPin,
+  Map,
+  Landmark,
+  Route,
+  Receipt,
+  ClipboardCheck,
+  DatabaseZap,
+  GitCompareArrows,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -37,47 +42,55 @@ interface ReportCard {
 const REPORTS_OPERACIONAIS: ReportCard[] = [
   {
     title: 'Solicitações por Status',
-    description: 'Distribuição de solicitações por status atual. Filtre por período, município e especialidade.',
+    description: 'Distribuição por status atual (novo, em análise, aprovado, indeferido, etc.). Filtro por período, regional e município.',
     icon: <FileText size={20} />,
     iconBg: 'var(--tfd-primary-50)',
     iconColor: 'var(--tfd-primary-500)',
     category: 'operacional',
   },
   {
-    title: 'SLA por Etapa',
-    description: 'Tempo médio de permanência em cada etapa do fluxo TFD, com detecção de gargalos.',
-    icon: <Clock size={20} />,
-    iconBg: '#FEF3C7',
-    iconColor: '#F59E0B',
+    title: 'Solicitações por Regional de Saúde',
+    description: 'Total de solicitações por regional, com detalhamento por município. Mostra aprovadas, indeferidas e encerradas.',
+    icon: <Map size={20} />,
+    iconBg: '#DBEAFE',
+    iconColor: '#2563EB',
     category: 'operacional',
   },
   {
-    title: 'Taxa de NO-SHOW',
-    description: 'Percentual de pacientes que não compareceram ao embarque. Indicador crítico para o Ministério.',
-    icon: <AlertTriangle size={20} />,
-    iconBg: '#FEE2E2',
-    iconColor: '#EF4444',
-    category: 'operacional',
-  },
-  {
-    title: 'Deferimentos vs. Indeferimentos',
-    description: 'Taxa de aprovação de pareceres médicos por período, CID e especialidade.',
-    icon: <Stethoscope size={20} />,
-    iconBg: '#F5F3FF',
-    iconColor: '#7C3AED',
-    category: 'operacional',
-  },
-  {
-    title: 'Cobranças Externas (CNRAC/SETI)',
-    description: 'Solicitações encaminhadas para regulação externa com SLA de resposta e taxa de retorno.',
+    title: 'Solicitações por Unidade de Saúde',
+    description: 'Volume por unidade de destino: solicitações, aprovadas, indeferidas, encerramentos (alta, óbito, transferência, desistência, abandono).',
     icon: <Building2 size={20} />,
     iconBg: '#CFFAFE',
     iconColor: '#0E7490',
     category: 'operacional',
   },
   {
+    title: 'Solicitações por Município de Origem',
+    description: 'Demanda por município do paciente, ranking e distribuição por regional.',
+    icon: <MapPin size={20} />,
+    iconBg: '#F5F3FF',
+    iconColor: '#7C3AED',
+    category: 'operacional',
+  },
+  {
+    title: 'Deferimentos vs. Indeferimentos',
+    description: 'Taxa de aprovação de pareceres por período, CID e especialidade.',
+    icon: <Stethoscope size={20} />,
+    iconBg: '#FEF3C7',
+    iconColor: '#D97706',
+    category: 'operacional',
+  },
+  {
+    title: 'Encerramentos por Motivo',
+    description: 'Processos encerrados por motivo (alta médica, transferência, desistência, abandono, óbito) com comparativo por período.',
+    icon: <Activity size={20} />,
+    iconBg: '#DCFCE7',
+    iconColor: '#16A34A',
+    category: 'operacional',
+  },
+  {
     title: 'Prorrogações por Período',
-    description: 'Número de prorrogações aprovadas e negadas, com duração média e motivos.',
+    description: 'Prorrogações aprovadas e negadas, duração média e motivos.',
     icon: <Calendar size={20} />,
     iconBg: '#FFEDD5',
     iconColor: '#EA580C',
@@ -88,7 +101,7 @@ const REPORTS_OPERACIONAIS: ReportCard[] = [
 const REPORTS_FINANCEIROS: ReportCard[] = [
   {
     title: 'Diárias por Período',
-    description: 'Valor total de diárias calculadas, aprovadas, pagas e glosadas. Comparativo mensal.',
+    description: 'Valor total de ajuda de custo calculada e paga por mês. Comparativo mensal com códigos SIGTAP (com/sem pernoite, paciente/acompanhante).',
     icon: <DollarSign size={20} />,
     iconBg: '#DCFCE7',
     iconColor: '#16A34A',
@@ -96,7 +109,7 @@ const REPORTS_FINANCEIROS: ReportCard[] = [
   },
   {
     title: 'Passagens por Modal',
-    description: 'Quantidade e valor de passagens emitidas por modal de transporte (aéreo, rodoviário, fluvial).',
+    description: 'Quantidade e valor por modal (aéreo, terrestre, fluvial) com detalhamento por rota e códigos SIGTAP.',
     icon: <Plane size={20} />,
     iconBg: '#DBEAFE',
     iconColor: '#3B82F6',
@@ -111,38 +124,54 @@ const REPORTS_FINANCEIROS: ReportCard[] = [
     category: 'financeiro',
   },
   {
-    title: 'Pendências Financeiras',
-    description: 'Diárias aprovadas não pagas, passagens emitidas sem pagamento confirmado.',
-    icon: <Briefcase size={20} />,
+    title: 'Deslocamento por Rota',
+    description: 'Rotas mais utilizadas com quantidade de procedimentos SIGTAP e valores calculados por tipo de transporte.',
+    icon: <Route size={20} />,
     iconBg: '#FEF3C7',
-    iconColor: '#F59E0B',
+    iconColor: '#D97706',
+    category: 'financeiro',
+  },
+  {
+    title: 'Faturamento BPA — Consolidado Mensal',
+    description: 'Consolidado mensal para lançamento no BPA: ajuda de custo + deslocamento, códigos SIGTAP, classificação P/A e valores de conferência.',
+    icon: <Receipt size={20} />,
+    iconBg: '#FFEDD5',
+    iconColor: '#EA580C',
     category: 'financeiro',
   },
 ];
 
-const REPORTS_MINISTERIO: ReportCard[] = [
+const REPORTS_GESTAO: ReportCard[] = [
   {
-    title: 'Relatório Mensal — Ministério da Saúde',
-    description: 'Consolidado com: pacientes por CID, passagens por modal, embarques, diárias pagas, prorrogações e encerramentos.',
-    icon: <TrendingUp size={20} />,
+    title: 'Pacientes por Diagnóstico (CID-10)',
+    description: 'Diagnósticos mais frequentes no TFD com distribuição por regional e período. Ranking por grupo CID.',
+    icon: <Landmark size={20} />,
     iconBg: 'var(--tfd-primary-50)',
     iconColor: 'var(--tfd-primary-500)',
-    category: 'ministerio',
+    category: 'gestao',
   },
   {
-    title: 'Encerramentos por Motivo',
-    description: 'Número de processos encerrados por motivo (alta, óbito, desistência, abandono, transferência).',
-    icon: <Activity size={20} />,
+    title: 'Qualidade de Dados Cadastrais',
+    description: 'Indicadores de completude: pacientes sem CNS válido, sem CEP, unidades sem CNES, diagnósticos sem CID. Previne glosas no BPA.',
+    icon: <DatabaseZap size={20} />,
+    iconBg: '#FEE2E2',
+    iconColor: '#DC2626',
+    category: 'gestao',
+  },
+  {
+    title: 'Produtividade por Período',
+    description: 'Volume de solicitações processadas por mês, comparativo mensal e acumulado anual.',
+    icon: <GitCompareArrows size={20} />,
     iconBg: '#DCFCE7',
     iconColor: '#16A34A',
-    category: 'ministerio',
+    category: 'gestao',
   },
 ];
 
 const REPORTS_AUDITORIA: ReportCard[] = [
   {
     title: 'Trilha de Auditoria',
-    description: 'Log imutável de todas as ações no sistema, com usuário, data, IP e descrição da ação. Retenção mínima de 5 anos.',
+    description: 'Log de todas as ações no sistema, com usuário, data e descrição da ação. Retenção mínima de 5 anos.',
     icon: <Shield size={20} />,
     iconBg: 'var(--tfd-surface-100)',
     iconColor: 'var(--tfd-surface-600)',
@@ -225,10 +254,10 @@ function SectionHeader({ title, count }: { title: string; count: number }) {
 /* -------------------------------------------------- */
 
 const quickStats = [
-  { label: 'Processos este mes', value: '47', trend: '+12%', trendUp: true },
-  { label: 'Tempo médio (dias)', value: '18.3', trend: '-2.1d', trendUp: true },
-  { label: 'Taxa NO-SHOW', value: '7.1%', trend: '+1.2%', trendUp: false },
-  { label: 'Valor total (mes)', value: 'R$ 89.4k', trend: '+8%', trendUp: true },
+  { label: 'Solicitações no mês', value: '47', trend: '+12%', trendUp: true },
+  { label: 'Encerramentos no mês', value: '13', trend: '+3', trendUp: true },
+  { label: 'Diárias pagas (R$)', value: 'R$ 42.6k', trend: '+8%', trendUp: true },
+  { label: 'Passagens emitidas', value: '31', trend: '+5', trendUp: true },
 ];
 
 /* -------------------------------------------------- */
@@ -240,7 +269,7 @@ export default function RelatoriosPage() {
     <>
       <PageHeader
         title="Relatórios"
-        subtitle="Relatórios operacionais, financeiros e de auditoria"
+        subtitle="Relatórios operacionais, financeiros, de gestão e auditoria"
       />
 
       {/* ========== Quick Stats ========== */}
@@ -287,11 +316,11 @@ export default function RelatoriosPage() {
         </div>
       </section>
 
-      {/* ========== Ministerio da Saude ========== */}
+      {/* ========== Gestão e Qualidade ========== */}
       <section className="mb-8">
-        <SectionHeader title="Ministério da Saúde" count={REPORTS_MINISTERIO.length} />
+        <SectionHeader title="Gestão e Qualidade" count={REPORTS_GESTAO.length} />
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {REPORTS_MINISTERIO.map((r) => (
+          {REPORTS_GESTAO.map((r) => (
             <ReportCardComponent key={r.title} report={r} />
           ))}
         </div>

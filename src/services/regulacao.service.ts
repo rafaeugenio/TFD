@@ -20,13 +20,22 @@ export async function listarFilaRegulacao(filters?: {
   search?: string;
   page?: number;
   pageSize?: number;
+  includeIds?: string[];
 }) {
   const supabase = getSupabase();
 
   let query = supabase
     .from('solicitacoes')
-    .select('*, pacientes(nome_completo, cpf)', { count: 'exact' })
-    .eq('status', 'AGUARDANDO_REGULACAO')
+    .select('*, pacientes(nome_completo, cpf)', { count: 'exact' });
+
+  // Include both AGUARDANDO_REGULACAO and any devolved items (by ID)
+  if (filters?.includeIds && filters.includeIds.length > 0) {
+    query = query.or(`status.eq.AGUARDANDO_REGULACAO,id.in.(${filters.includeIds.join(',')})`);
+  } else {
+    query = query.eq('status', 'AGUARDANDO_REGULACAO');
+  }
+
+  query = query
     .order('prioridade', { ascending: true })
     .order('created_at', { ascending: true });
 
@@ -45,6 +54,36 @@ export async function listarFilaRegulacao(filters?: {
   query = query.range((page - 1) * size, page * size - 1);
 
   return query;
+}
+
+/**
+ * Conta rotas de regulação por tipo no período (mês corrente).
+ */
+export async function contarRotasPorTipo() {
+  const supabase = getSupabase();
+  const now = new Date();
+  const inicioMes = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+  const { data, error } = await supabase
+    .from('rotas_regulacao')
+    .select('tipo_rota')
+    .gte('created_at', inicioMes);
+
+  const counts: Record<string, number> = {
+    APROVADO_DIRETO: 0,
+    CNRAC: 0,
+    SETI: 0,
+    RESPOSTA_EXTERNA: 0,
+    SERVICO_SOCIAL: 0,
+  };
+
+  if (!error && data) {
+    for (const r of data) {
+      if (r.tipo_rota in counts) counts[r.tipo_rota]++;
+    }
+  }
+
+  return counts;
 }
 
 export async function criarRotaRegulacao(

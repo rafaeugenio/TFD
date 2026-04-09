@@ -83,11 +83,22 @@ export async function excluirAgendamento(id: string) {
 /**
  * Fetches the last routing decision for a solicitação to pre-fill agendamento fields.
  */
+export async function buscarAgendamentoPorSolicitacao(solicitacaoId: string) {
+  const supabase = getSupabase();
+  return supabase
+    .from('agendamentos')
+    .select('*')
+    .eq('solicitacao_id', solicitacaoId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+}
+
 export async function buscarRotaParaAgendamento(solicitacaoId: string) {
   const supabase = getSupabase();
   return supabase
     .from('rotas_regulacao')
-    .select('tipo_rota, justificativa')
+    .select('id, tipo_rota, justificativa, cobrancas_externas(canal, contato_canal, conteudo_envio, destinatario)')
     .eq('solicitacao_id', solicitacaoId)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -98,15 +109,21 @@ export async function buscarRotaParaAgendamento(solicitacaoId: string) {
  * Lists solicitações with AGUARDANDO_AGENDAMENTO status that don't have an agendamento yet.
  * These appear as "available for scheduling" in the agendamento table.
  */
-export async function listarSolicitacoesAguardandoAgendamento() {
+export async function listarSolicitacoesAguardandoAgendamento(filters?: { includeIds?: string[] }) {
   const supabase = getSupabase();
 
-  // Get all solicitacoes in AGUARDANDO_AGENDAMENTO
-  const { data: solicitacoes, error: solErr } = await supabase
+  // Get all solicitacoes in AGUARDANDO_AGENDAMENTO + devolved items
+  let query = supabase
     .from('solicitacoes')
-    .select('id, numero_processo, status, created_at, cid10_principal, pacientes(nome_completo)')
-    .eq('status', 'AGUARDANDO_AGENDAMENTO')
-    .order('created_at', { ascending: true });
+    .select('id, numero_processo, status, created_at, cid10_principal, pacientes(nome_completo)');
+
+  if (filters?.includeIds && filters.includeIds.length > 0) {
+    query = query.or(`status.eq.AGUARDANDO_AGENDAMENTO,id.in.(${filters.includeIds.join(',')})`);
+  } else {
+    query = query.eq('status', 'AGUARDANDO_AGENDAMENTO');
+  }
+
+  const { data: solicitacoes, error: solErr } = await query.order('created_at', { ascending: true });
 
   if (solErr || !solicitacoes) return { data: [], error: solErr };
 

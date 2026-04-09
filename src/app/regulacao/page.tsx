@@ -10,28 +10,34 @@ import {
   Users,
   XCircle,
   Eye,
-  ChevronDown,
-  ChevronUp,
   Send,
   CheckCircle2,
   ExternalLink,
   Stethoscope,
   Loader2,
   SendHorizonal,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
+
+import SortableHeader from '@/shared/components/table/SortableHeader';
+import { useTableControls } from '@/shared/hooks/useTableControls';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
+import { slaTagStyle } from '@/shared/utils/sla';
 import { useToast } from '@/shared/components/toast/Toast';
-import { listarFilaRegulacao, criarCobrancaExterna, criarRotaRegulacao } from '@/services/regulacao.service';
+import { listarFilaRegulacao, criarCobrancaExterna, criarRotaRegulacao, contarRotasPorTipo } from '@/services/regulacao.service';
 import { atualizarStatus } from '@/services/solicitacoes.service';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import { formatDate, formatCPF } from '@/shared/pipes/formatters';
-import { useLookup } from '@/shared/hooks/useLookup';
+import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
 import DevolverModal from '@/shared/components/devolver-modal/DevolverModal';
 import { useDevolucoesPendentes } from '@/shared/hooks/useDevolucoesPendentes';
+import { useDevolucoeRecebidas } from '@/shared/hooks/useDevolucoeRecebidas';
 import type { StatusSolicitacao } from '@/core/models';
 
 /* -------------------------------------------------- */
@@ -41,6 +47,7 @@ import type { StatusSolicitacao } from '@/core/models';
 type PrioridadeRegulacao = 'NORMAL' | 'URGENTE' | 'EMERGENCIAL';
 
 interface RegulacaoItem {
+  [key: string]: unknown;
   id: string;
   solicitacaoId: string;
   solicitacaoStatus: string;
@@ -57,6 +64,7 @@ interface RegulacaoItem {
     data: string;
     observacoes: string;
   } | null;
+  created_at?: string;
 }
 
 /* -------------------------------------------------- */
@@ -78,23 +86,29 @@ const prioridadeMap: Record<string, { bg: string; text: string; label: string }>
 export default function RegulacaoPage() {
   const toast = useToast();
   const { user } = useCurrentUser();
-  const { options: canalOptions, loading: canalLoading } = useLookup('canal_comunicacao');
-
-  const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  /* ---- Rotas counts ---- */
+  const [rotaCounts, setRotaCounts] = useState<Record<string, number>>({ APROVADO_DIRETO: 0, CNRAC: 0, SETI: 0, RESPOSTA_EXTERNA: 0, SERVICO_SOCIAL: 0 });
+  const refreshRotaCounts = useCallback(() => { contarRotasPorTipo().then(setRotaCounts); }, []);
+  useEffect(() => { refreshRotaCounts(); }, [refreshRotaCounts]);
 
   /* ---- Devolver state ---- */
   const [devolverItem, setDevolverItem] = useState<RegulacaoItem | null>(null);
   const { mapa: devolucoesEnviadas, labelDestino, refresh: refreshDevolucoes } = useDevolucoesPendentes('REGULACAO');
+  const { mapa: devolucoesRecebidas, labelOrigem } = useDevolucoeRecebidas('REGULACAO');
+
+  /* ---- IDs of devolved items (to keep them visible in the list) ---- */
+  const devolvedIds = useMemo(() => Array.from(devolucoesEnviadas.keys()), [devolucoesEnviadas]);
 
   /* ---- Fetch from Supabase ---- */
   const { data: regulacaoRaw, loading, refresh } = useSupabaseData(
-    () => listarFilaRegulacao({ search }),
-    [search]
+    () => listarFilaRegulacao({ search: '', includeIds: devolvedIds }),
+    [devolvedIds]
   );
 
   /* ---- Map Supabase rows to display format ---- */
-  const items = useMemo<RegulacaoItem[]>(() => {
+  const allItems = useMemo<RegulacaoItem[]>(() => {
     return regulacaoRaw.map((sol: any) => ({
       id: sol.id,
       solicitacaoId: sol.id,
@@ -107,14 +121,25 @@ export default function RegulacaoPage() {
       prioridade: sol.prioridade || 'NORMAL',
       diasNaFila: Math.floor((Date.now() - new Date(sol.created_at).getTime()) / (1000 * 60 * 60 * 24)),
       parecerMedico: null,
+      created_at: sol.created_at,
     }));
   }, [regulacaoRaw]);
+
+  /* ---- Table controls (search, sort, filter, pagination) ---- */
+  const table = useTableControls<RegulacaoItem>({
+    data: allItems,
+    searchFields: ['pacienteNome', 'numeroProcesso', 'cidCodigo', 'cidDescricao'],
+    dateField: 'created_at',
+    pageSize: 20,
+  });
+
+  const items = table.paginated as unknown as RegulacaoItem[];
 
   /* ---- Selected item ---- */
   const selectedItem = useMemo(() => {
     if (!selectedId) return null;
-    return items.find((i) => i.id === selectedId) ?? null;
-  }, [selectedId, items]);
+    return allItems.find((i) => i.id === selectedId) ?? null;
+  }, [selectedId, allItems]);
 
   return (
     <>
@@ -123,23 +148,76 @@ export default function RegulacaoPage() {
         subtitle="Fila de regulação, parecer médico e roteamento de processos"
       />
 
-      {/* ========== Summary Card ========== */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
+      {/* ========== Summary Cards ========== */}
+      <div className="grid grid-cols-2 xl:grid-cols-6 gap-4 mb-6">
         <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: '#DCFCE7', color: '#16A34A' }}
-          >
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: '#DCFCE7', color: '#16A34A' }}>
             <ClipboardCheck size={20} />
           </div>
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Prontos p/ análise</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{items.length}</p>
+            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{table.filtered.length}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Aguardando decisão de roteamento</p>
+          </div>
+        </div>
+
+        <div className="tfd-card flex items-center gap-3">
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: '#DBEAFE', color: '#3B82F6' }}>
+            <CheckCircle2 size={20} />
+          </div>
+          <div>
+            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Aprovação Direta</p>
+            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{rotaCounts.APROVADO_DIRETO}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Aprovados direto no mês</p>
+          </div>
+        </div>
+
+        <div className="tfd-card flex items-center gap-3">
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: '#EDE9FE', color: '#7C3AED' }}>
+            <Building2 size={20} />
+          </div>
+          <div>
+            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>CNRAC</p>
+            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{rotaCounts.CNRAC}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Alta complexidade no mês</p>
+          </div>
+        </div>
+
+        <div className="tfd-card flex items-center gap-3">
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: '#FCE7F3', color: '#DB2777' }}>
+            <Heart size={20} />
+          </div>
+          <div>
+            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>SETI</p>
+            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{rotaCounts.SETI}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Transplantes no mês</p>
+          </div>
+        </div>
+
+        <div className="tfd-card flex items-center gap-3">
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: '#FFF7ED', color: '#EA580C' }}>
+            <Stethoscope size={20} />
+          </div>
+          <div>
+            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>SAAS / Dutra</p>
+            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{rotaCounts.RESPOSTA_EXTERNA}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Consultas externas no mês</p>
+          </div>
+        </div>
+
+        <div className="tfd-card flex items-center gap-3">
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: '#FEF3C7', color: '#F59E0B' }}>
+            <Users size={20} />
+          </div>
+          <div>
+            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Serviço Social</p>
+            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{rotaCounts.SERVICO_SOCIAL}</p>
+            <p className="text-[10px] leading-tight mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>Encaminhados no mês</p>
           </div>
         </div>
       </div>
 
-      {/* ========== Search ========== */}
+      {/* ========== Toolbar ========== */}
       <div className="tfd-toolbar mb-4">
         <div className="relative flex-1 max-w-xs min-w-[200px]">
           <Search
@@ -151,9 +229,18 @@ export default function RegulacaoPage() {
             type="text"
             className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
             placeholder="Buscar paciente, processo, CID..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={table.search}
+            onChange={(e) => table.setSearch(e.target.value)}
           />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
+          <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
+            value={table.dateStart} onChange={(e) => table.setDateStart(e.target.value)} title="Data início" />
+          <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>até</span>
+          <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
+            value={table.dateEnd} onChange={(e) => table.setDateEnd(e.target.value)} title="Data fim" />
         </div>
       </div>
 
@@ -164,11 +251,35 @@ export default function RegulacaoPage() {
             <table className="tfd-table">
               <thead>
                 <tr>
-                  <th>N.o Processo</th>
-                  <th>Paciente</th>
-                  <th className="hidden md:table-cell">CID-10</th>
-                  <th>Prioridade</th>
-                  <th>Dias na fila</th>
+                  <SortableHeader
+                    label="N.o Processo"
+                    sortDirection={table.getSortDirection('numeroProcesso')}
+                    onSort={() => table.toggleSort('numeroProcesso')}
+                  />
+                  <SortableHeader
+                    label="Paciente"
+                    sortDirection={table.getSortDirection('pacienteNome')}
+                    onSort={() => table.toggleSort('pacienteNome')}
+                  />
+                  <SortableHeader
+                    label="CID-10"
+                    className="hidden md:table-cell"
+                    sortDirection={table.getSortDirection('cidCodigo')}
+                    onSort={() => table.toggleSort('cidCodigo')}
+                  />
+                  <SortableHeader
+                    label="Prioridade"
+                    sortDirection={table.getSortDirection('prioridade')}
+                    onSort={() => table.toggleSort('prioridade')}
+                    filterOptions={table.getFilterOptions('prioridade')}
+                    activeFilters={table.getActiveFilters('prioridade')}
+                    onFilterChange={(v) => table.setColumnFilter('prioridade', v)}
+                  />
+                  <SortableHeader
+                    label="Dias na fila"
+                    sortDirection={table.getSortDirection('diasNaFila')}
+                    onSort={() => table.toggleSort('diasNaFila')}
+                  />
                   <th className="w-[80px]">Ações</th>
                 </tr>
               </thead>
@@ -200,6 +311,8 @@ export default function RegulacaoPage() {
                     const prio = prioridadeMap[item.prioridade];
                     const aguardandoRetorno = labelDestino(item.solicitacaoId);
                     const devolucaoInfo = devolucoesEnviadas.get(item.solicitacaoId);
+                    const retornoRecebido = labelOrigem(item.solicitacaoId);
+                    const retornoInfo = devolucoesRecebidas.get(item.solicitacaoId);
 
                     return (
                       <tr
@@ -208,7 +321,8 @@ export default function RegulacaoPage() {
                         style={{
                           opacity: aguardandoRetorno ? 0.55 : undefined,
                           pointerEvents: aguardandoRetorno ? 'none' : undefined,
-                          backgroundColor: aguardandoRetorno ? '#FFFBEB' : undefined,
+                          backgroundColor: aguardandoRetorno ? '#F8F9FA' : retornoRecebido ? '#FFFBEB' : undefined,
+                          borderLeft: retornoRecebido ? '4px solid #F59E0B' : undefined,
                         }}
                         onClick={aguardandoRetorno ? undefined : () => setSelectedId(item.id)}
                       >
@@ -226,7 +340,7 @@ export default function RegulacaoPage() {
                                   className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded"
                                   style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
                                 >
-                                  Devolvido p/ {aguardandoRetorno}
+                                  Enviado p/ {aguardandoRetorno}
                                 </span>
                                 {devolucaoInfo.urgencia === 'URGENTE' && (
                                   <span
@@ -235,6 +349,16 @@ export default function RegulacaoPage() {
                                   >
                                     URGENTE
                                   </span>
+                                )}
+                              </div>
+                            )}
+                            {retornoRecebido && retornoInfo && !aguardandoRetorno && (
+                              <div className="flex items-center gap-1.5 mt-1" title={`Retorno recebido de ${retornoRecebido} em ${new Date(retornoInfo.created_at).toLocaleDateString('pt-BR')} — ${retornoInfo.motivo}`}>
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+                                ↩ Retorno de {retornoRecebido}
+                                </span>
+                                {retornoInfo.urgencia === 'URGENTE' && (
+                                  <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: '#FEE2E2', color: '#B91C1C' }}>URGENTE</span>
                                 )}
                               </div>
                             )}
@@ -265,23 +389,14 @@ export default function RegulacaoPage() {
                           )}
                         </td>
                         <td>
-                          <span
-                            className="font-semibold text-sm"
-                            style={{
-                              color: item.diasNaFila > 10
-                                ? 'var(--tfd-status-danger)'
-                                : item.diasNaFila > 5
-                                  ? 'var(--tfd-status-warning)'
-                                  : 'var(--tfd-text-primary)',
-                            }}
-                          >
+                          <span className="tfd-tag tfd-tag--rounded text-xs font-semibold" style={slaTagStyle(item.diasNaFila)}>
                             {item.diasNaFila}d
                           </span>
                         </td>
                         <td>
                           <div className="flex items-center gap-1" style={{ pointerEvents: 'auto' }}>
                             <Link
-                              href={`/solicitacoes/${item.solicitacaoId}`}
+                              href={`/solicitacoes/${item.solicitacaoId}?from=regulacao`}
                               className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
                               title="Ver processo completo"
                               onClick={(e) => e.stopPropagation()}
@@ -308,6 +423,30 @@ export default function RegulacaoPage() {
           </div>
         </div>
 
+        {/* ---- Pagination ---- */}
+        {table.totalPages > 1 && (
+          <div className="flex items-center justify-between mt-3 px-1">
+            <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+              {table.filtered.length} resultado{table.filtered.length !== 1 ? 's' : ''} &middot; página {table.page} de {table.totalPages}
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                className="tfd-btn tfd-btn-ghost tfd-btn--icon-only tfd-btn--sm"
+                disabled={table.page <= 1}
+                onClick={() => table.setPage(table.page - 1)}
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                className="tfd-btn tfd-btn-ghost tfd-btn--icon-only tfd-btn--sm"
+                disabled={table.page >= table.totalPages}
+                onClick={() => table.setPage(table.page + 1)}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ========== Análise / Decisão Drawer ========== */}
@@ -322,8 +461,6 @@ export default function RegulacaoPage() {
           <DetailPanel
             item={selectedItem}
             onClose={() => setSelectedId(null)}
-            canalOptions={canalOptions}
-            canalLoading={canalLoading}
             onDecisionWithCobranca={async (tipoRota, destinatario, canal, contatoCanal, dataEnvio, conteudo) => {
               // 1. Create the routing decision
               const rotaResult = await criarRotaRegulacao({
@@ -357,7 +494,7 @@ export default function RegulacaoPage() {
               };
               toast.success('Encaminhamento registrado!', msgs[tipoRota] ?? `Processo ${selectedItem.numeroProcesso} atualizado.`);
               setSelectedId(null);
-              refresh();
+              refresh(); refreshRotaCounts();
             }}
             onDecision={async (tipoRota: string) => {
               // Special case: INDEFERIDO goes directly to status update
@@ -368,7 +505,7 @@ export default function RegulacaoPage() {
                 } else {
                   toast.success('Solicitação indeferida', `Processo ${selectedItem.numeroProcesso} foi indeferido.`);
                   setSelectedId(null);
-                  refresh();
+                  refresh(); refreshRotaCounts();
                 }
                 return;
               }
@@ -386,7 +523,7 @@ export default function RegulacaoPage() {
                 };
                 toast.success('Decisão registrada!', msgs[tipoRota] ?? `Processo ${selectedItem.numeroProcesso} atualizado.`);
                 setSelectedId(null);
-                refresh();
+                refresh(); refreshRotaCounts();
               }
             }}
           />
@@ -416,15 +553,11 @@ function DetailPanel({
   onClose,
   onDecision,
   onDecisionWithCobranca,
-  canalOptions,
-  canalLoading,
 }: {
   item: RegulacaoItem;
   onClose: () => void;
   onDecision: (tipoRota: string) => Promise<void>;
   onDecisionWithCobranca: (tipoRota: string, destinatario: string, canal: string, contatoCanal: string, dataEnvio: string, conteudo: string) => Promise<void>;
-  canalOptions: { value: string; label: string }[];
-  canalLoading: boolean;
 }) {
   const [deciding, setDeciding] = useState(false);
 
@@ -519,16 +652,14 @@ function DetailPanel({
           >
             <div>
               <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Dias na fila</span>
-              <p className="font-semibold" style={{
-                color: item.diasNaFila > 10 ? 'var(--tfd-status-danger)' : item.diasNaFila > 5 ? 'var(--tfd-status-warning)' : 'var(--tfd-text-primary)',
-              }}>
+              <p className="font-semibold" style={{ color: slaTagStyle(item.diasNaFila).color }}>
                 {item.diasNaFila} dias
               </p>
             </div>
             <div>
               <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Processo</span>
               <Link
-                href={`/solicitacoes/${item.solicitacaoId}`}
+                href={`/solicitacoes/${item.solicitacaoId}?from=regulacao`}
                 className="flex items-center gap-1 text-sm font-medium hover:underline"
                 style={{ color: 'var(--tfd-primary-500)' }}
               >
@@ -591,19 +722,13 @@ function DetailPanel({
               />
             </FormField>
 
-            <FormField label="Canal de envio" required>
-              <select
-                className="tfd-input tfd-input--sm"
-                disabled={canalLoading}
-                value={cobCanal}
-                onChange={(e) => { setCobCanal(e.target.value); setCobContatoCanal(''); }}
-              >
-                <option value="">{canalLoading ? 'Carregando...' : 'Selecione...'}</option>
-                {canalOptions.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </FormField>
+            <LookupSelect
+              categoria="canal_comunicacao"
+              label="Canal de envio"
+              value={cobCanal}
+              onChange={(v) => { setCobCanal(v); setCobContatoCanal(''); }}
+              required
+            />
 
             {cobCanal && (
               <FormField label={cobCanal === 'EMAIL' ? 'E-mail de contato' : cobCanal === 'SISTEMA' ? 'Identificação no sistema' : 'Número de contato'} required>

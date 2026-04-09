@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import { useReferrerBreadcrumb } from '@/shared/hooks/useReferrerBreadcrumb';
 import StatusTag from '@/shared/components/status-tag/StatusTag';
 import { buscarMedico } from '@/services/medicos.service';
 import { createClient } from '@/lib/supabase/client';
@@ -47,6 +48,7 @@ export default function MedicoDetalhePage({
 }) {
   const { id } = use(params);
   const router = useRouter();
+  const parentCrumb = useReferrerBreadcrumb({ label: 'Médicos', href: '/medicos' });
 
   const [medico, setMedico] = useState<Record<string, unknown> | null>(null);
   const [pareceres, setPareceres] = useState<Record<string, unknown>[]>([]);
@@ -114,6 +116,10 @@ export default function MedicoDetalhePage({
       <PageHeader
         title={nome}
         subtitle="Detalhes do medico"
+        breadcrumbs={[
+          { label: parentCrumb.label, href: parentCrumb.href },
+          { label: nome },
+        ]}
         actions={
           <div className="flex items-center gap-2">
             <button
@@ -234,7 +240,7 @@ export default function MedicoDetalhePage({
                   return (
                     <Link
                       key={solId}
-                      href={`/solicitacoes/${solId}`}
+                      href={`/solicitacoes/${solId}?from=medicos`}
                       className="block rounded-lg p-4 transition-all duration-150 group"
                       style={{
                         border: '1px solid var(--tfd-surface-border)',

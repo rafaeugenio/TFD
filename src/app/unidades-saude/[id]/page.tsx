@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import { useReferrerBreadcrumb } from '@/shared/hooks/useReferrerBreadcrumb';
 import StatusTag from '@/shared/components/status-tag/StatusTag';
 import { buscarUnidadeSaude, listarSolicitacoesPorUnidade } from '@/services/unidades-saude.service';
 import { formatDate } from '@/shared/pipes/formatters';
@@ -38,6 +39,7 @@ export default function UnidadeSaudeDetalhePage({
 }) {
   const { id } = use(params);
   const router = useRouter();
+  const parentCrumb = useReferrerBreadcrumb({ label: 'Unidades de Saúde', href: '/unidades-saude' });
 
   const [unidade, setUnidade] = useState<Record<string, unknown> | null>(null);
   const [solicitacoes, setSolicitacoes] = useState<Record<string, unknown>[]>([]);
@@ -131,6 +133,10 @@ export default function UnidadeSaudeDetalhePage({
       <PageHeader
         title={nome}
         subtitle="Detalhes da unidade de saúde"
+        breadcrumbs={[
+          { label: parentCrumb.label, href: parentCrumb.href },
+          { label: nome },
+        ]}
         actions={
           <div className="flex items-center gap-2">
             <button
@@ -275,7 +281,7 @@ export default function UnidadeSaudeDetalhePage({
                   return (
                     <Link
                       key={sol.id as string}
-                      href={`/solicitacoes/${sol.id}`}
+                      href={`/solicitacoes/${sol.id}?from=unidades-saude`}
                       className="block rounded-lg p-4 transition-all duration-150 group"
                       style={{
                         border: '1px solid var(--tfd-surface-border)',

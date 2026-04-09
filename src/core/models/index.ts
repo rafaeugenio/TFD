@@ -14,3 +14,4 @@ export * from './sigtap.model';
 export * from './medico.model';
 export * from './rota-deslocamento.model';
 export * from './unidade-saude.model';
+export * from './regional-saude.model';

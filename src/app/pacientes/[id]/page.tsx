@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import { useReferrerBreadcrumb } from '@/shared/hooks/useReferrerBreadcrumb';
 import StatusTag from '@/shared/components/status-tag/StatusTag';
 import { buscarPaciente } from '@/services/pacientes.service';
 import { historicoProcessos } from '@/services/pacientes.service';
@@ -64,6 +65,7 @@ export default function PacienteDetalhePage({
 }) {
   const { id } = use(params);
   const router = useRouter();
+  const parentCrumb = useReferrerBreadcrumb({ label: 'Pacientes', href: '/pacientes' });
 
   const [paciente, setPaciente] = useState<Record<string, unknown> | null>(null);
   const [solicitacoes, setSolicitacoes] = useState<Record<string, unknown>[]>([]);
@@ -139,6 +141,10 @@ export default function PacienteDetalhePage({
       <PageHeader
         title={nome}
         subtitle="Detalhes do paciente"
+        breadcrumbs={[
+          { label: parentCrumb.label, href: parentCrumb.href },
+          { label: nome },
+        ]}
         actions={
           <div className="flex items-center gap-2">
             <button
@@ -373,7 +379,7 @@ export default function PacienteDetalhePage({
                   return (
                     <Link
                       key={sol.id as string}
-                      href={`/solicitacoes/${sol.id}`}
+                      href={`/solicitacoes/${sol.id}?from=pacientes`}
                       className="block rounded-lg p-4 transition-all duration-150 group"
                       style={{
                         border: '1px solid var(--tfd-surface-border)',
