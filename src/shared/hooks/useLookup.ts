@@ -161,15 +161,14 @@ export function useRotas() {
   const [rotas, setRotas] = useState<RotaDeslocamento[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
+  const load = useCallback(() => {
+    setLoading(true);
     createClient()
       .from('rotas_deslocamento')
       .select('*')
       .eq('ativo', true)
       .order('cidade_origem', { ascending: true })
       .then(({ data, error }) => {
-        if (cancelled) return;
         if (error || !data) {
           setRotas([]);
         } else {
@@ -177,8 +176,9 @@ export function useRotas() {
         }
         setLoading(false);
       });
-    return () => { cancelled = true; };
   }, []);
 
-  return { rotas, loading };
+  useEffect(() => { load(); }, [load]);
+
+  return { rotas, loading, refresh: load };
 }
