@@ -5,6 +5,7 @@ import { Plus, Check, X, Loader2 } from 'lucide-react';
 import FormField from '@/shared/components/drawer/FormField';
 import { criarCompanhia } from '@/services/tabelas-auxiliares.service';
 import { useCompanhias } from '@/shared/hooks/useLookup';
+import { useToast } from '@/shared/components/toast/Toast';
 import type { ModalTransporte } from '@/lib/supabase/database.types';
 
 interface CompanhiaSelectProps {
@@ -22,6 +23,7 @@ export default function CompanhiaSelect({
   required = false,
   disabled = false,
 }: CompanhiaSelectProps) {
+  const toast = useToast();
   const { options, loading, refresh } = useCompanhias();
   const [adding, setAdding] = useState(false);
   const [newNome, setNewNome] = useState('');
@@ -42,10 +44,13 @@ export default function CompanhiaSelect({
         ativo: true,
       });
 
-      if (error || !data) return;
+      if (error || !data) {
+        toast.error('Erro ao salvar', 'Não foi possível cadastrar a companhia.');
+        return;
+      }
 
       await refresh();
-      onChange((data as { nome: string }).nome);
+      onChange(data.nome);
       setAdding(false);
       setNewNome('');
       setNewModal('AEREO');
