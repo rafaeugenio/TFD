@@ -60,8 +60,8 @@ export default function RotaSelect({
         return;
       }
 
-      await refresh();
       onChange(data as unknown as RotaDeslocamento);
+      refresh();
       handleCancel();
     } finally {
       setSaving(false);
