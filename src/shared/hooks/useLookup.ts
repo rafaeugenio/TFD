@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { listarPorCategoria, listarUnidadesDestino, listarCompanhias } from '@/services/tabelas-auxiliares.service';
 import type { TabelaAuxiliar, UnidadeDestino, CompanhiaTransporte } from '@/services/tabelas-auxiliares.service';
+import type { RotaDeslocamento } from '@/core/models/rota-deslocamento.model';
 import { createClient } from '@/lib/supabase/client';
 
 interface LookupOption {
@@ -85,7 +86,8 @@ export function useCompanhias() {
   const [options, setOptions] = useState<(CompanhiaTransporte & { label: string; value: string })[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
     listarCompanhias().then(({ data, error }) => {
       if (error || !data) {
         setOptions([]);
@@ -103,7 +105,9 @@ export function useCompanhias() {
     });
   }, []);
 
-  return { options, loading };
+  useEffect(() => { load(); }, [load]);
+
+  return { options, loading, refresh: load };
 }
 
 export function useMunicipios() {
@@ -151,4 +155,30 @@ export function invalidateCache(categoria?: string) {
   } else {
     cache.clear();
   }
+}
+
+export function useRotas() {
+  const [rotas, setRotas] = useState<RotaDeslocamento[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    createClient()
+      .from('rotas_deslocamento')
+      .select('*')
+      .eq('ativo', true)
+      .order('cidade_origem', { ascending: true })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error || !data) {
+          setRotas([]);
+        } else {
+          setRotas(data as unknown as RotaDeslocamento[]);
+        }
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  return { rotas, loading };
 }
