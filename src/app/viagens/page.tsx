@@ -49,7 +49,6 @@ import { uploadDocumento, listarDocumentosPorViagem } from '@/services/documento
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import type { SituacaoViagem, TipoDocumento } from '@/lib/supabase/database.types';
 import { formatCurrency, maskCurrency, parseCurrency } from '@/shared/pipes/formatters';
-import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import DevolverModal from '@/shared/components/devolver-modal/DevolverModal';
 import { useDevolucoesPendentes } from '@/shared/hooks/useDevolucoesPendentes';
 import { slaBadge } from '@/shared/utils/sla';
@@ -552,16 +551,12 @@ export default function ViagensPage() {
           <input type="date" className="tfd-input" value={dataEmbarque} onChange={(e) => setDataEmbarque(e.target.value)} />
         </FormField>
 
-        <LookupSelect
-          categoria="modal_transporte"
-          label="Modal de transporte"
-          value={modal}
-          onChange={setModal}
-        />
-
         <CompanhiaSelect
           value={comp}
-          onChange={setComp}
+          onChange={(nome, tipoModal) => {
+            setComp(nome);
+            if (tipoModal) setModal(tipoModal);
+          }}
         />
 
         <FormField label="Localizador / Bilhete">

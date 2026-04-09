@@ -10,7 +10,7 @@ import type { ModalTransporte } from '@/lib/supabase/database.types';
 
 interface CompanhiaSelectProps {
   value: string;
-  onChange: (nome: string) => void;
+  onChange: (nome: string, tipoModal?: ModalTransporte) => void;
   label?: string;
   required?: boolean;
   disabled?: boolean;
@@ -50,7 +50,7 @@ export default function CompanhiaSelect({
       }
 
       await refresh();
-      onChange(data.nome);
+      onChange(data.nome, newModal);
       setAdding(false);
       setNewNome('');
       setNewModal('AEREO');
@@ -71,7 +71,11 @@ export default function CompanhiaSelect({
         <select
           className="tfd-input flex-1"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+              const nome = e.target.value;
+              const opt = options.find((o) => o.nome === nome);
+              onChange(nome, opt?.tipo_modal);
+            }}
           disabled={disabled || loading}
         >
           <option value="">{loading ? 'Carregando...' : 'Selecione...'}</option>
