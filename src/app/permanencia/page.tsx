@@ -23,6 +23,7 @@ import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import { formatCurrency, formatDate, maskCurrency, parseCurrency } from '@/shared/pipes/formatters';
 import SortableHeader from '@/shared/components/table/SortableHeader';
 import { useTableControls } from '@/shared/hooks/useTableControls';
+import AdicionaisSection from '@/shared/components/adicionais-section/AdicionaisSection';
 
 /* ── Status maps ────────────────────────────────────── */
 
@@ -322,7 +323,7 @@ export default function PermanenciaPage() {
 
   return (
     <>
-      <PageHeader title="Permanencia e Prorrogacoes" subtitle="Acompanhamento pos-regulacao e controle de prorrogacoes" />
+      <PageHeader title="Permanencia, Prorrogacoes e Adicionais" subtitle="Acompanhamento pos-regulacao, prorrogacoes e custos extras do TFD" />
 
       {/* ── Summary Cards ── */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
@@ -658,6 +659,14 @@ export default function PermanenciaPage() {
                   );
                 })}
               </div>
+            )}
+
+            {/* ── Adicionais (PA1–PA4, AU1) ── */}
+            {drawerSolId && !addingProrrogacao && (
+              <>
+                <hr className="tfd-divider" />
+                <AdicionaisSection solicitacaoId={drawerSolId} />
+              </>
             )}
 
             {/* ── Add prorrogacao form ── */}
