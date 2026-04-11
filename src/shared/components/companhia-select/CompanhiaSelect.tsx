@@ -133,6 +133,7 @@ export default function CompanhiaSelect({
               <option value="AEREO">Aéreo</option>
               <option value="TERRESTRE">Terrestre</option>
               <option value="FLUVIAL">Fluvial</option>
+              <option value="TRANSFER">Transfer (porta-a-porta)</option>
             </select>
             <button
               type="button"

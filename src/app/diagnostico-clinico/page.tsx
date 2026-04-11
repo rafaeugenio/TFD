@@ -832,6 +832,7 @@ export default function DiagnosticoClinicoPage() {
             <option value="AEREO">A&eacute;reo</option>
             <option value="TERRESTRE">Terrestre</option>
             <option value="FLUVIAL">Fluvial</option>
+            <option value="TRANSFER">Transfer (porta-a-porta)</option>
           </select>
         </FormField>
 

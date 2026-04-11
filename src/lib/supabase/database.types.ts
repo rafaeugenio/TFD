@@ -114,7 +114,7 @@ export type SituacaoViagem =
 
 export type TipoViagem = 'IDA' | 'RETORNO' | 'IDA_E_VOLTA';
 
-export type ModalTransporte = 'AEREO' | 'TERRESTRE' | 'FLUVIAL';
+export type ModalTransporte = 'AEREO' | 'TERRESTRE' | 'FLUVIAL' | 'TRANSFER';
 
 export type StatusRemarcacao = 'PENDENTE' | 'APROVADA' | 'REJEITADA';
 
