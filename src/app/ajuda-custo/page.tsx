@@ -1059,6 +1059,22 @@ export default function AjudaCustoPage() {
               </select>
             </FormField>
 
+            {/*
+              TODO P4 — Dropdown "Classificação do complemento"
+              Requer validação do cliente sobre as categorias exatas. Opções prováveis:
+                - INICIAL (primeira concessão da ajuda de custo do processo)
+                - COMPLEMENTO_PRORROGACAO (ajuda extra por dias de prorrogação aprovada)
+                - COMPLEMENTO_PERMANENCIA (ajuda por permanência estendida sem prorrogação formal)
+                - REEMBOLSO (pagamento após comprovante de despesa)
+                - AJUSTE (correção manual de cálculo anterior)
+              Impacto no schema: adicionar coluna `classificacao TEXT CHECK (...)` em ajudas_custo,
+              nova migration 0003X, atualização do database.types e ajustes em:
+                - ajuda-custo.service.ts (criação/edição)
+                - buildTimeline() para rotular a entrada corretamente
+                - Consolidado BPA (PA4) precisa agrupar por classificação para conferência.
+              Não implementado neste ciclo — aguardando spec do cliente.
+            */}
+
             <div className="grid grid-cols-2 gap-3">
               <FormField label="Data de início" required>
                 <input type="date" className="tfd-input" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} />

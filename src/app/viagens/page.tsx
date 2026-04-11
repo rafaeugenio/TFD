@@ -315,6 +315,26 @@ export default function ViagensPage() {
     resetForm();
   }
 
+  // TODO P1 — Múltiplas idas/voltas (trechos adicionais)
+  // Schema já suporta: viagens.viagem_anterior_id + viagens.numero_sequencial (migration 00015).
+  // Falta UI: botão "Adicionar trecho" no drawer que replica um bloco ida/volta
+  // vinculando o novo registro ao viagem_anterior_id do último trecho salvo.
+  // Service layer: criarViagem já aceita os campos; ajustar handleSubmitIdaVolta
+  // para iterar uma lista `trechos: Trecho[]` em vez dos pares idaX/voltaX fixos.
+  // Cuidado: atualizar também /solicitacoes/[id]/page.tsx que tem o mesmo form duplicado.
+  // Prioridade: aguardar validação do cliente sobre quantos trechos máx. e se ida/volta
+  // sempre vêm em pares ou se pode ter N idas seguidas + 1 volta final.
+
+  // TODO P2 — Bilhete consolidado (múltiplos bilhetes/segmentos no mesmo registro)
+  // Duas interpretações possíveis, aguardar validação do cliente:
+  //   (a) Um mesmo PNR/localizador cobrindo vários segmentos (atual: 1 bilhete = 1 registro).
+  //       Solução: permitir que numero_bilhete seja compartilhado entre várias rows de viagens
+  //       e expor visualização agrupada pela UI.
+  //   (b) Campo numero_bilhete aceitar múltiplos valores (ex: "ABC123, ABC124").
+  //       Solução: alterar type para TEXT[] ou manter TEXT e tratar como CSV.
+  // Impacto: afeta P6 (edição com auditoria) — campo numero_bilhete precisa diff por item.
+  // Decisão bloqueada aguardando cliente confirmar o caso de uso real.
+
   /* ---- Submit: cadastro ida+volta ---- */
   async function handleSubmitIdaVolta() {
     if (!solicitacaoId) {
