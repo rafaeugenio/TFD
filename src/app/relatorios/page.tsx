@@ -133,7 +133,7 @@ const REPORTS_FINANCEIROS: ReportCard[] = [
   },
   {
     title: 'Faturamento BPA — Consolidado Mensal',
-    description: 'Consolidado mensal para lançamento no BPA: ajuda de custo + deslocamento, códigos SIGTAP, classificação P/A e valores de conferência.',
+    description: 'Consolidado mensal para lançamento no BPA: ajuda de custo + deslocamento + adicionais aprovados, códigos SIGTAP, classificação P/A e valores de conferência.',
     icon: <Receipt size={20} />,
     iconBg: '#FFEDD5',
     iconColor: '#EA580C',
