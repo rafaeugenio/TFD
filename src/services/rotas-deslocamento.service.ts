@@ -104,36 +104,40 @@ export async function desativarRota(id: number) {
 
 /**
  * Calcula número de procedimentos SIGTAP para uma rota e modal.
- * A distância é sempre em milhas independente do modal.
- * - Aéreo: cada 200 milhas = 1 procedimento
- * - Terrestre: cada 50 milhas = 1 procedimento
- * - Fluvial: cada 27 milhas = 1 procedimento
+ * Cada modal usa sua própria unidade de distância:
+ * - Aéreo: distancia_milhas — cada 200 milhas = 1 procedimento
+ * - Terrestre: distancia_km — cada 50 km = 1 procedimento
+ * - Fluvial: distancia_milhas_nauticas — cada 27 milhas náuticas = 1 procedimento
  */
 export function calcularProcedimentos(
   rota: RotaDeslocamento,
   modal: 'aereo' | 'terrestre' | 'fluvial',
 ): { quantidade: number; distancia: number; unidade: string } | null {
-  if (!rota.distancia_milhas) return null;
-
   switch (modal) {
-    case 'aereo':
+    case 'aereo': {
+      if (!rota.distancia_milhas) return null;
       return {
         quantidade: Math.ceil(rota.distancia_milhas / 200),
         distancia: rota.distancia_milhas,
         unidade: 'milhas',
       };
-    case 'terrestre':
+    }
+    case 'terrestre': {
+      if (!rota.distancia_km) return null;
       return {
-        quantidade: Math.ceil(rota.distancia_milhas / 50),
-        distancia: rota.distancia_milhas,
-        unidade: 'milhas',
+        quantidade: Math.ceil(rota.distancia_km / 50),
+        distancia: rota.distancia_km,
+        unidade: 'km',
       };
-    case 'fluvial':
+    }
+    case 'fluvial': {
+      if (!rota.distancia_milhas_nauticas) return null;
       return {
-        quantidade: Math.ceil(rota.distancia_milhas / 27),
-        distancia: rota.distancia_milhas,
-        unidade: 'milhas',
+        quantidade: Math.ceil(rota.distancia_milhas_nauticas / 27),
+        distancia: rota.distancia_milhas_nauticas,
+        unidade: 'mn',
       };
+    }
     default:
       return null;
   }

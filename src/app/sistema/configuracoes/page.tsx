@@ -174,12 +174,36 @@ const ALL_CATEGORIAS = SECOES.flatMap((s) => s.categorias);
 /*  ParametrosPanel                                    */
 /* -------------------------------------------------- */
 
+interface HistoricoEntrada {
+  valor_anterior: string;
+  valor_novo: string;
+  data_alteracao: string;
+  data_inicio_vigencia: string;
+}
+
+function getHistorico(paramId: string): HistoricoEntrada[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    return JSON.parse(localStorage.getItem(`param_hist_${paramId}`) ?? '[]') as HistoricoEntrada[];
+  } catch {
+    return [];
+  }
+}
+
+function addHistorico(paramId: string, entrada: HistoricoEntrada) {
+  const hist = getHistorico(paramId);
+  hist.unshift(entrada);
+  localStorage.setItem(`param_hist_${paramId}`, JSON.stringify(hist.slice(0, 20)));
+}
+
 function ParametrosPanel() {
   const toast = useToast();
   const [parametros, setParametros] = useState<import('@/services/parametros.service').Parametro[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingParam, setEditingParam] = useState<import('@/services/parametros.service').Parametro | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [editVigencia, setEditVigencia] = useState('');
+  const [historico, setHistorico] = useState<HistoricoEntrada[]>([]);
   const [saving, setSaving] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [newGrupo, setNewGrupo] = useState('diarias');
@@ -203,6 +227,8 @@ function ParametrosPanel() {
   const handleEdit = (param: import('@/services/parametros.service').Parametro) => {
     setEditingParam(param);
     setEditValue(param.valor);
+    setEditVigencia(new Date().toISOString().slice(0, 10));
+    setHistorico(getHistorico(param.id));
     setDrawerOpen(true);
   };
 
@@ -211,6 +237,12 @@ function ParametrosPanel() {
     setSaving(true);
     const { atualizarParametro } = await import('@/services/parametros.service');
     const { invalidateParametrosCache } = await import('@/shared/hooks/useParametros');
+    addHistorico(editingParam.id, {
+      valor_anterior: editingParam.valor,
+      valor_novo: editValue,
+      data_alteracao: new Date().toISOString(),
+      data_inicio_vigencia: editVigencia || new Date().toISOString().slice(0, 10),
+    });
     await atualizarParametro(editingParam.id, editValue);
     invalidateParametrosCache();
     toast.success('Parâmetro salvo!', 'O valor foi atualizado no sistema.');
@@ -389,7 +421,7 @@ function ParametrosPanel() {
               </div>
             )}
 
-            <FormField label="Valor" required>
+            <FormField label="Novo valor" required>
               {editingParam.tipo === 'booleano' ? (
                 <div className="flex items-center gap-3 mt-1">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -420,6 +452,46 @@ function ParametrosPanel() {
               )}
             </FormField>
 
+            <FormField label="Data de início de vigência" required>
+              <input
+                type="date"
+                className="tfd-input"
+                value={editVigencia}
+                onChange={(e) => setEditVigencia(e.target.value)}
+              />
+            </FormField>
+
+            {historico.length > 0 && (
+              <>
+                <hr className="tfd-divider" />
+                <div>
+                  <p className="text-xs font-semibold mb-2" style={{ color: 'var(--tfd-text-muted)' }}>
+                    Histórico de alterações
+                  </p>
+                  <div className="space-y-2">
+                    {historico.map((h, i) => (
+                      <div
+                        key={i}
+                        className="p-2.5 rounded-lg text-xs"
+                        style={{ backgroundColor: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                            Vigência: {new Date(h.data_inicio_vigencia + 'T12:00:00').toLocaleDateString('pt-BR')}
+                          </span>
+                          <span style={{ color: 'var(--tfd-text-muted)' }}>
+                            {new Date(h.data_alteracao).toLocaleDateString('pt-BR')}
+                          </span>
+                        </div>
+                        <span style={{ color: 'var(--tfd-text-muted)' }}>{h.valor_anterior}</span>
+                        {' → '}
+                        <span className="font-semibold" style={{ color: 'var(--tfd-primary-700)' }}>{h.valor_novo}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
           </>
         )}
       </Drawer>

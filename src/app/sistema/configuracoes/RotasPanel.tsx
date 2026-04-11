@@ -47,6 +47,8 @@ export default function RotasPanel() {
   const [fCidadeDestino, setFCidadeDestino] = useState('');
   const [fUfDestino, setFUfDestino] = useState('');
   const [fDistMilhas, setFDistMilhas] = useState('');
+  const [fDistKm, setFDistKm] = useState('');
+  const [fDistMn, setFDistMn] = useState('');
   const [fModal, setFModal] = useState<'aereo' | 'terrestre' | 'fluvial'>('aereo');
   const [fAtivo, setFAtivo] = useState(true);
 
@@ -67,6 +69,8 @@ export default function RotasPanel() {
     setFCidadeDestino('');
     setFUfDestino('');
     setFDistMilhas('');
+    setFDistKm('');
+    setFDistMn('');
     setFModal('aereo');
     setFAtivo(true);
     setEditing(null);
@@ -81,7 +85,12 @@ export default function RotasPanel() {
     setFCidadeDestino(item.cidade_destino);
     setFUfDestino(item.uf_destino);
     setFDistMilhas(item.distancia_milhas != null ? String(item.distancia_milhas) : '');
-    setFModal('aereo');
+    setFDistKm(item.distancia_km != null ? String(item.distancia_km) : '');
+    setFDistMn(item.distancia_milhas_nauticas != null ? String(item.distancia_milhas_nauticas) : '');
+    // Infer modal from which distance field is filled
+    if (item.distancia_km != null) setFModal('terrestre');
+    else if (item.distancia_milhas_nauticas != null) setFModal('fluvial');
+    else setFModal('aereo');
     setFAtivo(item.ativo);
     setDrawerOpen(true);
   };
@@ -94,7 +103,9 @@ export default function RotasPanel() {
       uf_origem: fUfOrigem,
       cidade_destino: fCidadeDestino,
       uf_destino: fUfDestino,
-      distancia_milhas: fDistMilhas ? parseFloat(fDistMilhas) : undefined,
+      distancia_milhas: fModal === 'aereo' && fDistMilhas ? parseFloat(fDistMilhas) : undefined,
+      distancia_km: fModal === 'terrestre' && fDistKm ? parseFloat(fDistKm) : undefined,
+      distancia_milhas_nauticas: fModal === 'fluvial' && fDistMn ? parseFloat(fDistMn) : undefined,
       ativo: fAtivo,
     };
 
@@ -130,6 +141,8 @@ export default function RotasPanel() {
     cidade_destino: fCidadeDestino,
     uf_destino: fUfDestino,
     distancia_milhas: fDistMilhas ? parseFloat(fDistMilhas) : undefined,
+    distancia_km: fDistKm ? parseFloat(fDistKm) : undefined,
+    distancia_milhas_nauticas: fDistMn ? parseFloat(fDistMn) : undefined,
     ativo: true,
   };
 
@@ -190,7 +203,8 @@ export default function RotasPanel() {
                   <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Origem</th>
                   <th className="text-center py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}></th>
                   <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Destino</th>
-                  <th className="text-right py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Milhas</th>
+                  <th className="text-center py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Modal</th>
+                  <th className="text-right py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Distância</th>
                   <th className="text-center py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Ações</th>
                 </tr>
               </thead>
@@ -219,11 +233,22 @@ export default function RotasPanel() {
                         {item.cidade_destino}/{item.uf_destino}
                       </span>
                     </td>
+                    <td className="py-2.5 px-3 text-center">
+                      {item.distancia_km != null ? (
+                        <span className="tfd-tag tfd-tag--rounded tfd-tag--secondary text-[10px]">Terrestre</span>
+                      ) : item.distancia_milhas_nauticas != null ? (
+                        <span className="tfd-tag tfd-tag--rounded tfd-tag--secondary text-[10px]">Fluvial</span>
+                      ) : (
+                        <span className="tfd-tag tfd-tag--rounded tfd-tag--info text-[10px]">Aéreo</span>
+                      )}
+                    </td>
                     <td className="py-2.5 px-3 text-right">
-                      {item.distancia_milhas != null ? (
-                        <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>
-                          {item.distancia_milhas.toLocaleString('pt-BR')}
-                        </span>
+                      {item.distancia_km != null ? (
+                        <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>{item.distancia_km.toLocaleString('pt-BR')} km</span>
+                      ) : item.distancia_milhas_nauticas != null ? (
+                        <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>{item.distancia_milhas_nauticas.toLocaleString('pt-BR')} mn</span>
+                      ) : item.distancia_milhas != null ? (
+                        <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>{item.distancia_milhas.toLocaleString('pt-BR')} mi</span>
                       ) : (
                         <span style={{ color: 'var(--tfd-text-muted)' }}>—</span>
                       )}
@@ -309,36 +334,62 @@ export default function RotasPanel() {
 
         <hr className="tfd-divider" />
 
-        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Distância</h3>
+        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Modal e Distância</h3>
 
-        <FormField label="Distância" required>
-          <div className="relative">
-            <input
-              type="number"
-              step="1"
-              min="0"
-              className="tfd-input pr-16"
-              placeholder="Ex: 1456"
-              value={fDistMilhas}
-              onChange={(e) => setFDistMilhas(e.target.value)}
-            />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium pointer-events-none" style={{ color: 'var(--tfd-text-muted)' }}>
-              milhas
-            </span>
-          </div>
-        </FormField>
-
-        <FormField label="Modal de transporte">
+        <FormField label="Modal de transporte" required>
           <select
             className="tfd-input"
             value={fModal}
-            onChange={(e) => setFModal(e.target.value as 'aereo' | 'terrestre' | 'fluvial')}
+            onChange={(e) => {
+              setFModal(e.target.value as 'aereo' | 'terrestre' | 'fluvial');
+              setFDistMilhas(''); setFDistKm(''); setFDistMn('');
+            }}
           >
-            <option value="aereo">Aéreo</option>
-            <option value="terrestre">Terrestre</option>
-            <option value="fluvial">Fluvial</option>
+            <option value="aereo">Aéreo (milhas)</option>
+            <option value="terrestre">Terrestre (km)</option>
+            <option value="fluvial">Fluvial (milhas náuticas)</option>
           </select>
         </FormField>
+
+        {fModal === 'aereo' && (
+          <FormField label="Distância (milhas)" required>
+            <div className="relative">
+              <input
+                type="number" step="1" min="0" className="tfd-input pr-16"
+                placeholder="Ex: 1456"
+                value={fDistMilhas}
+                onChange={(e) => setFDistMilhas(e.target.value)}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium pointer-events-none" style={{ color: 'var(--tfd-text-muted)' }}>milhas</span>
+            </div>
+          </FormField>
+        )}
+        {fModal === 'terrestre' && (
+          <FormField label="Distância (km)" required>
+            <div className="relative">
+              <input
+                type="number" step="1" min="0" className="tfd-input pr-10"
+                placeholder="Ex: 320"
+                value={fDistKm}
+                onChange={(e) => setFDistKm(e.target.value)}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium pointer-events-none" style={{ color: 'var(--tfd-text-muted)' }}>km</span>
+            </div>
+          </FormField>
+        )}
+        {fModal === 'fluvial' && (
+          <FormField label="Distância (milhas náuticas)" required>
+            <div className="relative">
+              <input
+                type="number" step="1" min="0" className="tfd-input pr-10"
+                placeholder="Ex: 180"
+                value={fDistMn}
+                onChange={(e) => setFDistMn(e.target.value)}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium pointer-events-none" style={{ color: 'var(--tfd-text-muted)' }}>mn</span>
+            </div>
+          </FormField>
+        )}
 
         {/* Preview de cálculo */}
         {prevCalc && (
@@ -348,11 +399,11 @@ export default function RotasPanel() {
               <div className="flex items-center gap-2 mb-2">
                 <Route size={14} style={{ color: 'var(--tfd-primary-600)' }} />
                 <p className="text-xs font-semibold" style={{ color: 'var(--tfd-primary-700)' }}>
-                  Preview de Procedimentos
+                  Preview SIGTAP
                 </p>
               </div>
               <p className="text-xs" style={{ color: 'var(--tfd-primary-600)' }}>
-                {MODAL_LABELS[fModal]}: {prevCalc.distancia.toLocaleString('pt-BR')} milhas → {prevCalc.quantidade} procedimento{prevCalc.quantidade !== 1 ? 's' : ''}
+                {MODAL_LABELS[fModal]}: {prevCalc.distancia.toLocaleString('pt-BR')} {prevCalc.unidade} → {prevCalc.quantidade} procedimento{prevCalc.quantidade !== 1 ? 's' : ''}
               </p>
             </div>
           </>
