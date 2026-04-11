@@ -127,6 +127,10 @@ export default function SolicitacoesPage() {
   /* ---- Form state: URL SEI ---- */
   const [urlSei, setUrlSei] = useState('');
 
+  /* ---- Form state: Agendamento antecipado (A1) ---- */
+  const [dataAgendamento, setDataAgendamento] = useState('');
+  const [unidadeDestinoNome, setUnidadeDestinoNome] = useState('');
+
   /* ---- Lookup hooks ---- */
   const { options: municipios, loading: loadingMun } = useMunicipios();
 
@@ -222,6 +226,8 @@ export default function SolicitacoesPage() {
     setTermoUploadFile(null);
     setTermoClausulasAberto(false);
     setUrlSei('');
+    setDataAgendamento('');
+    setUnidadeDestinoNome('');
   }
 
   function handleCloseDrawer() {
@@ -301,12 +307,18 @@ export default function SolicitacoesPage() {
       const pacienteId = selectedPacienteId;
       const munSelecionado = municipios.find((m) => m.value === municipio);
 
+      // A1: if scheduling was pre-filled, skip the agendamento step
+      const agendamentoPreenchido = !editingId && dataAgendamento && unidadeDestinoNome.trim();
+      const statusInicial = agendamentoPreenchido ? 'AGUARDANDO_EMISSAO' : 'PENDENTE_DIAGNOSTICO';
+
       const payload: Record<string, unknown> = {
         paciente_id: pacienteId,
         modalidade: 'INTERESTADUAL',
         necessidade_acompanhante: necessitaAcompanhante,
-        status: 'PENDENTE_DIAGNOSTICO',
+        status: statusInicial,
         url_sei: urlSei.trim() || null,
+        data_agendamento: dataAgendamento || null,
+        unidade_destino_nome: unidadeDestinoNome.trim() || null,
       };
 
       if (municipio) payload.municipio_origem_id = municipio;
@@ -886,6 +898,52 @@ export default function SolicitacoesPage() {
         <p className="text-xs mb-4" style={{ color: 'var(--tfd-text-muted)' }}>
           Opcional — cole o link da solicitação no sistema SEI para manter o vínculo entre os dois sistemas.
         </p>
+
+        {/* ═══════ Section: Agendamento antecipado (A1) — apenas nova solicitação ═══════ */}
+        {!editingId && (
+          <>
+            <hr className="tfd-divider" />
+            <div className="flex items-center gap-2 mb-2">
+              <Calendar size={16} style={{ color: 'var(--tfd-primary-500)' }} />
+              <h3 className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+                Agendamento (se já vier definido)
+              </h3>
+            </div>
+            <p className="text-xs mb-3" style={{ color: 'var(--tfd-text-muted)' }}>
+              Quando o paciente já chega com data e unidade confirmadas, preencha abaixo.
+              O processo pulará automaticamente a etapa de agendamento.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label="Data do agendamento" hint="opcional">
+                <input
+                  type="date"
+                  className="tfd-input"
+                  value={dataAgendamento}
+                  onChange={(e) => setDataAgendamento(e.target.value)}
+                />
+              </FormField>
+              <FormField label="Unidade de destino" hint="opcional">
+                <input
+                  type="text"
+                  className="tfd-input"
+                  placeholder="Ex: HC-SP, INCA, UNIFESO..."
+                  value={unidadeDestinoNome}
+                  onChange={(e) => setUnidadeDestinoNome(e.target.value)}
+                />
+              </FormField>
+            </div>
+            {dataAgendamento && unidadeDestinoNome.trim() && (
+              <div
+                className="flex items-start gap-2 px-3 py-2 rounded-lg mb-3"
+                style={{ backgroundColor: '#DBEAFE', border: '1px solid #93C5FD' }}
+              >
+                <span className="text-xs font-medium" style={{ color: '#1D4ED8' }}>
+                  Agendamento definido — a etapa de agendamento será pulada automaticamente.
+                </span>
+              </div>
+            )}
+          </>
+        )}
 
         {/* ═══════ Section: Termo de Compromisso (apenas nova solicitação) ═══════ */}
         {!editingId && (

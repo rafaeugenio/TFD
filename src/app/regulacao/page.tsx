@@ -535,10 +535,11 @@ export default function RegulacaoPage() {
         open={!!devolverItem}
         onClose={() => setDevolverItem(null)}
         setorAtual="REGULACAO"
+        allowForward
         solicitacaoId={devolverItem?.solicitacaoId ?? ''}
         statusAtual={(devolverItem?.solicitacaoStatus as StatusSolicitacao) ?? 'AGUARDANDO_REGULACAO'}
         label={`${devolverItem?.numeroProcesso ?? ''} — ${devolverItem?.pacienteNome ?? 'Paciente'}`}
-        onSuccess={() => { refresh(); refreshDevolucoes(); toast.success('Solicitação devolvida', 'A solicitação foi encaminhada ao setor selecionado.'); }}
+        onSuccess={() => { refresh(); refreshDevolucoes(); toast.success('Solicitação encaminhada', 'A solicitação foi encaminhada ao setor selecionado.'); }}
       />
     </>
   );

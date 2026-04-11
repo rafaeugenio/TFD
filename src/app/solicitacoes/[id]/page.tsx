@@ -42,6 +42,8 @@ import PageHeader from '@/shared/components/page-header/PageHeader';
 import StatusTag from '@/shared/components/status-tag/StatusTag';
 import { useReferrerBreadcrumb } from '@/shared/hooks/useReferrerBreadcrumb';
 import TimelineTFD, { type TimelineEvent } from '@/shared/components/timeline-tfd/TimelineTFD';
+import ObservacoesEtapa from '@/shared/components/observacoes-etapa/ObservacoesEtapa';
+import AutorizacaoInline from '@/shared/components/autorizacao-inline/AutorizacaoInline';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import UfCidadeSelect from '@/shared/components/uf-cidade-select/UfCidadeSelect';
@@ -56,10 +58,22 @@ import { buscarViagensPorSolicitacao } from '@/services/viagens.service';
 import { criarPermanencia, atualizarPermanencia, criarProrrogacao } from '@/services/permanencias.service';
 import { buscarAjudaCustoPorSolicitacao } from '@/services/ajuda-custo.service';
 import { uploadDocumento, excluirDocumento } from '@/services/documentos.service';
+import {
+  listarObservacoesPorSolicitacao,
+  agruparObservacoesPorEtapa,
+  type EtapaObservacao,
+  type ObservacaoEtapa,
+} from '@/services/observacoes-etapa.service';
+import {
+  listarAutorizacoesPorSolicitacao,
+  tipoAutorizacaoLabels,
+  type AutorizacaoCoordenacao,
+} from '@/services/autorizacoes.service';
 import { useCompanhias } from '@/shared/hooks/useLookup';
 import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
 import { useParametroNumero } from '@/shared/hooks/useParametros';
+import { calcularTotalDiarias } from '@/shared/utils/diarias';
 import { formatCPF, formatCNS, formatCurrency, formatDate, formatDateTime, maskCPF, maskCNS, maskPhone, maskCurrency, parseCurrency } from '@/shared/pipes/formatters';
 import type { StatusSolicitacao, TipoDocumento } from '@/core/models';
 import type { TipoDocumento as TipoDocumentoDB } from '@/lib/supabase/database.types';
@@ -330,8 +344,56 @@ function InfoRow({ label, value, mono }: { label: string; value: React.ReactNode
 /*  Build timeline from Supabase data                  */
 /* -------------------------------------------------- */
 
-function buildTimeline(sol: any): TimelineEvent[] {
+function buildTimeline(
+  sol: any,
+  extras?: {
+    observacoes?: ObservacaoEtapa[];
+    autorizacoes?: AutorizacaoCoordenacao[];
+  },
+): TimelineEvent[] {
   const events: TimelineEvent[] = [];
+
+  // D1 — Observações por etapa (D2 — também aparecem na linha do tempo)
+  const etapaLabels: Record<string, string> = {
+    parecer: 'Parecer',
+    regulacao: 'Regulação',
+    agendamento: 'Agendamento',
+    passagens: 'Passagens',
+    ajuda_custo: 'Ajuda de custo',
+    permanencia: 'Permanência',
+    encerramento: 'Encerramento',
+  };
+  for (const obs of extras?.observacoes ?? []) {
+    events.push({
+      id: `ev-obs-${obs.id}`,
+      date: formatDate(obs.data),
+      title: `Observação registrada — ${etapaLabels[obs.etapa] ?? obs.etapa}`,
+      description: obs.texto,
+      status: 'info',
+      user: obs.autorNome,
+    });
+  }
+
+  // AZ3 — Autorizações registradas na linha do tempo
+  for (const auth of extras?.autorizacoes ?? []) {
+    events.push({
+      id: `ev-auth-${auth.id}`,
+      date: formatDate(auth.createdAt),
+      title: `Autorização solicitada — ${tipoAutorizacaoLabels[auth.tipo]}`,
+      description: auth.justificativa,
+      status: 'warning',
+      user: auth.solicitadoPorNome,
+    });
+    if (auth.status !== 'PENDENTE' && auth.decididoEm) {
+      events.push({
+        id: `ev-auth-dec-${auth.id}`,
+        date: formatDate(auth.decididoEm),
+        title: `Autorização ${auth.status === 'APROVADA' ? 'aprovada' : 'negada'}`,
+        description: auth.decisaoMotivo,
+        status: auth.status === 'APROVADA' ? 'success' : 'danger',
+      });
+    }
+  }
 
   events.push({
     id: 'ev-criacao',
@@ -537,6 +599,7 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
 
   /* ---- Lookups for edit forms ---- */
   const { valor: valorDiariaCompleta } = useParametroNumero('diaria_valor_completa');
+  const { valor: valorDiariaRetorno } = useParametroNumero('diaria_valor_retorno');
 
   /* ---- Edit form states ---- */
 
@@ -580,6 +643,21 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
   const [agStatusAgendamento, setAgStatusAgendamento] = useState('AGUARDANDO_CONFIRMACAO');
   const [agComprovante, setAgComprovante] = useState<File | null>(null);
   const [agEditingId, setAgEditingId] = useState<string | null>(null);
+
+  // A2 — Histórico de unidades consultadas (agendamento manual pela equipe)
+  interface ConsultaUnidade {
+    id: string;
+    unidade: string;
+    data: string;
+    resposta: 'ACEITO' | 'NEGADO' | 'PENDENTE';
+    observacao: string;
+  }
+  const [consultasUnidade, setConsultasUnidade] = useState<ConsultaUnidade[]>([]);
+  const [showConsultaForm, setShowConsultaForm] = useState(false);
+  const [consultaUnidade, setConsultaUnidade] = useState('');
+  const [consultaData, setConsultaData] = useState('');
+  const [consultaResposta, setConsultaResposta] = useState<'ACEITO' | 'NEGADO' | 'PENDENTE'>('PENDENTE');
+  const [consultaObservacao, setConsultaObservacao] = useState('');
 
   // Viagens
   type DrawerTab = 'ida' | 'volta';
@@ -659,9 +737,16 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
     return valorDiariaCompleta;
   }, [acValorDiaria, valorDiariaCompleta]);
 
-  const acValorTotalCalc = useMemo(() => {
-    return acDiasCalc * acValorDiariaNum;
-  }, [acDiasCalc, acValorDiariaNum]);
+  // Portaria SAS/MS 55/1999: (dias - 1) × diária completa + diária de retorno.
+  const acValorTotalCalc = useMemo(
+    () =>
+      calcularTotalDiarias({
+        dias: acDiasCalc,
+        valorDiariaCompleta: acValorDiariaNum,
+        valorDiariaRetorno,
+      }).valorTotal,
+    [acDiasCalc, acValorDiariaNum, valorDiariaRetorno],
+  );
 
   /* ---- Computed: Permanência cost impact ---- */
   const permCustoAdicional = useMemo(() => {
@@ -678,11 +763,42 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
     };
   }, [permAjudaCustoInfo, permNovaDataRetorno]);
 
+  /* ---- D1/AZ3 — Observações por etapa + autorizações da coordenação ---- */
+  const [obsPorEtapa, setObsPorEtapa] = useState<Record<string, ObservacaoEtapa[]>>({});
+  const [autorizacoes, setAutorizacoes] = useState<AutorizacaoCoordenacao[]>([]);
+
+  const reloadObservacoes = useMemo(
+    () => async () => {
+      const list = await listarObservacoesPorSolicitacao(id);
+      setObsPorEtapa(agruparObservacoesPorEtapa(list));
+    },
+    [id],
+  );
+
+  const reloadAutorizacoes = useMemo(
+    () => async () => {
+      const list = await listarAutorizacoesPorSolicitacao(id);
+      setAutorizacoes(list);
+    },
+    [id],
+  );
+
+  useEffect(() => {
+    reloadObservacoes();
+    reloadAutorizacoes();
+  }, [reloadObservacoes, reloadAutorizacoes]);
+
+  function getObsEtapa(etapa: EtapaObservacao): ObservacaoEtapa[] {
+    return obsPorEtapa[etapa] ?? [];
+  }
+
   /* ---- Reload data helper ---- */
   function reloadSolicitacao() {
     buscarSolicitacao(id).then(({ data, error }) => {
       if (!error && data) setSol(data);
     });
+    reloadObservacoes();
+    reloadAutorizacoes();
   }
 
   /* ---- Open edit helpers — populate form from current data ---- */
@@ -898,7 +1014,11 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
   }
 
   const activeStep = getActiveStepIndex(sol);
-  const timeline = buildTimeline(sol);
+  const allObservacoes = Object.values(obsPorEtapa).flat();
+  const timeline = buildTimeline(sol, {
+    observacoes: allObservacoes,
+    autorizacoes: autorizacoes,
+  });
   const pac = sol.pacientes;
   const acomp = (sol as any).solicitacao_acompanhantes?.[0]?.acompanhantes;
   const parecer = sol.pareceres?.[0];
@@ -1039,6 +1159,18 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
 
           {/* ── Dados do Paciente ── */}
           <Section title="Dados do Paciente" icon={<User size={18} />}>
+            {pac?.id && (
+              <div className="mb-3 flex justify-end">
+                <Link
+                  href={`/pacientes/${pac.id}/prontuario`}
+                  className="tfd-btn tfd-btn-outline tfd-btn--sm"
+                  style={{ gap: '0.375rem' }}
+                >
+                  <FileText size={13} />
+                  Ver prontuário completo TFD
+                </Link>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <InfoRow label="Nome completo" value={pac?.nome_completo ?? '—'} />
               <InfoRow label="CPF" value={formatCPF(pac?.cpf ?? '')} mono />
@@ -1225,6 +1357,24 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
                 <DocumentList docs={getDocsForSection(sol.documentos ?? [], 'parecer')} docTypeLabels={docTypeLabels} />
               </div>
             )}
+
+            <ObservacoesEtapa
+              solicitacaoId={id}
+              etapa="parecer"
+              observacoes={getObsEtapa('parecer')}
+              autorId={currentUser?.id}
+              autorPerfil={currentUser?.perfil}
+              autorNome={currentUser?.nome_completo}
+              onRegistered={reloadSolicitacao}
+            />
+            <div className="mt-3">
+              <AutorizacaoInline
+                solicitacaoId={id}
+                autorId={currentUser?.id}
+                autorPerfil={currentUser?.perfil}
+                onRequested={reloadSolicitacao}
+              />
+            </div>
           </Section>
 
           {/* ── Regulacao ── */}
@@ -1332,6 +1482,24 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
                     <DocumentList docs={getDocsForSection(sol.documentos ?? [], 'regulacao')} docTypeLabels={docTypeLabels} />
                   </div>
                 )}
+
+                <ObservacoesEtapa
+                  solicitacaoId={id}
+                  etapa="regulacao"
+                  observacoes={getObsEtapa('regulacao')}
+                  autorId={currentUser?.id}
+                  autorPerfil={currentUser?.perfil}
+                  autorNome={currentUser?.nome_completo}
+                  onRegistered={reloadSolicitacao}
+                />
+                <div className="mt-3">
+                  <AutorizacaoInline
+                    solicitacaoId={id}
+                    autorId={currentUser?.id}
+                    autorPerfil={currentUser?.perfil}
+                    onRequested={reloadSolicitacao}
+                  />
+                </div>
               </Section>
             );
           })()}
@@ -1366,6 +1534,153 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
                 {agendamento.contato_unidade && <InfoRow label="Contato" value={agendamento.contato_unidade} />}
                 <DocumentList docs={getDocsForSection(sol.documentos ?? [], 'agendamento')} docTypeLabels={docTypeLabels} />
               </div>
+            )}
+
+            <ObservacoesEtapa
+              solicitacaoId={id}
+              etapa="agendamento"
+              observacoes={getObsEtapa('agendamento')}
+              autorId={currentUser?.id}
+              autorPerfil={currentUser?.perfil}
+              autorNome={currentUser?.nome_completo}
+              onRegistered={reloadSolicitacao}
+            />
+            <div className="mt-3">
+              <AutorizacaoInline
+                solicitacaoId={id}
+                autorId={currentUser?.id}
+                autorPerfil={currentUser?.perfil}
+                onRequested={reloadSolicitacao}
+              />
+            </div>
+          </Section>
+
+          {/* ── A2: Histórico de Unidades Consultadas ── */}
+          <Section
+            title="Unidades Consultadas (Busca de Agendamento)"
+            icon={<Building2 size={18} />}
+            empty={consultasUnidade.length === 0}
+          >
+            {consultasUnidade.length > 0 && (
+              <div className="space-y-2 mb-3">
+                {consultasUnidade.map((c) => (
+                  <div
+                    key={c.id}
+                    className="flex items-start justify-between gap-3 p-3 rounded-lg"
+                    style={{ border: '1px solid var(--tfd-surface-border)' }}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{c.unidade}</p>
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
+                        <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>{formatDate(c.data)}</span>
+                        <span
+                          className="text-xs px-1.5 py-0.5 rounded font-medium"
+                          style={{
+                            backgroundColor: c.resposta === 'ACEITO' ? '#DCFCE7' : c.resposta === 'NEGADO' ? '#FEE2E2' : '#FEF3C7',
+                            color: c.resposta === 'ACEITO' ? '#15803D' : c.resposta === 'NEGADO' ? '#B91C1C' : '#92400E',
+                          }}
+                        >
+                          {c.resposta === 'ACEITO' ? 'Aceito' : c.resposta === 'NEGADO' ? 'Negado' : 'Pendente'}
+                        </span>
+                      </div>
+                      {c.observacao && (
+                        <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-secondary)' }}>{c.observacao}</p>
+                      )}
+                    </div>
+                    <button
+                      className="tfd-btn tfd-btn-ghost tfd-btn--icon-only tfd-btn--sm shrink-0"
+                      title="Remover consulta"
+                      onClick={() => setConsultasUnidade((prev) => prev.filter((x) => x.id !== c.id))}
+                    >
+                      <X size={13} style={{ color: 'var(--tfd-status-danger)' }} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {showConsultaForm ? (
+              <div
+                className="p-3 rounded-lg"
+                style={{ border: '1px solid var(--tfd-surface-border)', backgroundColor: 'var(--tfd-primary-50)' }}
+              >
+                <p className="text-xs font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Registrar consulta</p>
+                <FormField label="Unidade consultada" required>
+                  <input
+                    type="text"
+                    className="tfd-input tfd-input--sm"
+                    placeholder="Ex: HC-SP, INCA, UNIFESO..."
+                    value={consultaUnidade}
+                    onChange={(e) => setConsultaUnidade(e.target.value)}
+                  />
+                </FormField>
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField label="Data da consulta" required>
+                    <input
+                      type="date"
+                      className="tfd-input tfd-input--sm"
+                      value={consultaData}
+                      onChange={(e) => setConsultaData(e.target.value)}
+                    />
+                  </FormField>
+                  <FormField label="Resposta" required>
+                    <select
+                      className="tfd-input tfd-input--sm"
+                      value={consultaResposta}
+                      onChange={(e) => setConsultaResposta(e.target.value as 'ACEITO' | 'NEGADO' | 'PENDENTE')}
+                    >
+                      <option value="PENDENTE">Pendente</option>
+                      <option value="ACEITO">Aceito</option>
+                      <option value="NEGADO">Negado</option>
+                    </select>
+                  </FormField>
+                </div>
+                <FormField label="Observação">
+                  <textarea
+                    className="tfd-input tfd-input--sm"
+                    rows={2}
+                    placeholder="Motivo, documentação pedida, protocolo..."
+                    value={consultaObservacao}
+                    onChange={(e) => setConsultaObservacao(e.target.value)}
+                  />
+                </FormField>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="tfd-btn tfd-btn-primary tfd-btn--sm"
+                    onClick={() => {
+                      if (!consultaUnidade.trim() || !consultaData) return;
+                      setConsultasUnidade((prev) => [...prev, {
+                        id: `c-${Date.now()}`,
+                        unidade: consultaUnidade.trim(),
+                        data: consultaData,
+                        resposta: consultaResposta,
+                        observacao: consultaObservacao.trim(),
+                      }]);
+                      setConsultaUnidade('');
+                      setConsultaData('');
+                      setConsultaResposta('PENDENTE');
+                      setConsultaObservacao('');
+                      setShowConsultaForm(false);
+                    }}
+                  >
+                    Salvar
+                  </button>
+                  <button
+                    className="tfd-btn tfd-btn-secondary tfd-btn--sm"
+                    onClick={() => { setShowConsultaForm(false); setConsultaUnidade(''); setConsultaData(''); setConsultaResposta('PENDENTE'); setConsultaObservacao(''); }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                className="tfd-btn tfd-btn-secondary tfd-btn--sm"
+                onClick={() => setShowConsultaForm(true)}
+              >
+                <Plus size={14} />
+                Registrar consulta
+              </button>
             )}
           </Section>
 
@@ -1465,6 +1780,24 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
                 </div>
               );
             })()}
+
+            <ObservacoesEtapa
+              solicitacaoId={id}
+              etapa="passagens"
+              observacoes={getObsEtapa('passagens')}
+              autorId={currentUser?.id}
+              autorPerfil={currentUser?.perfil}
+              autorNome={currentUser?.nome_completo}
+              onRegistered={reloadSolicitacao}
+            />
+            <div className="mt-3">
+              <AutorizacaoInline
+                solicitacaoId={id}
+                autorId={currentUser?.id}
+                autorPerfil={currentUser?.perfil}
+                onRequested={reloadSolicitacao}
+              />
+            </div>
           </Section>
 
           {/* ── Ajuda de Custo ── */}
@@ -1579,6 +1912,24 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
                 <DocumentList docs={getDocsForSection(sol.documentos ?? [], 'ajudaCusto')} docTypeLabels={docTypeLabels} />
               </div>
             )}
+
+            <ObservacoesEtapa
+              solicitacaoId={id}
+              etapa="ajuda_custo"
+              observacoes={getObsEtapa('ajuda_custo')}
+              autorId={currentUser?.id}
+              autorPerfil={currentUser?.perfil}
+              autorNome={currentUser?.nome_completo}
+              onRegistered={reloadSolicitacao}
+            />
+            <div className="mt-3">
+              <AutorizacaoInline
+                solicitacaoId={id}
+                autorId={currentUser?.id}
+                autorPerfil={currentUser?.perfil}
+                onRequested={reloadSolicitacao}
+              />
+            </div>
           </Section>
 
           {/* ── Permanencia ── */}
@@ -1647,6 +1998,24 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
                 <DocumentList docs={getDocsForSection(sol.documentos ?? [], 'permanencia')} docTypeLabels={docTypeLabels} />
               </div>
             )}
+
+            <ObservacoesEtapa
+              solicitacaoId={id}
+              etapa="permanencia"
+              observacoes={getObsEtapa('permanencia')}
+              autorId={currentUser?.id}
+              autorPerfil={currentUser?.perfil}
+              autorNome={currentUser?.nome_completo}
+              onRegistered={reloadSolicitacao}
+            />
+            <div className="mt-3">
+              <AutorizacaoInline
+                solicitacaoId={id}
+                autorId={currentUser?.id}
+                autorPerfil={currentUser?.perfil}
+                onRequested={reloadSolicitacao}
+              />
+            </div>
           </Section>
 
         </div>
@@ -2769,7 +3138,11 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
           <div>
             <p className="text-xs" style={{ color: 'var(--tfd-primary-600)' }}>Valor total calculado</p>
             <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-              {acDiasCalc} dias × {formatCurrency(acValorDiariaNum)}
+              {acDiasCalc > 1
+                ? `(${acDiasCalc} - 1) × ${formatCurrency(acValorDiariaNum)} + ${formatCurrency(valorDiariaRetorno)} (dia de retorno)`
+                : acDiasCalc === 1
+                  ? `${formatCurrency(valorDiariaRetorno)} (dia único, sem pernoite)`
+                  : '—'}
             </p>
           </div>
           <p className="text-xl font-bold" style={{ color: 'var(--tfd-primary-700)' }}>

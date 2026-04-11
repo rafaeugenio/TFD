@@ -44,6 +44,11 @@ export interface DevolverModalProps {
   userId?: string;
   /** Callback after successful devolução */
   onSuccess?: () => void;
+  /**
+   * When true, also show stages AFTER the current one.
+   * Used by REGULACAO to allow direct routing to AJUDA_CUSTO for prorrogação.
+   */
+  allowForward?: boolean;
 }
 
 /* -------------------------------------------------- */
@@ -59,6 +64,7 @@ export default function DevolverModal({
   label,
   userId,
   onSuccess,
+  allowForward = false,
 }: DevolverModalProps) {
   const [selectedSetor, setSelectedSetor] = useState<SetorTFD | ''>('');
   const [motivo, setMotivo] = useState('');
@@ -66,9 +72,11 @@ export default function DevolverModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  // Stages the item can be sent back to: only those BEFORE the current stage
+  // Stages the item can be sent to: prior stages (devolver), and if allowForward, also forward stages
   const currentIndex = ETAPAS_TFD.findIndex((e) => e.setor === setorAtual);
-  const etapasDisponiveis = currentIndex > 0 ? ETAPAS_TFD.slice(0, currentIndex) : [];
+  const etapasAnteriores = currentIndex > 0 ? ETAPAS_TFD.slice(0, currentIndex) : [];
+  const etapasPosteriores = allowForward && currentIndex >= 0 ? ETAPAS_TFD.slice(currentIndex + 1) : [];
+  const etapasDisponiveis = [...etapasAnteriores, ...etapasPosteriores];
 
   function handleClose() {
     if (submitting) return;
@@ -168,9 +176,28 @@ export default function DevolverModal({
               onChange={(e) => { setSelectedSetor(e.target.value as SetorTFD); setError(''); }}
             >
               <option value="">Selecione o setor...</option>
-              {etapasDisponiveis.map((etapa) => (
-                <option key={etapa.setor} value={etapa.setor}>{etapa.label}</option>
-              ))}
+              {allowForward ? (
+                <>
+                  {etapasAnteriores.length > 0 && (
+                    <optgroup label="Devolver (etapas anteriores)">
+                      {etapasAnteriores.map((etapa) => (
+                        <option key={etapa.setor} value={etapa.setor}>{etapa.label}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {etapasPosteriores.length > 0 && (
+                    <optgroup label="Encaminhar (etapas à frente)">
+                      {etapasPosteriores.map((etapa) => (
+                        <option key={etapa.setor} value={etapa.setor}>{etapa.label}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </>
+              ) : (
+                etapasAnteriores.map((etapa) => (
+                  <option key={etapa.setor} value={etapa.setor}>{etapa.label}</option>
+                ))
+              )}
             </select>
           </div>
 
@@ -216,15 +243,40 @@ export default function DevolverModal({
           </div>
 
           {/* Warning */}
-          <div
-            className="flex items-start gap-2 p-3 rounded-lg text-xs"
-            style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
-          >
-            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-            <span>
-              A solicitação será movida para o setor selecionado e ficará pendente até que a correção seja realizada.
-            </span>
-          </div>
+          {selectedSetor ? (
+            etapasPosteriores.some((e) => e.setor === selectedSetor) ? (
+              <div
+                className="flex items-start gap-2 p-3 rounded-lg text-xs"
+                style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}
+              >
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                <span>
+                  A solicitação será encaminhada diretamente para o setor selecionado, pulando etapas intermediárias.
+                  Use apenas quando o processo já está pronto para essa etapa (ex.: prorrogação direto para Ajuda de Custo).
+                </span>
+              </div>
+            ) : (
+              <div
+                className="flex items-start gap-2 p-3 rounded-lg text-xs"
+                style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
+              >
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                <span>
+                  A solicitação será devolvida ao setor selecionado e ficará pendente até que a correção seja realizada.
+                </span>
+              </div>
+            )
+          ) : (
+            <div
+              className="flex items-start gap-2 p-3 rounded-lg text-xs"
+              style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
+            >
+              <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+              <span>
+                A solicitação será movida para o setor selecionado e ficará pendente até que a correção seja realizada.
+              </span>
+            </div>
+          )}
 
           {/* Error */}
           {error && (
