@@ -644,6 +644,12 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
   const [agComprovante, setAgComprovante] = useState<File | null>(null);
   const [agEditingId, setAgEditingId] = useState<string | null>(null);
 
+  // TODO A3 — Agrupamento de solicitações por viagem
+  // Requer schema de banco: tabela de junção `viagem_solicitacoes` (viagem_id, solicitacao_id)
+  // e tabela `viagens` com campos data, destino, modal, companhia.
+  // Após migration, expor via serviço `viagens.service.ts` e exibir seção
+  // "Viagem vinculada" nesta página com seletor de viagem existente ou criação inline.
+
   // A2 — Histórico de unidades consultadas (agendamento manual pela equipe)
   interface ConsultaUnidade {
     id: string;
