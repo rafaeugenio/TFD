@@ -171,6 +171,9 @@ export default function AjudaCustoPage() {
   const [dataFim, setDataFim] = useState('');
   const [valorDiaria, setValorDiaria] = useState('');
   const [observacoes, setObservacoes] = useState('');
+  // AC2 — Ajuste manual quando o paciente chega após 00h no retorno:
+  // o dia de chegada conta como mais um dia sem pernoite.
+  const [chegadaAposMeiaNoite, setChegadaAposMeiaNoite] = useState(false);
 
   /* ---- Inline action state ---- */
   const [inlineAction, setInlineAction] = useState<InlineAction>(null);
@@ -189,8 +192,10 @@ export default function AjudaCustoPage() {
 
   const diasCalc = useMemo(() => {
     if (dataFimError) return 0;
-    return calcularDias(dataInicio, dataFim);
-  }, [dataInicio, dataFim, dataFimError]);
+    const base = calcularDias(dataInicio, dataFim);
+    // AC2 — chegada após 00h no retorno acrescenta +1 dia sem pernoite.
+    return base > 0 && chegadaAposMeiaNoite ? base + 1 : base;
+  }, [dataInicio, dataFim, dataFimError, chegadaAposMeiaNoite]);
 
   const valorDiariaNum = useMemo(() => {
     if (valorDiaria) return parseCurrency(valorDiaria);
@@ -218,6 +223,7 @@ export default function AjudaCustoPage() {
     setDataFim('');
     setValorDiaria('');
     setObservacoes('');
+    setChegadaAposMeiaNoite(false);
   }
 
   function resetInlineAction() {
@@ -287,6 +293,14 @@ export default function AjudaCustoPage() {
     setTipoBeneficiario(periodo.tipo ?? 'PACIENTE');
     setDataInicio(periodo.data_inicio ? (periodo.data_inicio.includes('T') ? periodo.data_inicio.split('T')[0] : periodo.data_inicio) : '');
     setDataFim(periodo.data_fim ? (periodo.data_fim.includes('T') ? periodo.data_fim.split('T')[0] : periodo.data_fim) : '');
+    // AC2 — detecta ajuste manual comparando dias_elegiveis com o range de datas.
+    const diasRange = calcularDias(
+      periodo.data_inicio ? (periodo.data_inicio.includes('T') ? periodo.data_inicio.split('T')[0] : periodo.data_inicio) : '',
+      periodo.data_fim ? (periodo.data_fim.includes('T') ? periodo.data_fim.split('T')[0] : periodo.data_fim) : '',
+    );
+    setChegadaAposMeiaNoite(
+      periodo.dias_elegiveis != null && diasRange > 0 && periodo.dias_elegiveis === diasRange + 1,
+    );
     const valCents = Math.round((periodo.valor_diaria ?? 0) * 100);
     setValorDiaria(valCents > 0 ? maskCurrency(String(valCents)) : '');
     setObservacoes(periodo.observacoes ?? '');
@@ -303,6 +317,8 @@ export default function AjudaCustoPage() {
       tipo: tipoBeneficiario || 'PACIENTE',
       data_inicio: dataInicio,
       data_fim: dataFim || null,
+      // dias_elegiveis carrega eventual ajuste manual (AC2 — chegada após 00h).
+      dias_elegiveis: diasCalc,
       valor_diaria: valorDiariaNum,
       valor_total: valorTotalCalc,
       observacoes: observacoes || null,
@@ -841,6 +857,8 @@ export default function AjudaCustoPage() {
               const pStyle = statusStyleMap[p.status] ?? statusStyleMap.EM_ANALISE;
               const dias = p.dias_elegiveis ?? calcularDias(p.data_inicio, p.data_fim ?? '');
               const isActionTarget = inlineAction?.periodoId === p.id;
+              // Saldo = valor aprovado - valor pago. Positivo: falta pagar.
+              // Negativo: pago a mais (fica como crédito devedor do paciente).
               const saldoPendente = (p.status === 'PAGO_PARCIALMENTE' && p.valor_pago != null) ? (p.valor_total ?? 0) - p.valor_pago : null;
 
               return (
@@ -881,7 +899,9 @@ export default function AjudaCustoPage() {
                         <>
                           <span style={{ color: 'var(--tfd-text-muted)' }}>·</span>
                           <span style={{ color: '#C2410C' }}>
-                            Saldo: {formatCurrency(saldoPendente)}
+                            {saldoPendente > 0
+                              ? `Saldo a pagar: ${formatCurrency(saldoPendente)}`
+                              : `Pago a mais: ${formatCurrency(-saldoPendente)}`}
                           </span>
                         </>
                       )}
@@ -973,7 +993,7 @@ export default function AjudaCustoPage() {
                         Registrar pagamento
                       </p>
                       <div className="mb-2">
-                        <label className="tfd-label">Valor pago</label>
+                        <label className="tfd-label">Valor efetivamente recebido</label>
                         <input
                           type="text"
                           className="tfd-input"
@@ -985,6 +1005,21 @@ export default function AjudaCustoPage() {
                         <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
                           Valor aprovado: {formatCurrency(p.valor_total ?? 0)}
                         </p>
+                        {(() => {
+                          const pagoPreview = parseCurrency(valorPagoInput);
+                          const aprovado = p.valor_total ?? 0;
+                          if (!valorPagoInput || pagoPreview === aprovado) return null;
+                          const saldo = aprovado - pagoPreview;
+                          const saldoLabel =
+                            saldo > 0
+                              ? `Saldo a pagar: ${formatCurrency(saldo)}`
+                              : `Pago a mais: ${formatCurrency(-saldo)} (será descontado em ciclo futuro)`;
+                          return (
+                            <p className="text-xs mt-1" style={{ color: '#C2410C' }}>
+                              {saldoLabel}
+                            </p>
+                          );
+                        })()}
                       </div>
                       <div className="flex gap-2">
                         <button className="tfd-btn tfd-btn-secondary tfd-btn--sm flex-1" disabled={actionLoading} onClick={resetInlineAction}>Cancelar</button>
@@ -1036,6 +1071,21 @@ export default function AjudaCustoPage() {
             <FormField label="Valor da diária">
               <input type="text" className="tfd-input" placeholder={`R$ ${valorDiariaCompleta.toFixed(2).replace('.', ',')}`} value={valorDiaria} onChange={(e) => setValorDiaria(maskCurrency(e.target.value))} />
             </FormField>
+
+            {/* AC2 — ajuste manual para chegada após 00h no retorno */}
+            <label className="flex items-start gap-2 mb-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={chegadaAposMeiaNoite}
+                onChange={(e) => setChegadaAposMeiaNoite(e.target.checked)}
+                style={{ marginTop: '3px' }}
+              />
+              <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>
+                <strong>Chegada após 00h no retorno</strong> — acrescenta +1 dia sem pernoite
+                (quando o voo/ônibus de volta pousa depois da meia-noite, o dia de chegada
+                conta como um dia adicional).
+              </span>
+            </label>
 
             <div className="flex items-center justify-between px-4 py-3 rounded-lg mb-4" style={{ backgroundColor: 'var(--tfd-primary-50)' }}>
               <div>
