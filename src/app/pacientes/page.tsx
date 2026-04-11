@@ -79,6 +79,64 @@ function validarCpfModulo11(value: string): boolean {
   return true;
 }
 
+function validarCns(value: string): boolean {
+  const digits = value.replace(/\D/g, '');
+  if (digits.length !== 15) return false;
+  // CNS starting with 1 or 2: PIS-based algorithm
+  if (/^[12]/.test(digits)) {
+    const pis = digits.slice(0, 11);
+    let sum = 0;
+    for (let i = 0; i < 11; i++) sum += Number(pis[i]) * (10 - i);
+    let dsr = sum % 11;
+    let result: string;
+    if (dsr === 0) {
+      result = pis + '000' + '1';
+    } else {
+      const sub = 11 - dsr;
+      if (sub === 10) {
+        sum += 2;
+        dsr = sum % 11;
+        result = pis + '001' + String(11 - dsr);
+      } else {
+        result = pis + '00' + String(sub);
+      }
+    }
+    // Pad to 15
+    while (result.length < 15) result = result + '0';
+    return result === digits;
+  }
+  // CNS starting with 7, 8, or 9: sum of digits × position must be divisible by 11
+  if (/^[789]/.test(digits)) {
+    let sum = 0;
+    for (let i = 0; i < 15; i++) sum += Number(digits[i]) * (15 - i);
+    return sum % 11 === 0;
+  }
+  return false;
+}
+
+function validarDataNascimento(value: string): string {
+  if (!value) return '';
+  const d = new Date(value + 'T00:00:00');
+  if (isNaN(d.getTime())) return 'Data invalida.';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (d > today) return 'A data de nascimento nao pode ser futura.';
+  const minDate = new Date('1900-01-01');
+  if (d < minDate) return 'Data de nascimento muito antiga.';
+  return '';
+}
+
+function calcularIdade(dataNasc: string): number | null {
+  if (!dataNasc) return null;
+  const d = new Date(dataNasc + 'T00:00:00');
+  if (isNaN(d.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - d.getFullYear();
+  const m = today.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--;
+  return age;
+}
+
 interface PendingFile {
   file: File;
   tipo: TipoDocumento;
@@ -149,10 +207,12 @@ function PacientesPage() {
   const [acompNome, setAcompNome] = useState('');
   const [acompCpf, setAcompCpf] = useState('');
   const [acompCns, setAcompCns] = useState('');
+  const [acompDataNascimento, setAcompDataNascimento] = useState('');
   const [acompVinculo, setAcompVinculo] = useState<VinculoAcompanhante | ''>('');
   const [acompTelefone, setAcompTelefone] = useState('');
   const [acompNecessidadeEspecial, setAcompNecessidadeEspecial] = useState(false);
   const [acompDescricaoNecessidade, setAcompDescricaoNecessidade] = useState('');
+  const [acompAgeWarning, setAcompAgeWarning] = useState('');
 
   /* ---- Lookup hooks ---- */
   const { options: municipios, loading: loadingMun } = useMunicipios();
@@ -265,10 +325,12 @@ function PacientesPage() {
     setAcompNome('');
     setAcompCpf('');
     setAcompCns('');
+    setAcompDataNascimento('');
     setAcompVinculo('');
     setAcompTelefone('');
     setAcompNecessidadeEspecial(false);
     setAcompDescricaoNecessidade('');
+    setAcompAgeWarning('');
   }
 
   function handleCloseDrawer() {
@@ -356,17 +418,42 @@ function PacientesPage() {
         toast.error('Campo obrigatorio', 'Informe a data de nascimento.');
         return;
       }
+      const dateErr = validarDataNascimento(dataNascimento);
+      if (dateErr) {
+        toast.error('Data invalida', dateErr);
+        return;
+      }
       if (!sexo) {
         toast.error('Campo obrigatorio', 'Selecione o sexo do paciente.');
+        return;
+      }
+      if (!telefoneCelular.trim() && !telefoneFixo.trim()) {
+        toast.error('Campo obrigatorio', 'Informe ao menos um telefone de contato.');
+        return;
+      }
+      if (!logradouro.trim()) {
+        toast.error('Campo obrigatorio', 'Informe o logradouro do endereco.');
+        return;
+      }
+      if (!numero.trim()) {
+        toast.error('Campo obrigatorio', 'Informe o numero do endereco.');
+        return;
+      }
+      if (!bairro.trim()) {
+        toast.error('Campo obrigatorio', 'Informe o bairro do endereco.');
         return;
       }
       if (!municipio) {
         toast.error('Campo obrigatorio', 'Selecione o municipio de residencia.');
         return;
       }
+      const cleanCns = cns.replace(/\D/g, '');
+      if (cleanCns && !validarCns(cns)) {
+        toast.error('CNS invalido', 'O Cartao SUS informado nao e valido.');
+        return;
+      }
 
       const cleanCpf = cpf.replace(/\D/g, '');
-      const cleanCns = cns.replace(/\D/g, '');
       const cleanPhoneCel = telefoneCelular.replace(/\D/g, '');
       const cleanPhoneFix = telefoneFixo.replace(/\D/g, '');
       const cleanCep = cep.replace(/\D/g, '');
@@ -468,10 +555,17 @@ function PacientesPage() {
     setAcompNome((acomp.nome_completo as string) ?? '');
     setAcompCpf(maskCPF((acomp.cpf as string) ?? ''));
     setAcompCns(maskCNS((acomp.cns as string) ?? ''));
+    setAcompDataNascimento((acomp.data_nascimento as string) ?? '');
     setAcompVinculo((acomp.vinculo as VinculoAcompanhante) ?? '');
     setAcompTelefone(maskPhone((acomp.telefone as string) ?? ''));
     setAcompNecessidadeEspecial((acomp.necessidade_especial as boolean) ?? false);
     setAcompDescricaoNecessidade((acomp.descricao_necessidade as string) ?? '');
+    const age = calcularIdade((acomp.data_nascimento as string) ?? '');
+    if (age !== null && (age < 20 || age > 65)) {
+      setAcompAgeWarning(`Acompanhante com ${age} anos — fora da faixa padrao (20–65). Exige autorizacao da coordenacao.`);
+    } else {
+      setAcompAgeWarning('');
+    }
     setShowAcompForm(true);
   }
 
@@ -505,6 +599,15 @@ function PacientesPage() {
       toast.error('CPF invalido', 'Informe um CPF valido para o acompanhante.');
       return;
     }
+    if (!acompDataNascimento) {
+      toast.error('Campo obrigatorio', 'Informe a data de nascimento do acompanhante.');
+      return;
+    }
+    const dateErr = validarDataNascimento(acompDataNascimento);
+    if (dateErr) {
+      toast.error('Data invalida', dateErr);
+      return;
+    }
     if (!acompVinculo) {
       toast.error('Campo obrigatorio', 'Selecione o vinculo do acompanhante.');
       return;
@@ -522,6 +625,7 @@ function PacientesPage() {
       nome_completo: acompNome.trim(),
       cpf: cleanAcompCpf,
       cns: cleanAcompCns || null,
+      data_nascimento: acompDataNascimento,
       vinculo: acompVinculo,
       telefone: cleanAcompPhone,
       necessidade_especial: acompNecessidadeEspecial,
@@ -902,7 +1006,7 @@ function PacientesPage() {
             />
           </FormField>
 
-          <FormField label="Cartao SUS (CNS)">
+          <FormField label="Cartao SUS (CNS)" hint="opcional">
             <input
               type="text"
               className="tfd-input"
@@ -938,7 +1042,7 @@ function PacientesPage() {
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Telefone celular">
+          <FormField label="Telefone celular" hint="ao menos um obrigatorio">
             <input
               type="tel"
               className="tfd-input"
@@ -998,7 +1102,7 @@ function PacientesPage() {
           />
 
           <div className="col-span-2">
-            <FormField label="Logradouro">
+            <FormField label="Logradouro" required>
               <input
                 type="text"
                 className="tfd-input"
@@ -1010,7 +1114,7 @@ function PacientesPage() {
         </div>
 
         <div className="grid grid-cols-3 gap-4">
-          <FormField label="Numero">
+          <FormField label="Numero" required>
             <input
               type="text"
               className="tfd-input"
@@ -1019,7 +1123,7 @@ function PacientesPage() {
             />
           </FormField>
 
-          <FormField label="Bairro">
+          <FormField label="Bairro" required>
             <input
               type="text"
               className="tfd-input"
@@ -1057,20 +1161,24 @@ function PacientesPage() {
           </select>
         </FormField>
 
-        <FormField label="Regional">
-          <select
+        <FormField label="Regional" hint="derivada do municipio">
+          <input
+            type="text"
             className="tfd-input"
-            value={regionalId}
-            onChange={(e) => setRegionalId(e.target.value)}
-            disabled={regionaisLoading}
-          >
-            <option value="">
-              {regionaisLoading ? 'Carregando...' : 'Selecione a regional...'}
-            </option>
-            {regionaisOptions.map((r) => (
-              <option key={r.id} value={r.id}>{r.codigo} — {r.nome}</option>
-            ))}
-          </select>
+            readOnly
+            value={
+              regionaisLoading
+                ? 'Carregando...'
+                : regionalId
+                  ? (regionaisOptions.find((r) => r.id === regionalId)
+                      ? `${regionaisOptions.find((r) => r.id === regionalId)!.codigo} — ${regionaisOptions.find((r) => r.id === regionalId)!.nome}`
+                      : regionalId)
+                  : municipio
+                    ? 'Regional nao encontrada para este municipio'
+                    : 'Selecione o municipio para preencher automaticamente'
+            }
+            style={{ backgroundColor: 'var(--tfd-surface-50)', color: 'var(--tfd-text-muted)', cursor: 'default' }}
+          />
         </FormField>
 
         {/* ── Section: Documentos Pessoais ── */}
@@ -1330,16 +1438,44 @@ function PacientesPage() {
                 />
               </FormField>
 
-              <FormField label="CNS">
+              <FormField label="Data de Nascimento" required>
                 <input
-                  type="text"
+                  type="date"
                   className="tfd-input"
-                  placeholder="000 0000 0000 0000"
-                  value={acompCns}
-                  onChange={(e) => setAcompCns(maskCNS(e.target.value))}
+                  value={acompDataNascimento}
+                  onChange={(e) => {
+                    setAcompDataNascimento(e.target.value);
+                    const age = calcularIdade(e.target.value);
+                    if (age !== null && (age < 20 || age > 65)) {
+                      setAcompAgeWarning(`Acompanhante com ${age} anos — fora da faixa padrao (20–65). Exige autorizacao da coordenacao.`);
+                    } else {
+                      setAcompAgeWarning('');
+                    }
+                  }}
                 />
               </FormField>
             </div>
+
+            {acompAgeWarning && (
+              <div
+                className="flex items-start gap-2 px-3 py-2 rounded-lg mb-3"
+                style={{ backgroundColor: '#FFFBEB', border: '1px solid #FCD34D' }}
+              >
+                <span className="text-xs font-medium" style={{ color: '#92400E' }}>
+                  {acompAgeWarning}
+                </span>
+              </div>
+            )}
+
+            <FormField label="CNS" hint="opcional">
+              <input
+                type="text"
+                className="tfd-input"
+                placeholder="000 0000 0000 0000"
+                value={acompCns}
+                onChange={(e) => setAcompCns(maskCNS(e.target.value))}
+              />
+            </FormField>
 
             <div className="grid grid-cols-2 gap-4">
               <LookupSelect

@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Building2,
   CheckCircle2,
-  MapPin,
   Plus,
   Search,
   Pencil,
@@ -26,7 +25,6 @@ import { maskPhone, maskCEP } from '@/shared/pipes/formatters';
 import CepAutofill from '@/shared/components/cep-autofill/CepAutofill';
 import UfCidadeSelect from '@/shared/components/uf-cidade-select/UfCidadeSelect';
 import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
-import { createClient } from '@/lib/supabase/client';
 import SortableHeader from '@/shared/components/table/SortableHeader';
 import { useTableControls } from '@/shared/hooks/useTableControls';
 
@@ -37,7 +35,6 @@ import {
   atualizarUnidadeSaude,
   desativarUnidadeSaude,
 } from '@/services/unidades-saude.service';
-import { buscarRegionalPorMunicipio } from '@/services/regionais-saude.service';
 
 /* -------------------------------------------------- */
 /*  Component                                          */
@@ -67,7 +64,6 @@ function UnidadesSaudePage() {
   const [nome, setNome] = useState('');
   const [cnes, setCnes] = useState('');
   const [tipo, setTipo] = useState('');
-  const [regionalId, setRegionalId] = useState('');
 
   /* ---- Form state: Endereco ---- */
   const [cep, setCep] = useState('');
@@ -84,22 +80,6 @@ function UnidadesSaudePage() {
 
   /* ---- CNES autofill ---- */
   const [cnesLoading, setCnesLoading] = useState(false);
-
-  /* ---- Regional options (regionais_saude) ---- */
-  const [regionaisOptions, setRegionaisOptions] = useState<{ value: string; label: string }[]>([]);
-
-  useEffect(() => {
-    createClient()
-      .from('regionais_saude')
-      .select('id, codigo, nome')
-      .eq('ativo', true)
-      .order('ordem')
-      .then(({ data, error }) => {
-        if (error || !data) return;
-        const rows = data as { id: string; codigo: string; nome: string }[];
-        setRegionaisOptions(rows.map((r) => ({ value: r.id, label: `${r.codigo} — ${r.nome}` })));
-      });
-  }, []);
 
   /* ---- Data fetching via Supabase ---- */
   const { data: unidades, loading, refresh } = useSupabaseData(
@@ -118,24 +98,13 @@ function UnidadesSaudePage() {
   const tipoFilterOptions = table.getFilterOptions('tipo');
 
   /* ---- Summary counters ---- */
-  const [counts, setCounts] = useState({ total: 0, ativas: 0, regionais: 0 });
+  const [counts, setCounts] = useState({ total: 0, ativas: 0 });
 
   const refreshCounts = useCallback(() => {
     listarUnidadesSaude({ pageSize: 1 }).then(({ count }) => {
       const total = count ?? 0;
-      setCounts((prev) => ({ ...prev, total, ativas: total }));
+      setCounts({ total, ativas: total });
     });
-    // Count distinct regionais
-    createClient()
-      .from('unidades_destino')
-      .select('regional_id')
-      .eq('ativo', true)
-      .not('regional_id', 'is', null)
-      .then(({ data }) => {
-        if (!data) return;
-        const unique = new Set((data as { regional_id: string }[]).map((r) => r.regional_id));
-        setCounts((prev) => ({ ...prev, regionais: unique.size }));
-      });
   }, []);
 
   useEffect(() => {
@@ -227,7 +196,6 @@ function UnidadesSaudePage() {
     setNome('');
     setCnes('');
     setTipo('');
-    setRegionalId('');
     setCep('');
     setLogradouro('');
     setNumero('');
@@ -252,7 +220,6 @@ function UnidadesSaudePage() {
     setNome((uni.nome as string) ?? '');
     setCnes((uni.cnes as string) ?? '');
     setTipo((uni.tipo as string) ?? '');
-    setRegionalId((uni.regional_saude_id as string) ?? (uni.regional_id as string) ?? '');
     setCep(maskCEP((uni.cep as string) ?? ''));
     setLogradouro((uni.logradouro as string) ?? '');
     setNumero((uni.numero as string) ?? '');
@@ -312,7 +279,6 @@ function UnidadesSaudePage() {
         nome: nome.trim(),
         cnes: cleanCnes,
         tipo: tipo || null,
-        regional_saude_id: regionalId || null,
         cep: cleanCep || null,
         logradouro: logradouro.trim() || null,
         numero: numero.trim() || null,
@@ -398,18 +364,6 @@ function UnidadesSaudePage() {
           </div>
         </div>
 
-        <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: 'var(--tfd-status-info-bg)', color: 'var(--tfd-status-info)' }}
-          >
-            <MapPin size={20} />
-          </div>
-          <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Regionais Cobertas</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.regionais}</p>
-          </div>
-        </div>
       </div>
 
       {/* ========== Toolbar ========== */}
@@ -484,12 +438,6 @@ function UnidadesSaudePage() {
                   onFilterChange={(v) => table.setColumnFilter('tipo', v)}
                 />
                 <SortableHeader
-                  label="Regional"
-                  className="hidden lg:table-cell"
-                  sortDirection={table.getSortDirection('regional_saude_id')}
-                  onSort={() => table.toggleSort('regional_saude_id')}
-                />
-                <SortableHeader
                   label="Municipio"
                   className="hidden xl:table-cell"
                   sortDirection={table.getSortDirection('municipio')}
@@ -502,7 +450,7 @@ function UnidadesSaudePage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12">
+                  <td colSpan={6} className="text-center py-12">
                     <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
                       Carregando...
                     </p>
@@ -510,7 +458,7 @@ function UnidadesSaudePage() {
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12">
+                  <td colSpan={6} className="text-center py-12">
                     <div className="flex flex-col items-center gap-2">
                       <XCircle size={32} style={{ color: 'var(--tfd-text-muted)' }} />
                       <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
@@ -520,9 +468,7 @@ function UnidadesSaudePage() {
                   </td>
                 </tr>
               ) : (
-                items.map((uni: Record<string, unknown>) => {
-                  const regionalNome = (uni.tabelas_auxiliares as Record<string, unknown> | null)?.nome as string | undefined;
-                  return (
+                items.map((uni: Record<string, unknown>) => (
                     <tr key={uni.id as string} className="cursor-pointer" onClick={() => router.push(`/unidades-saude/${uni.id}`)}>
                       <td className="max-w-[200px] truncate font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
                         {uni.nome as string}
@@ -532,9 +478,6 @@ function UnidadesSaudePage() {
                       </td>
                       <td className="hidden lg:table-cell" style={{ color: 'var(--tfd-text-secondary)' }}>
                         {(uni.tipo as string) || '\u2014'}
-                      </td>
-                      <td className="hidden lg:table-cell" style={{ color: 'var(--tfd-text-secondary)' }}>
-                        {regionalNome || '\u2014'}
                       </td>
                       <td className="hidden xl:table-cell" style={{ color: 'var(--tfd-text-secondary)' }}>
                         {(uni.municipio as string) || (uni.cidade as string) || '\u2014'}
@@ -561,8 +504,7 @@ function UnidadesSaudePage() {
                         </div>
                       </td>
                     </tr>
-                  );
-                })
+                ))
               )}
             </tbody>
           </table>
@@ -725,19 +667,6 @@ function UnidadesSaudePage() {
           />
         </div>
 
-        <FormField label="Regional">
-          <select
-            className="tfd-input"
-            value={regionalId}
-            onChange={(e) => setRegionalId(e.target.value)}
-          >
-            <option value="">Selecione...</option>
-            {regionaisOptions.map((r) => (
-              <option key={r.value} value={r.value}>{r.label}</option>
-            ))}
-          </select>
-        </FormField>
-
         <hr className="tfd-divider" />
 
         {/* ── Section: Endereco ── */}
@@ -752,15 +681,7 @@ function UnidadesSaudePage() {
             setLogradouro(address.logradouro);
             setBairro(address.bairro);
             setUf(address.uf);
-            if (address.cidade) {
-              setMunicipio(address.cidade);
-              // Auto-preenche a regional com base no município
-              if (address.uf === 'MA') {
-                buscarRegionalPorMunicipio(address.cidade).then(({ data }) => {
-                  if (data?.regional_saude_id) setRegionalId(data.regional_saude_id);
-                });
-              }
-            }
+            if (address.cidade) setMunicipio(address.cidade);
           }}
         />
 
