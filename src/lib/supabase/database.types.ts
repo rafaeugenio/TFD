@@ -143,6 +143,20 @@ export type MotivoPermanencia =
 
 export type DecisaoProrrogacao = 'APROVADA' | 'INDEFERIDA' | 'PENDENTE';
 
+// Task #5 — Adicionais (custos extras durante o TFD)
+export type CategoriaAdicional =
+  | 'PASSAGEM_EXTRA'
+  | 'AJUDA_CUSTO_EXTRA'
+  | 'BAGAGEM'
+  | 'TRANSFER'
+  | 'OUTRO';
+
+export type StatusAdicional =
+  | 'PENDENTE_APROVACAO'
+  | 'APROVADO'
+  | 'INDEFERIDO'
+  | 'PAGO';
+
 export type MotivoEncerramento =
   | 'ALTA_MEDICA'
   | 'TRANSFERENCIA'
@@ -1262,6 +1276,68 @@ export type Database = {
           justificativa_decisao?: string | null;
           complemento_ajuda_id?: string | null;
           viagem_prorrogacao_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      // ── Adicionais (Task #5 — PA1–PA4) ────────────────────
+      adicionais: {
+        Row: {
+          id: string;
+          solicitacao_id: string;
+          categoria: CategoriaAdicional;
+          descricao: string;
+          valor: number;
+          data_ocorrencia: string;
+          documento_id: string | null;
+          status: StatusAdicional;
+          justificativa_solicitacao: string | null;
+          aprovado_por: string | null;
+          aprovado_em: string | null;
+          justificativa_decisao: string | null;
+          incluido_faturamento_em: string | null;
+          numero_relatorio: string | null;
+          criado_por: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          solicitacao_id: string;
+          categoria: CategoriaAdicional;
+          descricao: string;
+          valor: number;
+          data_ocorrencia: string;
+          documento_id?: string | null;
+          status?: StatusAdicional;
+          justificativa_solicitacao?: string | null;
+          aprovado_por?: string | null;
+          aprovado_em?: string | null;
+          justificativa_decisao?: string | null;
+          incluido_faturamento_em?: string | null;
+          numero_relatorio?: string | null;
+          criado_por?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          solicitacao_id?: string;
+          categoria?: CategoriaAdicional;
+          descricao?: string;
+          valor?: number;
+          data_ocorrencia?: string;
+          documento_id?: string | null;
+          status?: StatusAdicional;
+          justificativa_solicitacao?: string | null;
+          aprovado_por?: string | null;
+          aprovado_em?: string | null;
+          justificativa_decisao?: string | null;
+          incluido_faturamento_em?: string | null;
+          numero_relatorio?: string | null;
+          criado_por?: string | null;
           created_at?: string;
           updated_at?: string;
         };
