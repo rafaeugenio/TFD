@@ -168,6 +168,79 @@ export async function atualizarViagem(id: string, data: UpdateDTO<'viagens'>) {
   return supabase.from('viagens').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single();
 }
 
+/**
+ * P6 — Atualiza viagem já emitida gravando diff de cada campo alterado no log_auditoria.
+ * Requer snapshot do estado anterior para calcular o diff.
+ */
+export async function atualizarViagemComAuditoria(
+  id: string,
+  dadosAnteriores: Record<string, unknown>,
+  dadosNovos: UpdateDTO<'viagens'>,
+  usuarioId: string,
+  perfilUsuario: string,
+  solicitacaoId?: string,
+) {
+  const supabase = getSupabase();
+  const { data: atualizada, error } = await supabase
+    .from('viagens')
+    .update({ ...dadosNovos, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error || !atualizada) {
+    return { data: atualizada, error };
+  }
+
+  // Calcula diff e grava uma linha por campo alterado
+  const camposAuditados: string[] = [
+    'modal', 'origem_cidade', 'origem_uf', 'destino_cidade', 'destino_uf',
+    'data_embarque_prevista', 'companhia', 'numero_bilhete', 'valor',
+    'medif_necessario', 'observacoes',
+  ];
+
+  const logs: Array<Record<string, unknown>> = [];
+  for (const campo of camposAuditados) {
+    const antes = dadosAnteriores[campo];
+    const depois = (dadosNovos as Record<string, unknown>)[campo];
+    if (depois === undefined) continue; // campo não foi enviado no payload
+    const antesStr = antes == null ? '' : String(antes);
+    const depoisStr = depois == null ? '' : String(depois);
+    if (antesStr === depoisStr) continue;
+    logs.push({
+      solicitacao_id: solicitacaoId ?? null,
+      usuario_id: usuarioId,
+      perfil_usuario: perfilUsuario,
+      acao: 'PASSAGEM_REMARCADA',
+      entidade_alterada: 'viagens',
+      entidade_id: id,
+      campo_alterado: campo,
+      valor_anterior: antesStr || null,
+      valor_novo: depoisStr || null,
+    });
+  }
+
+  if (logs.length > 0) {
+    // Insere em batch — falha silenciosa para não bloquear edição
+    await supabase.from('log_auditoria').insert(logs as never);
+  }
+
+  return { data: atualizada, error: null };
+}
+
+/**
+ * P6 — Lista histórico de alterações de uma viagem (para exibir na tela de detalhes).
+ */
+export async function listarHistoricoViagem(viagemId: string) {
+  const supabase = getSupabase();
+  return supabase
+    .from('log_auditoria')
+    .select('*, usuarios(nome_completo)')
+    .eq('entidade_alterada', 'viagens')
+    .eq('entidade_id', viagemId)
+    .order('timestamp', { ascending: false });
+}
+
 // ─── TRANSIÇÕES DE SITUAÇÃO ──────────────────────────────────
 
 /**

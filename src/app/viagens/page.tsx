@@ -39,6 +39,8 @@ import {
   listarViagens,
   criarViagem,
   atualizarViagem,
+  atualizarViagemComAuditoria,
+  listarHistoricoViagem,
   listarSolicitacoesAguardandoEmissao,
   confirmarEmbarque,
   registrarNoShow,
@@ -134,6 +136,16 @@ export default function ViagensPage() {
 
   /* ---- Devolver ---- */
   const [devolverItem, setDevolverItem] = useState<any>(null);
+
+  /* ---- P6 — Edição inline de passagem já emitida + histórico de auditoria ---- */
+  const [editingViagem, setEditingViagem] = useState<any>(null);
+  const [editCompanhia, setEditCompanhia] = useState('');
+  const [editBilhete, setEditBilhete] = useState('');
+  const [editValor, setEditValor] = useState('');
+  const [editDataEmbarque, setEditDataEmbarque] = useState('');
+  const [editObservacoes, setEditObservacoes] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+  const [historicoViagem, setHistoricoViagem] = useState<any[]>([]);
 
   /* ---- Anexo ida/volta drawer ---- */
   const [anexoViagem, setAnexoViagem] = useState<{ viagemId: string; tipo: 'ida' | 'volta'; paciente: string } | null>(null);
@@ -271,6 +283,12 @@ export default function ViagensPage() {
     setRemarcarOpen(false);
     setRemarcarNovaData('');
     setRemarcarMotivo('');
+    setEditingViagem(null);
+    setHistoricoViagem([]);
+    // P6 — carrega histórico de auditoria em background
+    listarHistoricoViagem(v.id).then(({ data }) => {
+      setHistoricoViagem((data as any[]) ?? []);
+    });
     setDrawerOpen(true);
   }
 
@@ -288,6 +306,8 @@ export default function ViagensPage() {
     setInlineConfirm(null);
     setCancelMotivo('');
     setRemarcarOpen(false);
+    setEditingViagem(null);
+    setHistoricoViagem([]);
   }
 
   function handleCloseDrawer() {
@@ -493,6 +513,57 @@ export default function ViagensPage() {
     }
     setSubmitting(false);
   }
+
+  /* ---- P6 — Editar passagem já emitida (snapshot → update → audit) ---- */
+  function handleAbrirEdicao() {
+    if (!viewViagem) return;
+    setEditingViagem(viewViagem);
+    setEditCompanhia(viewViagem.companhia ?? '');
+    setEditBilhete(viewViagem.numero_bilhete ?? '');
+    setEditValor(viewViagem.valor != null ? String(viewViagem.valor) : '');
+    setEditDataEmbarque(viewViagem.data_embarque_prevista ?? '');
+    setEditObservacoes(viewViagem.observacoes ?? '');
+  }
+
+  function handleCancelarEdicao() {
+    setEditingViagem(null);
+    setEditCompanhia(''); setEditBilhete(''); setEditValor('');
+    setEditDataEmbarque(''); setEditObservacoes('');
+  }
+
+  async function handleSalvarEdicao() {
+    if (!editingViagem || !currentUser) return;
+    setEditSaving(true);
+    try {
+      const novos = {
+        companhia: editCompanhia || null,
+        numero_bilhete: editBilhete || null,
+        valor: editValor ? parseFloat(editValor) : null,
+        data_embarque_prevista: editDataEmbarque,
+        observacoes: editObservacoes || null,
+      };
+      const { error } = await atualizarViagemComAuditoria(
+        editingViagem.id,
+        editingViagem as Record<string, unknown>,
+        novos as any,
+        currentUser.id,
+        currentUser.perfil,
+        editingViagem.solicitacao_id,
+      );
+      if (error) {
+        toast.error('Erro ao salvar edição', (error as any).message ?? 'Tente novamente.');
+      } else {
+        toast.success('Passagem atualizada!', 'Alterações registradas no histórico de auditoria.');
+        handleCancelarEdicao();
+        handleCloseDrawer();
+        refreshAll();
+      }
+    } catch (e: any) {
+      toast.error('Erro inesperado', e.message ?? 'Tente novamente');
+    }
+    setEditSaving(false);
+  }
+
 
   /* ---- Anexo viagem handlers ---- */
   async function handleOpenAnexo(viagemId: string, tipo: 'ida' | 'volta', paciente: string) {
@@ -777,13 +848,80 @@ export default function ViagensPage() {
             </div>
           </div>
         )}
+
+        {/* P6 — Formulário inline de edição de passagem emitida */}
+        {editingViagem && (
+          <div className="p-3 rounded-lg space-y-3" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+            <p className="text-sm font-semibold" style={{ color: '#1D4ED8' }}>Editar Passagem</p>
+            <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+              Alterações ficam registradas no histórico de auditoria (autor, data, campo, valor anterior e novo).
+            </p>
+            <FormField label="Companhia">
+              <input type="text" className="tfd-input" value={editCompanhia} onChange={(e) => setEditCompanhia(e.target.value)} />
+            </FormField>
+            <FormField label="Número do bilhete">
+              <input type="text" className="tfd-input" value={editBilhete} onChange={(e) => setEditBilhete(e.target.value)} />
+            </FormField>
+            <FormField label="Valor (R$)">
+              <input type="number" step="0.01" className="tfd-input" value={editValor} onChange={(e) => setEditValor(e.target.value)} />
+            </FormField>
+            <FormField label="Data de embarque">
+              <input type="date" className="tfd-input" value={editDataEmbarque} onChange={(e) => setEditDataEmbarque(e.target.value)} />
+            </FormField>
+            <FormField label="Observações">
+              <textarea className="tfd-input" rows={2} value={editObservacoes} onChange={(e) => setEditObservacoes(e.target.value)} />
+            </FormField>
+            <div className="flex gap-2">
+              <button className="tfd-btn tfd-btn-secondary" onClick={handleCancelarEdicao}>Cancelar</button>
+              <button className="tfd-btn tfd-btn-primary" onClick={handleSalvarEdicao} disabled={editSaving}>
+                {editSaving ? <><Loader2 size={14} className="animate-spin" /> Salvando...</> : 'Salvar Alterações'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* P6 — Histórico de auditoria da viagem */}
+        {!editingViagem && historicoViagem.length > 0 && (
+          <div className="p-3 rounded-lg space-y-2" style={{ backgroundColor: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}>
+            <div className="flex items-center gap-2">
+              <FileText size={14} style={{ color: 'var(--tfd-text-secondary)' }} />
+              <p className="text-xs font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+                Histórico de Alterações ({historicoViagem.length})
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              {historicoViagem.slice(0, 10).map((log: any) => (
+                <div key={log.id} className="text-[11px] p-1.5 rounded" style={{ backgroundColor: 'white', border: '1px solid var(--tfd-surface-border)' }}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+                      {log.campo_alterado ?? log.acao}
+                    </span>
+                    <span style={{ color: 'var(--tfd-text-muted)' }}>
+                      {log.timestamp ? new Date(log.timestamp).toLocaleString('pt-BR') : '—'}
+                    </span>
+                  </div>
+                  {log.campo_alterado && (
+                    <div style={{ color: 'var(--tfd-text-secondary)' }}>
+                      <span className="line-through" style={{ color: '#DC2626' }}>{log.valor_anterior || '—'}</span>
+                      <span className="mx-1" style={{ color: 'var(--tfd-text-muted)' }}>→</span>
+                      <span style={{ color: '#16A34A' }}>{log.valor_novo || '—'}</span>
+                    </div>
+                  )}
+                  <div style={{ color: 'var(--tfd-text-muted)' }}>
+                    por {log.usuarios?.nome_completo ?? 'usuário desconhecido'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
   /* ---- Render view drawer footer (action buttons) ---- */
   function renderViewFooter() {
-    if (!viewViagem || inlineConfirm || remarcarOpen) return null;
+    if (!viewViagem || inlineConfirm || remarcarOpen || editingViagem) return null;
     const sit = viewViagem.situacao as SituacaoViagem;
     // P5 — quando o processo está em outra área, ocultar ações (somente Fechar)
     const bloqueado = Boolean(labelDestino(viewViagem.solicitacao_id));
@@ -802,6 +940,10 @@ export default function ViagensPage() {
           </button>
           <button className="tfd-btn" style={{ background: '#4338CA', color: 'white' }} onClick={() => setRemarcarOpen(true)}>
             <RefreshCcw size={14} /> Remarcar
+          </button>
+          {/* P6 — Editar passagem emitida */}
+          <button className="tfd-btn" style={{ background: '#0EA5E9', color: 'white' }} onClick={handleAbrirEdicao}>
+            <FileText size={14} /> Editar
           </button>
           <button className="tfd-btn" style={{ background: '#EF4444', color: 'white' }} onClick={() => setInlineConfirm('cancelar')}>
             <Ban size={14} /> Cancelar
