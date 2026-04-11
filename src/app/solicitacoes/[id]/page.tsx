@@ -43,6 +43,7 @@ import PageHeader from '@/shared/components/page-header/PageHeader';
 import StatusTag from '@/shared/components/status-tag/StatusTag';
 import { useReferrerBreadcrumb } from '@/shared/hooks/useReferrerBreadcrumb';
 import TimelineTFD, { type TimelineEvent } from '@/shared/components/timeline-tfd/TimelineTFD';
+import TrilhaAuditoria from '@/shared/components/trilha-auditoria/TrilhaAuditoria';
 import ObservacoesEtapa from '@/shared/components/observacoes-etapa/ObservacoesEtapa';
 import AutorizacaoInline from '@/shared/components/autorizacao-inline/AutorizacaoInline';
 import Drawer from '@/shared/components/drawer/Drawer';
@@ -2120,6 +2121,9 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
             </h3>
             <TimelineTFD events={timeline} />
           </div>
+
+          {/* Trilha de Auditoria (AU2 — acesso amplo coordenação/jurídica) */}
+          <TrilhaAuditoria solicitacaoId={sol.id} />
         </div>
       </div>
 
