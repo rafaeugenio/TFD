@@ -25,6 +25,7 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
+  Lock,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -244,6 +245,12 @@ export default function ViagensPage() {
 
   /* ---- Drawer: open new (criar ida+volta) ---- */
   function handleOpenNew(sol: any) {
+    // P5 — bloqueio visual quando o processo está em outra área (devolução pendente)
+    const destino = labelDestino(sol.id);
+    if (destino) {
+      alert(`Processo bloqueado — enviado para ${destino}. Emissão de passagens indisponível até o retorno.`);
+      return;
+    }
     resetForm();
     setDrawerMode('create');
     setSolicitacaoId(sol.id);
@@ -609,9 +616,30 @@ export default function ViagensPage() {
     const isTerminal = SITUACOES_TERMINAIS.includes(v.situacao);
     const tipoLabel = v.tipo === 'IDA' ? 'IDA' : 'VOLTA';
     const seq = v.numero_sequencial ?? 1;
+    // P5 — bloqueio visual: processo devolvido para outra área
+    const bloqueioDestino = labelDestino(v.solicitacao_id);
+    const bloqueioInfo = devolucoesEnviadas.get(v.solicitacao_id);
 
     return (
       <div className="space-y-4">
+        {/* P5 — Banner de bloqueio quando processo está em outra área */}
+        {bloqueioDestino && (
+          <div className="p-3 rounded-lg flex items-start gap-2" style={{ backgroundColor: '#F0F2F5', border: '1px solid #D1D5DB' }}>
+            <Lock size={16} style={{ color: '#6B7280', flexShrink: 0, marginTop: 2 }} />
+            <div className="flex-1">
+              <p className="text-sm font-semibold" style={{ color: '#374151' }}>
+                Processo bloqueado — enviado para {bloqueioDestino}
+              </p>
+              <p className="text-xs" style={{ color: '#6B7280' }}>
+                Apenas consulta. Ações ficam indisponíveis até o retorno da devolução.
+                {bloqueioInfo?.urgencia === 'URGENTE' && (
+                  <span className="ml-1 text-[10px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: '#FEE2E2', color: '#B91C1C' }}>URGENTE</span>
+                )}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Header card */}
         <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}>
           <div className="flex items-center justify-between mb-2">
@@ -757,6 +785,11 @@ export default function ViagensPage() {
   function renderViewFooter() {
     if (!viewViagem || inlineConfirm || remarcarOpen) return null;
     const sit = viewViagem.situacao as SituacaoViagem;
+    // P5 — quando o processo está em outra área, ocultar ações (somente Fechar)
+    const bloqueado = Boolean(labelDestino(viewViagem.solicitacao_id));
+    if (bloqueado) {
+      return <button className="tfd-btn tfd-btn-secondary" onClick={handleCloseDrawer}>Fechar</button>;
+    }
 
     if (sit === 'EMITIDA' || sit === 'AGUARDANDO_EMISSAO') {
       return (
@@ -942,31 +975,63 @@ export default function ViagensPage() {
                       </td>
                     </tr>
                   ) : (
-                    paginatedDisp.map((sol: any) => (
-                      <tr key={sol.id} className="cursor-pointer" onClick={() => handleOpenNew(sol)}>
-                        <td>
-                          <Link href={`/solicitacoes/${sol.id}?from=viagens`} className="font-medium text-sm hover:underline" style={{ color: 'var(--tfd-primary-500)' }} onClick={(e) => e.stopPropagation()}>
-                            {sol.numero_processo}
-                          </Link>
-                        </td>
-                        <td className="max-w-[200px] truncate font-medium">{sol.pacientes?.nome_completo ?? '—'}</td>
-                        <td className="hidden lg:table-cell">
-                          <span className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>{formatDate(sol.created_at)}</span>
-                        </td>
-                        <td>
-                          {(() => { const b = slaBadge(sol.created_at); return (
-                            <span className="tfd-tag tfd-tag--rounded text-xs font-semibold" style={b.style}>{b.label}</span>
-                          ); })()}
-                        </td>
-                        <td>
-                          <div className="flex items-center gap-1">
-                            <button type="button" className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={(e) => { e.stopPropagation(); handleOpenNew(sol); }}>
-                              <Ticket size={13} /> Emitir
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                    paginatedDisp.map((sol: any) => {
+                      const bloqueioDestino = labelDestino(sol.id);
+                      const bloqueioInfo = devolucoesEnviadas.get(sol.id);
+                      const bloqueado = Boolean(bloqueioDestino);
+                      return (
+                        <tr
+                          key={sol.id}
+                          className={bloqueado ? '' : 'cursor-pointer'}
+                          style={{
+                            opacity: bloqueado ? 0.6 : undefined,
+                            backgroundColor: bloqueado ? '#F8F9FA' : undefined,
+                          }}
+                          onClick={bloqueado ? undefined : () => handleOpenNew(sol)}
+                        >
+                          <td>
+                            <div className="flex flex-col gap-0.5">
+                              <Link href={`/solicitacoes/${sol.id}?from=viagens`} className="font-medium text-sm hover:underline" style={{ color: bloqueado ? 'var(--tfd-text-muted)' : 'var(--tfd-primary-500)' }} onClick={(e) => e.stopPropagation()}>
+                                {sol.numero_processo}
+                              </Link>
+                              {bloqueado && (
+                                <div className="flex items-center gap-1.5 mt-1">
+                                  <Lock size={10} style={{ color: '#6B7280' }} />
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#F0F2F5', color: '#6B7280' }}>
+                                    Enviado p/ {bloqueioDestino}
+                                  </span>
+                                  {bloqueioInfo?.urgencia === 'URGENTE' && (
+                                    <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: '#FEE2E2', color: '#B91C1C' }}>URGENTE</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="max-w-[200px] truncate font-medium">{sol.pacientes?.nome_completo ?? '—'}</td>
+                          <td className="hidden lg:table-cell">
+                            <span className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>{formatDate(sol.created_at)}</span>
+                          </td>
+                          <td>
+                            {(() => { const b = slaBadge(sol.created_at); return (
+                              <span className="tfd-tag tfd-tag--rounded text-xs font-semibold" style={b.style}>{b.label}</span>
+                            ); })()}
+                          </td>
+                          <td>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                className="tfd-btn tfd-btn-primary tfd-btn--sm"
+                                disabled={bloqueado}
+                                title={bloqueado ? `Bloqueado — processo em ${bloqueioDestino}` : undefined}
+                                onClick={(e) => { e.stopPropagation(); if (!bloqueado) handleOpenNew(sol); }}
+                              >
+                                <Ticket size={13} /> Emitir
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
