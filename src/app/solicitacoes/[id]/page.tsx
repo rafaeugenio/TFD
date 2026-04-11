@@ -36,6 +36,7 @@ import {
   Paperclip,
   Trash2,
   Send,
+  Plus,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -1370,7 +1371,7 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
               observacoes={getObsEtapa('parecer')}
               autorId={currentUser?.id}
               autorPerfil={currentUser?.perfil}
-              autorNome={currentUser?.nome_completo}
+              autorNome={currentUser?.nome}
               onRegistered={reloadSolicitacao}
             />
             <div className="mt-3">
@@ -1495,7 +1496,7 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
                   observacoes={getObsEtapa('regulacao')}
                   autorId={currentUser?.id}
                   autorPerfil={currentUser?.perfil}
-                  autorNome={currentUser?.nome_completo}
+                  autorNome={currentUser?.nome}
                   onRegistered={reloadSolicitacao}
                 />
                 <div className="mt-3">
@@ -1548,7 +1549,7 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
               observacoes={getObsEtapa('agendamento')}
               autorId={currentUser?.id}
               autorPerfil={currentUser?.perfil}
-              autorNome={currentUser?.nome_completo}
+              autorNome={currentUser?.nome}
               onRegistered={reloadSolicitacao}
             />
             <div className="mt-3">
@@ -1793,7 +1794,7 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
               observacoes={getObsEtapa('passagens')}
               autorId={currentUser?.id}
               autorPerfil={currentUser?.perfil}
-              autorNome={currentUser?.nome_completo}
+              autorNome={currentUser?.nome}
               onRegistered={reloadSolicitacao}
             />
             <div className="mt-3">
@@ -1925,7 +1926,7 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
               observacoes={getObsEtapa('ajuda_custo')}
               autorId={currentUser?.id}
               autorPerfil={currentUser?.perfil}
-              autorNome={currentUser?.nome_completo}
+              autorNome={currentUser?.nome}
               onRegistered={reloadSolicitacao}
             />
             <div className="mt-3">
@@ -2011,7 +2012,7 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
               observacoes={getObsEtapa('permanencia')}
               autorId={currentUser?.id}
               autorPerfil={currentUser?.perfil}
-              autorNome={currentUser?.nome_completo}
+              autorNome={currentUser?.nome}
               onRegistered={reloadSolicitacao}
             />
             <div className="mt-3">

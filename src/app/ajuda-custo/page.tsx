@@ -29,6 +29,7 @@ import { useDevolucoesPendentes } from '@/shared/hooks/useDevolucoesPendentes';
 import { slaBadge } from '@/shared/utils/sla';
 import { useDevolucoeRecebidas } from '@/shared/hooks/useDevolucoeRecebidas';
 import { useParametroNumero, useParametroBooleano } from '@/shared/hooks/useParametros';
+import { calcularTotalDiarias } from '@/shared/utils/diarias';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import { useToast } from '@/shared/components/toast/Toast';
@@ -196,7 +197,18 @@ export default function AjudaCustoPage() {
     return valorDiariaCompleta;
   }, [valorDiaria, valorDiariaCompleta]);
 
-  const valorTotalCalc = useMemo(() => diasCalc * valorDiariaNum, [diasCalc, valorDiariaNum]);
+  // Portaria SAS/MS 55/1999: (dias - 1) × diária completa + diária de retorno.
+  // O último dia é sempre sem pernoite. A operadora pode sobrescrever o valor
+  // da diária completa; o valor do dia de retorno vem sempre do parâmetro.
+  const valorTotalCalc = useMemo(
+    () =>
+      calcularTotalDiarias({
+        dias: diasCalc,
+        valorDiariaCompleta: valorDiariaNum,
+        valorDiariaRetorno,
+      }).valorTotal,
+    [diasCalc, valorDiariaNum, valorDiariaRetorno],
+  );
 
   function resetPeriodoForm() {
     setAddingPeriodo(false);
@@ -1028,7 +1040,13 @@ export default function AjudaCustoPage() {
             <div className="flex items-center justify-between px-4 py-3 rounded-lg mb-4" style={{ backgroundColor: 'var(--tfd-primary-50)' }}>
               <div>
                 <p className="text-xs" style={{ color: 'var(--tfd-primary-600)' }}>Total do período</p>
-                <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>{diasCalc} dias × {formatCurrency(valorDiariaNum)}</p>
+                <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
+                  {diasCalc > 1
+                    ? `(${diasCalc} - 1) × ${formatCurrency(valorDiariaNum)} + ${formatCurrency(valorDiariaRetorno)} (dia de retorno)`
+                    : diasCalc === 1
+                      ? `${formatCurrency(valorDiariaRetorno)} (dia único, sem pernoite)`
+                      : '—'}
+                </p>
               </div>
               <p className="text-xl font-bold" style={{ color: 'var(--tfd-primary-700)' }}>{formatCurrency(valorTotalCalc)}</p>
             </div>

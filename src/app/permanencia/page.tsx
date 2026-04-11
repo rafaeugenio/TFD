@@ -18,6 +18,7 @@ import {
   criarViagemProrrogacao, criarAjudaCustoProrrogacao,
 } from '@/services/permanencias.service';
 import { useParametroNumero } from '@/shared/hooks/useParametros';
+import { calcularTotalDiarias } from '@/shared/utils/diarias';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import { formatCurrency, formatDate, maskCurrency, parseCurrency } from '@/shared/pipes/formatters';
 import SortableHeader from '@/shared/components/table/SortableHeader';
@@ -69,6 +70,7 @@ function prorrogacaoSubStatus(p: any): string {
 export default function PermanenciaPage() {
   const toast = useToast();
   const { valor: valorDiariaCompleta } = useParametroNumero('diaria_valor_completa');
+  const { valor: valorDiariaRetorno } = useParametroNumero('diaria_valor_retorno');
 
   /* ── Main data ─────────────────────────────────────── */
   const { data: solicitacoes, loading, refresh } = useSupabaseData(
@@ -241,12 +243,19 @@ export default function PermanenciaPage() {
     const d2 = new Date(ajudaDataFim);
     const dias = Math.max(0, Math.ceil((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)));
 
+    // Portaria SAS/MS 55/1999: (dias - 1) × diária completa + diária de retorno.
+    const { valorTotal } = calcularTotalDiarias({
+      dias,
+      valorDiariaCompleta: vDiaria,
+      valorDiariaRetorno,
+    });
+
     setActionLoading(true);
     const { error } = await criarAjudaCustoProrrogacao(drawerSolId, prorrogacaoId, {
       dataInicio: ajudaDataInicio,
       dataFim: ajudaDataFim,
       valorDiaria: vDiaria,
-      valorTotal: dias * vDiaria,
+      valorTotal,
     });
     if (error) toast.error('Erro', (error as any).message);
     else toast.success('Ajuda de custo adicionada!', 'O periodo foi registrado.');
