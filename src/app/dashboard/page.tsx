@@ -14,6 +14,10 @@ import {
   Loader2,
   TrendingUp,
   GitCompareArrows,
+  AlertTriangle,
+  Skull,
+  Timer,
+  Wallet,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -22,18 +26,21 @@ import { listarSolicitacoes, contarPorStatus } from '@/services/solicitacoes.ser
 import { listarViagens } from '@/services/viagens.service';
 import { listarEncerramentos } from '@/services/encerramentos.service';
 import { listarAjudasCusto } from '@/services/ajuda-custo.service';
+import { useParametroNumero } from '@/shared/hooks/useParametros';
 import { formatDate, formatCurrency } from '@/shared/pipes/formatters';
 import type { StatusSolicitacao } from '@/core/models';
 
 /* ── Period filter presets ──────────────────────────── */
+/* DA1 — Filtros de período pré-definidos: 7d, mês, trimestre, semestre, ano. */
 
-type PresetKey = '7d' | '30d' | '6m' | '1y' | 'all';
+type PresetKey = '7d' | 'mes' | 'trimestre' | 'semestre' | 'ano' | 'all';
 
 const PRESETS: { key: PresetKey; label: string }[] = [
   { key: '7d', label: '7 dias' },
-  { key: '30d', label: '30 dias' },
-  { key: '6m', label: 'Semestre' },
-  { key: '1y', label: 'Ano' },
+  { key: 'mes', label: 'Mês' },
+  { key: 'trimestre', label: 'Trimestre' },
+  { key: 'semestre', label: 'Semestre' },
+  { key: 'ano', label: 'Anual' },
   { key: 'all', label: 'Todo período' },
 ];
 
@@ -45,11 +52,51 @@ function getPresetRange(key: PresetKey): { from: string; to: string } {
 
   const from = new Date();
   if (key === '7d') from.setDate(from.getDate() - 7);
-  else if (key === '30d') from.setDate(from.getDate() - 30);
-  else if (key === '6m') from.setMonth(from.getMonth() - 6);
-  else if (key === '1y') from.setFullYear(from.getFullYear() - 1);
+  else if (key === 'mes') from.setMonth(from.getMonth() - 1);
+  else if (key === 'trimestre') from.setMonth(from.getMonth() - 3);
+  else if (key === 'semestre') from.setMonth(from.getMonth() - 6);
+  else if (key === 'ano') from.setFullYear(from.getFullYear() - 1);
 
   return { from: from.toISOString().split('T')[0], to: toStr };
+}
+
+/* ── DA2 — Controle de tempo por setor ─────────────────── */
+/**
+ * Calcula dias entre `created_at` e hoje (se não concluído) ou `updated_at`.
+ * Fallback quando não temos histórico granular de movimentação entre setores.
+ * Referência: 5 dias num único setor já é considerado "absurdo".
+ */
+function diasNoSetor(sol: any): number {
+  const start = new Date(sol.updated_at ?? sol.created_at);
+  const end = new Date();
+  const ms = end.getTime() - start.getTime();
+  return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
+}
+
+function alertaTempoSetor(dias: number): 'ok' | 'atencao' | 'critico' {
+  if (dias >= 5) return 'critico';
+  if (dias >= 3) return 'atencao';
+  return 'ok';
+}
+
+/* ── DA3 — Alerta de prazo de viagem curto ─────────────── */
+/**
+ * Retorna o nível de urgência com base em quantos dias faltam até a data
+ * prevista de viagem. Amarelo a partir de 20 dias, vermelho a partir de 15.
+ */
+function alertaPrazoViagem(
+  dataPrevista: string | null | undefined,
+): { nivel: 'normal' | 'atencao' | 'urgente'; diasRestantes: number } | null {
+  if (!dataPrevista) return null;
+  const hoje = new Date();
+  const prev = new Date(dataPrevista);
+  const diff = Math.floor(
+    (prev.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24),
+  );
+  if (diff < 0) return null;
+  if (diff <= 15) return { nivel: 'urgente', diasRestantes: diff };
+  if (diff <= 20) return { nivel: 'atencao', diasRestantes: diff };
+  return { nivel: 'normal', diasRestantes: diff };
 }
 
 /* ── Status styling ──────────────────────────────────── */
@@ -83,12 +130,17 @@ const motivoStyleMap: Record<string, { bg: string; color: string; label: string 
 
 export default function DashboardPage() {
   /* ── Period filter state ── */
-  const [activePreset, setActivePreset] = useState<PresetKey>('30d');
+  const [activePreset, setActivePreset] = useState<PresetKey>('mes');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
+  /* DA4 — Teto mensal do contrato anual */
+  const { valor: contratoAnualParam } = useParametroNumero('contrato_anual_valor');
+  // Fallback: R$ 14.000.000 / 12 = teto mensal se o parâmetro não existir
+  const tetoMensal = (contratoAnualParam > 0 ? contratoAnualParam : 14_000_000) / 12;
+
   useEffect(() => {
-    const range = getPresetRange('30d');
+    const range = getPresetRange('mes');
     setDateFrom(range.from);
     setDateTo(range.to);
   }, []);
@@ -108,6 +160,7 @@ export default function DashboardPage() {
 
   /* ── Data state ── */
   const [recentSolicitacoes, setRecentSolicitacoes] = useState<any[]>([]);
+  const [allSolicitacoes, setAllSolicitacoes] = useState<any[]>([]); // DA2/DA3
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const [viagensData, setViagensData] = useState<any[]>([]);
   const [encerramentosData, setEncerramentosData] = useState<any[]>([]);
@@ -117,8 +170,9 @@ export default function DashboardPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
 
-    const [recentRes, countsRes, viagensRes, encRes, ajudasRes] = await Promise.all([
+    const [recentRes, allRes, countsRes, viagensRes, encRes, ajudasRes] = await Promise.all([
       listarSolicitacoes({ page: 1, pageSize: 6 }),
+      listarSolicitacoes({ page: 1, pageSize: 500 }),
       contarPorStatus(),
       listarViagens({ pageSize: 500 }),
       listarEncerramentos({ pageSize: 500 }),
@@ -126,6 +180,7 @@ export default function DashboardPage() {
     ]);
 
     if (recentRes.data) setRecentSolicitacoes(recentRes.data);
+    if (allRes.data) setAllSolicitacoes(allRes.data);
     if (countsRes.data) setStatusCounts(countsRes.data);
     if (viagensRes.data) setViagensData(viagensRes.data);
     if (encRes.data) setEncerramentosData(encRes.data);
@@ -224,6 +279,64 @@ export default function DashboardPage() {
     const canceladas = filteredViagens.filter((v: any) => v.situacao === 'CANCELADA').length;
     return { emitidas, confirmadas, remarcadas, canceladas };
   }, [filteredViagens]);
+
+  /* ── DA2 — Tempo por setor (solicitações em andamento) ── */
+  const tempoSetorAlerts = useMemo(() => {
+    const ativas = allSolicitacoes.filter((s: any) => {
+      const st = s.status;
+      return (
+        st !== 'CONCLUIDO' &&
+        st !== 'INDEFERIDO' &&
+        st !== 'CANCELADO'
+      );
+    });
+    const buckets = { critico: 0, atencao: 0, ok: 0 };
+    const criticas: any[] = [];
+    ativas.forEach((s: any) => {
+      const dias = diasNoSetor(s);
+      const nivel = alertaTempoSetor(dias);
+      buckets[nivel] += 1;
+      if (nivel === 'critico') criticas.push({ ...s, diasNoSetor: dias });
+    });
+    criticas.sort((a, b) => b.diasNoSetor - a.diasNoSetor);
+    return { buckets, criticas: criticas.slice(0, 5), totalAtivas: ativas.length };
+  }, [allSolicitacoes]);
+
+  /* ── DA3 — Alertas de prazo de viagem curto ── */
+  const prazoAlerts = useMemo(() => {
+    const alertas: any[] = [];
+    allSolicitacoes.forEach((s: any) => {
+      const a = alertaPrazoViagem(s.data_prevista_viagem);
+      if (!a || a.nivel === 'normal') return;
+      // Ignora se já houver passagem emitida
+      const temPassagem = viagensData.some(
+        (v: any) =>
+          v.solicitacao_id === s.id &&
+          (v.situacao === 'EMITIDA' || v.situacao === 'UTILIZADA'),
+      );
+      if (temPassagem) return;
+      alertas.push({ ...s, ...a });
+    });
+    alertas.sort((a, b) => a.diasRestantes - b.diasRestantes);
+    return alertas.slice(0, 8);
+  }, [allSolicitacoes, viagensData]);
+
+  /* ── DA4 — Consumo do teto mensal do contrato ── */
+  const consumoContrato = useMemo(() => {
+    const consumido = valorPassagens + totalDiarias;
+    const pct = tetoMensal > 0 ? (consumido / tetoMensal) * 100 : 0;
+    let nivel: 'ok' | 'atencao' | 'critico' = 'ok';
+    if (pct >= 90) nivel = 'critico';
+    else if (pct >= 70) nivel = 'atencao';
+    return { consumido, pct: Math.min(pct, 100), nivel, teto: tetoMensal };
+  }, [valorPassagens, totalDiarias, tetoMensal]);
+
+  /* ── DA5 — Contador de óbitos no período ── */
+  const obitosPeriodo = useMemo(
+    () =>
+      filteredEncerramentos.filter((e: any) => e.motivo === 'OBITO').length,
+    [filteredEncerramentos],
+  );
 
   /* ── Computed: Top regionais (from solicitações recentes — simplified) ── */
   const topRegionais = useMemo(() => {
@@ -372,6 +485,322 @@ export default function DashboardPage() {
           </div>
           <div className="tfd-kpi-icon tfd-kpi-icon--green">
             <DollarSign size={22} />
+          </div>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════
+          DA2 / DA3 / DA4 / DA5 — Indicadores de gestão (Ata 07)
+          ═══════════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4 mb-6 tfd-stagger">
+        {/* DA2 — Tempo por setor */}
+        <div className="tfd-card">
+          <div className="flex items-center gap-2 mb-3">
+            <Timer size={16} style={{ color: 'var(--tfd-primary-500)' }} />
+            <h3
+              className="text-sm font-semibold"
+              style={{ color: 'var(--tfd-text-primary)' }}
+            >
+              Tempo no setor
+            </h3>
+          </div>
+          <p
+            className="text-[11px] mb-3"
+            style={{ color: 'var(--tfd-text-muted)' }}
+          >
+            Solicitações ativas por tempo parado
+          </p>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block w-2 h-2 rounded-full"
+                style={{ background: '#DC2626' }}
+              />
+              <span
+                className="text-xs flex-1"
+                style={{ color: 'var(--tfd-text-secondary)' }}
+              >
+                Crítico (≥ 5 dias)
+              </span>
+              <span
+                className="text-sm font-bold tfd-number"
+                style={{ color: '#DC2626' }}
+              >
+                {loading ? '—' : tempoSetorAlerts.buckets.critico}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block w-2 h-2 rounded-full"
+                style={{ background: '#D97706' }}
+              />
+              <span
+                className="text-xs flex-1"
+                style={{ color: 'var(--tfd-text-secondary)' }}
+              >
+                Atenção (3-4 dias)
+              </span>
+              <span
+                className="text-sm font-bold tfd-number"
+                style={{ color: '#D97706' }}
+              >
+                {loading ? '—' : tempoSetorAlerts.buckets.atencao}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block w-2 h-2 rounded-full"
+                style={{ background: '#16A34A' }}
+              />
+              <span
+                className="text-xs flex-1"
+                style={{ color: 'var(--tfd-text-secondary)' }}
+              >
+                No prazo (&lt; 3 dias)
+              </span>
+              <span
+                className="text-sm font-bold tfd-number"
+                style={{ color: '#16A34A' }}
+              >
+                {loading ? '—' : tempoSetorAlerts.buckets.ok}
+              </span>
+            </div>
+          </div>
+          {tempoSetorAlerts.criticas.length > 0 && (
+            <div
+              className="mt-3 pt-3"
+              style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
+            >
+              <p
+                className="text-[10px] uppercase tracking-wider font-semibold mb-1.5"
+                style={{ color: 'var(--tfd-text-muted)' }}
+              >
+                Mais atrasados
+              </p>
+              <ul className="space-y-1">
+                {tempoSetorAlerts.criticas.map((s: any) => (
+                  <li
+                    key={s.id}
+                    className="flex items-center justify-between gap-2"
+                  >
+                    <Link
+                      href={`/solicitacoes/${s.id}?from=dashboard`}
+                      className="text-[11px] font-medium truncate hover:underline"
+                      style={{ color: 'var(--tfd-primary-500)' }}
+                    >
+                      {s.numero_processo}
+                    </Link>
+                    <span
+                      className="text-[11px] font-semibold shrink-0"
+                      style={{ color: '#DC2626' }}
+                    >
+                      {s.diasNoSetor}d
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        {/* DA3 — Alertas de prazo curto */}
+        <div className="tfd-card">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle size={16} style={{ color: '#D97706' }} />
+            <h3
+              className="text-sm font-semibold"
+              style={{ color: 'var(--tfd-text-primary)' }}
+            >
+              Prazo de viagem
+            </h3>
+          </div>
+          <p
+            className="text-[11px] mb-3"
+            style={{ color: 'var(--tfd-text-muted)' }}
+          >
+            Sem passagem emitida — urgente a partir de 15 dias
+          </p>
+          {loading ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2
+                size={16}
+                className="animate-spin"
+                style={{ color: 'var(--tfd-primary-500)' }}
+              />
+            </div>
+          ) : prazoAlerts.length === 0 ? (
+            <p
+              className="text-xs text-center py-3"
+              style={{ color: 'var(--tfd-text-muted)' }}
+            >
+              Nenhum alerta de prazo no momento.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {prazoAlerts.map((s: any) => (
+                <li
+                  key={s.id}
+                  className="flex items-center justify-between gap-2"
+                >
+                  <Link
+                    href={`/solicitacoes/${s.id}?from=dashboard`}
+                    className="text-[11px] font-medium truncate hover:underline flex items-center gap-1"
+                    style={{ color: 'var(--tfd-primary-500)' }}
+                  >
+                    <span
+                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{
+                        background:
+                          s.nivel === 'urgente' ? '#DC2626' : '#D97706',
+                      }}
+                    />
+                    {s.numero_processo}
+                  </Link>
+                  <span
+                    className="text-[11px] font-semibold tfd-number shrink-0"
+                    style={{
+                      color: s.nivel === 'urgente' ? '#DC2626' : '#D97706',
+                    }}
+                  >
+                    {s.diasRestantes}d
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* DA4 — Consumo do contrato mensal */}
+        <div className="tfd-card">
+          <div className="flex items-center gap-2 mb-3">
+            <Wallet
+              size={16}
+              style={{
+                color:
+                  consumoContrato.nivel === 'critico'
+                    ? '#DC2626'
+                    : consumoContrato.nivel === 'atencao'
+                      ? '#D97706'
+                      : '#16A34A',
+              }}
+            />
+            <h3
+              className="text-sm font-semibold"
+              style={{ color: 'var(--tfd-text-primary)' }}
+            >
+              Teto mensal do contrato
+            </h3>
+          </div>
+          <p
+            className="text-[11px] mb-2"
+            style={{ color: 'var(--tfd-text-muted)' }}
+          >
+            Passagens + ajuda de custo vs. contrato anual ÷ 12
+          </p>
+          <div className="flex items-baseline gap-1 mb-2">
+            <span
+              className="text-xl font-bold tfd-number"
+              style={{
+                color:
+                  consumoContrato.nivel === 'critico'
+                    ? '#DC2626'
+                    : consumoContrato.nivel === 'atencao'
+                      ? '#D97706'
+                      : '#15803D',
+                letterSpacing: '-0.02em',
+              }}
+            >
+              {loading ? '—' : `${consumoContrato.pct.toFixed(1)}%`}
+            </span>
+            <span
+              className="text-[11px]"
+              style={{ color: 'var(--tfd-text-muted)' }}
+            >
+              consumido
+            </span>
+          </div>
+          <div
+            className="h-2 rounded-full overflow-hidden mb-2"
+            style={{ background: 'var(--tfd-surface-100)' }}
+          >
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${consumoContrato.pct}%`,
+                background:
+                  consumoContrato.nivel === 'critico'
+                    ? '#DC2626'
+                    : consumoContrato.nivel === 'atencao'
+                      ? '#D97706'
+                      : '#16A34A',
+                transition: 'width 800ms var(--tfd-ease)',
+              }}
+            />
+          </div>
+          <div
+            className="flex items-center justify-between text-[11px]"
+            style={{ color: 'var(--tfd-text-muted)' }}
+          >
+            <span>{formatCurrency(consumoContrato.consumido)}</span>
+            <span>Teto: {formatCurrency(consumoContrato.teto)}</span>
+          </div>
+        </div>
+
+        {/* DA5 — Óbitos no período */}
+        <div className="tfd-card">
+          <div className="flex items-center gap-2 mb-3">
+            <Skull size={16} style={{ color: '#B91C1C' }} />
+            <h3
+              className="text-sm font-semibold"
+              style={{ color: 'var(--tfd-text-primary)' }}
+            >
+              Óbitos no período
+            </h3>
+          </div>
+          <p
+            className="text-[11px] mb-3"
+            style={{ color: 'var(--tfd-text-muted)' }}
+          >
+            Meta: zero óbitos durante o tratamento
+          </p>
+          <div className="flex items-baseline gap-2">
+            <span
+              className="text-4xl font-bold tfd-number"
+              style={{
+                color: obitosPeriodo === 0 ? '#15803D' : '#B91C1C',
+                letterSpacing: '-0.03em',
+              }}
+            >
+              {loading ? '—' : obitosPeriodo}
+            </span>
+            <span
+              className="text-xs"
+              style={{ color: 'var(--tfd-text-muted)' }}
+            >
+              {obitosPeriodo === 1 ? 'óbito' : 'óbitos'}
+            </span>
+          </div>
+          <div
+            className="mt-3 pt-3 flex items-center gap-1.5 text-[11px]"
+            style={{
+              borderTop: '1px solid var(--tfd-surface-border)',
+              color:
+                obitosPeriodo === 0
+                  ? 'var(--tfd-status-success)'
+                  : 'var(--tfd-text-muted)',
+            }}
+          >
+            {obitosPeriodo === 0 ? (
+              <>
+                <CheckCircle2 size={12} />
+                Meta sendo cumprida
+              </>
+            ) : (
+              <>
+                <AlertTriangle size={12} />
+                Revisar contratos funerários
+              </>
+            )}
           </div>
         </div>
       </div>

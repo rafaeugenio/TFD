@@ -317,8 +317,6 @@ export default function AjudaCustoPage() {
       tipo: tipoBeneficiario || 'PACIENTE',
       data_inicio: dataInicio,
       data_fim: dataFim || null,
-      // dias_elegiveis carrega eventual ajuste manual (AC2 — chegada após 00h).
-      dias_elegiveis: diasCalc,
       valor_diaria: valorDiariaNum,
       valor_total: valorTotalCalc,
       observacoes: observacoes || null,
