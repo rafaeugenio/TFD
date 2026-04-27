@@ -9,6 +9,7 @@ const BP_MD = 768;
 const BP_XL = 1280;
 
 const AUTH_ROUTES = ['/login', '/criar-conta', '/recuperar-senha', '/consulta'];
+const STANDALONE_ROUTES = ['/design-system'];
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -17,6 +18,7 @@ interface AppLayoutProps {
 export default function AppLayout({ children }: AppLayoutProps) {
   const pathname = usePathname();
   const isAuthPage = AUTH_ROUTES.some((r) => pathname.startsWith(r));
+  const isStandalonePage = STANDALONE_ROUTES.some((r) => pathname.startsWith(r));
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -52,6 +54,17 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   // Auth pages render without sidebar/header
   if (isAuthPage) return <>{children}</>;
+
+  // Standalone pages (design system, etc.) render without sidebar
+  if (isStandalonePage) {
+    return (
+      <div className="min-h-screen" style={{ background: 'var(--tfd-surface-ground)' }}>
+        <main className="px-5 sm:px-8 py-8" style={{ minHeight: '100vh' }}>
+          {children}
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--tfd-surface-ground)' }}>
