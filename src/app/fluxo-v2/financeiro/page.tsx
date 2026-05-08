@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Eye, Plane, Wallet, PlusCircle, Send, Search } from 'lucide-react';
 import { idadeAnos } from '../_utils/idade';
-import StatusV2Badge from '../_components/StatusV2Badge';
 import RowActions from '../_components/RowActions';
 import BotaoEnvio from '../_components/BotaoEnvio';
 import NewPassagemDrawer from '../_components/drawers/NewPassagemDrawer';
@@ -17,9 +16,18 @@ import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { tempoNoSetor } from '../_utils/tempoSetor';
 import { isTramitacaoRecente } from '../_utils/tramitacao';
 import { TramitacaoInfoPopover } from '../_components/TramitacaoBadge';
-import StatusDot from '../_components/StatusDot';
 import { isLocked, setorAtual, tooltipLocked } from '../_utils/lock';
 import Pagination from '../_components/Pagination';
+import StatsRow from '../_components/StatsRow';
+import {
+  contarViagensAguardandoEmissao,
+  contarViagensProximas7Dias,
+  contarAdicionaisPendentes,
+  contarAjudasPendentes,
+  totalEmitidoNoMes,
+  totalDiariasNoMes,
+  formatBRL,
+} from '../_utils/stats';
 import {
   calcularValorAjuda,
   type SolicitacaoMock,
@@ -44,21 +52,21 @@ const fmtBRL = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 /**
- * T2.W — Calcula a próxima viagem útil de uma solicitação:
- * - Considera apenas viagens com data >= hoje
- * - Ignora status `cancelada` e `reembolso`
- * - Retorna a mais próxima no tempo, ou null se não houver
+ * Próxima viagem (futura) ou, se não houver, a última (passada).
+ * Ignora status `cancelada` e `reembolso` em ambos os casos.
+ * Retorna null apenas se a solicitação não tiver nenhuma viagem válida.
  */
 function proximaViagem(s: SolicitacaoMock): { data: string; trecho: string } | null {
   const hoje = new Date().toISOString().slice(0, 10);
-  const futuras = s.viagens
-    .filter((v) => v.data >= hoje && !['cancelada', 'reembolso'].includes(v.status))
-    .sort((a, b) => a.data.localeCompare(b.data));
-  if (futuras.length === 0) return null;
-  const v = futuras[0];
+  const validas = s.viagens.filter((v) => !['cancelada', 'reembolso'].includes(v.status));
+  if (validas.length === 0) return null;
+  const futuras = validas.filter((v) => v.data >= hoje).sort((a, b) => a.data.localeCompare(b.data));
+  const escolhida = futuras.length > 0
+    ? futuras[0]
+    : [...validas].sort((a, b) => b.data.localeCompare(a.data))[0]; // mais recente passada
   return {
-    data: v.data,
-    trecho: `${v.origem.split(' - ')[0]} → ${v.destino.split(' - ')[0]}`,
+    data: escolhida.data,
+    trecho: `${escolhida.origem.split(' - ')[0]} → ${escolhida.destino.split(' - ')[0]}`,
   };
 }
 
@@ -66,7 +74,7 @@ const fmtDataBR = (iso: string) => {
   // iso: YYYY-MM-DD
   const [y, m, d] = iso.split('-');
   if (!y || !m || !d) return iso;
-  return `${d}/${m}/${y.slice(2)}`;
+  return `${d}/${m}/${y}`;
 };
 
 type DrawerKind = 'passagem' | 'ajuda' | 'adicional' | null;
@@ -82,6 +90,15 @@ export default function FinanceiroListPage() {
   const [busca, setBusca] = useState('');
   const [filtro, setFiltro] = useState<FinanceiroFiltro>('all');
   const [page, setPage] = useState(1);
+
+  const stats = useMemo(() => ({
+    aguardandoEmissao: contarViagensAguardandoEmissao(solicitacoes),
+    proximas7: contarViagensProximas7Dias(solicitacoes),
+    adicionaisPendentes: contarAdicionaisPendentes(solicitacoes),
+    ajudasPendentes: contarAjudasPendentes(solicitacoes),
+    totalEmitido: totalEmitidoNoMes(solicitacoes),
+    totalDiarias: totalDiariasNoMes(solicitacoes),
+  }), [solicitacoes]);
 
   const fila = useMemo(
     () => solicitacoes.filter((s) => {
@@ -138,6 +155,46 @@ export default function FinanceiroListPage() {
         </p>
       </div>
 
+      <StatsRow
+        stats={[
+          {
+            label: 'Aguardando emissão',
+            value: stats.aguardandoEmissao,
+            onClick: () =>
+              setFiltro((f) => (f === 'passagens_pendentes' ? 'all' : 'passagens_pendentes')),
+            active: filtro === 'passagens_pendentes',
+          },
+          {
+            label: 'Próximas 7 dias',
+            value: stats.proximas7,
+            hint: 'viagens próximas',
+            title: 'Viagens com data nos próximos 7 dias',
+          },
+          {
+            label: 'Adicionais pendentes',
+            value: stats.adicionaisPendentes,
+            onClick: () =>
+              setFiltro((f) => (f === 'adicional_pendente' ? 'all' : 'adicional_pendente')),
+            active: filtro === 'adicional_pendente',
+          },
+          {
+            label: 'Ajudas pendentes',
+            value: stats.ajudasPendentes,
+            title: 'Ajudas de custo aprovadas ou em pagamento',
+          },
+          {
+            label: 'Total emitido no mês',
+            value: formatBRL(stats.totalEmitido),
+            hint: 'passagens emitidas',
+          },
+          {
+            label: 'Total em diárias mês',
+            value: formatBRL(stats.totalDiarias),
+            hint: 'ajudas concluídas',
+          },
+        ]}
+      />
+
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-4">
         <div
@@ -177,9 +234,7 @@ export default function FinanceiroListPage() {
               <Th>Número</Th>
               <Th>Paciente</Th>
               <Th>Município</Th>
-              <Th>Status</Th>
               <Th>Próx. viagem</Th>
-              <Th>Itens</Th>
               <Th align="right">Total previsto</Th>
               <Th>Carimbo</Th>
               <Th>Tempo</Th>
@@ -189,7 +244,7 @@ export default function FinanceiroListPage() {
           <tbody>
             {fila.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
+                <td colSpan={8} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
                   Nenhuma solicitação no financeiro.
                 </td>
               </tr>
@@ -253,38 +308,12 @@ export default function FinanceiroListPage() {
                       <div style={{ color: '#94A3B8', fontSize: 12 }}>{s.paciente.regional}</div>
                     </div>
                   </td>
-                  <td className="px-4 py-3.5"><StatusV2Badge status={s.status} /></td>
-                  <td className="px-4 py-3.5">
+                  <td className="px-4 py-3.5" style={{ color: '#1E293B', fontSize: 13, fontWeight: 500 }}>
                     {proxima ? (
-                      <div className="leading-tight">
-                        <div style={{ color: '#1E293B', fontSize: 13, fontWeight: 500 }}>
-                          {fmtDataBR(proxima.data)}
-                        </div>
-                        <div style={{ color: '#94A3B8', fontSize: 12 }} title={proxima.trecho}>
-                          {proxima.trecho}
-                        </div>
-                      </div>
+                      <span title={proxima.trecho}>{fmtDataBR(proxima.data)}</span>
                     ) : (
-                      <StatusDot tone="muted">Sem viagem agendada</StatusDot>
+                      <span style={{ color: '#CBD5E1' }}>—</span>
                     )}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <div className="inline-flex items-center gap-1 px-2 py-[3px] font-mono"
-                      style={{
-                        background: '#F8FAFC',
-                        border: '1px solid #E2E8F0',
-                        borderRadius: 6,
-                        fontSize: 12,
-                        color: '#475569',
-                      }}
-                      title={`${s.viagens.length} passagens · ${s.ajudasCusto.length} ajudas · ${s.adicionais.length} adicionais`}
-                    >
-                      <span><strong style={{ color: '#1E293B', fontWeight: 600 }}>P</strong>{s.viagens.length}</span>
-                      <span style={{ color: '#CBD5E1' }}>·</span>
-                      <span><strong style={{ color: '#1E293B', fontWeight: 600 }}>A</strong>{s.ajudasCusto.length}</span>
-                      <span style={{ color: '#CBD5E1' }}>·</span>
-                      <span><strong style={{ color: '#1E293B', fontWeight: 600 }}>Ad</strong>{s.adicionais.length}</span>
-                    </div>
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono" style={{ color: '#0F172A', fontWeight: 600, fontSize: 14 }}>
                     {fmtBRL(total)}

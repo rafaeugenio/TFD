@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
-import { templatesParecer } from '../../_data/templates-parecer';
+import { templatesParecer, aplicarPlaceholders } from '../../_data/templates-parecer';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
-import type { DecisaoParecer, ParecerMock } from '@/core/mocks/fluxo-v2-v3-seed';
+import type { DecisaoParecer, ParecerMock, TipoParecer } from '@/core/mocks/fluxo-v2-v3-seed';
+import { TIPO_PARECER_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
 
 const inputStyle: React.CSSProperties = {
   background: 'white',
@@ -25,11 +26,13 @@ interface Props {
 }
 
 export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar }: Props) {
-  const { addParecer, editarParecer } = useFluxoV2State();
+  const { addParecer, editarParecer, getById } = useFluxoV2State();
+  const solicitacao = getById(solicitacaoId);
   const isEdicao = !!editar;
   const firstInputRef = useRef<HTMLInputElement>(null);
 
   const [decisao, setDecisao] = useState<DecisaoParecer>('deferido');
+  const [tipo, setTipo] = useState<TipoParecer>('tfd_completo');
   const [cidPrincipal, setCidPrincipal] = useState('');
   const [cidSecundario, setCidSecundario] = useState('');
   const [versaoCID, setVersaoCID] = useState<'10' | '11'>('10');
@@ -41,6 +44,7 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
     if (open) {
       if (editar) {
         setDecisao(editar.decisao);
+        setTipo(editar.tipo ?? 'tfd_completo');
         setCidPrincipal(editar.cidPrincipal ?? '');
         setCidSecundario(editar.cidSecundario ?? '');
         setVersaoCID(editar.versaoCID ?? '10');
@@ -48,6 +52,7 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
         setMedico(editar.medico);
       } else {
         setDecisao('deferido');
+        setTipo('tfd_completo');
         setCidPrincipal('');
         setCidSecundario('');
         setVersaoCID('10');
@@ -61,14 +66,24 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
   function aplicarTemplate(tplId: string) {
     const tpl = templatesParecer.find((t) => t.id === tplId);
     if (!tpl) return;
-    setObs(tpl.texto);
-    setDecisao(tpl.categoria);
+    const textoFinal = solicitacao
+      ? aplicarPlaceholders(tpl.texto, solicitacao, tpl.tipo)
+      : tpl.texto;
+    setObs(textoFinal);
+    setDecisao(tpl.decisao);
+    setTipo(tpl.tipo);
     setTplOpen(false);
   }
+
+  // Templates filtrados pela combinação atual de tipo + decisão.
+  const templatesDisponiveis = templatesParecer.filter(
+    (t) => t.tipo === tipo && t.decisao === decisao,
+  );
 
   function handleSalvar() {
     const payload = {
       decisao,
+      tipo,
       cidPrincipal: cidPrincipal || undefined,
       cidSecundario: cidSecundario || undefined,
       versaoCID,
@@ -140,6 +155,23 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
         })}
       </div>
 
+      {/* Tipo de parecer */}
+      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+        Tipo de parecer
+      </label>
+      <select
+        value={tipo}
+        onChange={(e) => setTipo(e.target.value as TipoParecer)}
+        className="w-full px-3 py-2 text-[13px] mb-4"
+        style={inputStyle}
+      >
+        {(Object.keys(TIPO_PARECER_LABEL) as TipoParecer[]).map((t) => (
+          <option key={t} value={t}>
+            {TIPO_PARECER_LABEL[t]}
+          </option>
+        ))}
+      </select>
+
       {/* Templates */}
       <div className="relative mb-4">
         <button
@@ -167,25 +199,31 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
                 boxShadow: '0 12px 32px rgba(15,23,42,0.12)',
               }}
             >
-              {templatesParecer.map((tpl) => (
-                <button
-                  key={tpl.id}
-                  type="button"
-                  onClick={() => aplicarTemplate(tpl.id)}
-                  className="w-full text-left px-3 py-2 transition-colors hover:bg-[#F8FAFC]"
-                  style={{ borderRadius: 6 }}
-                >
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <DecisaoBadge decisao={tpl.categoria} />
-                    <span className="text-[13px] font-semibold" style={{ color: '#1A1D2B' }}>
-                      {tpl.titulo}
-                    </span>
-                  </div>
-                  <p className="text-[11px] line-clamp-2" style={{ color: '#6B7280' }}>
-                    {tpl.texto}
-                  </p>
-                </button>
-              ))}
+              {templatesDisponiveis.length === 0 ? (
+                <div className="px-3 py-3 text-[12px]" style={{ color: '#9CA3AF' }}>
+                  Nenhum modelo disponível para esta combinação de tipo e decisão.
+                </div>
+              ) : (
+                templatesDisponiveis.map((tpl) => (
+                  <button
+                    key={tpl.id}
+                    type="button"
+                    onClick={() => aplicarTemplate(tpl.id)}
+                    className="w-full text-left px-3 py-2 transition-colors hover:bg-[#F8FAFC]"
+                    style={{ borderRadius: 6 }}
+                  >
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <DecisaoBadge decisao={tpl.decisao} />
+                      <span className="text-[13px] font-semibold" style={{ color: '#1A1D2B' }}>
+                        {tpl.titulo}
+                      </span>
+                    </div>
+                    <p className="text-[11px] line-clamp-2" style={{ color: '#6B7280' }}>
+                      {tpl.texto}
+                    </p>
+                  </button>
+                ))
+              )}
             </div>
           </>
         )}

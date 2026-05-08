@@ -20,7 +20,7 @@ import type {
   SolicitacaoMock,
   TentativaUnidadeMock,
 } from '@/core/mocks/fluxo-v2-v3-seed';
-import { DESFECHO_TENTATIVA_LABEL, TIPO_PROCEDIMENTO_LABEL, FORMA_CONTATO_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
+import { DESFECHO_TENTATIVA_LABEL, TIPO_PROCEDIMENTO_LABEL, FORMA_CONTATO_LABEL, TIPO_PARECER_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
 import { descricaoCID } from '../_data/cid-labels';
 
 const CARIMBO_VISUAL: Record<CarimboRegulacao, { label: string; sublabel: string }> = {
@@ -237,6 +237,24 @@ export default function RegulacaoTab({ s }: Props) {
                     />
                   </span>
                 </div>
+                {p.tipo && (
+                  <div className="mb-1 inline-flex items-center gap-1.5">
+                    <span
+                      className="text-[9.5px] font-bold uppercase tracking-wider px-1.5 py-[1px]"
+                      style={{
+                        background: '#F1F5F9',
+                        color: '#475569',
+                        borderRadius: 4,
+                        letterSpacing: '0.06em',
+                      }}
+                    >
+                      Tipo
+                    </span>
+                    <span className="text-[12px]" style={{ color: '#475569' }}>
+                      {TIPO_PARECER_LABEL[p.tipo]}
+                    </span>
+                  </div>
+                )}
                 {p.cidPrincipal && (
                   <div style={{ color: '#475569' }} title={descricaoCID(p.cidPrincipal, p.versaoCID ?? '10')}>
                     <span className="inline-flex items-center gap-1.5 mr-1">

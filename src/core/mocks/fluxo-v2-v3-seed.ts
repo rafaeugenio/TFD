@@ -61,10 +61,34 @@ export interface AcompanhanteMock {
 
 export type DecisaoParecer = 'deferido' | 'indeferido';
 
+/**
+ * Tipo de parecer médico — categoriza o tipo de decisão tomada pelo médico
+ * regulador. Cada tipo corresponde a um modelo de texto oficial mantido pela
+ * equipe médica (originalmente em Word).
+ */
+export type TipoParecer =
+  | 'tfd_completo'      // TFD (passagem + ajuda de custo)
+  | 'sem_agendamento'   // Processo sem agendamento — encaminha à CET
+  | 'apenas_ajuda'      // Apenas ajuda de custo
+  | 'apenas_passagem'   // Apenas passagem
+  | 'prorrogacao'       // Prorrogação de TFD
+  | 'medife';           // Autorização Medife (Ata 8 §4.8)
+
+export const TIPO_PARECER_LABEL: Record<TipoParecer, string> = {
+  tfd_completo: 'TFD completo (passagem + ajuda de custo)',
+  sem_agendamento: 'Processo sem agendamento',
+  apenas_ajuda: 'Apenas ajuda de custo',
+  apenas_passagem: 'Apenas passagem',
+  prorrogacao: 'Prorrogação de TFD',
+  medife: 'Autorização Medife',
+};
+
 export interface ParecerMock {
   id: string;
   data: string; // ISO datetime
   decisao: DecisaoParecer;
+  /** Tipo de parecer — opcional para retrocompat com seeds antigas. */
+  tipo?: TipoParecer;
   cidPrincipal?: string;
   cidSecundario?: string;
   /** T2.AI — Versão da CID usada (default '10' quando ausente). */
@@ -532,7 +556,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
     acompanhantes: [acompanhantesPool[0]],
     anexos: [{ id: 'an1', nome: 'laudo.pdf', tipo: 'application/pdf' }],
     pareceres: [
-      { id: 'pa1', data: isoAt('2025-05-05', 10, 30), decisao: 'deferido', cidPrincipal: 'C50.9', observacao: 'Paciente apta', medico: 'Dr. Ricardo Mello' },
+      { id: 'pa1', data: isoAt('2025-05-05', 10, 30), decisao: 'deferido', tipo: 'tfd_completo', cidPrincipal: 'C50.9', observacao: 'Paciente apta', medico: 'Dr. Ricardo Mello' },
     ],
     carimboRegulacao: 'APROVADO_DIRETO',
     agendamento: {
@@ -619,7 +643,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
     acompanhantes: [acompanhantesPool[1]],
     anexos: [{ id: 'an3', nome: 'laudo-cardio.pdf', tipo: 'application/pdf' }],
     pareceres: [
-      { id: 'pa3', data: isoAt('2025-05-22', 10), decisao: 'deferido', cidPrincipal: 'I25.1', observacao: 'Caso urgente', medico: 'Dr. Augusto Vasconcelos' },
+      { id: 'pa3', data: isoAt('2025-05-22', 10), decisao: 'deferido', tipo: 'sem_agendamento', cidPrincipal: 'I25.1', observacao: 'Caso urgente', medico: 'Dr. Augusto Vasconcelos' },
     ],
     carimboRegulacao: 'CNRAC',
     carimboObservacao: 'Encaminhamento via CNRAC por se tratar de procedimento cardiovascular de alta complexidade não disponível no estado.',

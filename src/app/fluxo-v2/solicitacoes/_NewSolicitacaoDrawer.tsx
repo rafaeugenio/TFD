@@ -1,10 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Drawer from '@/shared/components/drawer/Drawer';
 import IdadeBadge from '@/shared/components/idade-badge';
-import { Paperclip, Trash2, AlertTriangle } from 'lucide-react';
+import { Paperclip, Trash2, AlertTriangle, Upload } from 'lucide-react';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { acompanhantesPool, pacientesPool } from '@/core/mocks/fluxo-v2-v3-seed';
 import { calcularIdade } from '@/shared/utils/idade';
@@ -17,13 +17,16 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
 
   const [pacienteId, setPacienteId] = useState('');
   const [acompanhanteIds, setAcompanhanteIds] = useState<string[]>([]);
-  const [agendamentoEnabled, setAgendamentoEnabled] = useState(false);
+  const [semAgendamento, setSemAgendamento] = useState(false);
   const [unidade, setUnidade] = useState('');
   const [data, setData] = useState('');
   const [hora, setHora] = useState('');
   const [dataLaudo, setDataLaudo] = useState('');
+  const [numeroSEI, setNumeroSEI] = useState('');
+  const [seiUrl, setSeiUrl] = useState('');
   const [anexos, setAnexos] = useState<{ nome: string; tipo: string }[]>([]);
-  const [novoAnexoNome, setNovoAnexoNome] = useState('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const seiUrlInvalido = seiUrl.trim().length > 0 && !/^https?:\/\//i.test(seiUrl.trim());
 
   const paciente = pacientesPool.find((p) => p.id === pacienteId);
   const idade = paciente ? calcularIdade(paciente.dataNascimento) : 0;
@@ -35,16 +38,17 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
   );
   const validacaoMenor = isMenor && acompanhantesAdultos.length === 0;
 
-  const podeSalvar = !!paciente && !validacaoMenor && (!agendamentoEnabled || (unidade && data && hora));
+  const podeSalvar = !!paciente && !validacaoMenor && !seiUrlInvalido && (semAgendamento || (unidade && data && hora));
 
   function reset() {
     setPacienteId('');
     setAcompanhanteIds([]);
-    setAgendamentoEnabled(false);
+    setSemAgendamento(false);
     setUnidade(''); setData(''); setHora('');
     setDataLaudo('');
+    setNumeroSEI(''); setSeiUrl('');
     setAnexos([]);
-    setNovoAnexoNome('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   function handleSalvar() {
@@ -52,13 +56,25 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
     const id = createSolicitacao({
       pacienteId: paciente.id,
       acompanhanteIds,
-      agendamento: agendamentoEnabled ? { unidade, data, hora } : undefined,
+      agendamento: !semAgendamento ? { unidade, data, hora } : undefined,
       dataLaudo: dataLaudo || undefined,
+      numeroSEI: numeroSEI.trim() || undefined,
+      seiUrl: seiUrl.trim() || undefined,
       anexos,
     });
     reset();
     onClose();
     router.push(`/fluxo-v2/solicitacoes/${id}`);
+  }
+
+  function handleFilesPicked(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const novos = Array.from(files).map((f) => ({
+      nome: f.name,
+      tipo: f.type || 'application/octet-stream',
+    }));
+    setAnexos((prev) => [...prev, ...novos]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   return (
@@ -149,22 +165,25 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
           )}
         </section>
 
-        {/* Agendamento opcional */}
+        {/* Agendamento — exibido por padrão (caso normal) */}
         <section>
+          <h3 className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+            Agendamento
+          </h3>
           <label className="flex items-center gap-2 mb-2 cursor-pointer">
             <input
               type="checkbox"
-              checked={agendamentoEnabled}
-              onChange={(e) => setAgendamentoEnabled(e.target.checked)}
+              checked={semAgendamento}
+              onChange={(e) => setSemAgendamento(e.target.checked)}
             />
-            <span className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
-              Agendamento já existe
+            <span className="text-[13px]" style={{ color: '#475569' }}>
+              Solicitação <strong>sem agendamento</strong> (caso de exceção)
             </span>
           </label>
-          <p className="text-[11px] mb-2" style={{ color: '#9CA3AF' }}>
-            Se preenchido, a solicitação pula o agendamento de exceção e segue direto para o financeiro após deferimento.
+          <p className="text-[11px] mb-3" style={{ color: '#9CA3AF' }}>
+            Marque apenas quando o paciente ainda não tem unidade/data definidas — o caso seguirá para a Regulação registrar o agendamento posteriormente (CNRAC, CET ou Outros).
           </p>
-          {agendamentoEnabled && (
+          {!semAgendamento && (
             <div className="grid grid-cols-2 gap-2">
               <input
                 value={unidade} onChange={(e) => setUnidade(e.target.value)}
@@ -198,47 +217,92 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
           />
         </section>
 
+        {/* Processo SEI */}
+        <section>
+          <h3 className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+            Processo SEI <span className="font-normal normal-case" style={{ color: '#94A3B8' }}>(opcional)</span>
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <input
+              value={numeroSEI}
+              onChange={(e) => setNumeroSEI(e.target.value)}
+              placeholder="Número SEI (ex.: 00100.000456/2026-12)"
+              className="px-3 py-2 text-[13px] font-mono"
+              style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
+            />
+            <input
+              value={seiUrl}
+              onChange={(e) => setSeiUrl(e.target.value)}
+              placeholder="URL do processo (https://...)"
+              className="px-3 py-2 text-[13px]"
+              style={{
+                background: 'white',
+                border: `1px solid ${seiUrlInvalido ? '#FCA5A5' : 'var(--tfd-surface-border)'}`,
+                borderRadius: 8,
+              }}
+            />
+          </div>
+          {seiUrlInvalido && (
+            <p className="text-[11px] mt-1" style={{ color: '#B91C1C' }}>
+              URL inválida — comece com http:// ou https://
+            </p>
+          )}
+        </section>
+
         {/* Anexos */}
         <section>
           <h3 className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Anexos
+            Documentos anexos <span className="font-normal normal-case" style={{ color: '#94A3B8' }}>(opcional, múltiplos arquivos)</span>
           </h3>
-          <div className="flex gap-2 mb-2">
-            <input
-              value={novoAnexoNome} onChange={(e) => setNovoAnexoNome(e.target.value)}
-              placeholder="Nome do arquivo (ex.: laudo.pdf)"
-              className="flex-1 px-3 py-2 text-[13px]"
-              style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
-            />
-            <button
-              type="button"
-              className="tfd-btn tfd-btn-secondary tfd-btn--sm"
-              disabled={!novoAnexoNome.trim()}
-              onClick={() => {
-                setAnexos((prev) => [...prev, { nome: novoAnexoNome.trim(), tipo: 'application/octet-stream' }]);
-                setNovoAnexoNome('');
-              }}
-            >
-              <Paperclip size={14} /> Anexar
-            </button>
-          </div>
-          <ul className="flex flex-col gap-1">
-            {anexos.map((a, idx) => (
-              <li key={idx} className="flex items-center gap-2 px-3 py-1.5 text-[12px]"
-                style={{ background: '#F8FAFC', borderRadius: 6 }}>
-                <Paperclip size={12} style={{ color: '#6B7280' }} />
-                <span className="flex-1 truncate" style={{ color: '#1A1D2B' }}>{a.nome}</span>
-                <button
-                  type="button"
-                  onClick={() => setAnexos((prev) => prev.filter((_, i) => i !== idx))}
-                  className="tfd-btn tfd-btn--text tfd-btn--sm tfd-btn--icon-only"
-                  aria-label="Remover"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </li>
-            ))}
-          </ul>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            onChange={(e) => handleFilesPicked(e.target.files)}
+            className="hidden"
+            aria-hidden
+          />
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full flex flex-col items-center justify-center gap-1 py-5 transition-colors"
+            style={{
+              background: '#F8FAFC',
+              border: '1px dashed #CBD5E1',
+              borderRadius: 8,
+              color: '#475569',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#146BFA'; e.currentTarget.style.background = '#EFF6FF'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.background = '#F8FAFC'; }}
+          >
+            <Upload size={16} />
+            <span className="text-[13px] font-medium">Selecionar arquivos</span>
+            <span className="text-[11px]" style={{ color: '#94A3B8' }}>
+              Selecione um ou mais arquivos. Pode adicionar mais depois.
+            </span>
+          </button>
+
+          {anexos.length > 0 && (
+            <ul className="flex flex-col gap-1 mt-3">
+              {anexos.map((a, idx) => (
+                <li key={idx} className="flex items-center gap-2 px-3 py-2 text-[13px]"
+                  style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 6 }}>
+                  <Paperclip size={13} style={{ color: '#64748B' }} />
+                  <span className="flex-1 truncate" style={{ color: '#1A1D2B' }}>{a.nome}</span>
+                  <button
+                    type="button"
+                    onClick={() => setAnexos((prev) => prev.filter((_, i) => i !== idx))}
+                    className="tfd-btn tfd-btn--text tfd-btn--sm tfd-btn--icon-only"
+                    aria-label="Remover"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       </div>
     </Drawer>

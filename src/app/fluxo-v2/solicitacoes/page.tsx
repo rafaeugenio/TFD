@@ -22,6 +22,12 @@ import {
   type MotivoEncerramento,
 } from '@/core/mocks/fluxo-v2-v3-seed';
 import Pagination from '../_components/Pagination';
+import StatsRow from '../_components/StatsRow';
+import {
+  contarPorStatus,
+  contarEncerradasNoMes,
+  taxaAprovacao,
+} from '../_utils/stats';
 import NewSolicitacaoDrawer from './_NewSolicitacaoDrawer';
 
 const PAGE_SIZE = 10;
@@ -47,6 +53,18 @@ export default function SolicitacoesV2ListPage() {
   const [motivo, setMotivo] = useState<MotivoEncerramento>('alta_medica');
   const [dataEnc, setDataEnc] = useState(new Date().toISOString().slice(0, 10));
   const [obsEnc, setObsEnc] = useState('');
+
+  const stats = useMemo(() => {
+    const porStatus = contarPorStatus(solicitacoes);
+    return {
+      total: solicitacoes.length,
+      em_dados_basicos: porStatus.em_dados_basicos,
+      em_regulacao: porStatus.em_regulacao,
+      em_financeiro: porStatus.em_financeiro,
+      encerradasMes: contarEncerradasNoMes(solicitacoes),
+      aprovacao: taxaAprovacao(solicitacoes),
+    };
+  }, [solicitacoes]);
 
   const filtradas = useMemo(() => {
     return solicitacoes.filter((s) => {
@@ -106,6 +124,48 @@ export default function SolicitacoesV2ListPage() {
           <Plus size={16} /> Nova solicitação
         </button>
       </div>
+
+      <StatsRow
+        stats={[
+          { label: 'Total', value: stats.total },
+          {
+            label: 'Em Dados Básicos',
+            value: stats.em_dados_basicos,
+            onClick: () =>
+              setStatusFilter((cur) => (cur === 'em_dados_basicos' ? 'all' : 'em_dados_basicos')),
+            active: statusFilter === 'em_dados_basicos',
+          },
+          {
+            label: 'Em Regulação',
+            value: stats.em_regulacao,
+            onClick: () =>
+              setStatusFilter((cur) => (cur === 'em_regulacao' ? 'all' : 'em_regulacao')),
+            active: statusFilter === 'em_regulacao',
+          },
+          {
+            label: 'Em Financeiro',
+            value: stats.em_financeiro,
+            onClick: () =>
+              setStatusFilter((cur) => (cur === 'em_financeiro' ? 'all' : 'em_financeiro')),
+            active: statusFilter === 'em_financeiro',
+          },
+          {
+            label: 'Encerradas no mês',
+            value: stats.encerradasMes,
+            hint: 'do mês corrente',
+            onClick: () =>
+              setStatusFilter((cur) => (cur === 'encerrada' ? 'all' : 'encerrada')),
+            active: statusFilter === 'encerrada',
+            title: 'Solicitações encerradas no mês corrente',
+          },
+          {
+            label: 'Taxa de aprovação',
+            value: `${stats.aprovacao}%`,
+            hint: 'deferidos / total',
+            title: 'Pareceres deferidos / total de pareceres com decisão',
+          },
+        ]}
+      />
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-4">

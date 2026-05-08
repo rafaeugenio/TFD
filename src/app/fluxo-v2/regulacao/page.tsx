@@ -19,6 +19,13 @@ import { TramitacaoInfoPopover } from '../_components/TramitacaoBadge';
 import { isLocked, setorAtual, tooltipLocked } from '../_utils/lock';
 import { temAgendamentoConfirmado } from '../_utils/agendamento';
 import Pagination from '../_components/Pagination';
+import StatsRow from '../_components/StatsRow';
+import {
+  contarAguardandoParecer,
+  contarAguardandoAgendamento,
+  contarPareceres,
+  contarPorCarimbo,
+} from '../_utils/stats';
 import type { CarimboRegulacao, SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
 
 const PAGE_SIZE = 10;
@@ -47,6 +54,14 @@ export default function RegulacaoListPage() {
   const [busca, setBusca] = useState('');
   const [carimboFiltro, setCarimboFiltro] = useState<CarimboFiltro>('all');
   const [page, setPage] = useState(1);
+
+  const stats = useMemo(() => ({
+    aguardandoParecer: contarAguardandoParecer(solicitacoes),
+    aguardandoAgendamento: contarAguardandoAgendamento(solicitacoes),
+    deferidosMes: contarPareceres(solicitacoes, 'deferido', true),
+    indeferidosMes: contarPareceres(solicitacoes, 'indeferido', true),
+    porCarimbo: contarPorCarimbo(solicitacoes),
+  }), [solicitacoes]);
 
   const fila = useMemo(
     () => solicitacoes.filter((s) => {
@@ -98,6 +113,53 @@ export default function RegulacaoListPage() {
           Fila de solicitações aguardando parecer médico, encaminhamento ou agendamento de exceção.
         </p>
       </div>
+
+      <StatsRow
+        stats={[
+          { label: 'Aguardando parecer', value: stats.aguardandoParecer },
+          {
+            label: 'Aguardando agendamento',
+            value: stats.aguardandoAgendamento,
+            title: 'Solicitações com carimbo CNRAC ou CET sem tentativa confirmada',
+          },
+          { label: 'Deferidos no mês', value: stats.deferidosMes, hint: 'no mês corrente' },
+          { label: 'Indeferidos no mês', value: stats.indeferidosMes, hint: 'no mês corrente' },
+        ]}
+        secondLineLabel="Por carimbo"
+        secondLine={[
+          {
+            label: 'APR',
+            value: stats.porCarimbo.APROVADO_DIRETO,
+            onClick: () =>
+              setCarimboFiltro((c) => (c === 'APROVADO_DIRETO' ? 'all' : 'APROVADO_DIRETO')),
+            active: carimboFiltro === 'APROVADO_DIRETO',
+          },
+          {
+            label: 'CNRAC',
+            value: stats.porCarimbo.CNRAC,
+            onClick: () => setCarimboFiltro((c) => (c === 'CNRAC' ? 'all' : 'CNRAC')),
+            active: carimboFiltro === 'CNRAC',
+          },
+          {
+            label: 'CET',
+            value: stats.porCarimbo.CET,
+            onClick: () => setCarimboFiltro((c) => (c === 'CET' ? 'all' : 'CET')),
+            active: carimboFiltro === 'CET',
+          },
+          {
+            label: 'Outros',
+            value: stats.porCarimbo.OUTROS,
+            onClick: () => setCarimboFiltro((c) => (c === 'OUTROS' ? 'all' : 'OUTROS')),
+            active: carimboFiltro === 'OUTROS',
+          },
+          {
+            label: 'Sem carimbo',
+            value: stats.porCarimbo.sem,
+            onClick: () => setCarimboFiltro((c) => (c === 'sem_carimbo' ? 'all' : 'sem_carimbo')),
+            active: carimboFiltro === 'sem_carimbo',
+          },
+        ]}
+      />
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-4">

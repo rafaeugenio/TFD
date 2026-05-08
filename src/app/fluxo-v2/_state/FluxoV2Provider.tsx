@@ -180,6 +180,8 @@ export interface NewSolicitacaoInput {
   agendamento?: { unidade: string; data: string; hora: string };
   dataLaudo?: string;
   anexos: { nome: string; tipo: string }[];
+  numeroSEI?: string;
+  seiUrl?: string;
 }
 
 const FluxoV2Context = createContext<FluxoV2ContextValue | null>(null);
@@ -252,6 +254,8 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       status: 'em_dados_basicos',
       dataCriacao: nowIso(),
       dataLaudo: input.dataLaudo,
+      numeroSEI: input.numeroSEI?.trim() || undefined,
+      seiUrl: input.seiUrl?.trim() || undefined,
       paciente,
       acompanhantes,
       anexos: input.anexos.map((a) => ({ id: uid('an'), ...a })),
