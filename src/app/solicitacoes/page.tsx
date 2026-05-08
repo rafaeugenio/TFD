@@ -20,6 +20,7 @@ import {
   FileSignature,
   ScrollText,
   ExternalLink,
+  Paperclip,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -41,6 +42,8 @@ import { useTableControls } from '@/shared/hooks/useTableControls';
 import type { StatusSolicitacao } from '@/core/models';
 import { formatCPF, maskCNS, maskPhone } from '@/shared/pipes/formatters';
 import { useMunicipios } from '@/shared/hooks/useLookup';
+import { calcularIdade } from '@/shared/utils/idade';
+import IdadeBadge from '@/shared/components/idade-badge';
 
 /* ── AGENTE-4: Análise de refactoring ──
    Esta página NÃO tem campos de texto livre para CID ou médico no formulário:
@@ -130,6 +133,9 @@ export default function SolicitacoesPage() {
   /* ---- Form state: Agendamento antecipado (A1) ---- */
   const [dataAgendamento, setDataAgendamento] = useState('');
   const [unidadeDestinoNome, setUnidadeDestinoNome] = useState('');
+
+  /* ---- Form state: Documentos opcionais (multi-upload) ---- */
+  const [pendingDocs, setPendingDocs] = useState<{ file: File; tipo: TipoDocumento }[]>([]);
 
   /* ---- Lookup hooks ---- */
   const { options: municipios, loading: loadingMun } = useMunicipios();
@@ -228,6 +234,7 @@ export default function SolicitacoesPage() {
     setUrlSei('');
     setDataAgendamento('');
     setUnidadeDestinoNome('');
+    setPendingDocs([]);
   }
 
   function handleCloseDrawer() {
@@ -283,12 +290,8 @@ export default function SolicitacoesPage() {
 
   async function handleSubmitSolicitacao() {
     try {
-      /* ── Validação do Termo (obrigatório para nova solicitação) ── */
-      if (!editingId) {
-        if (!termoModalidade) {
-          toast.error('Termo de Compromisso', 'Selecione a modalidade de aceite do Termo.');
-          return;
-        }
+      /* ── Validação do Termo (opcional — só valida coerência interna) ── */
+      if (!editingId && termoModalidade) {
         if (termoModalidade === 'ACEITE_PRESENCIAL' && !termoConfirmacao) {
           toast.error('Termo de Compromisso', 'Confirme que o paciente leu e concordou com os termos.');
           return;
@@ -303,6 +306,24 @@ export default function SolicitacoesPage() {
       if (!selectedPacienteId) {
         toast.error('Campo obrigatório', 'Selecione um paciente.');
         return;
+      }
+
+      /* ── T0.12: Validação de menor de idade ── */
+      if (selectedPaciente) {
+        const idadePaciente = calcularIdade((selectedPaciente.data_nascimento as string) ?? '');
+        if (idadePaciente > 0 && idadePaciente < 18) {
+          const adultos = selectedAcompanhanteIds
+            .map((id) => acompanhanteOptions.find((a) => (a.id as string) === id))
+            .filter(Boolean)
+            .filter((a) => calcularIdade((a!.data_nascimento as string) ?? '') >= 18);
+          if (adultos.length === 0) {
+            toast.error(
+              'Acompanhante adulto obrigatório',
+              'Paciente menor de 18 anos exige ao menos um acompanhante adulto (≥ 18 anos).',
+            );
+            return;
+          }
+        }
       }
       const pacienteId = selectedPacienteId;
       const munSelecionado = municipios.find((m) => m.value === municipio);
@@ -384,11 +405,30 @@ export default function SolicitacoesPage() {
         await vincularAcompanhantes(solId, selectedAcompanhanteIds, selectedAcompanhanteIds[0]);
       }
 
+      /* ── T0.10: Upload múltiplo de documentos opcionais ── */
+      if (solId && pendingDocs.length > 0) {
+        let uploadErrors = 0;
+        for (const pd of pendingDocs) {
+          try {
+            const r = await uploadDocumento(solId, pd.file, pd.tipo);
+            if (r.error) uploadErrors++;
+          } catch {
+            uploadErrors++;
+          }
+        }
+        if (uploadErrors > 0) {
+          toast.warning(
+            'Upload parcial',
+            `${uploadErrors} de ${pendingDocs.length} documento(s) falharam.`,
+          );
+        }
+      }
+
       toast.success(
         editingId ? 'Solicitação atualizada!' : 'Solicitação criada!',
         editingId
           ? 'Os dados foram atualizados com sucesso.'
-          : `Solicitação criada com Termo de Compromisso registrado.`,
+          : 'A solicitação foi cadastrada com sucesso.',
       );
       handleCloseDrawer();
       refresh();
@@ -788,11 +828,12 @@ export default function SolicitacoesPage() {
         {selectedPaciente && (
           <div className="tfd-card p-3 mb-4" style={{ backgroundColor: 'var(--tfd-primary-50)' }}>
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <div>
+              <div className="flex items-center gap-2 flex-wrap">
                 <span style={{ color: 'var(--tfd-text-muted)' }}>Nome:</span>{' '}
                 <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
                   {selectedPaciente.nome_completo as string}
                 </span>
+                <IdadeBadge dataNascimento={selectedPaciente.data_nascimento as string} />
               </div>
               <div>
                 <span style={{ color: 'var(--tfd-text-muted)' }}>CPF:</span>{' '}
@@ -830,6 +871,26 @@ export default function SolicitacoesPage() {
               Acompanhantes
             </h3>
 
+            {(() => {
+              const idadePac = selectedPaciente
+                ? calcularIdade((selectedPaciente.data_nascimento as string) ?? '')
+                : 0;
+              if (idadePac > 0 && idadePac < 18) {
+                return (
+                  <div
+                    className="flex items-start gap-2 px-3 py-2 rounded-lg mb-3"
+                    style={{ backgroundColor: '#FEF2F2', border: '1px solid #FCA5A5' }}
+                  >
+                    <AlertTriangle size={14} style={{ color: '#B91C1C', marginTop: 2 }} />
+                    <span className="text-xs font-medium" style={{ color: '#B91C1C' }}>
+                      Paciente menor de 18 anos exige ao menos um acompanhante adulto (≥ 18 anos).
+                    </span>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
             {acompanhanteOptions.length > 0 ? (
               <FormField label="Selecionar acompanhante(s)">
                 <div className="space-y-2">
@@ -856,11 +917,12 @@ export default function SolicitacoesPage() {
                           }}
                           style={{ accentColor: 'var(--tfd-primary-500)' }}
                         />
-                        <div className="text-sm">
+                        <div className="text-sm flex items-center gap-2 flex-wrap">
                           <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
                             {acomp.nome_completo as string}
                           </span>
-                          <span className="ml-2" style={{ color: 'var(--tfd-text-muted)' }}>
+                          <IdadeBadge dataNascimento={acomp.data_nascimento as string} />
+                          <span style={{ color: 'var(--tfd-text-muted)' }}>
                             {formatCPF((acomp.cpf as string) ?? '')} — {VINCULO_LABELS[(acomp.vinculo as string)] || (acomp.vinculo as string)}
                           </span>
                         </div>
@@ -957,14 +1019,14 @@ export default function SolicitacoesPage() {
               </h3>
               <span
                 className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                style={{ backgroundColor: 'var(--tfd-status-error-bg)', color: 'var(--tfd-status-error)' }}
+                style={{ backgroundColor: 'var(--tfd-surface-100)', color: 'var(--tfd-text-muted)' }}
               >
-                Obrigatório
+                Opcional
               </span>
             </div>
 
             <p className="text-xs mb-3" style={{ color: 'var(--tfd-text-muted)' }}>
-              O paciente deve aceitar os termos do programa TFD antes de prosseguir.
+              Registro opcional. Pode ser anexado depois se preferir.
             </p>
 
             {/* Cláusulas colapsáveis */}
@@ -1014,8 +1076,22 @@ export default function SolicitacoesPage() {
             </div>
 
             {/* Modalidade de Aceite */}
-            <FormField label="Modalidade de aceite" required>
+            <FormField label="Modalidade de aceite" hint="opcional">
               <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="termoModalidade"
+                    value=""
+                    checked={termoModalidade === ''}
+                    onChange={() => { setTermoModalidade(''); setTermoConfirmacao(false); setTermoUploadFile(null); }}
+                    style={{ accentColor: 'var(--tfd-primary-500)' }}
+                  />
+                  <span className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
+                    Não registrar agora
+                  </span>
+                </label>
+
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="radio"
@@ -1142,6 +1218,111 @@ export default function SolicitacoesPage() {
               </div>
             )}
 
+          </>
+        )}
+
+        {/* ═══════ Section: Documentos opcionais (multi-upload) — apenas nova solicitação ═══════ */}
+        {!editingId && (
+          <>
+            <hr className="tfd-divider" />
+
+            <div className="flex items-center gap-2 mb-2">
+              <Paperclip size={16} style={{ color: 'var(--tfd-primary-500)' }} />
+              <h3 className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+                Documentos da Solicitação
+              </h3>
+              <span
+                className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                style={{ backgroundColor: 'var(--tfd-surface-100)', color: 'var(--tfd-text-muted)' }}
+              >
+                Opcional
+              </span>
+            </div>
+
+            <p className="text-xs mb-3" style={{ color: 'var(--tfd-text-muted)' }}>
+              Anexe quantos arquivos quiser para guardar no sistema (laudos, exames, encaminhamentos, etc.).
+              A análise principal pode seguir via SEI — aqui é apenas para acesso rápido.
+            </p>
+
+            <div className="mb-3">
+              <label
+                className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed cursor-pointer transition-colors hover:border-[var(--tfd-primary-300)] hover:bg-[var(--tfd-primary-50)]"
+                style={{ borderColor: 'var(--tfd-surface-border)' }}
+              >
+                <Upload size={18} style={{ color: 'var(--tfd-primary-500)' }} />
+                <span className="text-sm font-medium" style={{ color: 'var(--tfd-primary-600)' }}>
+                  Selecionar arquivos
+                </span>
+                <input
+                  type="file"
+                  className="hidden"
+                  multiple
+                  accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files ?? []);
+                    setPendingDocs((prev) => [
+                      ...prev,
+                      ...files.map((f) => ({ file: f, tipo: 'OUTROS' as TipoDocumento })),
+                    ]);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
+                PDF, PNG, JPG, WEBP, DOC — até 50 MB por arquivo
+              </p>
+            </div>
+
+            {pendingDocs.length > 0 && (
+              <div className="space-y-2 mb-3">
+                {pendingDocs.map((pd, idx) => (
+                  <div
+                    key={`${pd.file.name}-${idx}`}
+                    className="flex items-center gap-3 p-2.5 rounded-lg"
+                    style={{ backgroundColor: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}
+                  >
+                    <div
+                      className="flex items-center justify-center w-8 h-8 rounded-lg shrink-0"
+                      style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}
+                    >
+                      <Paperclip size={14} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate" style={{ color: 'var(--tfd-text-primary)' }}>
+                        {pd.file.name}
+                      </p>
+                      <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+                        {(pd.file.size / 1024).toFixed(0)} KB
+                      </p>
+                    </div>
+                    <select
+                      className="tfd-input text-xs py-1 px-2 w-auto min-w-[150px]"
+                      value={pd.tipo}
+                      onChange={(e) =>
+                        setPendingDocs((prev) =>
+                          prev.map((f, i) => (i === idx ? { ...f, tipo: e.target.value as TipoDocumento } : f)),
+                        )
+                      }
+                    >
+                      <option value="LAUDO_MEDICO">Laudo Médico</option>
+                      <option value="EXAME_COMPLEMENTAR">Exame Complementar</option>
+                      <option value="RELATORIO_TRATAMENTO_ANTERIOR">Relat. Tratamento Ant.</option>
+                      <option value="DOCUMENTO_ENCAMINHAMENTO">Doc. Encaminhamento</option>
+                      <option value="RELATORIO_MEDICO_ACOMPANHAMENTO">Relat. Médico Acomp.</option>
+                      <option value="OUTROS">Outros</option>
+                    </select>
+                    <button
+                      type="button"
+                      className="tfd-btn tfd-btn-ghost tfd-btn--icon-only shrink-0"
+                      title="Remover arquivo"
+                      onClick={() => setPendingDocs((prev) => prev.filter((_, i) => i !== idx))}
+                    >
+                      <X size={14} style={{ color: 'var(--tfd-status-danger)' }} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
       </Drawer>

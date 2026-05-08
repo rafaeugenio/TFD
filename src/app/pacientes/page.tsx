@@ -33,6 +33,7 @@ import { formatCPF, maskCPF, maskCNS, maskPhone, maskCEP } from '@/shared/pipes/
 
 import CepAutofill from '@/shared/components/cep-autofill/CepAutofill';
 import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
+import IdadeBadge from '@/shared/components/idade-badge';
 
 import { listarPacientes, buscarPaciente, criarPaciente, atualizarPaciente } from '@/services/pacientes.service';
 import { buscarRegionalPorMunicipio, listarRegionaisSaude } from '@/services/regionais-saude.service';
@@ -210,8 +211,6 @@ function PacientesPage() {
   const [acompDataNascimento, setAcompDataNascimento] = useState('');
   const [acompVinculo, setAcompVinculo] = useState<VinculoAcompanhante | ''>('');
   const [acompTelefone, setAcompTelefone] = useState('');
-  const [acompNecessidadeEspecial, setAcompNecessidadeEspecial] = useState(false);
-  const [acompDescricaoNecessidade, setAcompDescricaoNecessidade] = useState('');
   const [acompAgeWarning, setAcompAgeWarning] = useState('');
 
   /* ---- Lookup hooks ---- */
@@ -328,8 +327,6 @@ function PacientesPage() {
     setAcompDataNascimento('');
     setAcompVinculo('');
     setAcompTelefone('');
-    setAcompNecessidadeEspecial(false);
-    setAcompDescricaoNecessidade('');
     setAcompAgeWarning('');
   }
 
@@ -558,8 +555,6 @@ function PacientesPage() {
     setAcompDataNascimento((acomp.data_nascimento as string) ?? '');
     setAcompVinculo((acomp.vinculo as VinculoAcompanhante) ?? '');
     setAcompTelefone(maskPhone((acomp.telefone as string) ?? ''));
-    setAcompNecessidadeEspecial((acomp.necessidade_especial as boolean) ?? false);
-    setAcompDescricaoNecessidade((acomp.descricao_necessidade as string) ?? '');
     const age = calcularIdade((acomp.data_nascimento as string) ?? '');
     if (age !== null && (age < 20 || age > 65)) {
       setAcompAgeWarning(`Acompanhante com ${age} anos — fora da faixa padrao (20–65). Exige autorizacao da coordenacao.`);
@@ -628,8 +623,8 @@ function PacientesPage() {
       data_nascimento: acompDataNascimento,
       vinculo: acompVinculo,
       telefone: cleanAcompPhone,
-      necessidade_especial: acompNecessidadeEspecial,
-      descricao_necessidade: acompNecessidadeEspecial ? acompDescricaoNecessidade.trim() || null : null,
+      necessidade_especial: false,
+      descricao_necessidade: null,
     };
 
     if (editingId) {
@@ -853,8 +848,11 @@ function PacientesPage() {
               ) : (
                 (table.paginated as unknown as Record<string, unknown>[]).map((pac: Record<string, unknown>) => (
                   <tr key={pac.id as string} className="cursor-pointer" onClick={() => router.push(`/pacientes/${pac.id}`)}>
-                    <td className="max-w-[200px] truncate font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                      {pac.nome_completo as string}
+                    <td className="max-w-[260px] font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                      <div className="flex items-center gap-2">
+                        <span className="truncate">{pac.nome_completo as string}</span>
+                        <IdadeBadge dataNascimento={pac.data_nascimento as string} />
+                      </div>
                     </td>
                     <td className="hidden md:table-cell whitespace-nowrap" style={{ color: 'var(--tfd-text-secondary)' }}>
                       {formatCPF((pac.cpf as string) ?? '')}
@@ -986,6 +984,18 @@ function PacientesPage() {
           Dados Pessoais
         </h3>
 
+        <FormField label="CPF" required hint="campo principal de identificação">
+          <input
+            type="text"
+            className="tfd-input"
+            placeholder="000.000.000-00"
+            value={cpf}
+            onChange={(e) => setCpf(maskCPF(e.target.value))}
+            style={{ fontWeight: 600, fontSize: 15 }}
+            autoFocus
+          />
+        </FormField>
+
         <FormField label="Nome completo" required>
           <input
             type="text"
@@ -995,27 +1005,15 @@ function PacientesPage() {
           />
         </FormField>
 
-        <div className="grid grid-cols-2 gap-4">
-          <FormField label="CPF" required>
-            <input
-              type="text"
-              className="tfd-input"
-              placeholder="000.000.000-00"
-              value={cpf}
-              onChange={(e) => setCpf(maskCPF(e.target.value))}
-            />
-          </FormField>
-
-          <FormField label="Cartao SUS (CNS)" hint="opcional">
-            <input
-              type="text"
-              className="tfd-input"
-              placeholder="000 0000 0000 0000"
-              value={cns}
-              onChange={(e) => setCns(maskCNS(e.target.value))}
-            />
-          </FormField>
-        </div>
+        <FormField label="Cartao SUS (CNS)" hint="opcional">
+          <input
+            type="text"
+            className="tfd-input"
+            placeholder="000 0000 0000 0000"
+            value={cns}
+            onChange={(e) => setCns(maskCNS(e.target.value))}
+          />
+        </FormField>
 
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Data de Nascimento" required>
@@ -1359,9 +1357,12 @@ function PacientesPage() {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                          {acomp.nome_completo as string}
-                        </p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                            {acomp.nome_completo as string}
+                          </p>
+                          <IdadeBadge dataNascimento={acomp.data_nascimento as string} />
+                        </div>
                         <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
                           <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>
                             CPF: {formatCPF((acomp.cpf as string) ?? '')}
@@ -1375,14 +1376,6 @@ function PacientesPage() {
                             </span>
                           )}
                         </div>
-                        {(acomp.necessidade_especial as boolean) && (
-                          <span
-                            className="inline-block mt-1 text-xs px-2 py-0.5 rounded-full font-medium"
-                            style={{ backgroundColor: 'var(--tfd-status-warning-bg)', color: 'var(--tfd-status-warning)' }}
-                          >
-                            Necessidade especial
-                          </span>
-                        )}
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <button
@@ -1496,31 +1489,6 @@ function PacientesPage() {
                 />
               </FormField>
             </div>
-
-            <div className="mb-4 flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="acompNecessidadeEspecial"
-                checked={acompNecessidadeEspecial}
-                onChange={(e) => setAcompNecessidadeEspecial(e.target.checked)}
-                style={{ accentColor: 'var(--tfd-primary-500)' }}
-              />
-              <label htmlFor="acompNecessidadeEspecial" className="tfd-label" style={{ marginBottom: 0 }}>
-                Necessidade especial
-              </label>
-            </div>
-
-            {acompNecessidadeEspecial && (
-              <FormField label="Descricao da Necessidade">
-                <textarea
-                  className="tfd-input"
-                  rows={2}
-                  placeholder="Descreva a necessidade especial..."
-                  value={acompDescricaoNecessidade}
-                  onChange={(e) => setAcompDescricaoNecessidade(e.target.value)}
-                />
-              </FormField>
-            )}
 
             <div className="flex items-center gap-2">
               <button className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={handleSaveAcomp}>

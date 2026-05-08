@@ -9,7 +9,7 @@ const BP_MD = 768;
 const BP_XL = 1280;
 
 const AUTH_ROUTES = ['/login', '/criar-conta', '/recuperar-senha', '/consulta'];
-const STANDALONE_ROUTES = ['/design-system'];
+const STANDALONE_ROUTES = ['/design-system', '/fluxo-v2/parecer-print'];
 
 interface AppLayoutProps {
   children: React.ReactNode;

@@ -91,9 +91,6 @@ export default function DiagnosticoClinicoPage() {
   const [descricaoDiagnostico, setDescricaoDiagnostico] = useState('');
   const [especialidade, setEspecialidade] = useState('');
   const [procedimento, setProcedimento] = useState('');
-  const [justificativa, setJustificativa] = useState('');
-  const [tipoTransporte, setTipoTransporte] = useState('');
-  const [tratamentosAnteriores, setTratamentosAnteriores] = useState('');
 
   /* ---- Form state: Documentos (pending uploads) ---- */
   interface PendingFile {
@@ -173,9 +170,6 @@ export default function DiagnosticoClinicoPage() {
     setDescricaoDiagnostico('');
     setEspecialidade('');
     setProcedimento('');
-    setJustificativa('');
-    setTipoTransporte('');
-    setTratamentosAnteriores('');
     setPendingFiles([]);
   }
 
@@ -203,8 +197,6 @@ export default function DiagnosticoClinicoPage() {
     setDescricaoDiagnostico((sol.descricao_diagnostico as string) ?? '');
     setEspecialidade((sol.especialidade as string) ?? '');
     setProcedimento((sol.tipo_procedimento as string) ?? '');
-    setJustificativa((sol.justificativa_tfd as string) ?? '');
-    setTipoTransporte((sol.tipo_transporte_sugerido as string) ?? '');
     setPendingFiles([]);
     setDrawerOpen(true);
   }
@@ -225,8 +217,6 @@ export default function DiagnosticoClinicoPage() {
         descricao_diagnostico: descricaoDiagnostico || null,
         especialidade: especialidade || null,
         tipo_procedimento: procedimento || null,
-        justificativa_tfd: justificativa || null,
-        tipo_transporte_sugerido: tipoTransporte || null,
       };
       await atualizarSolicitacao(selectedSol.id as string, payload as any);
       toast.success('Rascunho salvo', 'Os dados foram salvos. Você pode continuar depois.');
@@ -261,7 +251,6 @@ export default function DiagnosticoClinicoPage() {
     // Validações — Diagnóstico Clínico
     if (!cid) { toast.warning('Campo obrigatório', 'Preencha o CID-10 principal.'); return; }
     if (!especialidade) { toast.warning('Campo obrigatório', 'Selecione a especialidade.'); return; }
-    if (!tipoTransporte) { toast.warning('Campo obrigatório', 'Selecione o tipo de transporte.'); return; }
 
     // Check for laudo
     const hasLaudo = pendingFiles.some((pf) => pf.tipo === 'LAUDO_MEDICO');
@@ -282,8 +271,6 @@ export default function DiagnosticoClinicoPage() {
         descricao_diagnostico: descricaoDiagnostico,
         especialidade,
         tipo_procedimento: procedimento,
-        justificativa_tfd: justificativa,
-        tipo_transporte_sugerido: tipoTransporte,
         status: 'EM_ANALISE',
       };
 
@@ -800,40 +787,6 @@ export default function DiagnosticoClinicoPage() {
             value={descricaoDiagnostico}
             onChange={(e) => setDescricaoDiagnostico(e.target.value)}
           />
-        </FormField>
-
-        <FormField label="Tratamentos realizados no estado">
-          <textarea
-            className="tfd-input"
-            rows={2}
-            placeholder="Hist&oacute;rico de tratamentos j&aacute; realizados no MA"
-            value={tratamentosAnteriores}
-            onChange={(e) => setTratamentosAnteriores(e.target.value)}
-          />
-        </FormField>
-
-        <FormField label="Justificativa TFD">
-          <textarea
-            className="tfd-input"
-            rows={3}
-            placeholder="Por que o tratamento n&atilde;o pode ser realizado no Maranh&atilde;o?"
-            value={justificativa}
-            onChange={(e) => setJustificativa(e.target.value)}
-          />
-        </FormField>
-
-        <FormField label="Tipo de transporte sugerido" required>
-          <select
-            className="tfd-input"
-            value={tipoTransporte}
-            onChange={(e) => setTipoTransporte(e.target.value)}
-          >
-            <option value="">Selecione...</option>
-            <option value="AEREO">A&eacute;reo</option>
-            <option value="TERRESTRE">Terrestre</option>
-            <option value="FLUVIAL">Fluvial</option>
-            <option value="TRANSFER">Transfer (porta-a-porta)</option>
-          </select>
         </FormField>
 
         <hr className="tfd-divider" />

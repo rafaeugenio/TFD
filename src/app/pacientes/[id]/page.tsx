@@ -26,6 +26,7 @@ import {
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import { useReferrerBreadcrumb } from '@/shared/hooks/useReferrerBreadcrumb';
 import StatusTag from '@/shared/components/status-tag/StatusTag';
+import IdadeBadge from '@/shared/components/idade-badge';
 import { buscarPaciente } from '@/services/pacientes.service';
 import { historicoProcessos } from '@/services/pacientes.service';
 import { listarPorPaciente } from '@/services/acompanhantes.service';
@@ -221,12 +222,14 @@ export default function PacienteDetalhePage({
                 {nome.split(' ').map((p: string) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()}
               </div>
               <div className="min-w-0">
-                <h2 className="text-base font-semibold truncate" style={{ color: 'var(--tfd-text-primary)' }}>
-                  {nome}
-                </h2>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-base font-semibold truncate" style={{ color: 'var(--tfd-text-primary)' }}>
+                    {nome}
+                  </h2>
+                  <IdadeBadge dataNascimento={dataNascimento} />
+                </div>
                 <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
                   {sexo === 'MASCULINO' ? 'Masculino' : sexo === 'FEMININO' ? 'Feminino' : 'Outro'}
-                  {idade !== null && ` · ${idade} anos`}
                 </p>
               </div>
             </div>
@@ -298,9 +301,12 @@ export default function PacienteDetalhePage({
                     className="p-3 rounded-lg"
                     style={{ backgroundColor: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}
                   >
-                    <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                      {ac.nome_completo as string}
-                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                        {ac.nome_completo as string}
+                      </p>
+                      <IdadeBadge dataNascimento={ac.data_nascimento as string} />
+                    </div>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
                       <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
                         CPF: {formatCPF((ac.cpf as string) || '')}
@@ -320,14 +326,6 @@ export default function PacienteDetalhePage({
                         </span>
                       )}
                     </div>
-                    {(ac.necessidade_especial as boolean) && (
-                      <span
-                        className="inline-block mt-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                        style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
-                      >
-                        Necessidade especial
-                      </span>
-                    )}
                   </div>
                 ))}
               </div>

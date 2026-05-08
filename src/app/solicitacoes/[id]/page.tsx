@@ -41,6 +41,7 @@ import {
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import StatusTag from '@/shared/components/status-tag/StatusTag';
+import IdadeBadge from '@/shared/components/idade-badge';
 import { useReferrerBreadcrumb } from '@/shared/hooks/useReferrerBreadcrumb';
 import TimelineTFD, { type TimelineEvent } from '@/shared/components/timeline-tfd/TimelineTFD';
 import TrilhaAuditoria from '@/shared/components/trilha-auditoria/TrilhaAuditoria';
@@ -323,20 +324,21 @@ function Section({
 /*  Info Row                                           */
 /* -------------------------------------------------- */
 
-function InfoRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
+function InfoRow({ label, value, mono, trailing }: { label: string; value: React.ReactNode; mono?: boolean; trailing?: React.ReactNode }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-baseline gap-0.5 sm:gap-3">
       <span className="text-sm font-medium shrink-0 w-40" style={{ color: 'var(--tfd-text-secondary)' }}>
         {label}
       </span>
       <span
-        className="text-sm"
+        className="text-sm flex items-center gap-2 flex-wrap"
         style={{
           color: 'var(--tfd-text-primary)',
           fontFamily: mono ? 'var(--tfd-font-mono)' : undefined,
         }}
       >
         {value}
+        {trailing}
       </span>
     </div>
   );
@@ -1180,7 +1182,11 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
               </div>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <InfoRow label="Nome completo" value={pac?.nome_completo ?? '—'} />
+              <InfoRow
+                label="Nome completo"
+                value={pac?.nome_completo ?? '—'}
+                trailing={<IdadeBadge dataNascimento={pac?.data_nascimento} />}
+              />
               <InfoRow label="CPF" value={formatCPF(pac?.cpf ?? '')} mono />
               <InfoRow label="CNS" value={formatCNS(pac?.cns ?? '')} mono />
               <InfoRow label="Data Nascimento" value={formatDate(pac?.data_nascimento)} />
@@ -1210,7 +1216,11 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
                   </h3>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <InfoRow label="Nome" value={acomp.nome_completo ?? '—'} />
+                  <InfoRow
+                    label="Nome"
+                    value={acomp.nome_completo ?? '—'}
+                    trailing={<IdadeBadge dataNascimento={acomp.data_nascimento} />}
+                  />
                   <InfoRow label="CPF" value={formatCPF(acomp.cpf ?? '')} mono />
                   <InfoRow label="Vínculo" value={acomp.vinculo ?? '—'} />
                   <InfoRow label="Telefone" value={acomp.telefone ?? '—'} />

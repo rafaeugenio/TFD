@@ -13,6 +13,7 @@ const titles: Record<string, string> = {
   '/dashboard': 'Painel',
   '/solicitacoes': 'Solicitações',
   '/diagnostico-clinico': 'Diagnóstico Clínico',
+  '/parecer-medico': 'Parecer Médico',
   '/regulacao': 'Regulação',
   '/viagens': 'Viagens',
   '/ajuda-custo': 'Ajuda de Custo',

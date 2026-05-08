@@ -6,11 +6,8 @@ import clsx from 'clsx';
 import {
   LayoutDashboard,
   FileText,
-  ClipboardCheck,
   MapPin,
-  Plane,
   Wallet,
-  CalendarClock,
   LogOut,
   BarChart3,
   Settings,
@@ -23,7 +20,6 @@ import {
   Stethoscope,
   ChevronsLeft,
   ChevronsRight,
-  Microscope,
   Building2,
   type LucideIcon,
 } from 'lucide-react';
@@ -53,22 +49,15 @@ const navSections: NavSection[] = [
   {
     title: 'FLUXO DO PROCESSO',
     items: [
-      { icon: FileText, label: 'Solicitações', href: '/solicitacoes' },
-      { icon: Microscope, label: 'Diagnóstico Clínico', href: '/diagnostico-clinico' },
-      { icon: Stethoscope, label: 'Parecer Médico', href: '/parecer-medico' },
-      { icon: ClipboardCheck, label: 'Regulação', href: '/regulacao' },
-      { icon: MapPin, label: 'Agendamentos', href: '/atendimento-destino' },
-      { icon: Plane, label: 'Viagens', href: '/viagens' },
-      { icon: Wallet, label: 'Ajuda de Custo', href: '/ajuda-custo' },
-      { icon: CalendarClock, label: 'Permanência', href: '/permanencia' },
-      { icon: LogOut, label: 'Alta / Encerramento', href: '/alta-encerramento' },
+      { icon: FileText, label: 'Solicitações', href: '/fluxo-v2/solicitacoes' },
+      { icon: Stethoscope, label: 'Regulação', href: '/fluxo-v2/regulacao' },
+      { icon: Wallet, label: 'Financeiro', href: '/fluxo-v2/financeiro' },
     ],
   },
   {
     title: 'CADASTROS',
     items: [
       { icon: Contact, label: 'Pacientes', href: '/pacientes' },
-      { icon: Stethoscope, label: 'Médicos', href: '/medicos' },
       { icon: Building2, label: 'Unidades de Saúde', href: '/unidades-saude' },
       { icon: MapPin, label: 'Regionais', href: '/regionais-saude' },
     ],
