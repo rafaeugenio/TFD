@@ -28,7 +28,7 @@ import DevolverModal from '@/shared/components/devolver-modal/DevolverModal';
 import { useDevolucoesPendentes } from '@/shared/hooks/useDevolucoesPendentes';
 import { slaBadge } from '@/shared/utils/sla';
 import { useDevolucoeRecebidas } from '@/shared/hooks/useDevolucoeRecebidas';
-import { useParametroNumero, useParametroBooleano } from '@/shared/hooks/useParametros';
+import { useDiariasSigtap } from '@/shared/hooks/useDiariasSigtap';
 import { calcularTotalDiarias } from '@/shared/utils/diarias';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
@@ -130,10 +130,10 @@ export default function AjudaCustoPage() {
   const [search, setSearch] = useState('');
   const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
 
-  const { valor: valorDiariaCompleta } = useParametroNumero('diaria_valor_completa');
-  const { valor: valorDiariaRetorno } = useParametroNumero('diaria_valor_retorno');
-  const { valor: pacienteInternado } = useParametroBooleano('diaria_paciente_internado');
-  const { valor: acompanhanteSempre } = useParametroBooleano('diaria_acompanhante_sempre');
+  const { completa: valorDiariaCompleta, retorno: valorDiariaRetorno } = useDiariasSigtap();
+  // Regras fixas da Portaria GM/MS nº 55/1999
+  const pacienteInternado = false;
+  const acompanhanteSempre = true;
 
   /* ---- Devoluções ---- */
   const { mapa: devolucoesEnviadas, labelDestino, refresh: refreshDevolucoes } = useDevolucoesPendentes('AJUDA_CUSTO');

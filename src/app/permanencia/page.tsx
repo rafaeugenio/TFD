@@ -17,7 +17,7 @@ import {
   criarProrrogacao, aprovarProrrogacao, indeferirProrrogacao, excluirProrrogacao,
   criarViagemProrrogacao, criarAjudaCustoProrrogacao,
 } from '@/services/permanencias.service';
-import { useParametroNumero } from '@/shared/hooks/useParametros';
+import { useDiariasSigtap } from '@/shared/hooks/useDiariasSigtap';
 import { calcularTotalDiarias } from '@/shared/utils/diarias';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import { formatCurrency, formatDate, maskCurrency, parseCurrency } from '@/shared/pipes/formatters';
@@ -70,8 +70,7 @@ function prorrogacaoSubStatus(p: any): string {
 
 export default function PermanenciaPage() {
   const toast = useToast();
-  const { valor: valorDiariaCompleta } = useParametroNumero('diaria_valor_completa');
-  const { valor: valorDiariaRetorno } = useParametroNumero('diaria_valor_retorno');
+  const { completa: valorDiariaCompleta, retorno: valorDiariaRetorno } = useDiariasSigtap();
 
   /* ── Main data ─────────────────────────────────────── */
   const { data: solicitacoes, loading, refresh } = useSupabaseData(

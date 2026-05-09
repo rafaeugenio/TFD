@@ -26,7 +26,6 @@ import { listarSolicitacoes, contarPorStatus } from '@/services/solicitacoes.ser
 import { listarViagens } from '@/services/viagens.service';
 import { listarEncerramentos } from '@/services/encerramentos.service';
 import { listarAjudasCusto } from '@/services/ajuda-custo.service';
-import { useParametroNumero } from '@/shared/hooks/useParametros';
 import { formatDate, formatCurrency } from '@/shared/pipes/formatters';
 import type { StatusSolicitacao } from '@/core/models';
 
@@ -134,10 +133,8 @@ export default function DashboardPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
-  /* DA4 — Teto mensal do contrato anual */
-  const { valor: contratoAnualParam } = useParametroNumero('contrato_anual_valor');
-  // Fallback: R$ 14.000.000 / 12 = teto mensal se o parâmetro não existir
-  const tetoMensal = (contratoAnualParam > 0 ? contratoAnualParam : 14_000_000) / 12;
+  /* DA4 — Teto mensal do contrato anual (R$ 14.000.000 / 12) */
+  const tetoMensal = 14_000_000 / 12;
 
   useEffect(() => {
     const range = getPresetRange('mes');

@@ -46,7 +46,6 @@ import { useReferrerBreadcrumb } from '@/shared/hooks/useReferrerBreadcrumb';
 import TimelineTFD, { type TimelineEvent } from '@/shared/components/timeline-tfd/TimelineTFD';
 import TrilhaAuditoria from '@/shared/components/trilha-auditoria/TrilhaAuditoria';
 import ObservacoesEtapa from '@/shared/components/observacoes-etapa/ObservacoesEtapa';
-import AutorizacaoInline from '@/shared/components/autorizacao-inline/AutorizacaoInline';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import UfCidadeSelect from '@/shared/components/uf-cidade-select/UfCidadeSelect';
@@ -67,15 +66,10 @@ import {
   type EtapaObservacao,
   type ObservacaoEtapa,
 } from '@/services/observacoes-etapa.service';
-import {
-  listarAutorizacoesPorSolicitacao,
-  tipoAutorizacaoLabels,
-  type AutorizacaoCoordenacao,
-} from '@/services/autorizacoes.service';
 import { useCompanhias } from '@/shared/hooks/useLookup';
 import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
-import { useParametroNumero } from '@/shared/hooks/useParametros';
+import { useDiariasSigtap } from '@/shared/hooks/useDiariasSigtap';
 import { calcularTotalDiarias } from '@/shared/utils/diarias';
 import { formatCPF, formatCNS, formatCurrency, formatDate, formatDateTime, maskCPF, maskCNS, maskPhone, maskCurrency, parseCurrency } from '@/shared/pipes/formatters';
 import type { StatusSolicitacao, TipoDocumento } from '@/core/models';
@@ -352,7 +346,6 @@ function buildTimeline(
   sol: any,
   extras?: {
     observacoes?: ObservacaoEtapa[];
-    autorizacoes?: AutorizacaoCoordenacao[];
   },
 ): TimelineEvent[] {
   const events: TimelineEvent[] = [];
@@ -376,27 +369,6 @@ function buildTimeline(
       status: 'info',
       user: obs.autorNome,
     });
-  }
-
-  // AZ3 — Autorizações registradas na linha do tempo
-  for (const auth of extras?.autorizacoes ?? []) {
-    events.push({
-      id: `ev-auth-${auth.id}`,
-      date: formatDate(auth.createdAt),
-      title: `Autorização solicitada — ${tipoAutorizacaoLabels[auth.tipo]}`,
-      description: auth.justificativa,
-      status: 'warning',
-      user: auth.solicitadoPorNome,
-    });
-    if (auth.status !== 'PENDENTE' && auth.decididoEm) {
-      events.push({
-        id: `ev-auth-dec-${auth.id}`,
-        date: formatDate(auth.decididoEm),
-        title: `Autorização ${auth.status === 'APROVADA' ? 'aprovada' : 'negada'}`,
-        description: auth.decisaoMotivo,
-        status: auth.status === 'APROVADA' ? 'success' : 'danger',
-      });
-    }
   }
 
   events.push({
@@ -602,8 +574,7 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
   const [editingSection, setEditingSection] = useState<string | null>(null);
 
   /* ---- Lookups for edit forms ---- */
-  const { valor: valorDiariaCompleta } = useParametroNumero('diaria_valor_completa');
-  const { valor: valorDiariaRetorno } = useParametroNumero('diaria_valor_retorno');
+  const { completa: valorDiariaCompleta, retorno: valorDiariaRetorno } = useDiariasSigtap();
 
   /* ---- Edit form states ---- */
 
@@ -773,9 +744,8 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
     };
   }, [permAjudaCustoInfo, permNovaDataRetorno]);
 
-  /* ---- D1/AZ3 — Observações por etapa + autorizações da coordenação ---- */
+  /* ---- D1 — Observações por etapa ---- */
   const [obsPorEtapa, setObsPorEtapa] = useState<Record<string, ObservacaoEtapa[]>>({});
-  const [autorizacoes, setAutorizacoes] = useState<AutorizacaoCoordenacao[]>([]);
 
   const reloadObservacoes = useMemo(
     () => async () => {
@@ -785,18 +755,9 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
     [id],
   );
 
-  const reloadAutorizacoes = useMemo(
-    () => async () => {
-      const list = await listarAutorizacoesPorSolicitacao(id);
-      setAutorizacoes(list);
-    },
-    [id],
-  );
-
   useEffect(() => {
     reloadObservacoes();
-    reloadAutorizacoes();
-  }, [reloadObservacoes, reloadAutorizacoes]);
+  }, [reloadObservacoes]);
 
   function getObsEtapa(etapa: EtapaObservacao): ObservacaoEtapa[] {
     return obsPorEtapa[etapa] ?? [];
@@ -808,7 +769,6 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
       if (!error && data) setSol(data);
     });
     reloadObservacoes();
-    reloadAutorizacoes();
   }
 
   /* ---- Open edit helpers — populate form from current data ---- */
@@ -1027,7 +987,6 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
   const allObservacoes = Object.values(obsPorEtapa).flat();
   const timeline = buildTimeline(sol, {
     observacoes: allObservacoes,
-    autorizacoes: autorizacoes,
   });
   const pac = sol.pacientes;
   const acomp = (sol as any).solicitacao_acompanhantes?.[0]?.acompanhantes;
@@ -1385,14 +1344,6 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
               autorNome={currentUser?.nome}
               onRegistered={reloadSolicitacao}
             />
-            <div className="mt-3">
-              <AutorizacaoInline
-                solicitacaoId={id}
-                autorId={currentUser?.id}
-                autorPerfil={currentUser?.perfil}
-                onRequested={reloadSolicitacao}
-              />
-            </div>
           </Section>
 
           {/* ── Regulacao ── */}
@@ -1510,14 +1461,6 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
                   autorNome={currentUser?.nome}
                   onRegistered={reloadSolicitacao}
                 />
-                <div className="mt-3">
-                  <AutorizacaoInline
-                    solicitacaoId={id}
-                    autorId={currentUser?.id}
-                    autorPerfil={currentUser?.perfil}
-                    onRequested={reloadSolicitacao}
-                  />
-                </div>
               </Section>
             );
           })()}
@@ -1563,14 +1506,6 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
               autorNome={currentUser?.nome}
               onRegistered={reloadSolicitacao}
             />
-            <div className="mt-3">
-              <AutorizacaoInline
-                solicitacaoId={id}
-                autorId={currentUser?.id}
-                autorPerfil={currentUser?.perfil}
-                onRequested={reloadSolicitacao}
-              />
-            </div>
           </Section>
 
           {/* ── A2: Histórico de Unidades Consultadas ── */}
@@ -1808,14 +1743,6 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
               autorNome={currentUser?.nome}
               onRegistered={reloadSolicitacao}
             />
-            <div className="mt-3">
-              <AutorizacaoInline
-                solicitacaoId={id}
-                autorId={currentUser?.id}
-                autorPerfil={currentUser?.perfil}
-                onRequested={reloadSolicitacao}
-              />
-            </div>
           </Section>
 
           {/* ── Ajuda de Custo ── */}
@@ -1940,14 +1867,6 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
               autorNome={currentUser?.nome}
               onRegistered={reloadSolicitacao}
             />
-            <div className="mt-3">
-              <AutorizacaoInline
-                solicitacaoId={id}
-                autorId={currentUser?.id}
-                autorPerfil={currentUser?.perfil}
-                onRequested={reloadSolicitacao}
-              />
-            </div>
           </Section>
 
           {/* ── Permanencia ── */}
@@ -2026,14 +1945,6 @@ export default function ProcessoDetalhePage({ params }: { params: Promise<{ id: 
               autorNome={currentUser?.nome}
               onRegistered={reloadSolicitacao}
             />
-            <div className="mt-3">
-              <AutorizacaoInline
-                solicitacaoId={id}
-                autorId={currentUser?.id}
-                autorPerfil={currentUser?.perfil}
-                onRequested={reloadSolicitacao}
-              />
-            </div>
           </Section>
 
         </div>

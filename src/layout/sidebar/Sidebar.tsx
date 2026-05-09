@@ -12,7 +12,6 @@ import {
   BarChart3,
   Settings,
   Shield,
-  ShieldAlert,
   Users,
   Contact,
   ScrollText,
@@ -65,7 +64,6 @@ const navSections: NavSection[] = [
   {
     title: 'GESTÃO',
     items: [
-      { icon: ShieldAlert, label: 'Autorizações', href: '/autorizacoes' },
       { icon: BarChart3, label: 'Relatórios', href: '/relatorios' },
       { icon: Settings, label: 'Configurações', href: '/sistema/configuracoes' },
       { icon: Shield, label: 'Permissões', href: '/sistema/papeis' },
