@@ -4,11 +4,22 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Drawer from '@/shared/components/drawer/Drawer';
 import IdadeBadge from '@/shared/components/idade-badge';
-import { Paperclip, Trash2, AlertTriangle, Upload, Loader2 } from 'lucide-react';
+import {
+  Paperclip,
+  Trash2,
+  AlertTriangle,
+  Upload,
+  Loader2,
+  ExternalLink,
+  Plus,
+  UserPlus,
+} from 'lucide-react';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { listarPacientes } from '@/services/pacientes.service';
-import { listarPorPaciente } from '@/services/acompanhantes.service';
+import { listarPorPaciente, criarAcompanhante } from '@/services/acompanhantes.service';
+import { listarUnidadesSaude } from '@/services/unidades-saude.service';
 import { calcularIdade } from '@/shared/utils/idade';
+import { maskCPF } from '@/shared/pipes/formatters';
 
 interface Props { open: boolean; onClose: () => void }
 
@@ -28,6 +39,22 @@ interface AcompanhanteRow {
   data_nascimento: string;
   vinculo: string | null;
 }
+
+interface UnidadeRow {
+  id: string;
+  nome: string;
+  cnes: string | null;
+  cidade: string;
+  uf: string;
+}
+
+const VINCULO_OPTIONS = [
+  { value: 'CONJUGE', label: 'Cônjuge' },
+  { value: 'FILHO', label: 'Filho(a)' },
+  { value: 'PAI_MAE', label: 'Pai/Mãe' },
+  { value: 'RESPONSAVEL_LEGAL', label: 'Responsável Legal' },
+  { value: 'OUTRO', label: 'Outro' },
+] as const;
 
 export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
   const { createSolicitacao } = useFluxoV2State();
@@ -54,6 +81,20 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
   const [acompanhantes, setAcompanhantes] = useState<AcompanhanteRow[]>([]);
   const [loadingAcompanhantes, setLoadingAcompanhantes] = useState(false);
 
+  // Unidades de saúde do banco
+  const [unidades, setUnidades] = useState<UnidadeRow[]>([]);
+  const [loadingUnidades, setLoadingUnidades] = useState(false);
+  const [unidadeId, setUnidadeId] = useState('');
+
+  // Cadastro inline de acompanhante
+  const [novoAcompForm, setNovoAcompForm] = useState(false);
+  const [novoAcompNome, setNovoAcompNome] = useState('');
+  const [novoAcompCpf, setNovoAcompCpf] = useState('');
+  const [novoAcompNasc, setNovoAcompNasc] = useState('');
+  const [novoAcompVinculo, setNovoAcompVinculo] = useState<string>('OUTRO');
+  const [novoAcompTelefone, setNovoAcompTelefone] = useState('');
+  const [savingAcomp, setSavingAcomp] = useState(false);
+
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -68,6 +109,22 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
         a.nome_completo.localeCompare(b.nome_completo, 'pt-BR'),
       ));
       setLoadingPacientes(false);
+    });
+    return () => { cancelled = true; };
+  }, [open]);
+
+  // Carrega unidades de saúde quando o drawer abre
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoadingUnidades(true);
+    listarUnidadesSaude({ pageSize: 9999 }).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) {
+        console.warn('[NewSolicitacaoDrawer] erro ao carregar unidades:', error.message);
+      }
+      setUnidades(((data ?? []) as unknown as UnidadeRow[]).filter((u) => u.nome));
+      setLoadingUnidades(false);
     });
     return () => { cancelled = true; };
   }, [open]);
@@ -105,17 +162,59 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
   );
   const validacaoMenor = isMenor && acompanhantesAdultos.length === 0;
 
-  const podeSalvar = !!paciente && !validacaoMenor && !seiUrlInvalido && (semAgendamento || (unidade && data && hora));
+  const unidadeSelecionada = unidades.find((u) => u.id === unidadeId);
+  const podeSalvar =
+    !!paciente &&
+    !validacaoMenor &&
+    !seiUrlInvalido &&
+    (semAgendamento || (unidadeId && data && hora));
 
   function reset() {
     setPacienteId('');
     setAcompanhanteIds([]);
     setSemAgendamento(false);
-    setUnidade(''); setData(''); setHora('');
+    setUnidade(''); setUnidadeId(''); setData(''); setHora('');
     setDataLaudo('');
     setNumeroSEI(''); setSeiUrl('');
     setAnexos([]);
+    resetNovoAcompForm();
     if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  function resetNovoAcompForm() {
+    setNovoAcompForm(false);
+    setNovoAcompNome('');
+    setNovoAcompCpf('');
+    setNovoAcompNasc('');
+    setNovoAcompVinculo('OUTRO');
+    setNovoAcompTelefone('');
+  }
+
+  async function salvarNovoAcompanhante() {
+    if (!pacienteId || !novoAcompNome.trim() || !novoAcompCpf.trim() || !novoAcompNasc) return;
+    setSavingAcomp(true);
+    const cpfLimpo = novoAcompCpf.replace(/\D/g, '');
+    const payload = {
+      paciente_id: pacienteId,
+      nome_completo: novoAcompNome.trim(),
+      cpf: cpfLimpo,
+      data_nascimento: novoAcompNasc,
+      vinculo: novoAcompVinculo,
+      telefone: novoAcompTelefone.trim() || null,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+    const { data: criado, error } = await criarAcompanhante(payload);
+    setSavingAcomp(false);
+    if (error) {
+      console.warn('[NewSolicitacaoDrawer] erro ao criar acompanhante:', error.message);
+      return;
+    }
+    if (criado) {
+      const novo = criado as unknown as AcompanhanteRow;
+      setAcompanhantes((prev) => [...prev, novo]);
+      setAcompanhanteIds((prev) => [...prev, novo.id]);
+    }
+    resetNovoAcompForm();
   }
 
   function handleSalvar() {
@@ -147,10 +246,15 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
       vinculo: a.vinculo ?? 'Outro',
     }));
 
+    const unidadeNome =
+      unidadeSelecionada
+        ? `${unidadeSelecionada.nome}${unidadeSelecionada.cnes ? ` (CNES ${unidadeSelecionada.cnes})` : ''}`
+        : unidade;
+
     const id = createSolicitacao({
       pacienteId: paciente.id,
       acompanhanteIds,
-      agendamento: !semAgendamento ? { unidade, data, hora } : undefined,
+      agendamento: !semAgendamento ? { unidade: unidadeNome, data, hora } : undefined,
       dataLaudo: dataLaudo || undefined,
       numeroSEI: numeroSEI.trim() || undefined,
       seiUrl: seiUrl.trim() || undefined,
@@ -194,9 +298,21 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
       <div className="flex flex-col gap-6">
         {/* Paciente */}
         <section>
-          <h3 className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Paciente
-          </h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
+              Paciente
+            </h3>
+            <a
+              href="/pacientes"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] inline-flex items-center gap-1 hover:underline"
+              style={{ color: 'var(--tfd-blue)' }}
+            >
+              <ExternalLink size={11} />
+              Cadastrar novo paciente
+            </a>
+          </div>
           <select
             value={pacienteId}
             onChange={(e) => setPacienteId(e.target.value)}
@@ -227,9 +343,22 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
 
         {/* Acompanhantes */}
         <section>
-          <h3 className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Acompanhantes
-          </h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
+              Acompanhantes
+            </h3>
+            {pacienteId && !novoAcompForm && (
+              <button
+                type="button"
+                onClick={() => setNovoAcompForm(true)}
+                className="text-[11px] inline-flex items-center gap-1 hover:underline"
+                style={{ color: 'var(--tfd-blue)' }}
+              >
+                <UserPlus size={11} />
+                Novo acompanhante
+              </button>
+            )}
+          </div>
           {!pacienteId ? (
             <p
               className="px-3 py-3 text-[12px] text-center"
@@ -310,6 +439,84 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
               Paciente menor de 18 anos exige ao menos um acompanhante adulto (≥ 18 anos).
             </div>
           )}
+
+          {novoAcompForm && pacienteId && (
+            <div
+              className="mt-3 p-3 flex flex-col gap-2"
+              style={{
+                background: '#F8FAFC',
+                border: '1px solid var(--tfd-surface-border)',
+                borderRadius: 8,
+              }}
+            >
+              <p className="text-[12px] font-semibold" style={{ color: '#1A1D2B' }}>
+                Cadastrar acompanhante para este paciente
+              </p>
+              <input
+                placeholder="Nome completo"
+                value={novoAcompNome}
+                onChange={(e) => setNovoAcompNome(e.target.value)}
+                className="px-3 py-2 text-[13px]"
+                style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 6 }}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  placeholder="CPF"
+                  value={novoAcompCpf}
+                  onChange={(e) => setNovoAcompCpf(maskCPF(e.target.value))}
+                  className="px-3 py-2 text-[13px] font-mono"
+                  style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 6 }}
+                />
+                <input
+                  type="date"
+                  value={novoAcompNasc}
+                  onChange={(e) => setNovoAcompNasc(e.target.value)}
+                  className="px-3 py-2 text-[13px]"
+                  style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 6 }}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={novoAcompVinculo}
+                  onChange={(e) => setNovoAcompVinculo(e.target.value)}
+                  className="px-3 py-2 text-[13px]"
+                  style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 6 }}
+                >
+                  {VINCULO_OPTIONS.map((v) => (
+                    <option key={v.value} value={v.value}>{v.label}</option>
+                  ))}
+                </select>
+                <input
+                  placeholder="Telefone (opcional)"
+                  value={novoAcompTelefone}
+                  onChange={(e) => setNovoAcompTelefone(e.target.value)}
+                  className="px-3 py-2 text-[13px]"
+                  style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 6 }}
+                />
+              </div>
+              <div className="flex items-center gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={resetNovoAcompForm}
+                  className="tfd-btn tfd-btn-ghost tfd-btn--sm"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={salvarNovoAcompanhante}
+                  disabled={savingAcomp || !novoAcompNome.trim() || !novoAcompCpf.trim() || !novoAcompNasc}
+                  className="tfd-btn tfd-btn-primary tfd-btn--sm"
+                >
+                  {savingAcomp ? (
+                    <><Loader2 size={12} className="animate-spin" /> Salvando...</>
+                  ) : (
+                    <><Plus size={12} /> Adicionar</>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Agendamento — exibido por padrão (caso normal) */}
@@ -332,12 +539,45 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
           </p>
           {!semAgendamento && (
             <div className="grid grid-cols-2 gap-2">
-              <input
-                value={unidade} onChange={(e) => setUnidade(e.target.value)}
-                placeholder="Unidade de saúde"
-                className="col-span-2 px-3 py-2 text-[13px]"
-                style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
-              />
+              <div className="col-span-2 flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px]" style={{ color: '#94A3B8' }}>
+                    Selecione a unidade cadastrada
+                  </span>
+                  <a
+                    href="/unidades-saude"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] inline-flex items-center gap-1 hover:underline"
+                    style={{ color: 'var(--tfd-blue)' }}
+                  >
+                    <ExternalLink size={11} />
+                    Cadastrar nova unidade
+                  </a>
+                </div>
+                <select
+                  value={unidadeId}
+                  onChange={(e) => setUnidadeId(e.target.value)}
+                  disabled={loadingUnidades}
+                  className="px-3 py-2 text-[13px]"
+                  style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
+                >
+                  <option value="">
+                    {loadingUnidades
+                      ? 'Carregando unidades...'
+                      : unidades.length === 0
+                        ? 'Nenhuma unidade cadastrada — clique em "Cadastrar nova unidade"'
+                        : 'Selecione a unidade de saúde...'}
+                  </option>
+                  {unidades.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.nome}
+                      {u.cnes ? ` — CNES ${u.cnes}` : ''}
+                      {u.cidade ? ` (${u.cidade}${u.uf ? `/${u.uf}` : ''})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <input
                 type="date" value={data} onChange={(e) => setData(e.target.value)}
                 className="px-3 py-2 text-[13px]"
