@@ -1,15 +1,33 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Drawer from '@/shared/components/drawer/Drawer';
 import IdadeBadge from '@/shared/components/idade-badge';
-import { Paperclip, Trash2, AlertTriangle, Upload } from 'lucide-react';
+import { Paperclip, Trash2, AlertTriangle, Upload, Loader2 } from 'lucide-react';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
-import { acompanhantesPool, pacientesPool } from '@/core/mocks/fluxo-v2-v3-seed';
+import { listarPacientes } from '@/services/pacientes.service';
+import { listarPorPaciente } from '@/services/acompanhantes.service';
 import { calcularIdade } from '@/shared/utils/idade';
 
 interface Props { open: boolean; onClose: () => void }
+
+interface PacienteRow {
+  id: string;
+  nome_completo: string;
+  cpf: string;
+  data_nascimento: string;
+  municipio: string | null;
+  uf: string | null;
+}
+
+interface AcompanhanteRow {
+  id: string;
+  nome_completo: string;
+  cpf: string;
+  data_nascimento: string;
+  vinculo: string | null;
+}
 
 export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
   const { createSolicitacao } = useFluxoV2State();
@@ -28,13 +46,62 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const seiUrlInvalido = seiUrl.trim().length > 0 && !/^https?:\/\//i.test(seiUrl.trim());
 
-  const paciente = pacientesPool.find((p) => p.id === pacienteId);
-  const idade = paciente ? calcularIdade(paciente.dataNascimento) : 0;
+  // Pacientes do banco (carregados quando o drawer abre)
+  const [pacientes, setPacientes] = useState<PacienteRow[]>([]);
+  const [loadingPacientes, setLoadingPacientes] = useState(false);
+
+  // Acompanhantes vinculados ao paciente selecionado
+  const [acompanhantes, setAcompanhantes] = useState<AcompanhanteRow[]>([]);
+  const [loadingAcompanhantes, setLoadingAcompanhantes] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoadingPacientes(true);
+    listarPacientes({ pageSize: 9999 }).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) {
+        console.warn('[NewSolicitacaoDrawer] erro ao carregar pacientes:', error.message);
+      }
+      const rows = (data ?? []) as unknown as PacienteRow[];
+      setPacientes(rows.filter((p) => p.nome_completo).sort((a, b) =>
+        a.nome_completo.localeCompare(b.nome_completo, 'pt-BR'),
+      ));
+      setLoadingPacientes(false);
+    });
+    return () => { cancelled = true; };
+  }, [open]);
+
+  // Sempre que muda o paciente, reseta acompanhantes selecionados e busca os do paciente
+  useEffect(() => {
+    setAcompanhanteIds([]);
+    if (!pacienteId) {
+      setAcompanhantes([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingAcompanhantes(true);
+    listarPorPaciente(pacienteId).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) {
+        console.warn('[NewSolicitacaoDrawer] erro ao carregar acompanhantes:', error.message);
+      }
+      setAcompanhantes((data ?? []) as unknown as AcompanhanteRow[]);
+      setLoadingAcompanhantes(false);
+    });
+    return () => { cancelled = true; };
+  }, [pacienteId]);
+
+  const paciente = pacientes.find((p) => p.id === pacienteId);
+  const idade = paciente ? calcularIdade(paciente.data_nascimento) : 0;
   const isMenor = paciente && idade < 18;
 
   const acompanhantesAdultos = useMemo(
-    () => acompanhantesPool.filter((a) => acompanhanteIds.includes(a.id) && calcularIdade(a.dataNascimento) >= 18),
-    [acompanhanteIds],
+    () =>
+      acompanhantes.filter(
+        (a) => acompanhanteIds.includes(a.id) && calcularIdade(a.data_nascimento) >= 18,
+      ),
+    [acompanhanteIds, acompanhantes],
   );
   const validacaoMenor = isMenor && acompanhantesAdultos.length === 0;
 
@@ -53,6 +120,33 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
 
   function handleSalvar() {
     if (!paciente) return;
+
+    // Snapshots no shape do mock (PacienteMock/AcompanhanteMock) — o Provider
+    // ainda usa essa view-model. A persistência real no banco ficará para o
+    // próximo passo (createSolicitacao via Supabase).
+    const pacienteSnapshot = {
+      id: paciente.id,
+      nome: paciente.nome_completo,
+      cpf: paciente.cpf,
+      dataNascimento: paciente.data_nascimento,
+      sexo: 'M' as const, // simplificação; o front v2 não usa para o que importa aqui
+      telefone: '',
+      municipio: paciente.municipio
+        ? `${paciente.municipio}${paciente.uf ? ` - ${paciente.uf}` : ''}`
+        : '',
+      regional: '',
+      zonaRegional: 'Centro' as const,
+      endereco: { logradouro: '', numero: '', bairro: '', cep: '' },
+    };
+
+    const acompanhantesSnapshot = acompanhantes.map((a) => ({
+      id: a.id,
+      nome: a.nome_completo,
+      cpf: a.cpf,
+      dataNascimento: a.data_nascimento,
+      vinculo: a.vinculo ?? 'Outro',
+    }));
+
     const id = createSolicitacao({
       pacienteId: paciente.id,
       acompanhanteIds,
@@ -61,6 +155,8 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
       numeroSEI: numeroSEI.trim() || undefined,
       seiUrl: seiUrl.trim() || undefined,
       anexos,
+      pacienteSnapshot,
+      acompanhantesSnapshot,
     });
     reset();
     onClose();
@@ -104,18 +200,27 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
           <select
             value={pacienteId}
             onChange={(e) => setPacienteId(e.target.value)}
+            disabled={loadingPacientes}
             className="w-full px-3 py-2 text-[13px]"
             style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
           >
-            <option value="">Selecione um paciente...</option>
-            {pacientesPool.map((p) => (
-              <option key={p.id} value={p.id}>{p.nome} — {p.cpf}</option>
+            <option value="">
+              {loadingPacientes ? 'Carregando pacientes...' : 'Selecione um paciente...'}
+            </option>
+            {pacientes.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nome_completo} — {p.cpf}
+              </option>
             ))}
           </select>
           {paciente && (
             <div className="mt-2 flex items-center gap-2 text-[12px]" style={{ color: '#475569' }}>
-              <IdadeBadge dataNascimento={paciente.dataNascimento} />
-              <span>{paciente.municipio}</span>
+              <IdadeBadge dataNascimento={paciente.data_nascimento} />
+              <span>
+                {paciente.municipio
+                  ? `${paciente.municipio}${paciente.uf ? ` - ${paciente.uf}` : ''}`
+                  : '—'}
+              </span>
             </div>
           )}
         </section>
@@ -125,35 +230,77 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
           <h3 className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
             Acompanhantes
           </h3>
-          <div className="flex flex-col gap-1.5">
-            {acompanhantesPool.map((a) => {
-              const checked = acompanhanteIds.includes(a.id);
-              return (
-                <label
-                  key={a.id}
-                  className="flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors"
-                  style={{
-                    border: '1px solid ' + (checked ? 'var(--tfd-blue)' : 'var(--tfd-surface-border)'),
-                    background: checked ? '#EBF0FF' : 'white',
-                    borderRadius: 8,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={(e) => {
-                      setAcompanhanteIds((prev) =>
-                        e.target.checked ? [...prev, a.id] : prev.filter((id) => id !== a.id),
-                      );
+          {!pacienteId ? (
+            <p
+              className="px-3 py-3 text-[12px] text-center"
+              style={{
+                background: '#F8FAFC',
+                border: '1px dashed var(--tfd-surface-border)',
+                borderRadius: 8,
+                color: '#94A3B8',
+              }}
+            >
+              Selecione um paciente para listar os acompanhantes cadastrados.
+            </p>
+          ) : loadingAcompanhantes ? (
+            <div
+              className="flex items-center justify-center gap-2 py-4"
+              style={{ color: '#94A3B8' }}
+            >
+              <Loader2 size={14} className="animate-spin" />
+              <span className="text-[12px]">Carregando acompanhantes...</span>
+            </div>
+          ) : acompanhantes.length === 0 ? (
+            <p
+              className="px-3 py-3 text-[12px] text-center"
+              style={{
+                background: '#F8FAFC',
+                border: '1px dashed var(--tfd-surface-border)',
+                borderRadius: 8,
+                color: '#94A3B8',
+              }}
+            >
+              Este paciente não possui acompanhantes cadastrados.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {acompanhantes.map((a) => {
+                const checked = acompanhanteIds.includes(a.id);
+                return (
+                  <label
+                    key={a.id}
+                    className="flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors"
+                    style={{
+                      border:
+                        '1px solid ' +
+                        (checked ? 'var(--tfd-blue)' : 'var(--tfd-surface-border)'),
+                      background: checked ? '#EBF0FF' : 'white',
+                      borderRadius: 8,
                     }}
-                  />
-                  <span className="text-[13px] font-medium" style={{ color: '#1A1D2B' }}>{a.nome}</span>
-                  <IdadeBadge dataNascimento={a.dataNascimento} />
-                  <span className="text-[11px] ml-auto" style={{ color: '#6B7280' }}>{a.vinculo}</span>
-                </label>
-              );
-            })}
-          </div>
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        setAcompanhanteIds((prev) =>
+                          e.target.checked
+                            ? [...prev, a.id]
+                            : prev.filter((id) => id !== a.id),
+                        );
+                      }}
+                    />
+                    <span className="text-[13px] font-medium" style={{ color: '#1A1D2B' }}>
+                      {a.nome_completo}
+                    </span>
+                    <IdadeBadge dataNascimento={a.data_nascimento} />
+                    <span className="text-[11px] ml-auto" style={{ color: '#6B7280' }}>
+                      {a.vinculo ?? '—'}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
           {validacaoMenor && (
             <div
               className="mt-2 flex items-center gap-2 px-3 py-2 text-[12px]"

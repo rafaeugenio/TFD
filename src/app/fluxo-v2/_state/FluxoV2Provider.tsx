@@ -188,6 +188,10 @@ export interface NewSolicitacaoInput {
   anexos: { nome: string; tipo: string }[];
   numeroSEI?: string;
   seiUrl?: string;
+  /** Snapshot do paciente quando vem do banco (não está no pacientesPool mock). */
+  pacienteSnapshot?: import('@/core/mocks/fluxo-v2-v3-seed').PacienteMock;
+  /** Snapshot dos acompanhantes quando vêm do banco. */
+  acompanhantesSnapshot?: import('@/core/mocks/fluxo-v2-v3-seed').AcompanhanteMock[];
 }
 
 const FluxoV2Context = createContext<FluxoV2ContextValue | null>(null);
@@ -278,9 +282,13 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
   );
 
   const createSolicitacao = useCallback((input: NewSolicitacaoInput): string => {
-    const paciente = pacientesPool.find((p) => p.id === input.pacienteId);
+    // Prefere snapshot vindo do banco; fallback para o pool mock.
+    const paciente =
+      input.pacienteSnapshot ?? pacientesPool.find((p) => p.id === input.pacienteId);
     if (!paciente) throw new Error('Paciente não encontrado');
-    const acompanhantes = acompanhantesPool.filter((a) => input.acompanhanteIds.includes(a.id));
+    const acompanhantes = input.acompanhantesSnapshot
+      ? input.acompanhantesSnapshot.filter((a) => input.acompanhanteIds.includes(a.id))
+      : acompanhantesPool.filter((a) => input.acompanhanteIds.includes(a.id));
 
     const id = uid('s');
     const proximoNumero = `2025/${String(130 + solicitacoes.length).padStart(6, '0')}`;
