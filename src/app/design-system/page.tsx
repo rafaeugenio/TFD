@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import SortTh, { compareValues, nextSort, type SortDir } from '@/app/fluxo-v2/_components/SortTh';
 import {
   Palette,
   Type,
@@ -1568,6 +1569,47 @@ const [open, setOpen] = useState(false);
   );
 }
 
+function SortableTableDemo() {
+  const data = [
+    { id: '#10234', paciente: 'Maria Silva',     destino: 'São Luís — MA',   data: '2026-04-12' },
+    { id: '#10235', paciente: 'João Pereira',    destino: 'Imperatriz — MA', data: '2026-04-14' },
+    { id: '#10236', paciente: 'Ana Souza',       destino: 'Brasília — DF',   data: '2026-04-15' },
+    { id: '#10237', paciente: 'Carlos Mendes',   destino: 'Recife — PE',     data: '2026-04-16' },
+  ];
+  const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'data', dir: 'desc' });
+  const toggleSort = (f: string) => setSort((prev) => nextSort(f, prev));
+  const sorted = useMemo(() => {
+    if (!sort.field || !sort.dir) return data;
+    const get = (r: typeof data[number]) => (r as Record<string, unknown>)[sort.field];
+    const s = [...data].sort((a, b) => compareValues(get(a), get(b)));
+    return sort.dir === 'desc' ? s.reverse() : s;
+  }, [sort]);
+  return (
+    <div className="tfd-table-wrap">
+      <table className="tfd-table">
+        <thead>
+          <tr>
+            <SortTh label="ID"       field="id"       currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+            <SortTh label="Paciente" field="paciente" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+            <SortTh label="Destino"  field="destino"  currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+            <SortTh label="Data"     field="data"     currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((r) => (
+            <tr key={r.id}>
+              <td><code style={{ fontFamily: 'var(--tfd-mono)' }}>{r.id}</code></td>
+              <td>{r.paciente}</td>
+              <td>{r.destino}</td>
+              <td>{r.data.split('-').reverse().join('/')}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function DataSection() {
   const rows = [
     { id: '#10234', paciente: 'Maria Silva',     status: 'success', destino: 'São Luís — MA',  data: '12/04/2026' },
@@ -1732,7 +1774,29 @@ function DataSection() {
 </div>`} />
       </SubSection>
 
-      <SubSection title="Anatomia da tabela">
+      <SubSection title="Tabela com ordenação (padrão Fluxo v2)" hint="Use SortTh nas colunas ordenáveis. Toggle: null → asc → desc → null.">
+        <SortableTableDemo />
+        <CodeBlock code={`import SortTh, { compareValues, nextSort, type SortDir } from '@/app/fluxo-v2/_components/SortTh';
+
+const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'data', dir: 'desc' });
+const toggleSort = (field: string) => setSort((prev) => nextSort(field, prev));
+
+const ordenadas = useMemo(() => {
+  if (!sort.field || !sort.dir) return rows;
+  const get = (r) => r[sort.field];
+  const sorted = [...rows].sort((a, b) => compareValues(get(a), get(b)));
+  return sort.dir === 'desc' ? sorted.reverse() : sorted;
+}, [rows, sort]);
+
+<thead>
+  <tr>
+    <SortTh label="Paciente" field="paciente" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+    <SortTh label="Data"     field="data"     currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+  </tr>
+</thead>`} />
+      </SubSection>
+
+      <SubSection title="Anatomia da tabela (v2)">
         <div className="tfd-table-wrap">
           <table className="tfd-table">
             <thead>
@@ -1743,13 +1807,13 @@ function DataSection() {
               </tr>
             </thead>
             <tbody>
-              <TokenRow token="Wrapper"      value="div com tfd-panel + overflow-x-auto" description="Bordas arredondadas e shadow tier 2" />
-              <TokenRow token="thead th"     value="11px / weight 600 / uppercase / letter-spacing 0.06em" description="cor: --tfd-text-muted · padding 12px 16px" />
-              <TokenRow token="tbody td"     value="14px / weight 500 / regular case" description="cor: --tfd-text-primary · padding 12px 16px" />
-              <TokenRow token="Borda head"   value="1px solid --tfd-200" description="border-bottom no thead" />
-              <TokenRow token="Borda linha"  value="1px solid --tfd-100" description="border-bottom em cada td (exceto última)" />
-              <TokenRow token="Hover linha"  value="background --tfd-100 + transition 200ms" description="Apenas em tabelas interativas" />
-              <TokenRow token="Última linha" value="sem border-bottom" description="td:last-child td" />
+              <TokenRow token="Wrapper"      value=".tfd-table-wrap (ou <div> branco + border + radius-lg)" description="white bg · 1px solid --tfd-surface-border · radius-lg · overflow-hidden" />
+              <TokenRow token="thead tr"     value="background #F8FAFC + border-bottom" description="header soft / sutil para destacar sem ruído" />
+              <TokenRow token="thead th"     value="12px / weight 600 / uppercase / letter-spacing 0.06em" description="cor #64748B · padding 12px 16px" />
+              <TokenRow token="tbody td"     value="13px / weight 500 / regular case" description="cor: --tfd-text-primary · padding 14px 16px" />
+              <TokenRow token="Borda linha"  value="1px solid --tfd-surface-border" description="border-bottom em cada tr (exceto última)" />
+              <TokenRow token="Hover linha"  value="background #F8FAFC + transition 200ms" description="Apenas em tabelas interativas" />
+              <TokenRow token="SortTh"       value="cursor-pointer + ícone ArrowUpDown/Up/Down" description="Use para colunas ordenáveis (fluxo-v2/_components/SortTh)" />
             </tbody>
           </table>
         </div>
