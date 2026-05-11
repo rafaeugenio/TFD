@@ -186,7 +186,7 @@ const REPORTS_AUDITORIA: ReportCard[] = [
 
 function ReportCardComponent({ report }: { report: ReportCard }) {
   return (
-    <div className="tfd-card flex flex-col h-full">
+    <div className="tfd-card tfd-card--flat flex flex-col h-full">
       <div className="flex items-start gap-3 mb-3">
         <div
           className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"

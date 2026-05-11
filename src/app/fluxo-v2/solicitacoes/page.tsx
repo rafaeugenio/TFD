@@ -32,7 +32,7 @@ import NewSolicitacaoDrawer from './_NewSolicitacaoDrawer';
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import SortTh, { compareValues, nextSort, type SortDir } from '@/shared/components/sort-th/SortTh';
 
-const PAGE_SIZE = 10;
+const DEFAULT_PAGE_SIZE = 25;
 
 const STATUS_OPTIONS: (StatusGlobalV2 | 'all')[] = [
   'all',
@@ -48,6 +48,7 @@ export default function SolicitacoesV2ListPage() {
   const [statusFilter, setStatusFilter] = useState<StatusGlobalV2 | 'all'>('all');
   const [busca, setBusca] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'numero', dir: 'desc' });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editar, setEditar] = useState<SolicitacaoMock | null>(null);
@@ -112,8 +113,8 @@ export default function SolicitacoesV2ListPage() {
   const toggleSort = (field: string) => setSort((prev) => nextSort(field, prev));
 
   const paginadas = useMemo(
-    () => ordenadas.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [ordenadas, page],
+    () => ordenadas.slice((page - 1) * pageSize, page * pageSize),
+    [ordenadas, page, pageSize],
   );
 
   function abrirEncerrar(s: SolicitacaoMock) {
@@ -333,9 +334,11 @@ export default function SolicitacoesV2ListPage() {
         </table>
         <Pagination
           total={filtradas.length}
-          pageSize={PAGE_SIZE}
+          pageSize={pageSize}
           page={page}
           onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          recordLabel="solicitações"
         />
       </div>
 

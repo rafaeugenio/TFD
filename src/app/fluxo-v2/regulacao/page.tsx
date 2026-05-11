@@ -30,7 +30,7 @@ import {
 } from '../_utils/stats';
 import type { CarimboRegulacao, SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
 
-const PAGE_SIZE = 10;
+const DEFAULT_PAGE_SIZE = 25;
 
 type DrawerKind = 'parecer' | 'carimbo' | 'agendamento' | null;
 
@@ -56,6 +56,7 @@ export default function RegulacaoListPage() {
   const [busca, setBusca] = useState('');
   const [carimboFiltro, setCarimboFiltro] = useState<CarimboFiltro>('all');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'tempo', dir: 'desc' });
 
   const stats = useMemo(() => ({
@@ -108,8 +109,8 @@ export default function RegulacaoListPage() {
   }, [fila, sort]);
 
   const paginadas = useMemo(
-    () => filaOrdenada.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [filaOrdenada, page],
+    () => filaOrdenada.slice((page - 1) * pageSize, page * pageSize),
+    [filaOrdenada, page, pageSize],
   );
 
   const toggleSort = (field: string) => setSort((prev) => nextSort(field, prev));
@@ -369,9 +370,11 @@ export default function RegulacaoListPage() {
         </table>
         <Pagination
           total={fila.length}
-          pageSize={PAGE_SIZE}
+          pageSize={pageSize}
           page={page}
           onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          recordLabel="solicitações"
         />
       </div>
 

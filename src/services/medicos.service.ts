@@ -51,6 +51,9 @@ export async function listarMedicosAdmin(filters?: {
     const page = filters.page;
     const size = filters.pageSize;
     query = query.range((page - 1) * size, page * size - 1);
+  } else {
+    // Sem paginação: aumenta o teto além dos 1000 default do PostgREST.
+    query = query.range(0, 49999);
   }
 
   return query;

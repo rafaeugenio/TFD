@@ -6,29 +6,23 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   User,
-  Phone,
-  Mail,
   MapPin,
-  CreditCard,
   FileText,
   Clock,
-  Calendar,
-  Users,
   ExternalLink,
   Loader2,
   XCircle,
-  Hash,
   Pencil,
   Activity,
   CheckCircle2,
+  Users,
+  IdCard,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import { useReferrerBreadcrumb } from '@/shared/hooks/useReferrerBreadcrumb';
 import StatusTag from '@/shared/components/status-tag/StatusTag';
-import IdadeBadge from '@/shared/components/idade-badge';
-import { buscarPaciente } from '@/services/pacientes.service';
-import { historicoProcessos } from '@/services/pacientes.service';
+import { buscarPaciente, historicoProcessos } from '@/services/pacientes.service';
 import { listarPorPaciente } from '@/services/acompanhantes.service';
 import { formatCPF, formatCNS, formatDate } from '@/shared/pipes/formatters';
 import type { StatusSolicitacao } from '@/core/models';
@@ -130,12 +124,21 @@ export default function PacienteDetalhePage({
   const cep = paciente.cep as string;
   const idade = dataNascimento ? calcIdade(dataNascimento) : null;
 
-  const enderecoCompleto = [
+  const enderecoLinha = [
     logradouro && (numero ? `${logradouro}, ${numero}` : logradouro),
     bairro,
   ].filter(Boolean).join(' — ');
-
   const cidadeFull = municipio ? `${municipio} — ${uf}` : null;
+
+  const totalSol = solicitacoes.length;
+  const emAndamento = solicitacoes.filter((s) => {
+    const st = s.status as string;
+    return st && !['CONCLUIDO', 'CANCELADO', 'ENCERRADO'].includes(st);
+  }).length;
+  const concluidas = solicitacoes.filter((s) => {
+    const st = s.status as string;
+    return st === 'CONCLUIDO' || st === 'ENCERRADO';
+  }).length;
 
   return (
     <>
@@ -163,208 +166,125 @@ export default function PacienteDetalhePage({
         }
       />
 
-      {/* Summary cards */}
-      {(() => {
-        const totalSol = solicitacoes.length;
-        const emAndamento = solicitacoes.filter((s) => {
-          const st = s.status as string;
-          return st && !['CONCLUIDO', 'CANCELADO', 'ENCERRADO'].includes(st);
-        }).length;
-        const concluidas = solicitacoes.filter((s) => {
-          const st = s.status as string;
-          return st === 'CONCLUIDO' || st === 'ENCERRADO';
-        }).length;
-
-        return (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-            <div className="tfd-card flex items-center gap-3">
-              <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}>
-                <FileText size={20} />
-              </div>
-              <div>
-                <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Total de Solicitações</p>
-                <p className="text-xl font-semibold" style={{ color: 'var(--tfd-primary-500)' }}>{loadingSol ? '...' : totalSol}</p>
-              </div>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* ====== LEFT (2/3) — Sections ====== */}
+        <div className="xl:col-span-2 space-y-4">
+          {/* ── Dados Pessoais ── */}
+          <Section title="Dados Pessoais" icon={<User size={18} />}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <InfoRow label="Nome completo" value={nome} />
+              <InfoRow label="CPF" value={cpf ? formatCPF(cpf) : '—'} mono />
+              {cns && <InfoRow label="CNS" value={formatCNS(cns)} mono />}
+              {dataNascimento && (
+                <InfoRow
+                  label="Nascimento"
+                  value={`${formatDate(dataNascimento)}${idade !== null ? ` (${idade} anos)` : ''}`}
+                />
+              )}
+              <InfoRow
+                label="Sexo"
+                value={sexo === 'MASCULINO' ? 'Masculino' : sexo === 'FEMININO' ? 'Feminino' : sexo || '—'}
+              />
+              {telefone && <InfoRow label="Celular" value={telefone} />}
+              {telefoneFixo && <InfoRow label="Telefone fixo" value={telefoneFixo} />}
+              {email && <InfoRow label="E-mail" value={email} />}
             </div>
-            <div className="tfd-card flex items-center gap-3">
-              <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: 'var(--tfd-status-warning-bg)', color: 'var(--tfd-status-warning)' }}>
-                <Activity size={20} />
-              </div>
-              <div>
-                <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Em Andamento</p>
-                <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-warning)' }}>{loadingSol ? '...' : emAndamento}</p>
-              </div>
-            </div>
-            <div className="tfd-card flex items-center gap-3">
-              <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: 'var(--tfd-status-success-bg)', color: 'var(--tfd-status-success)' }}>
-                <CheckCircle2 size={20} />
-              </div>
-              <div>
-                <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Concluídas</p>
-                <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-success)' }}>{loadingSol ? '...' : concluidas}</p>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+          </Section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* ========== Coluna Esquerda: Dados do Paciente ========== */}
-        <div className="lg:col-span-1 space-y-6">
-          {/* Card: Dados Pessoais + Endereço (unificado) */}
-          <div className="tfd-card">
-            {/* Avatar + Nome */}
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className="flex items-center justify-center w-12 h-12 rounded-full text-white text-sm font-bold shrink-0"
-                style={{ backgroundColor: 'var(--tfd-primary-500)' }}
-              >
-                {nome.split(' ').map((p: string) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()}
+          {/* ── Endereço ── */}
+          {(logradouro || municipio) && (
+            <Section title="Endereço" icon={<MapPin size={18} />}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {enderecoLinha && <InfoRow label="Logradouro" value={enderecoLinha} />}
+                {cidadeFull && <InfoRow label="Município / UF" value={cidadeFull} />}
+                {cep && <InfoRow label="CEP" value={cep} mono />}
               </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-base font-semibold truncate" style={{ color: 'var(--tfd-text-primary)' }}>
-                    {nome}
-                  </h2>
-                  <IdadeBadge dataNascimento={dataNascimento} />
-                </div>
-                <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-                  {sexo === 'MASCULINO' ? 'Masculino' : sexo === 'FEMININO' ? 'Feminino' : 'Outro'}
-                </p>
-              </div>
-            </div>
+            </Section>
+          )}
 
-            {/* Dados pessoais */}
-            <div className="space-y-3">
-              <InfoRow icon={<CreditCard size={14} />} label="CPF" value={formatCPF(cpf)} />
-              {cns && <InfoRow icon={<Hash size={14} />} label="CNS" value={formatCNS(cns)} />}
-              {dataNascimento && <InfoRow icon={<Calendar size={14} />} label="Nascimento" value={formatDate(dataNascimento)} />}
-              {telefone && <InfoRow icon={<Phone size={14} />} label="Celular" value={telefone} />}
-              {telefoneFixo && <InfoRow icon={<Phone size={14} />} label="Fixo" value={telefoneFixo} />}
-              {email && <InfoRow icon={<Mail size={14} />} label="E-mail" value={email} />}
-            </div>
-
-            {/* Separador + Endereço (mesmo card) */}
-            {(logradouro || municipio) && (
-              <>
-                <hr className="tfd-divider my-4" />
-                <h3 className="text-xs font-semibold mb-2 flex items-center gap-2 uppercase tracking-wide" style={{ color: 'var(--tfd-text-muted)' }}>
-                  <MapPin size={12} />
-                  Endereço
-                </h3>
-                <div className="space-y-1">
-                  {enderecoCompleto && (
-                    <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
-                      {enderecoCompleto}
-                    </p>
-                  )}
-                  {cidadeFull && (
-                    <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                      {cidadeFull}
-                    </p>
-                  )}
-                  {cep && (
-                    <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-                      CEP: {cep}
-                    </p>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Card: Acompanhantes */}
-          <div className="tfd-card">
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: 'var(--tfd-text-primary)' }}>
-              <Users size={14} style={{ color: 'var(--tfd-primary-500)' }} />
-              Acompanhantes
+          {/* ── Acompanhantes ── */}
+          <Section
+            title="Acompanhantes"
+            icon={<Users size={18} />}
+            badge={
               <span
                 className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
                 style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}
               >
                 {acompanhantes.length}
               </span>
-            </h3>
-
-            {acompanhantes.length === 0 ? (
-              <div className="flex flex-col items-center py-6 gap-2">
-                <Users size={24} style={{ color: 'var(--tfd-text-muted)' }} />
-                <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-                  Nenhum acompanhante cadastrado
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {acompanhantes.map((ac) => (
-                  <div
-                    key={ac.id as string}
-                    className="p-3 rounded-lg"
-                    style={{ backgroundColor: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}
-                  >
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                        {ac.nome_completo as string}
-                      </p>
-                      <IdadeBadge dataNascimento={ac.data_nascimento as string} />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
-                      <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-                        CPF: {formatCPF((ac.cpf as string) || '')}
+            }
+            empty={acompanhantes.length === 0}
+          >
+            <div className="space-y-2">
+              {acompanhantes.map((ac) => (
+                <div
+                  key={ac.id as string}
+                  className="p-3 rounded-lg"
+                  style={{ backgroundColor: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                      {ac.nome_completo as string}
+                    </p>
+                    {(ac.vinculo as string | null) && (
+                      <span
+                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                        style={{ backgroundColor: '#EDE9FE', color: '#6D28D9' }}
+                      >
+                        {VINCULO_LABELS[(ac.vinculo as string)] || (ac.vinculo as string).replace(/_/g, ' ')}
                       </span>
-                      {(ac.vinculo as string | null) && (
-                        <span
-                          className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                          style={{ backgroundColor: '#EDE9FE', color: '#6D28D9' }}
-                        >
-                          {VINCULO_LABELS[(ac.vinculo as string)] || (ac.vinculo as string).replace(/_/g, ' ')}
-                        </span>
-                      )}
-                      {(ac.telefone as string | null) && (
-                        <span className="text-xs flex items-center gap-1" style={{ color: 'var(--tfd-text-muted)' }}>
-                          <Phone size={10} />
-                          {ac.telefone as string}
-                        </span>
-                      )}
-                    </div>
+                    )}
+                    {(ac.necessidade_especial as boolean) && (
+                      <span
+                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                        style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
+                      >
+                        Necessidade especial
+                      </span>
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ========== Coluna Direita: Histórico de Solicitações ========== */}
-        <div className="lg:col-span-2">
-          <div className="tfd-card">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--tfd-text-primary)' }}>
-                <FileText size={14} style={{ color: 'var(--tfd-primary-500)' }} />
-                Histórico de Solicitações
-                {!loadingSol && (
-                  <span
-                    className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                    style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}
-                  >
-                    {solicitacoes.length} ciclo{solicitacoes.length !== 1 ? 's' : ''}
-                  </span>
-                )}
-              </h3>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
+                    <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+                      CPF: {formatCPF((ac.cpf as string) || '')}
+                    </span>
+                    {(ac.telefone as string | null) && (
+                      <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+                        Tel: {ac.telefone as string}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
+          </Section>
 
+          {/* ── Histórico de Solicitações ── */}
+          <Section
+            title="Histórico de Solicitações"
+            icon={<FileText size={18} />}
+            badge={
+              !loadingSol ? (
+                <span
+                  className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                  style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}
+                >
+                  {solicitacoes.length} ciclo{solicitacoes.length !== 1 ? 's' : ''}
+                </span>
+              ) : undefined
+            }
+          >
             {loadingSol ? (
-              <div className="flex items-center justify-center py-12">
+              <div className="flex items-center justify-center py-8">
                 <Loader2 size={20} className="animate-spin" style={{ color: 'var(--tfd-primary-500)' }} />
-                <span className="ml-2 text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Carregando solicitações...</span>
+                <span className="ml-2 text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Carregando...</span>
               </div>
             ) : solicitacoes.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 gap-2">
-                <FileText size={32} style={{ color: 'var(--tfd-text-muted)' }} />
-                <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-                  Nenhuma solicitação registrada para este paciente
-                </p>
-              </div>
+              <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
+                Nenhuma solicitação registrada para este paciente
+              </p>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {solicitacoes.map((sol, idx) => {
                   const status = sol.status as StatusSolicitacao;
                   const numProcesso = sol.numero_processo as string;
@@ -378,7 +298,7 @@ export default function PacienteDetalhePage({
                     <Link
                       key={sol.id as string}
                       href={`/solicitacoes/${sol.id}?from=pacientes`}
-                      className="block rounded-lg p-4 transition-all duration-150 group"
+                      className="block rounded-lg p-3 transition-colors duration-150 group"
                       style={{
                         border: '1px solid var(--tfd-surface-border)',
                         backgroundColor: 'var(--tfd-surface-card)',
@@ -394,7 +314,7 @@ export default function PacienteDetalhePage({
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className="flex items-center gap-2">
                             <span
                               className="text-[10px] font-bold px-1.5 py-0.5 rounded"
                               style={{ backgroundColor: 'var(--tfd-surface-100)', color: 'var(--tfd-text-secondary)' }}
@@ -405,11 +325,9 @@ export default function PacienteDetalhePage({
                               {numProcesso}
                             </span>
                           </div>
-
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5">
                             {cid && (
-                              <span className="text-xs flex items-center gap-1" style={{ color: 'var(--tfd-text-secondary)' }}>
-                                <User size={11} />
+                              <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>
                                 CID: {cid}
                               </span>
                             )}
@@ -429,7 +347,6 @@ export default function PacienteDetalhePage({
                             </span>
                           </div>
                         </div>
-
                         <div className="flex items-center gap-2 shrink-0">
                           <StatusTag status={status} />
                           <ExternalLink
@@ -439,29 +356,58 @@ export default function PacienteDetalhePage({
                           />
                         </div>
                       </div>
-
-                      {((sol.viagens as unknown[])?.length > 0 || (sol.ajudas_custo as unknown[])?.length > 0) && (
-                        <div
-                          className="flex items-center gap-4 mt-3 pt-3"
-                          style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
-                        >
-                          {(sol.viagens as unknown[])?.length > 0 && (
-                            <span className="text-[11px] flex items-center gap-1" style={{ color: 'var(--tfd-text-muted)' }}>
-                              {(sol.viagens as unknown[]).length} viagem(ns)
-                            </span>
-                          )}
-                          {(sol.ajudas_custo as unknown[])?.length > 0 && (
-                            <span className="text-[11px] flex items-center gap-1" style={{ color: 'var(--tfd-text-muted)' }}>
-                              {(sol.ajudas_custo as unknown[]).length} ajuda(s) de custo
-                            </span>
-                          )}
-                        </div>
-                      )}
                     </Link>
                   );
                 })}
               </div>
             )}
+          </Section>
+        </div>
+
+        {/* ====== RIGHT (1/3) — Sidebar ====== */}
+        <div className="xl:col-span-1 space-y-4">
+          {/* Identificação resumida */}
+          <Section title="Identificação" icon={<IdCard size={18} />}>
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Nome</p>
+                <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{nome}</p>
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>CPF</p>
+                <p className="text-sm font-mono" style={{ color: 'var(--tfd-text-primary)' }}>
+                  {cpf ? formatCPF(cpf) : '—'}
+                </p>
+              </div>
+              {cidadeFull && (
+                <div>
+                  <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Município</p>
+                  <p className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>{cidadeFull}</p>
+                </div>
+              )}
+            </div>
+          </Section>
+
+          {/* KPIs */}
+          <div className="grid grid-cols-1 gap-3">
+            <KpiTile
+              icon={<FileText size={18} />}
+              label="Total de Solicitações"
+              value={loadingSol ? '...' : String(totalSol)}
+              tone="primary"
+            />
+            <KpiTile
+              icon={<Activity size={18} />}
+              label="Em Andamento"
+              value={loadingSol ? '...' : String(emAndamento)}
+              tone="warning"
+            />
+            <KpiTile
+              icon={<CheckCircle2 size={18} />}
+              label="Concluídas"
+              value={loadingSol ? '...' : String(concluidas)}
+              tone="success"
+            />
           </div>
         </div>
       </div>
@@ -469,14 +415,93 @@ export default function PacienteDetalhePage({
   );
 }
 
-/* ── InfoRow helper ── */
+/* -------------------------------------------------- */
+/*  Section / InfoRow / KpiTile                       */
+/* -------------------------------------------------- */
 
-function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function Section({
+  title,
+  icon,
+  children,
+  badge,
+  empty,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  badge?: React.ReactNode;
+  empty?: boolean;
+}) {
   return (
-    <div className="flex items-center gap-2">
-      <span style={{ color: 'var(--tfd-text-muted)' }}>{icon}</span>
-      <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>{label}:</span>
-      <span className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{value}</span>
+    <div className="tfd-card">
+      <div className="flex items-center gap-2 mb-4">
+        <span style={{ color: 'var(--tfd-primary-500)' }}>{icon}</span>
+        <h2 className="text-base font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{title}</h2>
+        {badge}
+      </div>
+      {empty ? (
+        <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
+          Nenhum registro
+        </p>
+      ) : (
+        children
+      )}
+    </div>
+  );
+}
+
+function InfoRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-baseline gap-0.5 sm:gap-3">
+      <span className="text-sm font-medium shrink-0 w-40" style={{ color: 'var(--tfd-text-secondary)' }}>
+        {label}
+      </span>
+      <span
+        className="text-sm"
+        style={{
+          color: 'var(--tfd-text-primary)',
+          fontFamily: mono ? 'var(--tfd-font-mono)' : undefined,
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+const KPI_TONES: Record<string, { bg: string; fg: string; iconBg: string }> = {
+  primary: { bg: 'var(--tfd-primary-50)', fg: 'var(--tfd-primary-500)', iconBg: 'var(--tfd-primary-100)' },
+  warning: { bg: '#FFFBEB', fg: '#D97706', iconBg: '#FEF3C7' },
+  success: { bg: '#ECFDF5', fg: '#059669', iconBg: '#D1FAE5' },
+};
+
+function KpiTile({
+  icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  tone: 'primary' | 'warning' | 'success';
+}) {
+  const c = KPI_TONES[tone];
+  return (
+    <div
+      className="rounded-lg p-3 flex items-center gap-3"
+      style={{ backgroundColor: c.bg, border: '1px solid var(--tfd-surface-border)' }}
+    >
+      <div
+        className="flex items-center justify-center w-9 h-9 rounded-lg shrink-0"
+        style={{ backgroundColor: c.iconBg, color: c.fg }}
+      >
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className="text-xl font-bold leading-tight" style={{ color: c.fg }}>{value}</p>
+        <p className="text-xs" style={{ color: c.fg, opacity: 0.8 }}>{label}</p>
+      </div>
     </div>
   );
 }

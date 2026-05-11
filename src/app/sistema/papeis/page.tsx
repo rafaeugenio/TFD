@@ -3,22 +3,24 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Plus,
-  ChevronDown,
-  ChevronUp,
-  CheckCircle2,
-  Circle,
   Loader2,
   Shield,
   Trash2,
   Pencil,
   Check,
   X,
+  Search,
+  Users as UsersIcon,
+  Package,
+  AlertTriangle,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import EmptyState from '@/shared/components/empty-state/EmptyState';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
+import Pagination from '@/shared/components/pagination/Pagination';
+import SortTh, { type SortDir, nextSort, compareValues } from '@/shared/components/sort-th/SortTh';
 import { useToast } from '@/shared/components/toast/Toast';
 import {
   listarPapeis,
@@ -56,6 +58,8 @@ const ACAO_LABELS: Record<string, string> = {
   adicionar_ajuda_custo: 'Aj. de Custo',
   encerrar: 'Encerrar',
 };
+
+const DEFAULT_PAGE_SIZE = 25;
 
 /* -------------------------------------------------- */
 /*  Helpers                                            */
@@ -123,6 +127,11 @@ function IndeterminateCheckbox({
 /*  Page Component                                     */
 /* -------------------------------------------------- */
 
+interface PapelComContagens extends Papel {
+  __usrCount: number;
+  __telaCount: number;
+}
+
 export default function PapeisPage() {
   const toast = useToast();
 
@@ -130,17 +139,24 @@ export default function PapeisPage() {
   const [papeis, setPapeis] = useState<Papel[]>([]);
   const [telas, setTelas] = useState<TelaSistema[]>([]);
   const [userCounts, setUserCounts] = useState<Record<string, number>>({});
+  const [telaCountsByPapel, setTelaCountsByPapel] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
-  /* ---- Accordion state ---- */
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [expandedTelaAcoes, setExpandedTelaAcoes] = useState<Record<string, string[]>>({});
-  const [loadingExpand, setLoadingExpand] = useState(false);
+  /* ---- Filter / sort / pagination ---- */
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'nome', dir: 'asc' });
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   /* ---- Drawer state ---- */
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingPapel, setEditingPapel] = useState<Papel | null>(null);
   const [saving, setSaving] = useState(false);
+
+  /* ---- Delete confirmation ---- */
+  const [deleteTarget, setDeleteTarget] = useState<Papel | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   /* ---- Form state ---- */
   const [formNome, setFormNome] = useState('');
@@ -152,6 +168,14 @@ export default function PapeisPage() {
   /* ---- Grouped telas ---- */
   const telasByModule = useMemo(() => groupTelasByModule(telas), [telas]);
   const moduleNames = useMemo(() => Object.keys(telasByModule), [telasByModule]);
+
+  /* ---- Debounce search (300ms) ---- */
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => { setSearch(searchInput); setPage(1); }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchInput]);
 
   /* ---- Data loading ---- */
   const loadData = useCallback(async () => {
@@ -175,6 +199,18 @@ export default function PapeisPage() {
         counts[row.papel_id] = (counts[row.papel_id] || 0) + 1;
       }
       setUserCounts(counts);
+
+      // Carrega contagem de telas por papel em paralelo (para mostrar na coluna).
+      const telaCountPromises = papeisData.map(async (p) => {
+        const res = await listarTelasDoPapel(p.id);
+        const rows = (res.data as unknown as { tela_id: string; acao: string }[]) ?? [];
+        const uniqueTelas = new Set(rows.map((r) => r.tela_id));
+        return [p.id, uniqueTelas.size] as const;
+      });
+      const telaCountsArr = await Promise.all(telaCountPromises);
+      const telaCounts: Record<string, number> = {};
+      for (const [id, c] of telaCountsArr) telaCounts[id] = c;
+      setTelaCountsByPapel(telaCounts);
     } catch {
       // empty state will show
     } finally {
@@ -182,30 +218,43 @@ export default function PapeisPage() {
     }
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  /* ---- Accordion expand ---- */
-  async function handleToggleExpand(papelId: string) {
-    if (expandedId === papelId) {
-      setExpandedId(null);
-      setExpandedTelaAcoes({});
-      return;
-    }
+  /* ---- Filtragem, ordenação, paginação (client-side) ---- */
+  const enriquecidos: PapelComContagens[] = useMemo(
+    () =>
+      papeis.map((p) => ({
+        ...p,
+        __usrCount: userCounts[p.id] ?? 0,
+        __telaCount: telaCountsByPapel[p.id] ?? 0,
+      })),
+    [papeis, userCounts, telaCountsByPapel],
+  );
 
-    setExpandedId(papelId);
-    setLoadingExpand(true);
-    try {
-      const res = await listarTelasDoPapel(papelId);
-      const rows = (res.data as unknown as { tela_id: string; acao: string }[]) ?? [];
-      setExpandedTelaAcoes(rowsToAcoesMap(rows));
-    } catch {
-      setExpandedTelaAcoes({});
-    } finally {
-      setLoadingExpand(false);
+  const filtered = useMemo(() => {
+    let result = enriquecidos;
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (p) => p.nome.toLowerCase().includes(q) || (p.descricao ?? '').toLowerCase().includes(q),
+      );
     }
-  }
+    if (sort.dir) {
+      const dir = sort.dir === 'asc' ? 1 : -1;
+      result = [...result].sort((a, b) => {
+        const field = sort.field as keyof PapelComContagens;
+        return compareValues(a[field], b[field]) * dir;
+      });
+    }
+    return result;
+  }, [enriquecidos, search, sort]);
+
+  const paginated = useMemo(
+    () => filtered.slice((page - 1) * pageSize, page * pageSize),
+    [filtered, page, pageSize],
+  );
+
+  const toggleSort = (field: string) => setSort((prev) => nextSort(field, prev));
 
   /* ---- Drawer open/close ---- */
   function handleOpenCreate() {
@@ -240,13 +289,11 @@ export default function PapeisPage() {
   }
 
   /* ---- Form: toggle ações por tela ---- */
-
   function toggleAcao(telaId: string, acao: string) {
     setFormTelas((prev) => {
       const current = prev[telaId] ?? [];
 
       if (current.includes(acao)) {
-        // Tentando remover visualizar enquanto há outras ações: bloqueado
         if (acao === 'visualizar' && current.filter((a) => a !== 'visualizar').length > 0) {
           return prev;
         }
@@ -257,7 +304,6 @@ export default function PapeisPage() {
         }
         return { ...prev, [telaId]: updated };
       } else {
-        // Adicionando qualquer ação: garante que visualizar também está presente
         const base = current.includes('visualizar') ? current : ['visualizar', ...current];
         return { ...prev, [telaId]: [...base, acao] };
       }
@@ -330,8 +376,6 @@ export default function PapeisPage() {
         toast.success('Papel criado!', 'O novo papel de acesso está disponível.');
       }
       handleCloseDrawer();
-      setExpandedId(null);
-      setExpandedTelaAcoes({});
       await loadData();
     } catch {
       // silently handle
@@ -341,40 +385,23 @@ export default function PapeisPage() {
   }
 
   /* ---- Delete ---- */
-  async function handleDelete(papel: Papel) {
-    const confirmed = window.confirm(
-      `Tem certeza que deseja excluir o papel "${papel.nome}"? Esta ação não pode ser desfeita.`,
-    );
-    if (!confirmed) return;
-
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await excluirPapel(papel.id);
-      if (expandedId === papel.id) {
-        setExpandedId(null);
-        setExpandedTelaAcoes({});
-      }
+      await excluirPapel(deleteTarget.id);
       toast.success('Papel excluído!', 'O papel foi removido do sistema.');
+      setDeleteTarget(null);
       await loadData();
     } catch {
       // silently handle
+    } finally {
+      setDeleting(false);
     }
   }
 
-  /* ---- Helpers ---- */
-
-  function getScreenCountText(telaAcoes: Record<string, string[]>): string {
-    const total = telas.length;
-    const count = Object.values(telaAcoes).filter((a) => a.length > 0).length;
-    if (count === total && total > 0) return 'Acesso total';
-    return `${count} de ${total} telas`;
-  }
-
-  function getModuleStats(moduleTelas: TelaSistema[], telaAcoes: Record<string, string[]>) {
-    const selected = moduleTelas.filter((t) => (telaAcoes[t.id]?.length ?? 0) > 0).length;
-    return { selected, total: moduleTelas.length };
-  }
-
   const formTelaCount = Object.values(formTelas).filter((a) => a.length > 0).length;
+  const totalTelas = telas.length;
 
   /* -------------------------------------------------- */
   /*  Render                                             */
@@ -393,19 +420,32 @@ export default function PapeisPage() {
         }
       />
 
-      {/* ========== Loading ========== */}
-      {loading && (
-        <div className="flex items-center justify-center py-20">
-          <Loader2
-            size={32}
-            className="animate-spin"
-            style={{ color: 'var(--tfd-primary-500)' }}
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 mb-4">
+        <div
+          className="flex items-center gap-2 px-3"
+          style={{
+            background: 'white',
+            border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8,
+            height: 36,
+            minWidth: 280,
+            flex: 1,
+            maxWidth: 420,
+          }}
+        >
+          <Search size={14} style={{ color: '#9CA3AF' }} />
+          <input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Buscar por nome ou descrição..."
+            className="flex-1 bg-transparent outline-none text-[13px]"
           />
         </div>
-      )}
+      </div>
 
-      {/* ========== Empty state ========== */}
-      {!loading && papeis.length === 0 && (
+      {/* Empty state (no data at all) */}
+      {!loading && papeis.length === 0 ? (
         <EmptyState
           icon={<Shield />}
           title="Nenhum papel cadastrado"
@@ -417,190 +457,169 @@ export default function PapeisPage() {
             </button>
           }
         />
+      ) : (
+        /* Table */
+        <div
+          style={{
+            background: 'white',
+            border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 'var(--tfd-radius-lg)',
+            overflow: 'hidden',
+          }}
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--tfd-surface-border)' }}>
+                  <SortTh label="Papel" field="nome" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+                  <SortTh label="Descrição" field="descricao" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+                  <SortTh label="Usuários" field="__usrCount" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} align="right" />
+                  <SortTh label="Telas" field="__telaCount" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} align="right" />
+                  <Th align="right">Ações</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
+                      <div className="inline-flex items-center gap-2">
+                        <Loader2 size={16} className="animate-spin" />
+                        Carregando...
+                      </div>
+                    </td>
+                  </tr>
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-16 text-center" style={{ color: '#9CA3AF' }}>
+                      <div className="flex flex-col items-center gap-3">
+                        <div
+                          className="flex items-center justify-center w-14 h-14 rounded-2xl"
+                          style={{ backgroundColor: 'var(--tfd-primary-50)' }}
+                        >
+                          <Package size={26} style={{ color: 'var(--tfd-primary-400)' }} />
+                        </div>
+                        <p className="text-sm">Nenhum resultado para esta busca.</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  paginated.map((papel) => {
+                    const acessoTotal = papel.__telaCount === totalTelas && totalTelas > 0;
+                    return (
+                      <tr
+                        key={papel.id}
+                        style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}
+                        className="hover:bg-[#F8FAFC] transition-colors"
+                      >
+                        <td className="px-4 py-3.5">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="flex items-center justify-center w-8 h-8 rounded-full shrink-0 text-[11px] font-semibold"
+                              style={{ backgroundColor: papel.cor, color: '#FFFFFF' }}
+                            >
+                              {getInitials(papel.nome)}
+                            </div>
+                            <span className="font-semibold" style={{ color: '#1A1D2B' }}>
+                              {papel.nome}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5 max-w-[360px]" style={{ color: 'var(--tfd-text-secondary)' }}>
+                          <p className="truncate">
+                            {papel.descricao || <span style={{ color: 'var(--tfd-text-muted)' }}>—</span>}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3.5 text-right">
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
+                            style={{ backgroundColor: 'var(--tfd-surface-100)', color: 'var(--tfd-text-secondary)' }}
+                          >
+                            <UsersIcon size={11} />
+                            {papel.__usrCount}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 text-right">
+                          <span
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium"
+                            style={{
+                              backgroundColor: acessoTotal ? 'var(--tfd-status-success-bg)' : 'var(--tfd-primary-50)',
+                              color: acessoTotal ? 'var(--tfd-status-success)' : 'var(--tfd-primary-500)',
+                            }}
+                          >
+                            {acessoTotal ? 'Acesso total' : `${papel.__telaCount} / ${totalTelas}`}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                              title="Editar"
+                              onClick={() => handleOpenEdit(papel)}
+                            >
+                              <Pencil size={15} />
+                            </button>
+                            <button
+                              className="tfd-btn tfd-btn-danger tfd-btn--icon-only"
+                              title="Excluir"
+                              onClick={() => setDeleteTarget(papel)}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <Pagination
+            total={filtered.length}
+            pageSize={pageSize}
+            page={page}
+            onPageChange={setPage}
+            onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+            recordLabel={`pap${filtered.length === 1 ? 'el' : 'éis'}${search ? ' (filtrado)' : ''}`}
+          />
+        </div>
       )}
 
-      {/* ========== Papel cards (accordion) ========== */}
-      {!loading && papeis.length > 0 && (
-        <div className="flex flex-col gap-3">
-          {papeis.map((papel) => {
-            const isExpanded = expandedId === papel.id;
-            const usrCount = userCounts[papel.id] ?? 0;
-
-            return (
-              <div key={papel.id} className="tfd-card p-0 overflow-hidden">
-                {/* Card header */}
-                <button
-                  type="button"
-                  className="w-full flex items-center gap-4 px-5 py-4 text-left"
-                  style={{ background: 'transparent' }}
-                  onClick={() => handleToggleExpand(papel.id)}
-                >
-                  <div
-                    className="flex items-center justify-center w-10 h-10 rounded-full shrink-0 text-sm font-bold"
-                    style={{ backgroundColor: papel.cor, color: '#FFFFFF' }}
-                  >
-                    {getInitials(papel.nome)}
-                  </div>
-
-                  <span
-                    className="font-semibold text-base flex-1 min-w-0 truncate"
-                    style={{ color: 'var(--tfd-text-primary)' }}
-                  >
-                    {papel.nome}
-                  </span>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span
-                      className="tfd-tag tfd-tag--rounded text-xs"
-                      style={{
-                        backgroundColor: 'var(--tfd-surface-100)',
-                        color: 'var(--tfd-text-secondary)',
-                      }}
-                    >
-                      {usrCount} usuário{usrCount !== 1 ? 's' : ''}
-                    </span>
-
-                    {isExpanded && !loadingExpand && (
-                      <span
-                        className="tfd-tag tfd-tag--rounded text-xs"
-                        style={{
-                          backgroundColor:
-                            Object.values(expandedTelaAcoes).filter((a) => a.length > 0).length === telas.length && telas.length > 0
-                              ? 'var(--tfd-status-success-bg)'
-                              : 'var(--tfd-primary-50)',
-                          color:
-                            Object.values(expandedTelaAcoes).filter((a) => a.length > 0).length === telas.length && telas.length > 0
-                              ? 'var(--tfd-status-success)'
-                              : 'var(--tfd-primary-500)',
-                        }}
-                      >
-                        {getScreenCountText(expandedTelaAcoes)}
-                      </span>
-                    )}
-                  </div>
-
-                  {isExpanded ? (
-                    <ChevronUp size={18} style={{ color: 'var(--tfd-text-muted)' }} />
-                  ) : (
-                    <ChevronDown size={18} style={{ color: 'var(--tfd-text-muted)' }} />
-                  )}
-                </button>
-
-                {/* Expanded content */}
-                {isExpanded && (
-                  <div style={{ borderTop: '1px solid var(--tfd-surface-border)' }}>
-                    {loadingExpand ? (
-                      <div className="flex items-center justify-center py-8">
-                        <Loader2
-                          size={20}
-                          className="animate-spin"
-                          style={{ color: 'var(--tfd-primary-500)' }}
-                        />
-                      </div>
-                    ) : (
-                      <>
-                        <div className="px-5 py-4">
-                          {moduleNames.map((modulo) => {
-                            const moduleTelas = telasByModule[modulo];
-                            const stats = getModuleStats(moduleTelas, expandedTelaAcoes);
-
-                            return (
-                              <div key={modulo} className="mb-4 last:mb-0">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span
-                                    className="text-sm font-semibold"
-                                    style={{ color: 'var(--tfd-text-primary)' }}
-                                  >
-                                    {modulo}
-                                  </span>
-                                  <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-                                    {stats.selected}/{stats.total}
-                                  </span>
-                                </div>
-
-                                <div className="flex flex-col gap-1.5 pl-2">
-                                  {moduleTelas.map((tela) => {
-                                    const acoes = expandedTelaAcoes[tela.id] ?? [];
-                                    const hasAccess = acoes.length > 0;
-                                    return (
-                                      <div key={tela.id} className="flex items-start gap-2">
-                                        {hasAccess ? (
-                                          <CheckCircle2
-                                            size={16}
-                                            style={{ color: 'var(--tfd-status-success)', marginTop: 2 }}
-                                            className="shrink-0"
-                                          />
-                                        ) : (
-                                          <Circle
-                                            size={16}
-                                            style={{ color: 'var(--tfd-text-muted)', marginTop: 2 }}
-                                            className="shrink-0"
-                                          />
-                                        )}
-                                        <div className="flex-1 min-w-0">
-                                          <span
-                                            className="text-sm"
-                                            style={{
-                                              color: hasAccess
-                                                ? 'var(--tfd-text-primary)'
-                                                : 'var(--tfd-text-muted)',
-                                            }}
-                                          >
-                                            {tela.nome}
-                                          </span>
-                                          <div className="flex flex-wrap gap-1 mt-0.5">
-                                            {(tela.acoes_disponiveis ?? []).map((acao) => {
-                                              const isEnabled = acoes.includes(acao);
-                                              return (
-                                                <span
-                                                  key={acao}
-                                                  className="text-[10px] px-1.5 py-0.5 rounded"
-                                                  style={{
-                                                    background: isEnabled ? 'var(--tfd-primary-50)' : 'var(--tfd-surface-100)',
-                                                    color: isEnabled ? 'var(--tfd-primary-500)' : 'var(--tfd-text-muted)',
-                                                  }}
-                                                >
-                                                  {ACAO_LABELS[acao] ?? acao}
-                                                </span>
-                                              );
-                                            })}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        <div
-                          className="flex items-center justify-between px-5 py-3"
-                          style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
-                        >
-                          <button
-                            className="tfd-btn tfd-btn-danger tfd-btn--sm"
-                            onClick={() => handleDelete(papel)}
-                          >
-                            <Trash2 size={14} />
-                            Excluir
-                          </button>
-                          <button
-                            className="tfd-btn tfd-btn-primary tfd-btn--sm"
-                            onClick={() => handleOpenEdit(papel)}
-                          >
-                            <Pencil size={14} />
-                            Editar
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
+      {/* Modal: Confirmar exclusão */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="tfd-card tfd-card--flat w-full max-w-md" style={{ backgroundColor: 'var(--tfd-surface-card)' }}>
+            <div className="flex items-start gap-3 mb-4">
+              <div className="flex items-center justify-center w-10 h-10 rounded-full shrink-0" style={{ backgroundColor: '#fef2f2' }}>
+                <AlertTriangle size={18} style={{ color: '#dc2626' }} />
               </div>
-            );
-          })}
+              <div>
+                <h3 className="text-base font-semibold mb-1" style={{ color: 'var(--tfd-text-primary)' }}>
+                  Excluir papel "{deleteTarget.nome}"?
+                </h3>
+                <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
+                  {(userCounts[deleteTarget.id] ?? 0) > 0 ? (
+                    <>
+                      Este papel tem{' '}
+                      <strong>{userCounts[deleteTarget.id]} usuário{userCounts[deleteTarget.id] !== 1 ? 's' : ''} vinculado{userCounts[deleteTarget.id] !== 1 ? 's' : ''}</strong>.
+                      Eles ficarão sem papel até serem realocados. Esta ação não pode ser desfeita.
+                    </>
+                  ) : (
+                    <>O papel e todas as suas permissões serão removidos. Esta ação não pode ser desfeita.</>
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button className="tfd-btn tfd-btn-secondary" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                Cancelar
+              </button>
+              <button className="tfd-btn tfd-btn-danger" onClick={confirmDelete} disabled={deleting}>
+                {deleting ? <><Loader2 size={14} className="animate-spin" /> Excluindo...</> : <><Trash2 size={14} /> Excluir</>}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -808,5 +827,21 @@ export default function PapeisPage() {
         })}
       </Drawer>
     </>
+  );
+}
+
+/* -------------------------------------------------- */
+/*  Helpers                                            */
+/* -------------------------------------------------- */
+
+function Th({ children, align = 'left' }: { children: React.ReactNode; align?: 'left' | 'right' | 'center' }) {
+  const cls = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
+  return (
+    <th
+      className={`px-4 py-3 font-semibold ${cls}`}
+      style={{ color: '#64748B', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}
+    >
+      {children}
+    </th>
   );
 }

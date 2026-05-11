@@ -11,13 +11,13 @@ import {
   Building2,
   Users,
   CheckCircle2,
-  Clock,
   Search,
   Loader2,
   XCircle,
   Pencil,
   ChevronLeft,
   ChevronRight,
+  Info,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -59,7 +59,6 @@ export default function RegionalSaudeDetalhePage({
   const [loadingMun, setLoadingMun] = useState(true);
   const [loadingPac, setLoadingPac] = useState(true);
 
-  /* ---- Search, sort, pagination ---- */
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState<SortField>('nome_completo');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -72,7 +71,6 @@ export default function RegionalSaudeDetalhePage({
       if (data) setRegional(data as Record<string, unknown>);
       setLoading(false);
 
-      // Municípios da regional
       setLoadingMun(true);
       const munResult = await listarMunicipiosPorRegional(id);
       const munNames = munResult.data
@@ -81,7 +79,6 @@ export default function RegionalSaudeDetalhePage({
       setMunicipios(munNames);
       setLoadingMun(false);
 
-      // Pacientes cujo município de residência pertence a esta regional
       setLoadingPac(true);
       if (munNames.length > 0) {
         const supabase = createClient();
@@ -100,10 +97,8 @@ export default function RegionalSaudeDetalhePage({
     load();
   }, [id]);
 
-  /* ---- Filtered + sorted + paginated ---- */
   const filtered = useMemo(() => {
     let result = pacientes;
-
     if (search) {
       const q = search.toLowerCase();
       result = result.filter((p) => {
@@ -113,21 +108,18 @@ export default function RegionalSaudeDetalhePage({
         return nome.includes(q) || cpf.includes(q) || mun.includes(q);
       });
     }
-
     result = [...result].sort((a, b) => {
       const aVal = ((a[sortField] as string) ?? '').toLowerCase();
       const bVal = ((b[sortField] as string) ?? '').toLowerCase();
       const cmp = aVal.localeCompare(bVal);
       return sortDir === 'asc' ? cmp : -cmp;
     });
-
     return result;
   }, [pacientes, search, sortField, sortDir]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
-  // Reset page on search
   useEffect(() => { setCurrentPage(1); }, [search]);
 
   function toggleSort(field: SortField) {
@@ -138,13 +130,11 @@ export default function RegionalSaudeDetalhePage({
       setSortDir('asc');
     }
   }
-
   function sortIndicator(field: SortField) {
     if (sortField !== field) return '';
     return sortDir === 'asc' ? ' ↑' : ' ↓';
   }
 
-  /* ---- Loading / error states ---- */
   if (loading) {
     return (
       <div className="flex items-center justify-center py-32">
@@ -177,11 +167,8 @@ export default function RegionalSaudeDetalhePage({
   const email = regional.email as string | undefined;
   const email2 = regional.email2 as string | undefined;
 
-  const enderecoCompleto = [
-    logradouro,
-    bairro && `${bairro}`,
-    municipioEscritorio,
-  ].filter(Boolean).join(', ');
+  const enderecoCompleto = [logradouro, bairro, municipioEscritorio].filter(Boolean).join(', ');
+  const municipiosComPacientes = new Set(pacientes.map((p) => p.municipio as string)).size;
 
   return (
     <>
@@ -209,172 +196,98 @@ export default function RegionalSaudeDetalhePage({
         }
       />
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <SummaryCard
-          icon={<Building2 size={20} />}
-          label="Municípios"
-          value={loadingMun ? '...' : String(municipios.length)}
-          color="primary"
-        />
-        <SummaryCard
-          icon={<Users size={20} />}
-          label="Pacientes Cadastrados"
-          value={loadingPac ? '...' : String(pacientes.length)}
-          color="warning"
-        />
-        <SummaryCard
-          icon={<CheckCircle2 size={20} />}
-          label="Municípios com Pacientes"
-          value={loadingPac ? '...' : String(new Set(pacientes.map((p) => p.municipio as string)).size)}
-          color="success"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* ========== Coluna Esquerda: Dados da Regional ========== */}
-        <div className="lg:col-span-1 space-y-6">
-          {/* Card: Dados principais */}
-          <div className="tfd-card">
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className="flex items-center justify-center w-12 h-12 rounded-full text-white shrink-0"
-                style={{ backgroundColor: 'var(--tfd-primary-500)' }}
-              >
-                <MapPin size={22} />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-base font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-                  {nome}
-                </h2>
-                <span
-                  className="text-xs font-bold px-2 py-0.5 rounded-full"
-                  style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}
-                >
-                  {codigo}
-                </span>
-              </div>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* ====== LEFT (2/3) ====== */}
+        <div className="xl:col-span-2 space-y-4">
+          {/* ── Identificação ── */}
+          <Section title="Identificação" icon={<Info size={18} />}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <InfoRow label="Nome" value={nome} />
+              <InfoRow label="Código" value={codigo} mono />
+              {municipioSede && <InfoRow label="Município sede" value={municipioSede} />}
+              {telefone && <InfoRow label="Telefone 1" value={maskPhone(telefone)} />}
+              {telefone2 && <InfoRow label="Telefone 2" value={maskPhone(telefone2)} />}
+              {email && <InfoRow label="E-mail institucional" value={email} />}
+              {email2 && <InfoRow label="E-mail secundário" value={email2} />}
             </div>
+          </Section>
 
-            <div className="space-y-3">
-              {municipioSede && (
-                <InfoRow icon={<MapPin size={14} />} label="Município Sede" value={municipioSede} />
-              )}
-              {telefone && (
-                <InfoRow icon={<Phone size={14} />} label="Telefone 1" value={maskPhone(telefone)} />
-              )}
-              {telefone2 && (
-                <InfoRow icon={<Phone size={14} />} label="Telefone 2" value={maskPhone(telefone2)} />
-              )}
-              {email && (
-                <InfoRow icon={<Mail size={14} />} label="E-mail Institucional" value={email} />
-              )}
-              {email2 && (
-                <InfoRow icon={<Mail size={14} />} label="E-mail Secundário" value={email2} />
-              )}
-            </div>
+          {/* ── Endereço do Escritório ── */}
+          {enderecoCompleto && (
+            <Section title="Endereço do Escritório" icon={<MapPin size={18} />}>
+              <p className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>{enderecoCompleto}</p>
+            </Section>
+          )}
 
-            {enderecoCompleto && (
-              <>
-                <hr className="tfd-divider my-4" />
-                <h3
-                  className="text-xs font-semibold mb-2 uppercase tracking-wide"
-                  style={{ color: 'var(--tfd-text-muted)' }}
-                >
-                  Endereço do Escritório
-                </h3>
-                <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
-                  {enderecoCompleto}
-                </p>
-              </>
-            )}
-          </div>
-
-          {/* Card: Municípios da Regional */}
-          <div className="tfd-card">
-            <h3
-              className="text-sm font-semibold flex items-center gap-2 mb-3"
-              style={{ color: 'var(--tfd-text-primary)' }}
-            >
-              <Building2 size={14} style={{ color: 'var(--tfd-primary-500)' }} />
-              Municípios
-              {!loadingMun && (
+          {/* ── Municípios ── */}
+          <Section
+            title="Municípios"
+            icon={<Building2 size={18} />}
+            badge={
+              !loadingMun ? (
                 <span
                   className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
                   style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}
                 >
                   {municipios.length}
                 </span>
-              )}
-            </h3>
-
+              ) : undefined
+            }
+          >
             {loadingMun ? (
               <div className="flex items-center gap-2 py-4">
                 <Loader2 size={16} className="animate-spin" style={{ color: 'var(--tfd-primary-500)' }} />
                 <span className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Carregando...</span>
               </div>
             ) : municipios.length === 0 ? (
-              <p className="text-sm py-2" style={{ color: 'var(--tfd-text-muted)' }}>
+              <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
                 Nenhum município vinculado.
               </p>
             ) : (
-              <div
-                className="overflow-y-auto rounded-lg"
-                style={{
-                  maxHeight: '320px',
-                  border: '1px solid var(--tfd-surface-border)',
-                }}
-              >
-                <ul>
-                  {municipios.map((mun, i) => (
-                    <li
+              <>
+                <div
+                  className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-72 overflow-y-auto rounded-lg p-2"
+                  style={{ border: '1px solid var(--tfd-surface-border)' }}
+                >
+                  {municipios.map((mun) => (
+                    <div
                       key={mun}
-                      className="flex items-center gap-2 px-3 py-2 text-sm"
-                      style={{
-                        borderBottom: i < municipios.length - 1 ? '1px solid var(--tfd-surface-border)' : 'none',
-                        color: 'var(--tfd-text-secondary)',
-                      }}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded text-sm"
+                      style={{ color: 'var(--tfd-text-secondary)' }}
                     >
                       <MapPin size={12} style={{ color: 'var(--tfd-primary-400)', flexShrink: 0 }} />
-                      {mun}
-                    </li>
+                      <span className="truncate">{mun}</span>
+                    </div>
                   ))}
-                </ul>
-              </div>
+                </div>
+                <button
+                  className="tfd-btn tfd-btn-secondary tfd-btn--sm mt-3"
+                  onClick={() => router.push(`/regionais-saude?editar=${id}`)}
+                >
+                  <Pencil size={13} />
+                  Gerenciar Municípios
+                </button>
+              </>
             )}
+          </Section>
 
-            <button
-              className="tfd-btn tfd-btn-secondary tfd-btn--sm w-full mt-3"
-              onClick={() => router.push(`/regionais-saude?editar=${id}`)}
-            >
-              <Pencil size={13} />
-              Gerenciar Municípios
-            </button>
-          </div>
-        </div>
-
-        {/* ========== Coluna Direita: Pacientes Vinculados ========== */}
-        <div className="lg:col-span-2">
-          <div className="tfd-card p-0 overflow-hidden">
-            {/* Header + Search */}
-            <div className="flex flex-wrap items-center justify-between gap-3 p-4" style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
-              <h3
-                className="text-sm font-semibold flex items-center gap-2"
-                style={{ color: 'var(--tfd-text-primary)' }}
-              >
-                <Users size={14} style={{ color: 'var(--tfd-primary-500)' }} />
-                Pacientes Vinculados
-                {!loadingPac && (
-                  <span
-                    className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                    style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}
-                  >
-                    {filtered.length}
-                  </span>
-                )}
-              </h3>
-
-              <div className="relative min-w-[200px]">
+          {/* ── Pacientes Vinculados ── */}
+          <Section
+            title="Pacientes Vinculados"
+            icon={<Users size={18} />}
+            badge={
+              !loadingPac ? (
+                <span
+                  className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                  style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}
+                >
+                  {filtered.length}
+                </span>
+              ) : undefined
+            }
+          >
+            <div className="flex justify-end mb-3">
+              <div className="relative min-w-[220px]">
                 <Search
                   size={14}
                   className="absolute left-2.5 top-1/2 -translate-y-1/2"
@@ -391,33 +304,20 @@ export default function RegionalSaudeDetalhePage({
               </div>
             </div>
 
-            {/* Table */}
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-lg" style={{ border: '1px solid var(--tfd-surface-border)' }}>
               <table className="tfd-table">
                 <thead>
                   <tr>
-                    <th
-                      className="cursor-pointer select-none"
-                      onClick={() => toggleSort('nome_completo')}
-                    >
+                    <th className="cursor-pointer select-none" onClick={() => toggleSort('nome_completo')}>
                       Paciente{sortIndicator('nome_completo')}
                     </th>
-                    <th
-                      className="cursor-pointer select-none hidden sm:table-cell"
-                      onClick={() => toggleSort('cpf')}
-                    >
+                    <th className="cursor-pointer select-none hidden sm:table-cell" onClick={() => toggleSort('cpf')}>
                       CPF{sortIndicator('cpf')}
                     </th>
-                    <th
-                      className="cursor-pointer select-none hidden md:table-cell"
-                      onClick={() => toggleSort('municipio')}
-                    >
+                    <th className="cursor-pointer select-none hidden md:table-cell" onClick={() => toggleSort('municipio')}>
                       Município{sortIndicator('municipio')}
                     </th>
-                    <th
-                      className="cursor-pointer select-none hidden lg:table-cell"
-                      onClick={() => toggleSort('created_at')}
-                    >
+                    <th className="cursor-pointer select-none hidden lg:table-cell" onClick={() => toggleSort('created_at')}>
                       Cadastro{sortIndicator('created_at')}
                     </th>
                   </tr>
@@ -438,7 +338,7 @@ export default function RegionalSaudeDetalhePage({
                         <div className="flex flex-col items-center gap-2">
                           <Users size={32} style={{ color: 'var(--tfd-text-muted)' }} />
                           <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-                            {search ? 'Nenhum paciente encontrado para esta busca.' : 'Nenhum paciente vinculado a esta regional.'}
+                            {search ? 'Nenhum paciente encontrado para esta busca.' : 'Nenhum paciente vinculado.'}
                           </p>
                         </div>
                       </td>
@@ -450,7 +350,6 @@ export default function RegionalSaudeDetalhePage({
                       const cpfPac = pac.cpf as string;
                       const munPac = pac.municipio as string;
                       const dataCadastro = pac.created_at as string;
-
                       return (
                         <tr
                           key={pacId}
@@ -479,12 +378,8 @@ export default function RegionalSaudeDetalhePage({
               </table>
             </div>
 
-            {/* Pagination */}
             {totalPages > 1 && (
-              <div
-                className="flex items-center justify-between px-4 py-3"
-                style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
-              >
+              <div className="flex items-center justify-between mt-3">
                 <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
                   {filtered.length} paciente{filtered.length !== 1 ? 's' : ''} — Página {currentPage} de {totalPages}
                 </p>
@@ -506,6 +401,60 @@ export default function RegionalSaudeDetalhePage({
                 </div>
               </div>
             )}
+          </Section>
+        </div>
+
+        {/* ====== RIGHT (1/3) ====== */}
+        <div className="xl:col-span-1 space-y-4">
+          <Section title="Contato" icon={<Phone size={18} />}>
+            <div className="space-y-3">
+              {telefone && (
+                <div>
+                  <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Telefone 1</p>
+                  <p className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>{maskPhone(telefone)}</p>
+                </div>
+              )}
+              {telefone2 && (
+                <div>
+                  <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Telefone 2</p>
+                  <p className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>{maskPhone(telefone2)}</p>
+                </div>
+              )}
+              {email && (
+                <div>
+                  <p className="text-xs flex items-center gap-1" style={{ color: 'var(--tfd-text-muted)' }}>
+                    <Mail size={11} /> E-mail institucional
+                  </p>
+                  <p className="text-sm break-all" style={{ color: 'var(--tfd-text-primary)' }}>{email}</p>
+                </div>
+              )}
+              {!telefone && !telefone2 && !email && (
+                <p className="text-sm text-center py-2" style={{ color: 'var(--tfd-text-muted)' }}>
+                  Sem contatos cadastrados
+                </p>
+              )}
+            </div>
+          </Section>
+
+          <div className="grid grid-cols-1 gap-3">
+            <KpiTile
+              icon={<Building2 size={18} />}
+              label="Municípios"
+              value={loadingMun ? '...' : String(municipios.length)}
+              tone="primary"
+            />
+            <KpiTile
+              icon={<Users size={18} />}
+              label="Pacientes Cadastrados"
+              value={loadingPac ? '...' : String(pacientes.length)}
+              tone="warning"
+            />
+            <KpiTile
+              icon={<CheckCircle2 size={18} />}
+              label="Municípios com Pacientes"
+              value={loadingPac ? '...' : String(municipiosComPacientes)}
+              tone="success"
+            />
           </div>
         </div>
       </div>
@@ -513,41 +462,83 @@ export default function RegionalSaudeDetalhePage({
   );
 }
 
-/* ── Helpers ── */
+/* -------------------------------------------------- */
+/*  Helpers                                            */
+/* -------------------------------------------------- */
 
-function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function Section({
+  title,
+  icon,
+  children,
+  badge,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  badge?: React.ReactNode;
+}) {
   return (
-    <div className="flex items-center gap-2">
-      <span style={{ color: 'var(--tfd-text-muted)' }}>{icon}</span>
-      <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>{label}:</span>
-      <span className="text-sm font-medium truncate" style={{ color: 'var(--tfd-text-primary)' }}>{value}</span>
+    <div className="tfd-card">
+      <div className="flex items-center gap-2 mb-4">
+        <span style={{ color: 'var(--tfd-primary-500)' }}>{icon}</span>
+        <h2 className="text-base font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{title}</h2>
+        {badge}
+      </div>
+      {children}
     </div>
   );
 }
 
-const SUMMARY_COLORS: Record<string, { bg: string; fg: string; iconBg: string }> = {
+function InfoRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-baseline gap-0.5 sm:gap-3">
+      <span className="text-sm font-medium shrink-0 w-40" style={{ color: 'var(--tfd-text-secondary)' }}>
+        {label}
+      </span>
+      <span
+        className="text-sm"
+        style={{
+          color: 'var(--tfd-text-primary)',
+          fontFamily: mono ? 'var(--tfd-font-mono)' : undefined,
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+const KPI_TONES: Record<string, { bg: string; fg: string; iconBg: string }> = {
   primary: { bg: 'var(--tfd-primary-50)', fg: 'var(--tfd-primary-500)', iconBg: 'var(--tfd-primary-100)' },
   warning: { bg: '#FFFBEB', fg: '#D97706', iconBg: '#FEF3C7' },
   success: { bg: '#ECFDF5', fg: '#059669', iconBg: '#D1FAE5' },
 };
 
-function SummaryCard({ icon, label, value, color }: {
+function KpiTile({
+  icon,
+  label,
+  value,
+  tone,
+}: {
   icon: React.ReactNode;
   label: string;
   value: string;
-  color: 'primary' | 'warning' | 'success';
+  tone: 'primary' | 'warning' | 'success';
 }) {
-  const c = SUMMARY_COLORS[color];
+  const c = KPI_TONES[tone];
   return (
-    <div className="tfd-card flex items-center gap-4" style={{ backgroundColor: c.bg }}>
+    <div
+      className="rounded-lg p-3 flex items-center gap-3"
+      style={{ backgroundColor: c.bg, border: '1px solid var(--tfd-surface-border)' }}
+    >
       <div
-        className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
+        className="flex items-center justify-center w-9 h-9 rounded-lg shrink-0"
         style={{ backgroundColor: c.iconBg, color: c.fg }}
       >
         {icon}
       </div>
-      <div>
-        <p className="text-2xl font-bold" style={{ color: c.fg }}>{value}</p>
+      <div className="min-w-0">
+        <p className="text-xl font-bold leading-tight" style={{ color: c.fg }}>{value}</p>
         <p className="text-xs" style={{ color: c.fg, opacity: 0.8 }}>{label}</p>
       </div>
     </div>

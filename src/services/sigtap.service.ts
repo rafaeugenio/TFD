@@ -15,7 +15,8 @@ export async function listarSigtap(filtros?: {
     .from('sigtap_procedimentos')
     .select('*')
     .eq('ativo', true)
-    .order('codigo', { ascending: true });
+    .order('codigo', { ascending: true })
+    .range(0, 49999);
 
   if (filtros?.tipo) {
     query = query.eq('tipo', filtros.tipo);
@@ -35,7 +36,8 @@ export async function listarSigtapAdmin() {
   return getSupabase()
     .from('sigtap_procedimentos')
     .select('*')
-    .order('codigo', { ascending: true });
+    .order('codigo', { ascending: true })
+    .range(0, 49999);
 }
 
 /** Busca procedimento por ID */

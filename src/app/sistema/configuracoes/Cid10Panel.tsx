@@ -1,18 +1,20 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Plus,
   Pencil,
   Loader2,
   Search,
-  Filter,
   Package,
   Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
+import Pagination from '@/shared/components/pagination/Pagination';
+import SortTh, { type SortDir, nextSort } from '@/shared/components/sort-th/SortTh';
 import { useToast } from '@/shared/components/toast/Toast';
 import {
   listarCid10,
@@ -23,95 +25,64 @@ import {
 import type { Cid10 } from '@/core/models/cid10.model';
 import { invalidateCache } from '@/shared/hooks/useLookup';
 
-/* ── Agrupamentos por capítulo (primeira letra) ── */
-
-const GRUPOS: { key: string; label: string }[] = [
-  { key: '', label: 'Todos os grupos' },
-  { key: 'A', label: 'Infectologia (A-B)' },
-  { key: 'C', label: 'Oncologia (C)' },
-  { key: 'D', label: 'Hematologia / Neoplasias benignas (D)' },
-  { key: 'E', label: 'Endócrino / Metabólico (E)' },
-  { key: 'F', label: 'Transtornos mentais (F)' },
-  { key: 'G', label: 'Neurologia (G)' },
-  { key: 'H', label: 'Oftalmologia / Otorrino (H)' },
-  { key: 'I', label: 'Cardiologia / Vascular (I)' },
-  { key: 'J', label: 'Pneumologia (J)' },
-  { key: 'K', label: 'Gastro / Hepatologia (K)' },
-  { key: 'L', label: 'Dermatologia (L)' },
-  { key: 'M', label: 'Ortopedia / Reumatologia (M)' },
-  { key: 'N', label: 'Nefrologia / Urologia (N)' },
-  { key: 'O', label: 'Obstetrícia (O)' },
-  { key: 'P', label: 'Perinatais (P)' },
-  { key: 'Q', label: 'Malformações congênitas (Q)' },
-  { key: 'R', label: 'Sintomas e sinais (R)' },
-  { key: 'S', label: 'Lesões / Trauma (S-T)' },
-  { key: 'Z', label: 'Transplantes / Acompanhamento (Z)' },
-];
-
-function getGrupoLetra(codigo: string): string {
-  return codigo.charAt(0).toUpperCase();
-}
-
-const PAGE_SIZE = 30;
+const DEFAULT_PAGE_SIZE = 50;
 
 export default function Cid10Panel() {
   const toast = useToast();
   const [items, setItems] = useState<Cid10[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  /* Filters & pagination */
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'codigo', dir: 'asc' });
+
+  /* Drawer */
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Cid10 | null>(null);
-
-  /* Filters */
-  const [search, setSearch] = useState('');
-  const [filterGrupo, setFilterGrupo] = useState('');
-  const [page, setPage] = useState(1);
-
-  /* Form state */
   const [fCodigo, setFCodigo] = useState('');
   const [fDescricao, setFDescricao] = useState('');
 
+  /* Delete confirmation */
+  const [deleteTarget, setDeleteTarget] = useState<Cid10 | null>(null);
+
+  /* Debounce da busca (300ms) */
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(1);
+    }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchInput]);
+
   const loadItems = async () => {
     setLoading(true);
-    const { data, error } = await listarCid10();
-    if (error) {
-      toast.error('Erro ao carregar', error.message);
-    } else if (data) {
-      setItems(data as Cid10[]);
+    try {
+      const { data, count } = await listarCid10({
+        page,
+        pageSize,
+        search,
+      });
+      // Server sempre retorna por código asc; aplica sort local quando outro campo/direção.
+      setItems(applySort(data, sort));
+      setTotal(count);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Falha ao carregar CID-10';
+      toast.error('Erro ao carregar', msg);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  useEffect(() => { loadItems(); }, []);
+  useEffect(() => { loadItems(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [page, pageSize, search, sort]);
 
-  /* Reset page on filter change */
-  useEffect(() => { setPage(1); }, [search, filterGrupo]);
-
-  const filtered = useMemo(() => {
-    return items.filter((item) => {
-      if (filterGrupo) {
-        const letra = getGrupoLetra(item.codigo);
-        if (filterGrupo === 'A') {
-          if (letra !== 'A' && letra !== 'B') return false;
-        } else if (filterGrupo === 'S') {
-          if (letra !== 'S' && letra !== 'T') return false;
-        } else if (letra !== filterGrupo) {
-          return false;
-        }
-      }
-      if (search) {
-        const q = search.toLowerCase();
-        if (
-          !item.codigo.toLowerCase().includes(q) &&
-          !item.descricao.toLowerCase().includes(q)
-        ) return false;
-      }
-      return true;
-    });
-  }, [items, filterGrupo, search]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const toggleSort = (field: string) => setSort((prev) => nextSort(field, prev));
 
   const resetForm = () => {
     setFCodigo('');
@@ -133,17 +104,11 @@ export default function Cid10Panel() {
     setSaving(true);
 
     if (editing) {
-      const { error } = await atualizarCid10(editing.id, {
-        codigo: fCodigo,
-        descricao: fDescricao,
-      });
+      const { error } = await atualizarCid10(editing.id, { codigo: fCodigo, descricao: fDescricao });
       if (error) { toast.error('Erro ao salvar', error.message); setSaving(false); return; }
       toast.success('CID atualizado!');
     } else {
-      const { error } = await criarCid10({
-        codigo: fCodigo,
-        descricao: fDescricao,
-      });
+      const { error } = await criarCid10({ codigo: fCodigo, descricao: fDescricao });
       if (error) { toast.error('Erro ao criar', error.message); setSaving(false); return; }
       toast.success('CID adicionado!');
     }
@@ -155,171 +120,156 @@ export default function Cid10Panel() {
     await loadItems();
   };
 
-  const handleDelete = async (item: Cid10) => {
-    if (!confirm(`Excluir o CID ${item.codigo}?`)) return;
-    const { error } = await excluirCid10(item.id);
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    const { error } = await excluirCid10(deleteTarget.id);
     if (error) { toast.error('Erro ao excluir', error.message); return; }
     toast.success('CID removido!');
     invalidateCache('cid10');
+    setDeleteTarget(null);
     await loadItems();
   };
 
+  const isFiltered = Boolean(search);
+
   return (
     <>
-      <div className="tfd-card">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-base font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-              Códigos CID-10
-            </h2>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>
-              Classificação Internacional de Doenças — códigos utilizados no TFD
-            </p>
-          </div>
-          <button className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={handleNew}>
-            <Plus size={14} /> Novo CID
-          </button>
-        </div>
-
-        {/* Filters */}
-        <div className="flex flex-wrap items-center gap-3 mb-4">
-          <div className="relative flex-1 min-w-[220px]">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--tfd-text-muted)' }} />
-            <input
-              type="text"
-              className="tfd-input pl-9"
-              placeholder="Buscar por código ou descrição..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <Filter size={14} style={{ color: 'var(--tfd-text-muted)' }} />
-            <select
-              className="tfd-input"
-              style={{ width: 'auto' }}
-              value={filterGrupo}
-              onChange={(e) => setFilterGrupo(e.target.value)}
-            >
-              {GRUPOS.map((g) => (
-                <option key={g.key} value={g.key}>{g.label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Table */}
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 size={24} className="animate-spin" style={{ color: 'var(--tfd-text-muted)' }} />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-4">
-            <div className="flex items-center justify-center w-16 h-16 rounded-2xl" style={{ backgroundColor: 'var(--tfd-primary-50)' }}>
-              <Package size={28} style={{ color: 'var(--tfd-primary-400)' }} />
-            </div>
-            <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-              {items.length === 0
-                ? 'Nenhum CID cadastrado.'
-                : 'Nenhum resultado para os filtros selecionados.'}
-            </p>
-            {items.length === 0 && (
-              <button className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={handleNew}>
-                <Plus size={14} /> Cadastrar primeiro CID
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="overflow-x-auto -mx-5 -mb-5">
-            <table className="tfd-table">
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
-                  <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>
-                    Código
-                  </th>
-                  <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>
-                    Descrição
-                  </th>
-                  <th className="text-center py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)', width: 90 }}>
-                    Ações
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginated.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="transition-colors"
-                    style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-50)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = ''; }}
-                  >
-                    <td className="py-2.5 px-3" style={{ width: 100 }}>
-                      <span className="font-mono text-xs font-semibold" style={{ color: 'var(--tfd-primary-600)' }}>
-                        {item.codigo}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <p className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>
-                        {item.descricao}
-                      </p>
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only"
-                          title="Editar"
-                          style={{ color: 'var(--tfd-primary-500)' }}
-                          onClick={() => handleEdit(item)}
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        <button
-                          className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only"
-                          title="Excluir"
-                          style={{ color: 'var(--tfd-status-danger)' }}
-                          onClick={() => handleDelete(item)}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Footer: count + pagination */}
-        <div className="mt-4 flex items-center justify-between">
-          <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-            {filtered.length} código{filtered.length !== 1 ? 's' : ''} CID-10
-            {search || filterGrupo ? ' (filtrado)' : ''}
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div>
+          <h2 className="text-xl font-bold" style={{ color: 'var(--tfd-text-primary)' }}>
+            Códigos CID-10
+          </h2>
+          <p className="text-sm mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>
+            Classificação Internacional de Doenças, 10ª revisão — utilizada no TFD
           </p>
-
-          {totalPages > 1 && (
-            <div className="flex items-center gap-1">
-              <button
-                className="tfd-btn tfd-btn-ghost tfd-btn--sm"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                ← Anterior
-              </button>
-              <span className="text-xs px-2" style={{ color: 'var(--tfd-text-secondary)' }}>
-                {page} / {totalPages}
-              </span>
-              <button
-                className="tfd-btn tfd-btn-ghost tfd-btn--sm"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              >
-                Próxima →
-              </button>
-            </div>
-          )}
         </div>
+        <button className="tfd-btn tfd-btn-primary" onClick={handleNew}>
+          <Plus size={16} />
+          Novo CID
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 mb-4">
+        <div
+          className="flex items-center gap-2 px-3"
+          style={{
+            background: 'white',
+            border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8,
+            height: 36,
+            minWidth: 280,
+            flex: 1,
+            maxWidth: 420,
+          }}
+        >
+          <Search size={14} style={{ color: '#9CA3AF' }} />
+          <input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Buscar por código ou descrição..."
+            className="flex-1 bg-transparent outline-none text-[13px]"
+          />
+        </div>
+
+      </div>
+
+      {/* Tabela */}
+      <div
+        style={{
+          background: 'white',
+          border: '1px solid var(--tfd-surface-border)',
+          borderRadius: 'var(--tfd-radius-lg)',
+          overflow: 'hidden',
+        }}
+      >
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--tfd-surface-border)' }}>
+              <SortTh label="Código" field="codigo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Descrição" field="descricao" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <Th align="right">Ações</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={3} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
+                  <div className="inline-flex items-center gap-2">
+                    <Loader2 size={16} className="animate-spin" />
+                    Carregando...
+                  </div>
+                </td>
+              </tr>
+            ) : items.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="px-4 py-16 text-center" style={{ color: '#9CA3AF' }}>
+                  <div className="flex flex-col items-center gap-3">
+                    <div
+                      className="flex items-center justify-center w-14 h-14 rounded-2xl"
+                      style={{ backgroundColor: 'var(--tfd-primary-50)' }}
+                    >
+                      <Package size={26} style={{ color: 'var(--tfd-primary-400)' }} />
+                    </div>
+                    <p className="text-sm">
+                      {isFiltered
+                        ? 'Nenhum resultado para os filtros selecionados.'
+                        : 'Nenhum CID-10 cadastrado.'}
+                    </p>
+                    {!isFiltered && (
+                      <button className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={handleNew}>
+                        <Plus size={14} /> Cadastrar primeiro CID
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              items.map((item) => (
+                <tr
+                  key={item.id}
+                  style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}
+                  className="hover:bg-[#F8FAFC] transition-colors"
+                >
+                  <td className="px-4 py-3.5 font-mono text-[12px]" style={{ color: '#146BFA', fontWeight: 600, width: 140 }}>
+                    {item.codigo}
+                  </td>
+                  <td className="px-4 py-3.5" style={{ color: '#1A1D2B' }}>
+                    {item.descricao}
+                  </td>
+                  <td className="px-4 py-3.5 text-right">
+                    <div className="inline-flex items-center gap-1">
+                      <button
+                        className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                        title="Editar"
+                        onClick={() => handleEdit(item)}
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        className="tfd-btn tfd-btn-danger tfd-btn--icon-only"
+                        title="Excluir"
+                        onClick={() => setDeleteTarget(item)}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+
+        <Pagination
+          total={total}
+          pageSize={pageSize}
+          page={page}
+          onPageChange={setPage}
+          onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+          recordLabel={`código${total === 1 ? '' : 's'} CID-10${isFiltered ? ' (filtrado)' : ''}`}
+        />
       </div>
 
       {/* Drawer: Editar/Novo CID */}
@@ -369,6 +319,70 @@ export default function Cid10Panel() {
           />
         </FormField>
       </Drawer>
+
+      {/* Modal: Confirmar exclusão */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
+        >
+          <div
+            className="tfd-card tfd-card--flat w-full max-w-md"
+            style={{ backgroundColor: 'var(--tfd-surface-card)' }}
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div
+                className="flex items-center justify-center w-10 h-10 rounded-full shrink-0"
+                style={{ backgroundColor: '#fef2f2' }}
+              >
+                <AlertTriangle size={18} style={{ color: '#dc2626' }} />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold mb-1" style={{ color: 'var(--tfd-text-primary)' }}>
+                  Excluir CID {deleteTarget.codigo}?
+                </h3>
+                <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
+                  {deleteTarget.descricao}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button className="tfd-btn tfd-btn-secondary" onClick={() => setDeleteTarget(null)}>
+                Cancelar
+              </button>
+              <button className="tfd-btn tfd-btn-danger" onClick={confirmDelete}>
+                <Trash2 size={14} /> Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
+}
+
+/* -------------------------------------------------- */
+/*  Helpers                                            */
+/* -------------------------------------------------- */
+
+function Th({ children, align = 'left' }: { children: React.ReactNode; align?: 'left' | 'right' }) {
+  return (
+    <th
+      className={`px-4 py-3 font-semibold ${align === 'right' ? 'text-right' : 'text-left'}`}
+      style={{ color: '#64748B', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}
+    >
+      {children}
+    </th>
+  );
+}
+
+function applySort(rows: Cid10[], sort: { field: string; dir: SortDir }): Cid10[] {
+  if (!sort.dir) return rows;
+  const dir = sort.dir === 'asc' ? 1 : -1;
+  const field = sort.field as keyof Cid10;
+  return [...rows].sort((a, b) => {
+    const av = String(a[field] ?? '').toLowerCase();
+    const bv = String(b[field] ?? '').toLowerCase();
+    return av.localeCompare(bv, 'pt-BR', { numeric: true, sensitivity: 'base' }) * dir;
+  });
 }

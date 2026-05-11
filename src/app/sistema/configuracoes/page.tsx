@@ -5,6 +5,7 @@ import {
   Settings,
   Users,
   Building2,
+  MapPin,
   DollarSign,
   Plane,
   Stethoscope,
@@ -27,6 +28,7 @@ import SigtapPanel from './SigtapPanel';
 
 import RotasPanel from './RotasPanel';
 import Cid10Panel from './Cid10Panel';
+import Cid11Panel from './Cid11Panel';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import Drawer from '@/shared/components/drawer/Drawer';
@@ -44,6 +46,13 @@ import {
   type TabelaAuxiliar,
   type CompanhiaTransporte,
 } from '@/services/tabelas-auxiliares.service';
+import {
+  listarRegioesAdmin,
+  criarRegiao,
+  atualizarRegiao,
+  excluirRegiao,
+} from '@/services/regioes.service';
+import type { Regiao } from '@/core/models/regiao.model';
 import { invalidateCache } from '@/shared/hooks/useLookup';
 import { maskCNPJ } from '@/shared/pipes/formatters';
 
@@ -51,11 +60,12 @@ import { maskCNPJ } from '@/shared/pipes/formatters';
 /*  Tab config                                         */
 /* -------------------------------------------------- */
 
-type TabKey = 'tabelas' | 'cid10' | 'sigtap' | 'rotas';
+type TabKey = 'tabelas' | 'cid10' | 'cid11' | 'sigtap' | 'rotas';
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'tabelas', label: 'Tabelas Auxiliares', icon: <Building2 size={16} /> },
   { key: 'cid10', label: 'CID-10', icon: <FileText size={16} /> },
+  { key: 'cid11', label: 'CID-11', icon: <FileText size={16} /> },
   { key: 'sigtap', label: 'Códigos SIGTAP', icon: <FileCode2 size={16} /> },
   { key: 'rotas', label: 'Rotas', icon: <Route size={16} /> },
 ];
@@ -115,6 +125,7 @@ const SECOES: SecaoConfig[] = [
     icon: Settings,
     categorias: [
       { key: 'canal_comunicacao', label: 'Canais de Comunicação', icon: MessageSquare, desc: 'Canais de notificação ao paciente' },
+      { key: '_regioes', label: 'Regiões do Maranhão', icon: MapPin, desc: 'Agrupamentos geográficos das regionais (Sul, Leste, Norte)' },
     ],
   },
 ];
@@ -133,17 +144,20 @@ function CadastrosPanel() {
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [items, setItems] = useState<TabelaAuxiliar[]>([]);
   const [companhias, setCompanhias] = useState<CompanhiaTransporte[]>([]);
+  const [regioes, setRegioes] = useState<Regiao[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const isCompanhias = activeKey === '_companhias';
-  const isGeneric = activeKey != null && !isCompanhias;
+  const isRegioes = activeKey === '_regioes';
+  const isGeneric = activeKey != null && !isCompanhias && !isRegioes;
   const activeCat = ALL_CATEGORIAS.find((c) => c.key === activeKey);
 
   /* ---- Editing state ---- */
   const [editingItem, setEditingItem] = useState<TabelaAuxiliar | null>(null);
   const [editingCompanhia, setEditingCompanhia] = useState<CompanhiaTransporte | null>(null);
+  const [editingRegiao, setEditingRegiao] = useState<Regiao | null>(null);
 
   /* ---- Form state — generic ---- */
   const [fNome, setFNome] = useState('');
@@ -165,16 +179,20 @@ function CadastrosPanel() {
   useEffect(() => {
     const loadCounts = async () => {
       const newCounts: Record<string, number> = {};
-      const genericKeys = ALL_CATEGORIAS.filter((c) => c.key !== '_companhias').map((c) => c.key);
+      const genericKeys = ALL_CATEGORIAS
+        .filter((c) => c.key !== '_companhias' && c.key !== '_regioes')
+        .map((c) => c.key);
       const promises = genericKeys.map(async (key) => {
         const { data } = await listarPorCategoriaAdmin(key);
         newCounts[key] = data?.length ?? 0;
       });
-      const [cRes] = await Promise.all([
+      const [cRes, rRes] = await Promise.all([
         listarCompanhiasAdmin(),
+        listarRegioesAdmin(),
         ...promises,
       ]);
       newCounts['_companhias'] = (cRes as { data: CompanhiaTransporte[] | null }).data?.length ?? 0;
+      newCounts['_regioes'] = (rRes as { data: Regiao[] | null }).data?.length ?? 0;
       setCounts(newCounts);
     };
     loadCounts();
@@ -188,6 +206,10 @@ function CadastrosPanel() {
       const { data, error } = await listarCompanhiasAdmin();
       if (error) setErrorMsg(error.message);
       setCompanhias((data as CompanhiaTransporte[]) ?? []);
+    } else if (key === '_regioes') {
+      const { data, error } = await listarRegioesAdmin();
+      if (error) setErrorMsg(error.message);
+      setRegioes((data as Regiao[]) ?? []);
     } else {
       const { data, error } = await listarPorCategoriaAdmin(key);
       if (error) setErrorMsg(error.message);
@@ -205,6 +227,7 @@ function CadastrosPanel() {
     setActiveKey(null);
     setItems([]);
     setCompanhias([]);
+    setRegioes([]);
     setErrorMsg(null);
     setFormMode(false);
     resetForm();
@@ -214,14 +237,15 @@ function CadastrosPanel() {
   useEffect(() => {
     if (!activeKey) return;
     if (isCompanhias) setCounts((prev) => ({ ...prev, [activeKey]: companhias.length }));
+    else if (isRegioes) setCounts((prev) => ({ ...prev, [activeKey]: regioes.length }));
     else setCounts((prev) => ({ ...prev, [activeKey]: items.length }));
-  }, [items, companhias, activeKey, isCompanhias]);
+  }, [items, companhias, regioes, activeKey, isCompanhias, isRegioes]);
 
   /* ---- Reset form ---- */
   const resetForm = () => {
     setFNome(''); setFDescricao(''); setFAtivo(true);
     setFCModal('Aéreo'); setFCCnpj(''); setFCContato('');
-    setEditingItem(null); setEditingCompanhia(null);
+    setEditingItem(null); setEditingCompanhia(null); setEditingRegiao(null);
   };
 
   const handleNew = () => { resetForm(); setFormMode(true); };
@@ -239,6 +263,13 @@ function CadastrosPanel() {
     setEditingCompanhia(c);
     setFNome(c.nome); setFCModal(c.tipo_modal); setFCCnpj(c.cnpj ?? '');
     setFCContato(c.contato ?? ''); setFAtivo(c.ativo);
+    setFormMode(true);
+  };
+
+  const handleEditRegiao = (r: Regiao) => {
+    resetForm();
+    setEditingRegiao(r);
+    setFNome(r.nome); setFAtivo(r.ativo);
     setFormMode(true);
   };
 
@@ -263,6 +294,14 @@ function CadastrosPanel() {
         }
         if (result.error) { setErrorMsg(result.error.message); setSaving(false); return; }
         invalidateCache(activeKey);
+      } else if (isRegioes) {
+        if (editingRegiao) {
+          result = await atualizarRegiao(editingRegiao.id, { nome: fNome, ativo: fAtivo });
+        } else {
+          result = await criarRegiao({ nome: fNome });
+        }
+        if (result.error) { setErrorMsg(result.error.message); setSaving(false); return; }
+        invalidateCache('_regioes');
       } else {
         const payload = {
           nome: fNome, tipo_modal: fCModal as import('@/lib/supabase/database.types').ModalTransporte,
@@ -277,7 +316,7 @@ function CadastrosPanel() {
         invalidateCache('_companhias');
       }
 
-      const isEditing = !!(editingItem || editingCompanhia);
+      const isEditing = !!(editingItem || editingCompanhia || editingRegiao);
       toast.success(isEditing ? 'Item atualizado!' : 'Item criado!', isEditing ? 'As alterações foram salvas.' : 'O novo registro foi salvo com sucesso.');
       resetForm();
       setFormMode(false);
@@ -291,7 +330,10 @@ function CadastrosPanel() {
   };
 
   /* ---- Delete ---- */
-  const handleDelete = async (type: 'generic' | 'companhia', item: TabelaAuxiliar | CompanhiaTransporte) => {
+  const handleDelete = async (
+    type: 'generic' | 'companhia' | 'regiao',
+    item: TabelaAuxiliar | CompanhiaTransporte | Regiao,
+  ) => {
     const nome = item.nome ?? 'este item';
     if (!window.confirm(`Excluir "${nome}"? Esta ação não pode ser desfeita.`)) return;
     let error: { message: string } | null = null;
@@ -299,10 +341,14 @@ function CadastrosPanel() {
       const res = await excluirItemAuxiliar(item.id);
       error = res.error;
       if (!error && activeKey) invalidateCache(activeKey);
-    } else {
+    } else if (type === 'companhia') {
       const res = await excluirCompanhia(item.id);
       error = res.error;
       if (!error) invalidateCache('_companhias');
+    } else {
+      const res = await excluirRegiao(item.id);
+      error = res.error;
+      if (!error) invalidateCache('_regioes');
     }
     if (error) { setErrorMsg(`Erro ao excluir: ${error.message}`); return; }
     toast.success('Item excluído!', 'O registro foi removido.');
@@ -312,17 +358,19 @@ function CadastrosPanel() {
   /* ---- Drawer titles ---- */
   const formDrawerTitle = (() => {
     if (isCompanhias) return editingCompanhia ? 'Editar Companhia' : 'Nova Companhia';
+    if (isRegioes) return editingRegiao ? 'Editar Região' : 'Nova Região';
     return editingItem ? 'Editar Item' : 'Novo Item';
   })();
 
   const formDrawerSubtitle = (() => {
     if (isCompanhias && editingCompanhia) return editingCompanhia.nome;
+    if (isRegioes && editingRegiao) return editingRegiao.nome;
     if (isGeneric && editingItem) return editingItem.nome;
     return activeCat?.label ?? '';
   })();
 
   /* ---- Item list inside category drawer ---- */
-  const currentItems = isCompanhias ? companhias : items;
+  const currentItems = isCompanhias ? companhias : isRegioes ? regioes : items;
   const isEmpty = currentItems.length === 0 && !loading;
 
   const renderItemList = () => {
@@ -356,6 +404,37 @@ function CadastrosPanel() {
             <Plus size={14} />
             Adicionar primeiro item
           </button>
+        </div>
+      );
+    }
+
+    if (isRegioes) {
+      return (
+        <div className="space-y-2">
+          {regioes.map((r) => (
+            <div
+              key={r.id}
+              className="flex items-center justify-between gap-3 p-3 rounded-lg transition-colors"
+              style={{ backgroundColor: 'var(--tfd-surface-50)' }}
+              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-100)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-50)'; }}
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{r.nome}</p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {!r.ativo && (
+                  <span className="tfd-tag tfd-tag--rounded tfd-tag--dot tfd-tag--secondary text-[10px]">Inativo</span>
+                )}
+                <button className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only" title="Editar" style={{ color: 'var(--tfd-primary-500)' }} onClick={() => handleEditRegiao(r)}>
+                  <Pencil size={14} />
+                </button>
+                <button className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only" title="Excluir" style={{ color: 'var(--tfd-status-danger)' }} onClick={() => handleDelete('regiao', r)}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       );
     }
@@ -443,6 +522,22 @@ function CadastrosPanel() {
           <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>Item ativo</span>
         </label>
       </div>
+    </div>
+  );
+
+  const renderRegiaoForm = () => (
+    <div>
+      <FormField label="Nome" required>
+        <input type="text" className="tfd-input" placeholder="Ex: Sul, Leste, Norte" value={fNome} onChange={(e) => setFNome(e.target.value)} />
+      </FormField>
+      {editingRegiao && (
+        <div className="mb-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={fAtivo} onChange={(e) => setFAtivo(e.target.checked)} className="w-4 h-4 rounded" style={{ accentColor: 'var(--tfd-primary-600)' }} />
+            <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>Região ativa</span>
+          </label>
+        </div>
+      )}
     </div>
   );
 
@@ -576,7 +671,7 @@ function CadastrosPanel() {
                 {saving ? (
                   <><Loader2 size={14} className="animate-spin" /> Salvando...</>
                 ) : (
-                  editingItem || editingCompanhia ? 'Salvar Alterações' : 'Criar'
+                  editingItem || editingCompanhia || editingRegiao ? 'Salvar Alterações' : 'Criar'
                 )}
               </button>
             </>
@@ -599,6 +694,7 @@ function CadastrosPanel() {
           <>
             {isGeneric && renderGenericForm()}
             {isCompanhias && renderCompanhiaForm()}
+            {isRegioes && renderRegiaoForm()}
           </>
         ) : (
           renderItemList()
@@ -655,6 +751,7 @@ export default function SistemaConfiguracoesPage() {
       {/* ========== Tab Panels ========== */}
       {activeTab === 'tabelas' && <CadastrosPanel />}
       {activeTab === 'cid10' && <Cid10Panel />}
+        {activeTab === 'cid11' && <Cid11Panel />}
       {activeTab === 'sigtap' && <SigtapPanel />}
 
       {activeTab === 'rotas' && <RotasPanel />}

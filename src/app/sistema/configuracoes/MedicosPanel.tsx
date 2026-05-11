@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Plus,
   Pencil,
   Loader2,
   Search,
-  UserRound,
   Package,
   Power,
 } from 'lucide-react';
@@ -14,6 +13,8 @@ import {
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import { useToast } from '@/shared/components/toast/Toast';
+import Pagination from '@/shared/components/pagination/Pagination';
+import SortTh, { compareValues, nextSort, type SortDir } from '@/shared/components/sort-th/SortTh';
 import {
   listarMedicosAdmin,
   criarMedico,
@@ -22,7 +23,7 @@ import {
 } from '@/services/medicos.service';
 import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import type { Medico } from '@/core/models';
-import { maskCPF } from '@/shared/pipes/formatters';
+import { maskCPF, formatCPF } from '@/shared/pipes/formatters';
 
 const UFS = [
   'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG',
@@ -38,7 +39,10 @@ export default function MedicosPanel() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Medico | null>(null);
 
-  /* Form state */
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'nome_completo', dir: 'asc' });
+
   const [fNome, setFNome] = useState('');
   const [fCrm, setFCrm] = useState('');
   const [fCrmUf, setFCrmUf] = useState('MA');
@@ -53,9 +57,32 @@ export default function MedicosPanel() {
     setLoading(false);
   };
 
-  useEffect(() => { loadItems(); }, []);
+  useEffect(() => { loadItems(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { setPage(1); }, [search]);
 
-  const handleSearch = () => { loadItems(); };
+  const filtered = useMemo(() => {
+    let result = items;
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter((m) =>
+        m.nome_completo.toLowerCase().includes(q) ||
+        m.crm.toLowerCase().includes(q) ||
+        (m.especialidade ?? '').toLowerCase().includes(q)
+      );
+    }
+    if (sort.dir) {
+      result = [...result].sort((a, b) => {
+        const aVal = (a as unknown as Record<string, unknown>)[sort.field];
+        const bVal = (b as unknown as Record<string, unknown>)[sort.field];
+        const cmp = compareValues(aVal, bVal);
+        return sort.dir === 'asc' ? cmp : -cmp;
+      });
+    }
+    return result;
+  }, [items, search, sort]);
+
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const toggleSort = (field: string) => setSort((prev) => nextSort(field, prev));
 
   const resetForm = () => {
     setFNome(''); setFCrm(''); setFCrmUf('MA'); setFCpf('');
@@ -113,114 +140,168 @@ export default function MedicosPanel() {
 
   return (
     <>
-      <div className="tfd-card">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div>
+          <h2 className="text-xl font-bold" style={{ color: 'var(--tfd-text-primary)' }}>
             Cadastro de Médicos
           </h2>
-          <button className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={handleNew}>
-            <Plus size={14} /> Novo Médico
-          </button>
-        </div>
-
-        {/* Search */}
-        <div className="flex items-center gap-2 mb-4">
-          <div className="relative flex-1">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--tfd-text-muted)' }} />
-            <input
-              type="text"
-              className="tfd-input pl-9"
-              placeholder="Buscar por nome ou CRM..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-            />
-          </div>
-          <button className="tfd-btn tfd-btn-secondary tfd-btn--sm" onClick={handleSearch}>
-            Buscar
-          </button>
-        </div>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 size={24} className="animate-spin" style={{ color: 'var(--tfd-text-muted)' }} />
-          </div>
-        ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-4">
-            <div className="flex items-center justify-center w-16 h-16 rounded-2xl" style={{ backgroundColor: 'var(--tfd-primary-50)' }}>
-              <Package size={28} style={{ color: 'var(--tfd-primary-400)' }} />
-            </div>
-            <div className="text-center">
-              <p className="text-sm font-semibold mb-1" style={{ color: 'var(--tfd-text-primary)' }}>Nenhum médico cadastrado</p>
-              <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>Cadastre médicos conforme forem aparecendo nos pareceres do SEI.</p>
-            </div>
-            <button className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={handleNew}>
-              <Plus size={14} /> Cadastrar primeiro médico
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {items.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between gap-3 p-3 rounded-lg transition-colors"
-                style={{ backgroundColor: 'var(--tfd-surface-50)' }}
-                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-100)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-50)'; }}
-              >
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div
-                    className="flex items-center justify-center w-9 h-9 rounded-full shrink-0"
-                    style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}
-                  >
-                    <UserRound size={18} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                      {item.nome_completo}
-                    </p>
-                    <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-                      CRM {item.crm}/{item.crm_uf}
-                      {item.especialidade && ` · ${item.especialidade}`}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {!item.ativo && (
-                    <span className="tfd-tag tfd-tag--rounded tfd-tag--dot tfd-tag--secondary text-[10px]">Inativo</span>
-                  )}
-                  <button
-                    className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only"
-                    title="Editar"
-                    style={{ color: 'var(--tfd-primary-500)' }}
-                    onClick={() => handleEdit(item)}
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  {item.ativo && (
-                    <button
-                      className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only"
-                      title="Desativar"
-                      style={{ color: 'var(--tfd-status-danger)' }}
-                      onClick={() => handleDeactivate(item)}
-                    >
-                      <Power size={14} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="mt-4">
-          <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-            {items.length} médico{items.length !== 1 ? 's' : ''} cadastrado{items.length !== 1 ? 's' : ''}
+          <p className="text-sm mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>
+            Profissionais médicos referenciados em pareceres e laudos
           </p>
+        </div>
+        <button className="tfd-btn tfd-btn-primary" onClick={handleNew}>
+          <Plus size={16} />
+          Novo Médico
+        </button>
+      </div>
+
+      {/* Search */}
+      <div className="flex flex-wrap gap-3 mb-4">
+        <div
+          className="flex items-center gap-2 px-3"
+          style={{
+            background: 'white',
+            border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8,
+            height: 36,
+            minWidth: 280,
+          }}
+        >
+          <Search size={14} style={{ color: '#9CA3AF' }} />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nome, CRM ou especialidade..."
+            className="flex-1 bg-transparent outline-none text-[13px]"
+          />
         </div>
       </div>
 
-      {/* Drawer: Novo/Editar Médico */}
+      {/* Tabela */}
+      <div
+        style={{
+          background: 'white',
+          border: '1px solid var(--tfd-surface-border)',
+          borderRadius: 'var(--tfd-radius-lg)',
+          overflow: 'hidden',
+        }}
+      >
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--tfd-surface-border)' }}>
+              <SortTh label="Nome" field="nome_completo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="CRM" field="crm" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="CPF" field="cpf" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Especialidade" field="especialidade" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Status" field="ativo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <Th align="right">Ações</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
+                  <div className="inline-flex items-center gap-2">
+                    <Loader2 size={16} className="animate-spin" />
+                    Carregando...
+                  </div>
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-16 text-center" style={{ color: '#9CA3AF' }}>
+                  <div className="flex flex-col items-center gap-3">
+                    <div
+                      className="flex items-center justify-center w-14 h-14 rounded-2xl"
+                      style={{ backgroundColor: 'var(--tfd-primary-50)' }}
+                    >
+                      <Package size={26} style={{ color: 'var(--tfd-primary-400)' }} />
+                    </div>
+                    <p className="text-sm">
+                      {items.length === 0 ? 'Nenhum médico cadastrado.' : 'Nenhum resultado para esta busca.'}
+                    </p>
+                    {items.length === 0 && (
+                      <button className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={handleNew}>
+                        <Plus size={14} /> Cadastrar primeiro médico
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              paginated.map((item) => (
+                <tr
+                  key={item.id}
+                  style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}
+                  className="hover:bg-[#F8FAFC] transition-colors"
+                >
+                  <td className="px-4 py-3.5" style={{ color: '#1A1D2B', fontWeight: 500 }}>
+                    {item.nome_completo}
+                  </td>
+                  <td className="px-4 py-3.5 font-mono text-[12px]" style={{ color: '#475569' }}>
+                    {item.crm}/{item.crm_uf}
+                  </td>
+                  <td className="px-4 py-3.5 font-mono text-[12px]" style={{ color: '#475569' }}>
+                    {item.cpf ? formatCPF(item.cpf) : '—'}
+                  </td>
+                  <td className="px-4 py-3.5" style={{ color: '#475569' }}>
+                    {item.especialidade || '—'}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    {item.ativo ? (
+                      <span
+                        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium"
+                        style={{ background: '#ECFDF5', color: '#059669' }}
+                      >
+                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'currentColor' }} />
+                        Ativo
+                      </span>
+                    ) : (
+                      <span
+                        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium"
+                        style={{ background: '#FEF3C7', color: '#92400E' }}
+                      >
+                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'currentColor' }} />
+                        Inativo
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3.5 text-right">
+                    <div className="inline-flex items-center gap-1">
+                      <button
+                        className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                        title="Editar"
+                        onClick={() => handleEdit(item)}
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      {item.ativo && (
+                        <button
+                          className="tfd-btn tfd-btn-danger tfd-btn--icon-only"
+                          title="Desativar"
+                          onClick={() => handleDeactivate(item)}
+                        >
+                          <Power size={15} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+        <Pagination
+          total={filtered.length}
+          pageSize={pageSize}
+          page={page}
+          onPageChange={setPage}
+          onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+          recordLabel="médicos"
+        />
+      </div>
+
       <Drawer
         open={drawerOpen}
         onClose={() => { setDrawerOpen(false); resetForm(); }}
@@ -277,5 +358,16 @@ export default function MedicosPanel() {
         )}
       </Drawer>
     </>
+  );
+}
+
+function Th({ children, align = 'left' }: { children: React.ReactNode; align?: 'left' | 'right' }) {
+  return (
+    <th
+      className={`px-4 py-3 font-semibold ${align === 'right' ? 'text-right' : 'text-left'}`}
+      style={{ color: '#64748B', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}
+    >
+      {children}
+    </th>
   );
 }

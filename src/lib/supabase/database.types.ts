@@ -1856,34 +1856,36 @@ export type Database = {
           id: number;
           codigo: string;
           descricao: string;
-          capitulo: string | null;
-          grupo: string | null;
-          categoria: string | null;
-          subcategoria: string | null;
-          ativo: boolean;
-          created_at: string;
         };
         Insert: {
           id?: number;
           codigo: string;
           descricao: string;
-          capitulo?: string | null;
-          grupo?: string | null;
-          categoria?: string | null;
-          subcategoria?: string | null;
-          ativo?: boolean;
-          created_at?: string;
         };
         Update: {
           id?: number;
           codigo?: string;
           descricao?: string;
-          capitulo?: string | null;
-          grupo?: string | null;
-          categoria?: string | null;
-          subcategoria?: string | null;
-          ativo?: boolean;
-          created_at?: string;
+        };
+        Relationships: [];
+      };
+
+      // ── CID-11 ──────────────────────────────────────────────
+      cid11: {
+        Row: {
+          id: number;
+          codigo: string;
+          descricao: string;
+        };
+        Insert: {
+          id?: number;
+          codigo: string;
+          descricao: string;
+        };
+        Update: {
+          id?: number;
+          codigo?: string;
+          descricao?: string;
         };
         Relationships: [];
       };
@@ -2016,6 +2018,35 @@ export type Database = {
           distancia_milhas?: number | null;
           distancia_km?: number | null;
           distancia_milhas_nauticas?: number | null;
+          ativo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      // ── Regiões (agrupamento das URS) ───────────────────────
+      regioes: {
+        Row: {
+          id: string;
+          nome: string;
+          ordem: number;
+          ativo: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          nome: string;
+          ordem?: number;
+          ativo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          nome?: string;
+          ordem?: number;
           ativo?: boolean;
           created_at?: string;
           updated_at?: string;

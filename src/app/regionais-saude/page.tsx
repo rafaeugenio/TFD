@@ -9,7 +9,7 @@ import {
   Plus,
   Search,
   Pencil,
-  Power,
+  Trash2,
   ChevronLeft,
   ChevronRight,
   XCircle,
@@ -38,6 +38,8 @@ import {
   listarMunicipiosPorRegional,
   atualizarMunicipiosRegional,
 } from '@/services/regionais-saude.service';
+import { listarRegioes } from '@/services/regioes.service';
+import type { Regiao } from '@/core/models/regiao.model';
 
 /* -------------------------------------------------- */
 /*  Constants                                          */
@@ -88,6 +90,10 @@ function RegionaisSaudePage() {
   const [email, setEmail] = useState('');
   const [email2, setEmail2] = useState('');
 
+  /* ---- Form: Região ---- */
+  const [regiaoId, setRegiaoId] = useState<string>('');
+  const [regioes, setRegioes] = useState<Regiao[]>([]);
+
   /* ---- Form: Municípios ---- */
   const [municipioSearch, setMunicipioSearch] = useState('');
   const [allMunicipiosMA, setAllMunicipiosMA] = useState<string[]>([]);
@@ -133,6 +139,13 @@ function RegionaisSaudePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editarParam, loading, regionaisRaw]);
 
+  /* ---- Carregar regiões (uma vez) ---- */
+  useEffect(() => {
+    listarRegioes().then(({ data }) => {
+      if (data) setRegioes(data as Regiao[]);
+    });
+  }, []);
+
   /* ---- Carregar municípios do MA via IBGE ao abrir drawer ---- */
   useEffect(() => {
     if (!drawerOpen || allMunicipiosMA.length > 0) return;
@@ -164,6 +177,7 @@ function RegionaisSaudePage() {
     setTelefone2('');
     setEmail('');
     setEmail2('');
+    setRegiaoId('');
     setMunicipioSearch('');
     setSelectedMunicipios(new Set());
   }
@@ -187,6 +201,7 @@ function RegionaisSaudePage() {
     setTelefone2(maskPhone((reg.telefone2 as string) ?? ''));
     setEmail((reg.email as string) ?? '');
     setEmail2((reg.email2 as string) ?? '');
+    setRegiaoId((reg.regiao_id as string) ?? '');
 
     // Carrega municípios já associados
     const { data: munRows } = await listarMunicipiosPorRegional(id);
@@ -206,10 +221,10 @@ function RegionaisSaudePage() {
     if (!deactivateConfirmId) return;
     const result = await desativarRegionalSaude(deactivateConfirmId);
     if (result.error) {
-      toast.error('Erro ao desativar', (result.error as { message?: string }).message ?? 'Erro desconhecido');
+      toast.error('Erro ao excluir', (result.error as { message?: string }).message ?? 'Erro desconhecido');
       return;
     }
-    toast.success('Regional desativada', 'O registro foi desativado do sistema.');
+    toast.success('Regional excluída', 'O registro foi desativado do sistema.');
     setDeactivateConfirmId(null);
     setDeactivateConfirmName('');
     refresh();
@@ -263,6 +278,7 @@ function RegionaisSaudePage() {
       telefone2: cleanTel2 || null,
       email: email.trim() || null,
       email2: email2.trim() || null,
+      regiao_id: regiaoId || null,
       ativo: true,
     } as Parameters<typeof criarRegionalSaude>[0];
 
@@ -372,6 +388,16 @@ function RegionaisSaudePage() {
                   onFilterChange={(v) => table.setColumnFilter('municipio_sede', v)}
                 />
                 <SortableHeader
+                  label="Região"
+                  className="hidden md:table-cell"
+                  sortDirection={table.getSortDirection('regiao_nome')}
+                  onSort={() => table.toggleSort('regiao_nome')}
+                  filterOptions={table.getFilterOptions('regiao_nome', (row) =>
+                    ((row.regiao as { nome?: string } | null)?.nome) ?? '')}
+                  activeFilters={table.getActiveFilters('regiao_nome')}
+                  onFilterChange={(v) => table.setColumnFilter('regiao_nome', v)}
+                />
+                <SortableHeader
                   label="Telefone"
                   className="hidden lg:table-cell"
                   sortDirection={table.getSortDirection('telefone')}
@@ -389,13 +415,13 @@ function RegionaisSaudePage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12">
+                  <td colSpan={7} className="text-center py-12">
                     <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Carregando...</p>
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12">
+                  <td colSpan={7} className="text-center py-12">
                     <div className="flex flex-col items-center gap-2">
                       <XCircle size={32} style={{ color: 'var(--tfd-text-muted)' }} />
                       <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Nenhuma regional encontrada</p>
@@ -423,6 +449,19 @@ function RegionaisSaudePage() {
                     <td className="hidden md:table-cell" style={{ color: 'var(--tfd-text-secondary)' }}>
                       {(reg.municipio_sede as string) || '\u2014'}
                     </td>
+                    <td className="hidden md:table-cell">
+                      {(() => {
+                        const r = (reg.regiao as { nome?: string } | null) ?? null;
+                        return r?.nome ? (
+                          <span
+                            className="text-xs font-medium px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: 'var(--tfd-surface-100, #F1F5F9)', color: 'var(--tfd-text-secondary)' }}
+                          >
+                            {r.nome}
+                          </span>
+                        ) : <span style={{ color: 'var(--tfd-text-muted)' }}>\u2014</span>;
+                      })()}
+                    </td>
                     <td className="hidden lg:table-cell" style={{ color: 'var(--tfd-text-secondary)' }}>
                       {(reg.telefone as string) ? maskPhone(reg.telefone as string) : '\u2014'}
                     </td>
@@ -440,11 +479,11 @@ function RegionaisSaudePage() {
                         </button>
                         <button
                           className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
-                          title="Desativar"
+                          title="Excluir"
                           style={{ color: '#DC2626' }}
                           onClick={(e) => { e.stopPropagation(); handleOpenDeactivate(reg as Record<string, unknown>); }}
                         >
-                          <Power size={15} />
+                          <Trash2 size={15} />
                         </button>
                       </div>
                     </td>
@@ -467,7 +506,7 @@ function RegionaisSaudePage() {
         )}
       </div>
 
-      {/* ========== Deactivate Modal ========== */}
+      {/* ========== Delete Confirmation Modal ========== */}
       {deactivateConfirmId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="tfd-card p-6 max-w-md w-full mx-4" style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
@@ -476,23 +515,23 @@ function RegionaisSaudePage() {
                 className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
                 style={{ backgroundColor: 'var(--tfd-status-error-bg)', color: 'var(--tfd-status-error)' }}
               >
-                <Power size={20} />
+                <Trash2 size={20} />
               </div>
               <h3 className="text-lg font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-                Confirmar desativação
+                Confirmar exclusão
               </h3>
             </div>
             <p className="text-sm mb-6" style={{ color: 'var(--tfd-text-secondary)' }}>
-              Tem certeza que deseja desativar a regional{' '}
+              Tem certeza que deseja excluir a regional{' '}
               <strong style={{ color: 'var(--tfd-text-primary)' }}>{deactivateConfirmName}</strong>?
-              Ela não aparecerá mais nas listagens.
+              Esta ação não pode ser desfeita.
             </p>
             <div className="flex items-center justify-end gap-2">
               <button className="tfd-btn tfd-btn-secondary" onClick={() => { setDeactivateConfirmId(null); setDeactivateConfirmName(''); }}>
                 Cancelar
               </button>
               <button className="tfd-btn tfd-btn-danger" onClick={handleConfirmDeactivate}>
-                Desativar
+                Excluir
               </button>
             </div>
           </div>
@@ -542,21 +581,39 @@ function RegionaisSaudePage() {
           </FormField>
         </div>
 
-        <FormField label="Município Sede">
-          <select
-            className="tfd-input"
-            value={municipioSede}
-            onChange={(e) => setMunicipioSede(e.target.value)}
-            disabled={loadingMunicipios}
-          >
-            <option value="">
-              {loadingMunicipios ? 'Carregando municípios...' : 'Selecione o município...'}
-            </option>
-            {allMunicipiosMA.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-        </FormField>
+        <div className="grid grid-cols-2 gap-4">
+          <FormField label="Município Sede">
+            <select
+              className="tfd-input"
+              value={municipioSede}
+              onChange={(e) => setMunicipioSede(e.target.value)}
+              disabled={loadingMunicipios}
+            >
+              <option value="">
+                {loadingMunicipios ? 'Carregando municípios...' : 'Selecione o município...'}
+              </option>
+              {allMunicipiosMA.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </FormField>
+
+          <FormField label="Região">
+            <select
+              className="tfd-input"
+              value={regiaoId}
+              onChange={(e) => setRegiaoId(e.target.value)}
+            >
+              <option value="">Sem região definida</option>
+              {regioes.map((r) => (
+                <option key={r.id} value={r.id}>{r.nome}</option>
+              ))}
+            </select>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
+              Agrupamento geográfico da regional (configurável em Sistema › Configurações).
+            </p>
+          </FormField>
+        </div>
 
         <hr className="tfd-divider" />
 

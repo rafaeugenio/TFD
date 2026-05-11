@@ -14,7 +14,7 @@ interface UseTableControlsOptions<T> {
   searchFields: (keyof T)[];
   /** The field that holds the row's date (ISO string). Used for date-range filter. */
   dateField?: keyof T;
-  /** Items per page. Default 20. */
+  /** Initial items per page. Default 20. The user can change it via the page-size selector. */
   pageSize?: number;
 }
 
@@ -35,6 +35,8 @@ interface UseTableControlsReturn<T> {
   columnFilters: Record<string, string[]>;
   page: number;
   setPage: (p: number) => void;
+  pageSize: number;
+  setPageSize: (size: number) => void;
 
   /* Derived */
   filtered: T[];
@@ -57,7 +59,7 @@ interface UseTableControlsReturn<T> {
 export function useTableControls<T extends Record<string, unknown>>(
   options: UseTableControlsOptions<T>,
 ): UseTableControlsReturn<T> {
-  const { data, searchFields, dateField, pageSize = 20 } = options;
+  const { data, searchFields, dateField, pageSize: initialPageSize = 20 } = options;
 
   const [search, setSearchRaw] = useState('');
   const [dateStart, setDateStart] = useState('');
@@ -65,6 +67,7 @@ export function useTableControls<T extends Record<string, unknown>>(
   const [sort, setSort] = useState<SortState>({ field: '', direction: null });
   const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({});
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(initialPageSize);
 
   /* Wrap setSearch to reset page */
   const setSearch = useCallback((v: string) => {
@@ -199,6 +202,8 @@ export function useTableControls<T extends Record<string, unknown>>(
     columnFilters,
     page,
     setPage,
+    pageSize,
+    setPageSize,
     filtered,
     paginated,
     totalPages,

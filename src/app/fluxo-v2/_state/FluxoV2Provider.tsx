@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -26,6 +27,11 @@ import {
   type DevolucaoFinanceiroParaRegulacao,
   type UltimaTramitacao,
 } from '@/core/mocks/fluxo-v2-v3-seed';
+import { createClient } from '@/lib/supabase/client';
+import { solicitacoesFromSupabase } from '../_adapters/fromSupabase';
+import { SOLICITACAO_V2_SELECT } from '../_adapters/selectShape';
+import { buildEnvioSetor } from '../_adapters/toSupabase';
+import { statusGlobalToSetor } from '../_adapters/statusMapping';
 
 /* -------------------------------------------------------------------------- */
 /*  Context                                                                   */
@@ -196,9 +202,38 @@ const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2,
 const nowIso = () => new Date().toISOString();
 
 export function FluxoV2Provider({ children }: { children: ReactNode }) {
+  // Inicializa com mock para SSR/render imediato; substitui no useEffect abaixo
+  // pelos dados reais do Supabase. Se o fetch falhar, o mock permanece.
   const [solicitacoes, setSolicitacoes] = useState<SolicitacaoMock[]>(() =>
     seedFluxoV2.map(cloneSolicitacao),
   );
+
+  // Fetch inicial: substitui o mock pelas solicitações reais do banco.
+  // Mutators continuam atualizando local-state (otimista) — alguns também
+  // persistem no Supabase (setStatus, enviarParaSetor).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from('solicitacoes')
+          .select(SOLICITACAO_V2_SELECT)
+          .order('created_at', { ascending: false });
+        if (cancelled || error || !data) {
+          if (error) console.warn('[FluxoV2] fallback para mock:', error.message);
+          return;
+        }
+        const real = solicitacoesFromSupabase(data as unknown as Record<string, unknown>[]);
+        if (real.length > 0) setSolicitacoes(real);
+      } catch (err) {
+        console.warn('[FluxoV2] erro ao carregar Supabase, mantendo mock:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const getById = useCallback(
     (id: string) => solicitacoes.find((s) => s.id === id),
@@ -218,7 +253,27 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
   );
 
   const setStatus = useCallback(
-    (id: string, status: StatusGlobalV2) => mutate(id, (s) => ({ ...s, status })),
+    (id: string, status: StatusGlobalV2) => {
+      // Otimista: atualiza local primeiro
+      mutate(id, (s) => ({ ...s, status }));
+      // Persiste no Supabase (best-effort, não bloqueia UI)
+      const setor = statusGlobalToSetor(status);
+      const payload = buildEnvioSetor(
+        setor === 'encerrada' ? 'dados_basicos' : setor,
+      );
+      const supabase = createClient();
+      const update = setor === 'encerrada'
+        ? { setor_atual: 'encerrada', status: 'CONCLUIDO' }
+        : payload;
+      supabase
+        .from('solicitacoes')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .update(update as any)
+        .eq('id', id)
+        .then(({ error }) => {
+          if (error) console.warn('[FluxoV2] setStatus persistência falhou:', error.message);
+        });
+    },
     [mutate],
   );
 
@@ -652,6 +707,18 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
 
         return s;
       });
+
+      // Persiste a troca de setor no Supabase (best-effort)
+      const supabase = createClient();
+      const payload = buildEnvioSetor(destino);
+      supabase
+        .from('solicitacoes')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .update(payload as any)
+        .eq('id', id)
+        .then(({ error }) => {
+          if (error) console.warn('[FluxoV2] enviarParaSetor persistência falhou:', error.message);
+        });
     },
     [mutate],
   );

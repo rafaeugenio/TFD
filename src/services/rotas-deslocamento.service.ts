@@ -35,7 +35,8 @@ export async function listarRotasAdmin(filters?: { search?: string }) {
   let query = getSupabase()
     .from('rotas_deslocamento')
     .select('*', { count: 'exact' })
-    .order('cidade_origem', { ascending: true });
+    .order('cidade_origem', { ascending: true })
+    .range(0, 49999);
 
   if (filters?.search) {
     query = query.or(

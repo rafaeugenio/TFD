@@ -11,6 +11,9 @@ export interface RegionalSaude {
   telefone2?: string;
   email?: string;
   email2?: string;
+  regiao_id?: string | null;
+  /** Nome da região (preenchido via join). */
+  regiao?: { id: string; nome: string } | null;
   ativo: boolean;
   ordem?: number;
   created_at?: string;

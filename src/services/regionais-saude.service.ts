@@ -13,7 +13,7 @@ export async function listarRegionaisSaude(filters?: {
 }) {
   let query = getSupabase()
     .from('regionais_saude')
-    .select('*', { count: 'exact' })
+    .select('*, regiao:regioes(id, nome)', { count: 'exact' })
     .eq('ativo', true)
     .order('ordem', { ascending: true });
 
@@ -34,8 +34,9 @@ export async function listarRegionaisSaude(filters?: {
 export async function listarRegionaisSaudeAdmin(filters?: { search?: string }) {
   let query = getSupabase()
     .from('regionais_saude')
-    .select('*', { count: 'exact' })
-    .order('ordem', { ascending: true });
+    .select('*, regiao:regioes(id, nome)', { count: 'exact' })
+    .order('ordem', { ascending: true })
+    .range(0, 49999);
 
   if (filters?.search) {
     query = query.or(
@@ -50,7 +51,7 @@ export async function listarRegionaisSaudeAdmin(filters?: { search?: string }) {
 export async function buscarRegionalSaude(id: string) {
   return getSupabase()
     .from('regionais_saude')
-    .select('*')
+    .select('*, regiao:regioes(id, nome)')
     .eq('id', id)
     .single();
 }
@@ -130,11 +131,11 @@ export async function atualizarMunicipiosRegional(
     );
 }
 
-/** Busca regional pelo nome do município (para CEP autofill) */
+/** Busca regional pelo nome do município (para CEP autofill). Inclui a região (Norte/Sul/Leste…) via join. */
 export async function buscarRegionalPorMunicipio(municipioNome: string) {
   return getSupabase()
     .from('regionais_saude_municipios')
-    .select('regional_saude_id, regionais_saude(id, codigo, nome)')
+    .select('regional_saude_id, regionais_saude(id, codigo, nome, regiao:regioes(id, nome))')
     .ilike('municipio_nome', municipioNome)
     .maybeSingle();
 }

@@ -1,85 +1,149 @@
 'use client';
 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 type Props = {
   total: number;
   pageSize: number;
   page: number; // 1-based
   onPageChange: (page: number) => void;
+  /** Optional: enables the rows-per-page dropdown. */
+  onPageSizeChange?: (size: number) => void;
+  /** Options for the pageSize dropdown. Default: [10, 25, 50, 100, 200]. */
+  pageSizeOptions?: number[];
+  /** Singular label for the "records" count. Default: 'registros'. */
+  recordLabel?: string;
 };
 
+const DEFAULT_OPTIONS = [10, 25, 50, 100, 200];
+
 /**
- * Paginação compartilhada das tabelas do Fluxo v2.
- * - 10 itens por página por padrão (definido pelo caller)
- * - Botões 32x32 ghost; ativo com bg azul claro Citiesoft
- * - Esconde-se completamente se total === 0
+ * Paginação estilo Supabase — pill horizontal compacta com:
+ *   ←  Page [N] of M  →     [N rows ▾]   12,345 registros
+ *
+ * Mantém retrocompatibilidade: page/pageSize/onPageChange seguem obrigatórios.
+ * Passe `onPageSizeChange` para habilitar o seletor de tamanho.
  */
-export default function Pagination({ total, pageSize, page, onPageChange }: Props) {
+export default function Pagination({
+  total,
+  pageSize,
+  page,
+  onPageChange,
+  onPageSizeChange,
+  pageSizeOptions = DEFAULT_OPTIONS,
+  recordLabel = 'registros',
+}: Props) {
+  const totalPages = Math.max(1, Math.ceil(Math.max(1, total) / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const [draft, setDraft] = useState<string>(String(safePage));
+
+  useEffect(() => { setDraft(String(safePage)); }, [safePage]);
+
   if (total === 0) return null;
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const safePage = Math.min(Math.max(1, page), totalPages);
-  const start = (safePage - 1) * pageSize + 1;
-  const end = Math.min(total, safePage * pageSize);
-
-  const pageNumbers = computePageNumbers(safePage, totalPages);
+  const commitDraft = () => {
+    const n = parseInt(draft, 10);
+    if (!Number.isFinite(n)) { setDraft(String(safePage)); return; }
+    const clamped = Math.min(Math.max(1, n), totalPages);
+    setDraft(String(clamped));
+    if (clamped !== safePage) onPageChange(clamped);
+  };
 
   return (
     <div
       className="flex items-center justify-between flex-wrap gap-3"
       style={{
-        padding: '12px 16px',
-        borderTop: '1px solid #E2E8F0',
-        background: 'white',
+        padding: '10px 14px',
+        borderTop: '1px solid var(--tfd-surface-border, #E2E8F0)',
+        background: 'var(--tfd-surface-50, #F8FAFC)',
+        fontSize: 13,
+        color: 'var(--tfd-text-secondary, #475569)',
       }}
     >
-      <span style={{ fontSize: 13, color: '#64748B' }}>
-        Mostrando <strong style={{ color: '#1E293B', fontWeight: 600 }}>{start}-{end}</strong> de{' '}
-        <strong style={{ color: '#1E293B', fontWeight: 600 }}>{total}</strong> resultados
-      </span>
-
-      <div className="flex items-center gap-1">
+      {/* Esquerda: navegação por página */}
+      <div className="flex items-center gap-2">
         <NavButton
           disabled={safePage <= 1}
           onClick={() => onPageChange(safePage - 1)}
           aria-label="Página anterior"
         >
-          <ChevronLeft size={14} />
-          <span className="ml-1" style={{ fontSize: 12 }}>Anterior</span>
+          <ChevronLeft size={16} />
         </NavButton>
 
-        {pageNumbers.map((p, idx) =>
-          p === '…' ? (
-            <span
-              key={`gap-${idx}`}
-              style={{
-                width: 32, height: 32, display: 'inline-flex',
-                alignItems: 'center', justifyContent: 'center',
-                color: '#94A3B8', fontSize: 13,
-              }}
-            >
-              …
-            </span>
-          ) : (
-            <PageButton
-              key={p}
-              active={p === safePage}
-              onClick={() => onPageChange(p)}
-            >
-              {p}
-            </PageButton>
-          ),
-        )}
+        <span style={{ fontSize: 13 }}>Page</span>
+        <input
+          type="text"
+          inputMode="numeric"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value.replace(/[^\d]/g, ''))}
+          onBlur={commitDraft}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.currentTarget.blur(); }
+            if (e.key === 'Escape') { setDraft(String(safePage)); e.currentTarget.blur(); }
+          }}
+          style={{
+            width: Math.max(48, String(totalPages).length * 12 + 24),
+            height: 30,
+            textAlign: 'center',
+            borderRadius: 6,
+            border: '1px solid var(--tfd-surface-border, #E2E8F0)',
+            background: 'white',
+            color: 'var(--tfd-text-primary, #1E293B)',
+            fontSize: 13,
+            fontWeight: 600,
+            padding: '0 6px',
+          }}
+          aria-label="Página atual"
+        />
+        <span style={{ fontSize: 13 }}>of <strong style={{ color: 'var(--tfd-text-primary, #1E293B)' }}>{totalPages.toLocaleString('pt-BR')}</strong></span>
 
         <NavButton
           disabled={safePage >= totalPages}
           onClick={() => onPageChange(safePage + 1)}
           aria-label="Próxima página"
         >
-          <span className="mr-1" style={{ fontSize: 12 }}>Próxima</span>
-          <ChevronRight size={14} />
+          <ChevronRight size={16} />
         </NavButton>
+      </div>
+
+      {/* Direita: tamanho da página + total */}
+      <div className="flex items-center gap-3">
+        {onPageSizeChange && (
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              const next = parseInt(e.target.value, 10);
+              if (!Number.isFinite(next)) return;
+              onPageSizeChange(next);
+              // ao mudar tamanho, levar para página 1 para evitar overshoot
+              onPageChange(1);
+            }}
+            style={{
+              height: 30,
+              padding: '0 8px',
+              borderRadius: 6,
+              border: '1px solid var(--tfd-surface-border, #E2E8F0)',
+              background: 'white',
+              color: 'var(--tfd-text-primary, #1E293B)',
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: 'pointer',
+            }}
+            aria-label="Itens por página"
+          >
+            {pageSizeOptions.map((opt) => (
+              <option key={opt} value={opt}>{opt} rows</option>
+            ))}
+          </select>
+        )}
+
+        <span style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+          <strong style={{ color: 'var(--tfd-text-primary, #1E293B)', fontWeight: 600 }}>
+            {total.toLocaleString('pt-BR')}
+          </strong>{' '}
+          {recordLabel}
+        </span>
       </div>
     </div>
   );
@@ -101,81 +165,22 @@ function NavButton({
       aria-label={rest['aria-label']}
       className="inline-flex items-center justify-center transition-colors"
       style={{
-        height: 32,
-        padding: '0 10px',
+        width: 30, height: 30,
         borderRadius: 6,
-        background: 'transparent',
-        color: disabled ? '#CBD5E1' : '#475569',
-        border: '1px solid transparent',
+        background: 'white',
+        color: disabled ? 'var(--tfd-text-muted, #CBD5E1)' : 'var(--tfd-text-secondary, #475569)',
+        border: '1px solid var(--tfd-surface-border, #E2E8F0)',
         cursor: disabled ? 'not-allowed' : 'pointer',
-        fontWeight: 500,
       }}
       onMouseEnter={(e) => {
         if (disabled) return;
-        e.currentTarget.style.background = '#F1F5F9';
+        e.currentTarget.style.background = 'var(--tfd-surface-100, #F1F5F9)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'transparent';
+        e.currentTarget.style.background = 'white';
       }}
     >
       {children}
     </button>
   );
-}
-
-function PageButton({
-  children, active, onClick,
-}: {
-  children: React.ReactNode;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-current={active ? 'page' : undefined}
-      className="inline-flex items-center justify-center transition-colors"
-      style={{
-        width: 32, height: 32,
-        borderRadius: 6,
-        fontSize: 13,
-        fontWeight: active ? 600 : 500,
-        background: active ? '#EBF0FF' : 'transparent',
-        color: active ? '#146BFA' : '#475569',
-        border: '1px solid transparent',
-        cursor: 'pointer',
-      }}
-      onMouseEnter={(e) => {
-        if (active) return;
-        e.currentTarget.style.background = '#F1F5F9';
-      }}
-      onMouseLeave={(e) => {
-        if (active) return;
-        e.currentTarget.style.background = 'transparent';
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-/**
- * Algoritmo de elipses: tenta mostrar até 5 botões numéricos + elipses.
- * - <=5 páginas: mostra todas
- * - perto do início: 1 2 3 4 … N
- * - perto do fim:    1 … N-3 N-2 N-1 N
- * - no meio:         1 … p-1 p p+1 … N
- */
-function computePageNumbers(page: number, total: number): (number | '…')[] {
-  if (total <= 5) {
-    return Array.from({ length: total }, (_, i) => i + 1);
-  }
-  if (page <= 3) {
-    return [1, 2, 3, 4, '…', total];
-  }
-  if (page >= total - 2) {
-    return [1, '…', total - 3, total - 2, total - 1, total];
-  }
-  return [1, '…', page - 1, page, page + 1, '…', total];
 }

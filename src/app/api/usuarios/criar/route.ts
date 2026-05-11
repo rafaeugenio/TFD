@@ -1,22 +1,24 @@
 import { createClient } from '@supabase/supabase-js';
+import { randomBytes } from 'crypto';
 import type { NextRequest } from 'next/server';
+
+function gerarSenhaAleatoria(): string {
+  // 16 bytes base64url ≈ 22 chars, garante alfanumérico + símbolos do alphabet
+  return randomBytes(16).toString('base64url');
+}
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { nome, cpf, email, senha, papelId } = body;
+    const { nome, cpf, email, papelId } = body;
 
-    if (!nome?.trim() || !cpf || !email?.trim() || !senha) {
+    if (!nome?.trim() || !cpf || !email?.trim()) {
       return Response.json({ error: 'Campos obrigatórios não preenchidos' }, { status: 400 });
     }
 
     const cpfLimpo = cpf.replace(/\D/g, '');
     if (cpfLimpo.length !== 11) {
       return Response.json({ error: 'CPF inválido' }, { status: 400 });
-    }
-
-    if (senha.length < 6) {
-      return Response.json({ error: 'A senha deve ter no mínimo 6 caracteres' }, { status: 400 });
     }
 
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -30,7 +32,6 @@ export async function POST(req: NextRequest) {
       { auth: { autoRefreshToken: false, persistSession: false } },
     );
 
-    // Verificar CPF único antes de criar o auth user
     const { data: existingCpf } = await supabaseAdmin
       .from('usuarios')
       .select('id')
@@ -41,10 +42,11 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: 'CPF já cadastrado no sistema' }, { status: 409 });
     }
 
-    // Criar usuário no Supabase Auth (sem afetar a sessão do admin)
+    const senhaTemporaria = gerarSenhaAleatoria();
+
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: email.trim(),
-      password: senha,
+      password: senhaTemporaria,
       email_confirm: true,
       user_metadata: { nome_completo: nome.trim() },
     });
@@ -59,7 +61,6 @@ export async function POST(req: NextRequest) {
 
     const userId = authData.user.id;
 
-    // Criar registro na tabela usuarios
     const { error: dbError } = await supabaseAdmin
       .from('usuarios')
       .insert({
@@ -72,10 +73,9 @@ export async function POST(req: NextRequest) {
         ativo: true,
         primeiro_acesso: true,
         papel_id: papelId || null,
-      } as any);
+      } as never);
 
     if (dbError) {
-      // Rollback: remover o auth user criado
       await supabaseAdmin.auth.admin.deleteUser(userId);
       if (dbError.message.includes('cpf')) {
         return Response.json({ error: 'CPF já cadastrado no sistema' }, { status: 409 });
@@ -83,7 +83,19 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: dbError.message }, { status: 500 });
     }
 
-    return Response.json({ success: true, id: userId });
+    // Dispara email de recovery para o usuário definir a própria senha no primeiro acesso.
+    // Best-effort: se SMTP não estiver configurado no Supabase, o admin precisa configurar.
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+    const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${appUrl}/redefinir-senha`,
+    });
+
+    return Response.json({
+      success: true,
+      id: userId,
+      emailEnviado: !resetError,
+      emailError: resetError?.message,
+    });
   } catch {
     return Response.json({ error: 'Erro inesperado. Tente novamente.' }, { status: 500 });
   }

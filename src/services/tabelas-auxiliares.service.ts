@@ -53,7 +53,8 @@ export async function listarPorCategoria(categoria: string) {
     .select('*')
     .eq('categoria', categoria)
     .eq('ativo', true)
-    .order('nome', { ascending: true });
+    .order('nome', { ascending: true })
+    .range(0, 49999);
 }
 
 /** Admin: lista todos os itens de uma categoria (inclusive inativos) */
@@ -62,7 +63,8 @@ export async function listarPorCategoriaAdmin(categoria: string) {
     .from('tabelas_auxiliares')
     .select('*')
     .eq('categoria', categoria)
-    .order('nome', { ascending: true });
+    .order('nome', { ascending: true })
+    .range(0, 49999);
 }
 
 export async function listarTodasCategorias() {
@@ -70,7 +72,8 @@ export async function listarTodasCategorias() {
     .from('tabelas_auxiliares')
     .select('*')
     .order('categoria', { ascending: true })
-    .order('ordem', { ascending: true });
+    .order('ordem', { ascending: true })
+    .range(0, 49999);
 }
 
 export async function criarItemAuxiliar(data: {
@@ -113,7 +116,8 @@ export async function listarUnidadesDestino() {
     .from('unidades_destino')
     .select('*')
     .eq('ativo', true)
-    .order('nome', { ascending: true });
+    .order('nome', { ascending: true })
+    .range(0, 49999);
 }
 
 /** Admin: lista todas as unidades (inclusive inativas) */
@@ -121,7 +125,8 @@ export async function listarUnidadesDestinoAdmin() {
   return getSupabase()
     .from('unidades_destino')
     .select('*')
-    .order('nome', { ascending: true });
+    .order('nome', { ascending: true })
+    .range(0, 49999);
 }
 
 export async function criarUnidadeDestino(data: Omit<UnidadeDestino, 'id' | 'created_at' | 'updated_at'>) {
@@ -155,7 +160,8 @@ export async function listarCompanhias() {
     .from('companhias_transporte')
     .select('*')
     .eq('ativo', true)
-    .order('nome', { ascending: true });
+    .order('nome', { ascending: true })
+    .range(0, 49999);
 }
 
 /** Admin: lista todas as companhias (inclusive inativas) */
@@ -163,7 +169,8 @@ export async function listarCompanhiasAdmin() {
   return getSupabase()
     .from('companhias_transporte')
     .select('*')
-    .order('nome', { ascending: true });
+    .order('nome', { ascending: true })
+    .range(0, 49999);
 }
 
 export async function criarCompanhia(data: Omit<CompanhiaTransporte, 'id' | 'created_at' | 'updated_at'>) {

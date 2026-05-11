@@ -1,13 +1,12 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Plus,
   Pencil,
   Trash2,
   Loader2,
   Search,
-  Filter,
   FileCode2,
   Package,
   AlertTriangle,
@@ -15,6 +14,8 @@ import {
 
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
+import Pagination from '@/shared/components/pagination/Pagination';
+import SortTh, { type SortDir, nextSort, compareValues } from '@/shared/components/sort-th/SortTh';
 import { useToast } from '@/shared/components/toast/Toast';
 import {
   listarSigtapAdmin,
@@ -40,6 +41,8 @@ const BENEFICIARIO_LABELS: Record<string, string> = {
   acompanhante: 'Acompanhante',
 };
 
+const DEFAULT_PAGE_SIZE = 50;
+
 export default function SigtapPanel() {
   const toast = useToast();
   const [items, setItems] = useState<SigtapProcedimento[]>([]);
@@ -51,9 +54,15 @@ export default function SigtapPanel() {
   const [deleting, setDeleting] = useState(false);
 
   /* Filters */
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
   const [filterTipo, setFilterTipo] = useState<string>('');
   const [filterBeneficiario, setFilterBeneficiario] = useState<string>('');
-  const [search, setSearch] = useState('');
+
+  /* Sort & pagination */
+  const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'codigo', dir: 'asc' });
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   /* Form state */
   const [fCodigo, setFCodigo] = useState('');
@@ -68,6 +77,16 @@ export default function SigtapPanel() {
   const [fVigencia, setFVigencia] = useState('');
   const [fAtivo, setFAtivo] = useState(true);
 
+  /* Debounce da busca (300ms) */
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => { setSearch(searchInput); setPage(1); }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchInput]);
+
+  useEffect(() => { setPage(1); }, [filterTipo, filterBeneficiario]);
+
   const loadItems = async () => {
     setLoading(true);
     const { data } = await listarSigtapAdmin();
@@ -78,7 +97,7 @@ export default function SigtapPanel() {
   useEffect(() => { loadItems(); }, []);
 
   const filtered = useMemo(() => {
-    return items.filter((item) => {
+    let result = items.filter((item) => {
       if (filterTipo && item.tipo !== filterTipo) return false;
       if (filterBeneficiario && item.beneficiario !== filterBeneficiario) return false;
       if (search) {
@@ -87,7 +106,21 @@ export default function SigtapPanel() {
       }
       return true;
     });
-  }, [items, filterTipo, filterBeneficiario, search]);
+
+    if (sort.dir) {
+      const dir = sort.dir === 'asc' ? 1 : -1;
+      const field = sort.field as keyof SigtapProcedimento;
+      result = [...result].sort((a, b) => compareValues(a[field], b[field]) * dir);
+    }
+    return result;
+  }, [items, filterTipo, filterBeneficiario, search, sort]);
+
+  const paginated = useMemo(
+    () => filtered.slice((page - 1) * pageSize, page * pageSize),
+    [filtered, page, pageSize],
+  );
+
+  const toggleSort = (field: string) => setSort((prev) => nextSort(field, prev));
 
   const resetForm = () => {
     setFCodigo(''); setFDescricao(''); setFTipo('ajuda_custo');
@@ -147,7 +180,7 @@ export default function SigtapPanel() {
     await loadItems();
   };
 
-  const handleDelete = async () => {
+  const confirmDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
     const { error } = await desativarSigtap(deleteTarget.id);
@@ -158,159 +191,217 @@ export default function SigtapPanel() {
     await loadItems();
   };
 
+  const isFiltered = Boolean(search || filterTipo || filterBeneficiario);
+
   return (
     <>
-      <div className="tfd-card">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-            Códigos SIGTAP — Procedimentos TFD
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div>
+          <h2 className="text-xl font-bold" style={{ color: 'var(--tfd-text-primary)' }}>
+            Códigos SIGTAP
           </h2>
-          <button className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={handleNew}>
-            <Plus size={14} /> Novo Código
-          </button>
+          <p className="text-sm mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>
+            Procedimentos do SUS utilizados no TFD — Portaria SAS/MS n. 55/1999
+          </p>
+        </div>
+        <button className="tfd-btn tfd-btn-primary" onClick={handleNew}>
+          <Plus size={16} />
+          Novo Código
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 mb-4">
+        <div
+          className="flex items-center gap-2 px-3"
+          style={{
+            background: 'white',
+            border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8,
+            height: 36,
+            minWidth: 280,
+            flex: 1,
+            maxWidth: 420,
+          }}
+        >
+          <Search size={14} style={{ color: '#9CA3AF' }} />
+          <input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Buscar por código ou descrição..."
+            className="flex-1 bg-transparent outline-none text-[13px]"
+          />
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-wrap items-center gap-3 mb-4">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--tfd-text-muted)' }} />
-            <input
-              type="text"
-              className="tfd-input pl-9"
-              placeholder="Buscar por código ou descrição..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <Filter size={14} style={{ color: 'var(--tfd-text-muted)' }} />
-            <select className="tfd-input" style={{ width: 'auto' }} value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)}>
-              <option value="">Todos os tipos</option>
-              <option value="ajuda_custo">Ajuda de Custo</option>
-              <option value="deslocamento">Deslocamento</option>
-            </select>
-            <select className="tfd-input" style={{ width: 'auto' }} value={filterBeneficiario} onChange={(e) => setFilterBeneficiario(e.target.value)}>
-              <option value="">Todos beneficiários</option>
-              <option value="paciente">Paciente</option>
-              <option value="acompanhante">Acompanhante</option>
-            </select>
-          </div>
-        </div>
+        <select
+          value={filterTipo}
+          onChange={(e) => setFilterTipo(e.target.value)}
+          style={{
+            height: 36, padding: '0 12px',
+            background: 'white', border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8, fontSize: 13, color: '#1A1D2B',
+          }}
+        >
+          <option value="">Todos os tipos</option>
+          <option value="ajuda_custo">Ajuda de Custo</option>
+          <option value="deslocamento">Deslocamento</option>
+        </select>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 size={24} className="animate-spin" style={{ color: 'var(--tfd-text-muted)' }} />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-4">
-            <div className="flex items-center justify-center w-16 h-16 rounded-2xl" style={{ backgroundColor: 'var(--tfd-primary-50)' }}>
-              <Package size={28} style={{ color: 'var(--tfd-primary-400)' }} />
-            </div>
-            <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-              {items.length === 0 ? 'Nenhum procedimento cadastrado.' : 'Nenhum resultado para os filtros selecionados.'}
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto -mx-5 -mb-5">
-            <table className="tfd-table">
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
-                  <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Código</th>
-                  <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Descrição</th>
-                  <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Tipo</th>
-                  <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Beneficiário</th>
-                  <th className="text-right py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Valor Unit.</th>
-                  <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Unidade</th>
-                  <th className="text-center py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>CNRAC</th>
-                  <th className="text-center py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Ações</th>
+        <select
+          value={filterBeneficiario}
+          onChange={(e) => setFilterBeneficiario(e.target.value)}
+          style={{
+            height: 36, padding: '0 12px',
+            background: 'white', border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8, fontSize: 13, color: '#1A1D2B',
+          }}
+        >
+          <option value="">Todos beneficiários</option>
+          <option value="paciente">Paciente</option>
+          <option value="acompanhante">Acompanhante</option>
+        </select>
+      </div>
+
+      {/* Tabela */}
+      <div
+        style={{
+          background: 'white',
+          border: '1px solid var(--tfd-surface-border)',
+          borderRadius: 'var(--tfd-radius-lg)',
+          overflow: 'hidden',
+        }}
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--tfd-surface-border)' }}>
+                <SortTh label="Código" field="codigo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+                <SortTh label="Descrição" field="descricao" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+                <SortTh label="Tipo" field="tipo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+                <SortTh label="Beneficiário" field="beneficiario" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+                <SortTh label="Valor" field="valor_unitario" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} align="right" />
+                <Th>Unidade</Th>
+                <Th align="center">CNRAC</Th>
+                <Th align="right">Ações</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
+                    <div className="inline-flex items-center gap-2">
+                      <Loader2 size={16} className="animate-spin" />
+                      Carregando...
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {filtered.map((item) => (
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-16 text-center" style={{ color: '#9CA3AF' }}>
+                    <div className="flex flex-col items-center gap-3">
+                      <div
+                        className="flex items-center justify-center w-14 h-14 rounded-2xl"
+                        style={{ backgroundColor: 'var(--tfd-primary-50)' }}
+                      >
+                        <Package size={26} style={{ color: 'var(--tfd-primary-400)' }} />
+                      </div>
+                      <p className="text-sm">
+                        {isFiltered ? 'Nenhum resultado para os filtros selecionados.' : 'Nenhum procedimento cadastrado.'}
+                      </p>
+                      {!isFiltered && (
+                        <button className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={handleNew}>
+                          <Plus size={14} /> Cadastrar primeiro código
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                paginated.map((item) => (
                   <tr
                     key={item.id}
-                    className="transition-colors"
                     style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-50)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = ''; }}
+                    className="hover:bg-[#F8FAFC] transition-colors"
                   >
-                    <td className="py-2.5 px-3">
-                      <span className="font-mono text-xs font-semibold" style={{ color: 'var(--tfd-primary-600)' }}>
-                        {item.codigo}
-                      </span>
+                    <td className="px-4 py-3.5 font-mono text-[12px]" style={{ color: '#146BFA', fontWeight: 600 }}>
+                      {item.codigo}
                     </td>
-                    <td className="py-2.5 px-3 max-w-[300px]">
-                      <p className="text-sm truncate" style={{ color: 'var(--tfd-text-primary)' }}>{item.descricao}</p>
+                    <td className="px-4 py-3.5 max-w-[320px]" style={{ color: '#1A1D2B' }}>
+                      <p className="truncate">{item.descricao}</p>
                     </td>
-                    <td className="py-2.5 px-3">
-                      <span className="tfd-tag tfd-tag--rounded" style={{
-                        backgroundColor: item.tipo === 'ajuda_custo' ? 'var(--tfd-status-info-bg)' : 'var(--tfd-status-warning-bg)',
-                        color: item.tipo === 'ajuda_custo' ? 'var(--tfd-status-info)' : 'var(--tfd-status-warning)',
-                      }}>
+                    <td className="px-4 py-3.5">
+                      <span
+                        className="tfd-tag tfd-tag--rounded"
+                        style={{
+                          backgroundColor: item.tipo === 'ajuda_custo' ? 'var(--tfd-status-info-bg)' : 'var(--tfd-status-warning-bg)',
+                          color: item.tipo === 'ajuda_custo' ? 'var(--tfd-status-info)' : 'var(--tfd-status-warning)',
+                        }}
+                      >
                         {TIPO_LABELS[item.tipo]}
                         {item.subtipo && ` · ${SUBTIPO_LABELS[item.subtipo]}`}
                       </span>
                     </td>
-                    <td className="py-2.5 px-3 text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
+                    <td className="px-4 py-3.5" style={{ color: 'var(--tfd-text-secondary)' }}>
                       {BENEFICIARIO_LABELS[item.beneficiario]}
                     </td>
-                    <td className="py-2.5 px-3 text-right">
-                      <span className="font-semibold text-sm" style={{ color: 'var(--tfd-text-primary)' }}>
-                        R$ {item.valor_unitario.toFixed(2).replace('.', ',')}
-                      </span>
+                    <td className="px-4 py-3.5 text-right font-semibold" style={{ color: '#1A1D2B' }}>
+                      R$ {item.valor_unitario.toFixed(2).replace('.', ',')}
                     </td>
-                    <td className="py-2.5 px-3 text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+                    <td className="px-4 py-3.5 text-[12px]" style={{ color: 'var(--tfd-text-muted)' }}>
                       {item.unidade_medida ?? '—'}
                     </td>
-                    <td className="py-2.5 px-3 text-center">
+                    <td className="px-4 py-3.5 text-center">
                       {item.cnrac ? (
                         <span className="tfd-tag tfd-tag--rounded tfd-tag--success text-[10px]">CNRAC</span>
                       ) : (
                         <span style={{ color: 'var(--tfd-text-muted)' }}>—</span>
                       )}
                     </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
+                    <td className="px-4 py-3.5 text-right">
+                      <div className="inline-flex items-center gap-1">
                         <button
-                          className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only"
+                          className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
                           title="Editar"
-                          style={{ color: 'var(--tfd-primary-500)' }}
                           onClick={() => handleEdit(item)}
                         >
-                          <Pencil size={14} />
+                          <Pencil size={15} />
                         </button>
                         <button
-                          className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only"
+                          className="tfd-btn tfd-btn-danger tfd-btn--icon-only"
                           title="Remover"
-                          style={{ color: '#dc2626' }}
                           onClick={() => setDeleteTarget(item)}
                         >
-                          <Trash2 size={14} />
+                          <Trash2 size={15} />
                         </button>
                       </div>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <div className="mt-4 flex items-center justify-between">
-          <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-            {filtered.length} procedimento{filtered.length !== 1 ? 's' : ''} encontrado{filtered.length !== 1 ? 's' : ''}
-          </p>
-          <div className="flex items-center gap-1 text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-            <FileCode2 size={12} />
-            <span>Ref.: Portaria SAS/MS n. 55/1999</span>
-          </div>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
+
+        <Pagination
+          total={filtered.length}
+          pageSize={pageSize}
+          page={page}
+          onPageChange={setPage}
+          onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+          recordLabel={`procedimento${filtered.length === 1 ? '' : 's'}${isFiltered ? ' (filtrado)' : ''}`}
+        />
+      </div>
+
+      <div className="mt-2 flex items-center justify-end gap-1 text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+        <FileCode2 size={12} />
+        <span>Ref.: Portaria SAS/MS n. 55/1999</span>
       </div>
 
       {/* Modal: Confirmar remoção */}
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="tfd-card w-full max-w-md" style={{ backgroundColor: 'var(--tfd-surface-card)' }}>
+          <div className="tfd-card tfd-card--flat w-full max-w-md" style={{ backgroundColor: 'var(--tfd-surface-card)' }}>
             <div className="flex items-start gap-3 mb-4">
               <div className="flex items-center justify-center w-10 h-10 rounded-full shrink-0" style={{ backgroundColor: '#fef2f2' }}>
                 <AlertTriangle size={18} style={{ color: '#dc2626' }} />
@@ -320,23 +411,19 @@ export default function SigtapPanel() {
                   Remover procedimento?
                 </h3>
                 <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
-                  O procedimento <span className="font-mono font-semibold" style={{ color: 'var(--tfd-primary-600)' }}>{deleteTarget.codigo}</span> — {deleteTarget.descricao} será desativado e não aparecerá mais nas listagens.
+                  O procedimento{' '}
+                  <span className="font-mono font-semibold" style={{ color: 'var(--tfd-primary-600)' }}>
+                    {deleteTarget.codigo}
+                  </span>{' '}
+                  — {deleteTarget.descricao} — será desativado e não aparecerá mais nas listagens.
                 </p>
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <button
-                className="tfd-btn tfd-btn-secondary"
-                onClick={() => setDeleteTarget(null)}
-                disabled={deleting}
-              >
+              <button className="tfd-btn tfd-btn-secondary" onClick={() => setDeleteTarget(null)} disabled={deleting}>
                 Cancelar
               </button>
-              <button
-                className="tfd-btn tfd-btn-danger"
-                onClick={handleDelete}
-                disabled={deleting}
-              >
+              <button className="tfd-btn tfd-btn-danger" onClick={confirmDelete} disabled={deleting}>
                 {deleting ? <><Loader2 size={14} className="animate-spin" /> Removendo...</> : <><Trash2 size={14} /> Remover</>}
               </button>
             </div>
@@ -432,5 +519,21 @@ export default function SigtapPanel() {
         )}
       </Drawer>
     </>
+  );
+}
+
+/* -------------------------------------------------- */
+/*  Helpers                                            */
+/* -------------------------------------------------- */
+
+function Th({ children, align = 'left' }: { children: React.ReactNode; align?: 'left' | 'right' | 'center' }) {
+  const cls = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
+  return (
+    <th
+      className={`px-4 py-3 font-semibold ${cls}`}
+      style={{ color: '#64748B', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}
+    >
+      {children}
+    </th>
   );
 }

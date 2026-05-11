@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Plus,
   Pencil,
@@ -11,10 +11,13 @@ import {
   Package,
   Power,
   Route,
+  AlertTriangle,
 } from 'lucide-react';
 
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
+import Pagination from '@/shared/components/pagination/Pagination';
+import SortTh, { type SortDir, nextSort, compareValues } from '@/shared/components/sort-th/SortTh';
 import UfCidadeSelect from '@/shared/components/uf-cidade-select/UfCidadeSelect';
 import { useToast } from '@/shared/components/toast/Toast';
 import {
@@ -32,14 +35,39 @@ const MODAL_LABELS = {
   fluvial: 'Fluvial',
 } as const;
 
+type Modal = 'aereo' | 'terrestre' | 'fluvial';
+
+const DEFAULT_PAGE_SIZE = 50;
+
+function inferModal(item: RotaDeslocamento): Modal {
+  if (item.distancia_km != null) return 'terrestre';
+  if (item.distancia_milhas_nauticas != null) return 'fluvial';
+  return 'aereo';
+}
+
+function distanciaSortKey(item: RotaDeslocamento): number {
+  return item.distancia_km ?? item.distancia_milhas_nauticas ?? item.distancia_milhas ?? 0;
+}
+
 export default function RotasPanel() {
   const toast = useToast();
   const [items, setItems] = useState<RotaDeslocamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [search, setSearch] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<RotaDeslocamento | null>(null);
+  const [deactivateTarget, setDeactivateTarget] = useState<RotaDeslocamento | null>(null);
+  const [deactivating, setDeactivating] = useState(false);
+
+  /* Filters */
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [filterModal, setFilterModal] = useState<string>('');
+
+  /* Sort & pagination */
+  const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'cidade_origem', dir: 'asc' });
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   /* Form state */
   const [fCidadeOrigem, setFCidadeOrigem] = useState('');
@@ -49,8 +77,18 @@ export default function RotasPanel() {
   const [fDistMilhas, setFDistMilhas] = useState('');
   const [fDistKm, setFDistKm] = useState('');
   const [fDistMn, setFDistMn] = useState('');
-  const [fModal, setFModal] = useState<'aereo' | 'terrestre' | 'fluvial'>('aereo');
+  const [fModal, setFModal] = useState<Modal>('aereo');
   const [fAtivo, setFAtivo] = useState(true);
+
+  /* Debounce da busca (300ms) — refaz a query no banco */
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => { setSearch(searchInput); setPage(1); }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchInput]);
+
+  useEffect(() => { setPage(1); }, [filterModal]);
 
   const loadItems = async () => {
     setLoading(true);
@@ -59,21 +97,42 @@ export default function RotasPanel() {
     setLoading(false);
   };
 
-  useEffect(() => { loadItems(); }, []);
+  useEffect(() => { loadItems(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [search]);
 
-  const handleSearch = () => { loadItems(); };
+  const filtered = useMemo(() => {
+    let result = items;
+    if (filterModal) {
+      result = result.filter((item) => inferModal(item) === filterModal);
+    }
+
+    if (sort.dir) {
+      const dir = sort.dir === 'asc' ? 1 : -1;
+      result = [...result].sort((a, b) => {
+        if (sort.field === 'distancia') {
+          return (distanciaSortKey(a) - distanciaSortKey(b)) * dir;
+        }
+        if (sort.field === 'modal') {
+          return compareValues(inferModal(a), inferModal(b)) * dir;
+        }
+        const field = sort.field as keyof RotaDeslocamento;
+        return compareValues(a[field], b[field]) * dir;
+      });
+    }
+    return result;
+  }, [items, filterModal, sort]);
+
+  const paginated = useMemo(
+    () => filtered.slice((page - 1) * pageSize, page * pageSize),
+    [filtered, page, pageSize],
+  );
+
+  const toggleSort = (field: string) => setSort((prev) => nextSort(field, prev));
 
   const resetForm = () => {
-    setFCidadeOrigem('');
-    setFUfOrigem('MA');
-    setFCidadeDestino('');
-    setFUfDestino('');
-    setFDistMilhas('');
-    setFDistKm('');
-    setFDistMn('');
-    setFModal('aereo');
-    setFAtivo(true);
-    setEditing(null);
+    setFCidadeOrigem(''); setFUfOrigem('MA');
+    setFCidadeDestino(''); setFUfDestino('');
+    setFDistMilhas(''); setFDistKm(''); setFDistMn('');
+    setFModal('aereo'); setFAtivo(true); setEditing(null);
   };
 
   const handleNew = () => { resetForm(); setDrawerOpen(true); };
@@ -87,10 +146,7 @@ export default function RotasPanel() {
     setFDistMilhas(item.distancia_milhas != null ? String(item.distancia_milhas) : '');
     setFDistKm(item.distancia_km != null ? String(item.distancia_km) : '');
     setFDistMn(item.distancia_milhas_nauticas != null ? String(item.distancia_milhas_nauticas) : '');
-    // Infer modal from which distance field is filled
-    if (item.distancia_km != null) setFModal('terrestre');
-    else if (item.distancia_milhas_nauticas != null) setFModal('fluvial');
-    else setFModal('aereo');
+    setFModal(inferModal(item));
     setFAtivo(item.ativo);
     setDrawerOpen(true);
   };
@@ -125,11 +181,14 @@ export default function RotasPanel() {
     await loadItems();
   };
 
-  const handleDeactivate = async (item: RotaDeslocamento) => {
-    if (!window.confirm(`Desativar a rota "${item.cidade_origem}/${item.uf_origem} → ${item.cidade_destino}/${item.uf_destino}"?`)) return;
-    const { error } = await desativarRota(item.id);
-    if (error) { toast.error('Erro', error.message); return; }
+  const confirmDeactivate = async () => {
+    if (!deactivateTarget) return;
+    setDeactivating(true);
+    const { error } = await desativarRota(deactivateTarget.id);
+    if (error) { toast.error('Erro ao desativar', error.message); setDeactivating(false); return; }
     toast.success('Rota desativada!');
+    setDeactivating(false);
+    setDeactivateTarget(null);
     await loadItems();
   };
 
@@ -145,152 +204,258 @@ export default function RotasPanel() {
     distancia_milhas_nauticas: fDistMn ? parseFloat(fDistMn) : undefined,
     ativo: true,
   };
-
   const prevCalc = calcularProcedimentos(previewRota, fModal);
+
+  const isFiltered = Boolean(search || filterModal);
 
   return (
     <>
-      <div className="tfd-card">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div>
+          <h2 className="text-xl font-bold" style={{ color: 'var(--tfd-text-primary)' }}>
             Rotas de Deslocamento
           </h2>
-          <button className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={handleNew}>
-            <Plus size={14} /> Nova Rota
-          </button>
-        </div>
-
-        {/* Search */}
-        <div className="flex items-center gap-2 mb-4">
-          <div className="relative flex-1">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--tfd-text-muted)' }} />
-            <input
-              type="text"
-              className="tfd-input pl-9"
-              placeholder="Buscar por cidade de origem ou destino..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-            />
-          </div>
-          <button className="tfd-btn tfd-btn-secondary tfd-btn--sm" onClick={handleSearch}>
-            Buscar
-          </button>
-        </div>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 size={24} className="animate-spin" style={{ color: 'var(--tfd-text-muted)' }} />
-          </div>
-        ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-4">
-            <div className="flex items-center justify-center w-16 h-16 rounded-2xl" style={{ backgroundColor: 'var(--tfd-primary-50)' }}>
-              <Package size={28} style={{ color: 'var(--tfd-primary-400)' }} />
-            </div>
-            <div className="text-center">
-              <p className="text-sm font-semibold mb-1" style={{ color: 'var(--tfd-text-primary)' }}>Nenhuma rota cadastrada</p>
-              <p className="text-xs max-w-[280px]" style={{ color: 'var(--tfd-text-muted)' }}>Cadastre rotas com distâncias para cálculo automático de procedimentos SIGTAP.</p>
-            </div>
-            <button className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={handleNew}>
-              <Plus size={14} /> Cadastrar primeira rota
-            </button>
-          </div>
-        ) : (
-          <div className="overflow-x-auto -mx-5 -mb-5">
-            <table className="tfd-table">
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
-                  <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Origem</th>
-                  <th className="text-center py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}></th>
-                  <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Destino</th>
-                  <th className="text-center py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Modal</th>
-                  <th className="text-right py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Distância</th>
-                  <th className="text-center py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="transition-colors"
-                    style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-50)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = ''; }}
-                  >
-                    <td className="py-2.5 px-3">
-                      <div className="flex items-center gap-1.5">
-                        <MapPin size={12} style={{ color: 'var(--tfd-primary-500)' }} />
-                        <span className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                          {item.cidade_origem}/{item.uf_origem}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-1 text-center">
-                      <ArrowRight size={12} style={{ color: 'var(--tfd-text-muted)' }} />
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <span className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                        {item.cidade_destino}/{item.uf_destino}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      {item.distancia_km != null ? (
-                        <span className="tfd-tag tfd-tag--rounded tfd-tag--secondary text-[10px]">Terrestre</span>
-                      ) : item.distancia_milhas_nauticas != null ? (
-                        <span className="tfd-tag tfd-tag--rounded tfd-tag--secondary text-[10px]">Fluvial</span>
-                      ) : (
-                        <span className="tfd-tag tfd-tag--rounded tfd-tag--info text-[10px]">Aéreo</span>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3 text-right">
-                      {item.distancia_km != null ? (
-                        <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>{item.distancia_km.toLocaleString('pt-BR')} km</span>
-                      ) : item.distancia_milhas_nauticas != null ? (
-                        <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>{item.distancia_milhas_nauticas.toLocaleString('pt-BR')} mn</span>
-                      ) : item.distancia_milhas != null ? (
-                        <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>{item.distancia_milhas.toLocaleString('pt-BR')} mi</span>
-                      ) : (
-                        <span style={{ color: 'var(--tfd-text-muted)' }}>—</span>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <div className="flex items-center justify-center gap-1">
-                        {!item.ativo && (
-                          <span className="tfd-tag tfd-tag--rounded tfd-tag--dot tfd-tag--secondary text-[10px]">Inativo</span>
-                        )}
-                        <button
-                          className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only"
-                          title="Editar"
-                          style={{ color: 'var(--tfd-primary-500)' }}
-                          onClick={() => handleEdit(item)}
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        {item.ativo && (
-                          <button
-                            className="tfd-btn tfd-btn-ghost tfd-btn--sm tfd-btn--icon-only"
-                            title="Desativar"
-                            style={{ color: 'var(--tfd-status-danger)' }}
-                            onClick={() => handleDeactivate(item)}
-                          >
-                            <Power size={14} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <div className="mt-4">
-          <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-            {items.length} rota{items.length !== 1 ? 's' : ''} cadastrada{items.length !== 1 ? 's' : ''}
+          <p className="text-sm mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>
+            Cadastro de rotas com distâncias para cálculo automático SIGTAP
           </p>
         </div>
+        <button className="tfd-btn tfd-btn-primary" onClick={handleNew}>
+          <Plus size={16} />
+          Nova Rota
+        </button>
       </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 mb-4">
+        <div
+          className="flex items-center gap-2 px-3"
+          style={{
+            background: 'white',
+            border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8,
+            height: 36,
+            minWidth: 280,
+            flex: 1,
+            maxWidth: 420,
+          }}
+        >
+          <Search size={14} style={{ color: '#9CA3AF' }} />
+          <input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Buscar por cidade de origem ou destino..."
+            className="flex-1 bg-transparent outline-none text-[13px]"
+          />
+        </div>
+
+        <select
+          value={filterModal}
+          onChange={(e) => setFilterModal(e.target.value)}
+          style={{
+            height: 36, padding: '0 12px',
+            background: 'white', border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8, fontSize: 13, color: '#1A1D2B',
+          }}
+        >
+          <option value="">Todos os modais</option>
+          <option value="aereo">Aéreo</option>
+          <option value="terrestre">Terrestre</option>
+          <option value="fluvial">Fluvial</option>
+        </select>
+      </div>
+
+      {/* Tabela */}
+      <div
+        style={{
+          background: 'white',
+          border: '1px solid var(--tfd-surface-border)',
+          borderRadius: 'var(--tfd-radius-lg)',
+          overflow: 'hidden',
+        }}
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--tfd-surface-border)' }}>
+                <SortTh label="Origem" field="cidade_origem" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+                <Th align="center">{' '}</Th>
+                <SortTh label="Destino" field="cidade_destino" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+                <SortTh label="Modal" field="modal" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+                <SortTh label="Distância" field="distancia" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} align="right" />
+                <Th align="right">Ações</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
+                    <div className="inline-flex items-center gap-2">
+                      <Loader2 size={16} className="animate-spin" />
+                      Carregando...
+                    </div>
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-16 text-center" style={{ color: '#9CA3AF' }}>
+                    <div className="flex flex-col items-center gap-3">
+                      <div
+                        className="flex items-center justify-center w-14 h-14 rounded-2xl"
+                        style={{ backgroundColor: 'var(--tfd-primary-50)' }}
+                      >
+                        <Package size={26} style={{ color: 'var(--tfd-primary-400)' }} />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-medium mb-1" style={{ color: 'var(--tfd-text-primary)' }}>
+                          {isFiltered ? 'Nenhuma rota para os filtros selecionados.' : 'Nenhuma rota cadastrada.'}
+                        </p>
+                        {!isFiltered && (
+                          <p className="text-xs max-w-[280px]" style={{ color: 'var(--tfd-text-muted)' }}>
+                            Cadastre rotas com distâncias para cálculo automático de procedimentos SIGTAP.
+                          </p>
+                        )}
+                      </div>
+                      {!isFiltered && (
+                        <button className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={handleNew}>
+                          <Plus size={14} /> Cadastrar primeira rota
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                paginated.map((item) => {
+                  const modal = inferModal(item);
+                  return (
+                    <tr
+                      key={item.id}
+                      style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}
+                      className="hover:bg-[#F8FAFC] transition-colors"
+                    >
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-1.5">
+                          <MapPin size={12} style={{ color: 'var(--tfd-primary-500)' }} />
+                          <span className="font-medium" style={{ color: '#1A1D2B' }}>
+                            {item.cidade_origem}/{item.uf_origem}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-2 py-3.5 text-center">
+                        <ArrowRight size={12} style={{ color: '#9CA3AF' }} />
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className="font-medium" style={{ color: '#1A1D2B' }}>
+                          {item.cidade_destino}/{item.uf_destino}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span
+                          className="tfd-tag tfd-tag--rounded text-[10px]"
+                          style={{
+                            backgroundColor:
+                              modal === 'aereo'
+                                ? 'var(--tfd-status-info-bg)'
+                                : modal === 'terrestre'
+                                  ? 'var(--tfd-surface-100)'
+                                  : 'var(--tfd-status-warning-bg)',
+                            color:
+                              modal === 'aereo'
+                                ? 'var(--tfd-status-info)'
+                                : modal === 'terrestre'
+                                  ? 'var(--tfd-text-secondary)'
+                                  : 'var(--tfd-status-warning)',
+                          }}
+                        >
+                          {MODAL_LABELS[modal]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 text-right" style={{ color: '#1A1D2B' }}>
+                        {item.distancia_km != null ? (
+                          <span>{item.distancia_km.toLocaleString('pt-BR')} km</span>
+                        ) : item.distancia_milhas_nauticas != null ? (
+                          <span>{item.distancia_milhas_nauticas.toLocaleString('pt-BR')} mn</span>
+                        ) : item.distancia_milhas != null ? (
+                          <span>{item.distancia_milhas.toLocaleString('pt-BR')} mi</span>
+                        ) : (
+                          <span style={{ color: 'var(--tfd-text-muted)' }}>—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 text-right">
+                        <div className="inline-flex items-center gap-1">
+                          {!item.ativo && (
+                            <span className="tfd-tag tfd-tag--rounded tfd-tag--dot tfd-tag--secondary text-[10px] mr-1">
+                              Inativa
+                            </span>
+                          )}
+                          <button
+                            className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                            title="Editar"
+                            onClick={() => handleEdit(item)}
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          {item.ativo && (
+                            <button
+                              className="tfd-btn tfd-btn-danger tfd-btn--icon-only"
+                              title="Desativar"
+                              onClick={() => setDeactivateTarget(item)}
+                            >
+                              <Power size={15} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <Pagination
+          total={filtered.length}
+          pageSize={pageSize}
+          page={page}
+          onPageChange={setPage}
+          onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+          recordLabel={`rota${filtered.length === 1 ? '' : 's'}${isFiltered ? ' (filtrado)' : ''}`}
+        />
+      </div>
+
+      {/* Modal: Confirmar desativação */}
+      {deactivateTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="tfd-card tfd-card--flat w-full max-w-md" style={{ backgroundColor: 'var(--tfd-surface-card)' }}>
+            <div className="flex items-start gap-3 mb-4">
+              <div className="flex items-center justify-center w-10 h-10 rounded-full shrink-0" style={{ backgroundColor: '#fef2f2' }}>
+                <AlertTriangle size={18} style={{ color: '#dc2626' }} />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold mb-1" style={{ color: 'var(--tfd-text-primary)' }}>
+                  Desativar rota?
+                </h3>
+                <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
+                  A rota{' '}
+                  <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                    {deactivateTarget.cidade_origem}/{deactivateTarget.uf_origem} → {deactivateTarget.cidade_destino}/{deactivateTarget.uf_destino}
+                  </span>{' '}
+                  ficará inativa e não será usada no cálculo automático SIGTAP.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button className="tfd-btn tfd-btn-secondary" onClick={() => setDeactivateTarget(null)} disabled={deactivating}>
+                Cancelar
+              </button>
+              <button className="tfd-btn tfd-btn-danger" onClick={confirmDeactivate} disabled={deactivating}>
+                {deactivating ? <><Loader2 size={14} className="animate-spin" /> Desativando...</> : <><Power size={14} /> Desativar</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Drawer: Nova/Editar Rota */}
       <Drawer
@@ -341,7 +506,7 @@ export default function RotasPanel() {
             className="tfd-input"
             value={fModal}
             onChange={(e) => {
-              setFModal(e.target.value as 'aereo' | 'terrestre' | 'fluvial');
+              setFModal(e.target.value as Modal);
               setFDistMilhas(''); setFDistKm(''); setFDistMn('');
             }}
           >
@@ -354,12 +519,7 @@ export default function RotasPanel() {
         {fModal === 'aereo' && (
           <FormField label="Distância (milhas)" required>
             <div className="relative">
-              <input
-                type="number" step="1" min="0" className="tfd-input pr-16"
-                placeholder="Ex: 1456"
-                value={fDistMilhas}
-                onChange={(e) => setFDistMilhas(e.target.value)}
-              />
+              <input type="number" step="1" min="0" className="tfd-input pr-16" placeholder="Ex: 1456" value={fDistMilhas} onChange={(e) => setFDistMilhas(e.target.value)} />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium pointer-events-none" style={{ color: 'var(--tfd-text-muted)' }}>milhas</span>
             </div>
           </FormField>
@@ -367,12 +527,7 @@ export default function RotasPanel() {
         {fModal === 'terrestre' && (
           <FormField label="Distância (km)" required>
             <div className="relative">
-              <input
-                type="number" step="1" min="0" className="tfd-input pr-10"
-                placeholder="Ex: 320"
-                value={fDistKm}
-                onChange={(e) => setFDistKm(e.target.value)}
-              />
+              <input type="number" step="1" min="0" className="tfd-input pr-10" placeholder="Ex: 320" value={fDistKm} onChange={(e) => setFDistKm(e.target.value)} />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium pointer-events-none" style={{ color: 'var(--tfd-text-muted)' }}>km</span>
             </div>
           </FormField>
@@ -380,12 +535,7 @@ export default function RotasPanel() {
         {fModal === 'fluvial' && (
           <FormField label="Distância (milhas náuticas)" required>
             <div className="relative">
-              <input
-                type="number" step="1" min="0" className="tfd-input pr-10"
-                placeholder="Ex: 180"
-                value={fDistMn}
-                onChange={(e) => setFDistMn(e.target.value)}
-              />
+              <input type="number" step="1" min="0" className="tfd-input pr-10" placeholder="Ex: 180" value={fDistMn} onChange={(e) => setFDistMn(e.target.value)} />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium pointer-events-none" style={{ color: 'var(--tfd-text-muted)' }}>mn</span>
             </div>
           </FormField>
@@ -419,5 +569,21 @@ export default function RotasPanel() {
         )}
       </Drawer>
     </>
+  );
+}
+
+/* -------------------------------------------------- */
+/*  Helpers                                            */
+/* -------------------------------------------------- */
+
+function Th({ children, align = 'left' }: { children: React.ReactNode; align?: 'left' | 'right' | 'center' }) {
+  const cls = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
+  return (
+    <th
+      className={`px-4 py-3 font-semibold ${cls}`}
+      style={{ color: '#64748B', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}
+    >
+      {children}
+    </th>
   );
 }

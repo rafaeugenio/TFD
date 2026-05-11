@@ -35,7 +35,8 @@ export async function listarUnidadesSaudeAdmin(filters?: { search?: string }) {
   let query = getSupabase()
     .from('unidades_destino')
     .select('*, tabelas_auxiliares!regional_id(nome)', { count: 'exact' })
-    .order('nome', { ascending: true });
+    .order('nome', { ascending: true })
+    .range(0, 49999);
 
   if (filters?.search) {
     query = query.or(

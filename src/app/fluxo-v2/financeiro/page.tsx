@@ -35,7 +35,7 @@ import {
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import SortTh, { compareValues, nextSort, type SortDir } from '@/shared/components/sort-th/SortTh';
 
-const PAGE_SIZE = 10;
+const DEFAULT_PAGE_SIZE = 25;
 
 type FinanceiroFiltro =
   | 'all'
@@ -92,6 +92,7 @@ export default function FinanceiroListPage() {
   const [busca, setBusca] = useState('');
   const [filtro, setFiltro] = useState<FinanceiroFiltro>('all');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'proxima', dir: 'asc' });
 
   const stats = useMemo(() => ({
@@ -165,8 +166,8 @@ export default function FinanceiroListPage() {
   const toggleSort = (field: string) => setSort((prev) => nextSort(field, prev));
 
   const paginadas = useMemo(
-    () => filaOrdenada.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [filaOrdenada, page],
+    () => filaOrdenada.slice((page - 1) * pageSize, page * pageSize),
+    [filaOrdenada, page, pageSize],
   );
 
   function open(kind: Exclude<DrawerKind, null>, sol: SolicitacaoMock) {
@@ -423,9 +424,11 @@ export default function FinanceiroListPage() {
         </table>
         <Pagination
           total={fila.length}
-          pageSize={PAGE_SIZE}
+          pageSize={pageSize}
           page={page}
           onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          recordLabel="solicitações"
         />
       </div>
 

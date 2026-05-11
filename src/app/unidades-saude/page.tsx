@@ -8,7 +8,7 @@ import {
   Plus,
   Search,
   Pencil,
-  Power,
+  Trash2,
   ChevronLeft,
   ChevronRight,
   XCircle,
@@ -243,10 +243,10 @@ function UnidadesSaudePage() {
     try {
       const result = await desativarUnidadeSaude(deactivateConfirmId);
       if (result.error) {
-        toast.error('Erro ao desativar', (result.error as { message?: string }).message ?? 'Erro desconhecido');
+        toast.error('Erro ao excluir', (result.error as { message?: string }).message ?? 'Erro desconhecido');
         return;
       }
-      toast.success('Unidade desativada', 'O registro foi desativado do sistema.');
+      toast.success('Unidade excluida', 'O registro foi desativado do sistema.');
       setDeactivateConfirmId(null);
       setDeactivateConfirmName('');
       refresh();
@@ -449,11 +449,12 @@ function UnidadesSaudePage() {
                             <Pencil size={15} />
                           </button>
                           <button
-                            className="tfd-btn tfd-btn-danger tfd-btn--icon-only"
-                            title="Desativar"
+                            className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                            title="Excluir"
+                            style={{ color: '#DC2626' }}
                             onClick={(e) => { e.stopPropagation(); handleOpenDeactivate(uni as Record<string, unknown>); }}
                           >
-                            <Power size={15} />
+                            <Trash2 size={15} />
                           </button>
                         </div>
                       </td>
@@ -476,7 +477,7 @@ function UnidadesSaudePage() {
         )}
       </div>
 
-      {/* ========== Deactivate Confirmation Modal ========== */}
+      {/* ========== Delete Confirmation Modal ========== */}
       {deactivateConfirmId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div
@@ -488,16 +489,16 @@ function UnidadesSaudePage() {
                 className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
                 style={{ backgroundColor: 'var(--tfd-status-error-bg)', color: 'var(--tfd-status-error)' }}
               >
-                <Power size={20} />
+                <Trash2 size={20} />
               </div>
               <h3 className="text-lg font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-                Confirmar desativacao
+                Confirmar exclusao
               </h3>
             </div>
             <p className="text-sm mb-6" style={{ color: 'var(--tfd-text-secondary)' }}>
-              Tem certeza que deseja desativar a unidade{' '}
+              Tem certeza que deseja excluir a unidade{' '}
               <strong style={{ color: 'var(--tfd-text-primary)' }}>{deactivateConfirmName}</strong>?
-              A unidade nao aparecera mais nas listagens.
+              Esta acao nao pode ser desfeita.
             </p>
             <div className="flex items-center justify-end gap-2">
               <button
@@ -507,7 +508,7 @@ function UnidadesSaudePage() {
                 Cancelar
               </button>
               <button className="tfd-btn tfd-btn-danger" onClick={handleConfirmDeactivate}>
-                Desativar
+                Excluir
               </button>
             </div>
           </div>

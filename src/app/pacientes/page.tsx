@@ -192,8 +192,8 @@ function PacientesPage() {
   const [cidadesIbge, setCidadesIbge] = useState<{ id: number; nome: string }[]>([]);
   const [cidadesLoading, setCidadesLoading] = useState(false);
 
-  /* ---- Regionais cadastradas ---- */
-  const [regionaisOptions, setRegionaisOptions] = useState<{ id: string; codigo: string; nome: string }[]>([]);
+  /* ---- Regionais cadastradas (com região vinculada) ---- */
+  const [regionaisOptions, setRegionaisOptions] = useState<{ id: string; codigo: string; nome: string; regiao_nome: string | null }[]>([]);
   const [regionaisLoading, setRegionaisLoading] = useState(true);
 
   /* ---- Form state: Documentos (pending uploads) ---- */
@@ -232,11 +232,16 @@ function PacientesPage() {
     return () => { cancelled = true; };
   }, [uf]);
 
-  /* ---- Carregar todas as regionais do banco ---- */
+  /* ---- Carregar todas as regionais do banco (incluindo a região vinculada) ---- */
   useEffect(() => {
     listarRegionaisSaude({ pageSize: 100 }).then(({ data }) => {
       setRegionaisOptions(
-        (data ?? []).map((r: any) => ({ id: r.id, codigo: r.codigo, nome: r.nome })),
+        (data ?? []).map((r: any) => ({
+          id: r.id,
+          codigo: r.codigo,
+          nome: r.nome,
+          regiao_nome: (r.regiao as { nome?: string } | null)?.nome ?? null,
+        })),
       );
       setRegionaisLoading(false);
     });
@@ -246,7 +251,8 @@ function PacientesPage() {
   useEffect(() => {
     if (!municipio) return;
     buscarRegionalPorMunicipio(municipio).then(({ data }) => {
-      const reg = data?.regionais_saude as { id?: string } | null;
+      const row = data as unknown as { regionais_saude?: { id?: string } | null } | null;
+      const reg = row?.regionais_saude ?? null;
       if (reg?.id) setRegionalId(reg.id);
     }).catch(() => {});
   }, [municipio]);
@@ -1098,25 +1104,53 @@ function PacientesPage() {
           </select>
         </FormField>
 
-        <FormField label="Regional" hint="derivada do municipio">
-          <input
-            type="text"
-            className="tfd-input"
-            readOnly
-            value={
-              regionaisLoading
-                ? 'Carregando...'
-                : regionalId
-                  ? (regionaisOptions.find((r) => r.id === regionalId)
-                      ? `${regionaisOptions.find((r) => r.id === regionalId)!.codigo} — ${regionaisOptions.find((r) => r.id === regionalId)!.nome}`
-                      : regionalId)
-                  : municipio
-                    ? 'Regional nao encontrada para este municipio'
-                    : 'Selecione o municipio para preencher automaticamente'
-            }
-            style={{ backgroundColor: 'var(--tfd-surface-50)', color: 'var(--tfd-text-muted)', cursor: 'default' }}
-          />
-        </FormField>
+        {(() => {
+          const regSelecionada = regionaisOptions.find((r) => r.id === regionalId);
+          const regiaoNome = regSelecionada?.regiao_nome ?? null;
+          return (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <FormField label="Regional" hint="derivada do município">
+                <input
+                  type="text"
+                  className="tfd-input"
+                  readOnly
+                  value={
+                    regionaisLoading
+                      ? 'Carregando...'
+                      : regSelecionada
+                        ? `${regSelecionada.codigo} — ${regSelecionada.nome}`
+                        : regionalId
+                          ? regionalId
+                          : municipio
+                            ? 'Regional não encontrada para este município'
+                            : 'Selecione o município para preencher automaticamente'
+                  }
+                  style={{ backgroundColor: 'var(--tfd-surface-50)', color: 'var(--tfd-text-muted)', cursor: 'default' }}
+                />
+              </FormField>
+
+              <FormField label="Região" hint="derivada da regional">
+                <input
+                  type="text"
+                  className="tfd-input"
+                  readOnly
+                  value={
+                    regionaisLoading
+                      ? 'Carregando...'
+                      : regiaoNome
+                        ? regiaoNome
+                        : regSelecionada
+                          ? 'Regional sem região definida'
+                          : municipio
+                            ? '—'
+                            : 'Selecione o município para preencher automaticamente'
+                  }
+                  style={{ backgroundColor: 'var(--tfd-surface-50)', color: 'var(--tfd-text-muted)', cursor: 'default' }}
+                />
+              </FormField>
+            </div>
+          );
+        })()}
 
         {/* ── Section: Documentos Pessoais ── */}
         <hr className="tfd-divider" />

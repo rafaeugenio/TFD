@@ -157,15 +157,7 @@ body {
   background: var(--tfd-white);
   border: 1px solid var(--tfd-200);
   border-radius: var(--tfd-radius-lg);
-  box-shadow: var(--tfd-shadow-sm);
   padding: 1.25rem 1.5rem;
-  transition: box-shadow var(--tfd-duration) var(--tfd-ease),
-              transform var(--tfd-duration) var(--tfd-ease);
-}
-
-.tfd-card:hover {
-  box-shadow: var(--tfd-shadow-md);
-  transform: translateY(-1px);
 }
 
 .tfd-card-title {
@@ -216,19 +208,11 @@ body {
   background: var(--tfd-white);
   border: 1px solid var(--tfd-200);
   border-radius: var(--tfd-radius-lg);
-  box-shadow: var(--tfd-shadow-sm);
   padding: 1.25rem 1.5rem;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  transition: box-shadow var(--tfd-duration) var(--tfd-ease),
-              transform var(--tfd-duration) var(--tfd-ease);
-}
-
-.tfd-kpi:hover {
-  box-shadow: var(--tfd-shadow-md);
-  transform: translateY(-1px);
 }
 
 .tfd-kpi-value {
@@ -297,7 +281,6 @@ body {
   background: var(--tfd-white);
   border: 1px solid var(--tfd-200);
   border-radius: var(--tfd-radius-lg);
-  box-shadow: var(--tfd-shadow-sm);
   overflow: hidden;
 }
 
@@ -327,7 +310,6 @@ body {
   background: var(--tfd-white);
   border: 1px solid var(--tfd-200);
   border-radius: var(--tfd-radius-lg);
-  box-shadow: var(--tfd-shadow-xs);
 }
 
 /* ────────────────────────────────────────────────────
@@ -489,18 +471,25 @@ body {
 .tfd-btn-success:active { background: #bbf7d0; }
 
 /* ────────────────────────────────────────────────────
-   TABLE — PrimeOne DataTable pattern
+   TABLE — v2 pattern (stroke wrapper + slate-50 head)
    ──────────────────────────────────────────────────── */
+
+.tfd-table-wrap {
+  background: var(--tfd-white);
+  border: 1px solid var(--tfd-surface-border, var(--tfd-200));
+  border-radius: var(--tfd-radius-lg);
+  overflow: hidden;
+}
 
 .tfd-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.8125rem; /* 13px — densidade v2 */
+  font-size: 0.8125rem;
 }
 
 .tfd-table thead tr {
   background: #F8FAFC;
-  border-bottom: 1px solid var(--tfd-surface-border);
+  border-bottom: 1px solid var(--tfd-surface-border, var(--tfd-200));
 }
 
 .tfd-table thead th {
@@ -514,27 +503,20 @@ body {
 }
 
 .tfd-table tbody td {
-  padding: 0.875rem 1rem; /* py-3.5 v2 */
+  padding: 0.875rem 1rem;
   color: var(--tfd-text-primary);
-  border-bottom: 1px solid var(--tfd-surface-border);
+  border-bottom: 1px solid var(--tfd-surface-border, var(--tfd-100));
   vertical-align: middle;
   font-size: 0.8125rem;
 }
 
 .tfd-table tbody tr {
+  background: var(--tfd-white);
   transition: background var(--tfd-duration) var(--tfd-ease);
 }
 
 .tfd-table tbody tr:hover { background: #F8FAFC; }
 .tfd-table tbody tr:last-child td { border-bottom: none; }
-
-/* Container padrão para tabelas (v2 wrapper) */
-.tfd-table-wrap {
-  background: white;
-  border: 1px solid var(--tfd-surface-border);
-  border-radius: var(--tfd-radius-lg);
-  overflow: hidden;
-}
 
 /* ────────────────────────────────────────────────────
    TAG — PrimeOne Tag component (sm radius)

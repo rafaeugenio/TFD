@@ -6,8 +6,6 @@ import {
   RefreshCw,
   Download,
   Info,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
   ArrowRight,
   Plus,
@@ -17,10 +15,10 @@ import {
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import Pagination from '@/shared/components/pagination/Pagination';
+import SortTh from '@/shared/components/sort-th/SortTh';
 import { useToast } from '@/shared/components/toast/Toast';
 import { formatDateTime } from '@/shared/pipes/formatters';
 import Drawer from '@/shared/components/drawer/Drawer';
-import SortableHeader from '@/shared/components/table/SortableHeader';
 import { useTableControls } from '@/shared/hooks/useTableControls';
 
 /* -------------------------------------------------- */
@@ -955,13 +953,11 @@ export default function LogsAuditoriaPage() {
   const paginatedLogs = table.paginated as unknown as LogEntry[];
   const filtered = table.filtered as unknown as LogEntry[];
 
-  /* Filter options for columns */
-  const acaoFilterOptions = table.getFilterOptions('acao').map((v) => ({
-    value: v,
-    label: ACAO_LABELS[v] ?? v,
-  }));
-  const moduloFilterOptions = table.getFilterOptions('modulo');
-  const entidadeFilterOptions = table.getFilterOptions('entidade_alterada');
+  /* Filtros de coluna disponíveis */
+  const acaoOptions = table.getFilterOptions('acao');
+  const moduloOptions = table.getFilterOptions('modulo');
+  const filterAcao = table.getActiveFilters('acao')[0] ?? '';
+  const filterModulo = table.getActiveFilters('modulo')[0] ?? '';
 
   /* ---- Refresh simulation ---- */
   const handleRefresh = useCallback(() => {
@@ -1036,7 +1032,7 @@ export default function LogsAuditoriaPage() {
           className="flex items-center gap-2 px-3"
           style={{
             background: 'white', border: '1px solid var(--tfd-surface-border)',
-            borderRadius: 8, height: 36, minWidth: 280,
+            borderRadius: 8, height: 36, minWidth: 280, flex: 1, maxWidth: 360,
           }}
         >
           <Search size={14} style={{ color: '#9CA3AF' }} />
@@ -1064,6 +1060,36 @@ export default function LogsAuditoriaPage() {
             value={table.dateEnd} onChange={(e) => table.setDateEnd(e.target.value)} title="Data fim" />
         </div>
 
+        <select
+          value={filterAcao}
+          onChange={(e) => table.setColumnFilter('acao', e.target.value ? [e.target.value] : [])}
+          style={{
+            height: 36, padding: '0 12px',
+            background: 'white', border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8, fontSize: 13, color: '#1A1D2B',
+          }}
+        >
+          <option value="">Todas as ações</option>
+          {acaoOptions.map((a) => (
+            <option key={a} value={a}>{ACAO_LABELS[a] ?? a}</option>
+          ))}
+        </select>
+
+        <select
+          value={filterModulo}
+          onChange={(e) => table.setColumnFilter('modulo', e.target.value ? [e.target.value] : [])}
+          style={{
+            height: 36, padding: '0 12px',
+            background: 'white', border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8, fontSize: 13, color: '#1A1D2B',
+          }}
+        >
+          <option value="">Todos os módulos</option>
+          {moduloOptions.map((m) => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
+
         <div className="flex items-center gap-2 ml-auto">
           <button
             className="tfd-btn tfd-btn-secondary tfd-btn--sm"
@@ -1083,210 +1109,168 @@ export default function LogsAuditoriaPage() {
         </div>
       </div>
 
-      {/* ========== Table (estilo v2) ========== */}
-      <div className="tfd-table-wrap">
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2
-              size={28}
-              className="animate-spin"
-              style={{ color: 'var(--tfd-primary-500)' }}
-            />
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="tfd-table">
-              <thead>
+      {/* ========== Tabela (fluxo v2) ========== */}
+      <div
+        style={{
+          background: 'white',
+          border: '1px solid var(--tfd-surface-border)',
+          borderRadius: 'var(--tfd-radius-lg)',
+          overflow: 'hidden',
+        }}
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--tfd-surface-border)' }}>
+                <SortTh label="Usuário" field="nome_usuario" currentField={table.sort.field} currentDir={table.sort.direction} onToggle={table.toggleSort} />
+                <SortTh label="Ação" field="acao" currentField={table.sort.field} currentDir={table.sort.direction} onToggle={table.toggleSort} />
+                <SortTh label="Entidade" field="entidade_alterada" currentField={table.sort.field} currentDir={table.sort.direction} onToggle={table.toggleSort} />
+                <SortTh label="Módulo" field="modulo" className="hidden md:table-cell" currentField={table.sort.field} currentDir={table.sort.direction} onToggle={table.toggleSort} />
+                <Th className="hidden lg:table-cell">Descrição</Th>
+                <SortTh label="Data/Hora" field="created_at" currentField={table.sort.field} currentDir={table.sort.direction} onToggle={table.toggleSort} align="right" />
+              </tr>
+            </thead>
+
+            <tbody>
+              {loading ? (
                 <tr>
-                  <SortableHeader
-                    label="Usuário"
-                    sortDirection={table.getSortDirection('nome_usuario')}
-                    onSort={() => table.toggleSort('nome_usuario')}
-                  />
-                  <SortableHeader
-                    label="Ação"
-                    sortDirection={table.getSortDirection('acao')}
-                    onSort={() => table.toggleSort('acao')}
-                    filterOptions={acaoFilterOptions}
-                    activeFilters={table.getActiveFilters('acao')}
-                    onFilterChange={(v) => table.setColumnFilter('acao', v)}
-                  />
-                  <SortableHeader
-                    label="Entidade"
-                    sortDirection={table.getSortDirection('entidade_alterada')}
-                    onSort={() => table.toggleSort('entidade_alterada')}
-                    filterOptions={entidadeFilterOptions}
-                    activeFilters={table.getActiveFilters('entidade_alterada')}
-                    onFilterChange={(v) => table.setColumnFilter('entidade_alterada', v)}
-                  />
-                  <SortableHeader
-                    label="Módulo"
-                    className="hidden md:table-cell"
-                    sortDirection={table.getSortDirection('modulo')}
-                    onSort={() => table.toggleSort('modulo')}
-                    filterOptions={moduloFilterOptions}
-                    activeFilters={table.getActiveFilters('modulo')}
-                    onFilterChange={(v) => table.setColumnFilter('modulo', v)}
-                  />
-                  <th className="hidden lg:table-cell">Descrição</th>
-                  <SortableHeader
-                    label="Data/Hora"
-                    sortDirection={table.getSortDirection('created_at')}
-                    onSort={() => table.toggleSort('created_at')}
-                  />
+                  <td colSpan={6} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
+                    <div className="inline-flex items-center gap-2">
+                      <Loader2 size={16} className="animate-spin" />
+                      Carregando logs...
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {paginatedLogs.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="text-center py-12">
-                      <div className="flex flex-col items-center gap-2">
-                        <Search
-                          size={32}
-                          style={{ color: 'var(--tfd-text-muted)' }}
-                        />
-                        <p
-                          className="text-sm"
-                          style={{ color: 'var(--tfd-text-muted)' }}
-                        >
-                          Nenhum log encontrado com os filtros aplicados
-                        </p>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedLogs.map((log) => {
-                    const severity = getAcaoSeverity(log.acao);
-                    const severityStyle = SEVERITY_STYLES[severity];
-                    const avatarColor = getAvatarColor(log.nome_usuario);
-                    const moduloStyle = MODULO_STYLES[log.modulo] ?? MODULO_STYLES['Sistema'];
+              ) : paginatedLogs.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-16 text-center" style={{ color: '#9CA3AF' }}>
+                    <div className="flex flex-col items-center gap-3">
+                      <Search size={26} style={{ color: 'var(--tfd-text-muted)' }} />
+                      <p className="text-sm">Nenhum log encontrado com os filtros aplicados.</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                paginatedLogs.map((log) => {
+                  const severity = getAcaoSeverity(log.acao);
+                  const severityStyle = SEVERITY_STYLES[severity];
+                  const avatarColor = getAvatarColor(log.nome_usuario);
+                  const moduloStyle = MODULO_STYLES[log.modulo] ?? MODULO_STYLES['Sistema'];
 
-                    return (
-                      <tr
-                        key={log.id}
-                        onClick={() => setSelectedLog(log)}
-                        className="cursor-pointer"
-                        style={{ transition: 'background-color 0.12s' }}
-                        onMouseEnter={(e) => {
-                          (e.currentTarget as HTMLTableRowElement).style.backgroundColor =
-                            'var(--tfd-surface-50, var(--tfd-surface-100))';
-                        }}
-                        onMouseLeave={(e) => {
-                          (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '';
-                        }}
-                      >
-                        {/* Usuário */}
-                        <td>
-                          <div className="flex items-center gap-2.5">
-                            <div
-                              className="tfd-avatar tfd-avatar--circle"
-                              style={{
-                                backgroundColor: avatarColor.bg,
-                                color: avatarColor.color,
-                                fontSize: '0.6875rem',
-                              }}
-                            >
-                              {getInitials(log.nome_usuario)}
-                            </div>
-                            <div className="min-w-0">
-                              <p
-                                className="text-sm font-medium truncate"
-                                style={{ color: 'var(--tfd-text-primary)' }}
-                              >
-                                {log.nome_usuario}
-                              </p>
-                              <p
-                                className="text-xs truncate"
-                                style={{ color: 'var(--tfd-text-muted)' }}
-                              >
-                                {log.perfil_usuario}
-                              </p>
-                            </div>
+                  return (
+                    <tr
+                      key={log.id}
+                      onClick={() => setSelectedLog(log)}
+                      style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}
+                      className="cursor-pointer hover:bg-[#F8FAFC] transition-colors"
+                    >
+                      {/* Usuário */}
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="flex items-center justify-center w-8 h-8 rounded-full shrink-0 text-[11px] font-semibold"
+                            style={{ backgroundColor: avatarColor.bg, color: avatarColor.color }}
+                          >
+                            {getInitials(log.nome_usuario)}
                           </div>
-                        </td>
+                          <div className="min-w-0">
+                            <p className="font-semibold truncate" style={{ color: '#1A1D2B' }}>
+                              {log.nome_usuario}
+                            </p>
+                            <p className="text-[11px] truncate" style={{ color: 'var(--tfd-text-muted)' }}>
+                              {log.perfil_usuario}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
 
-                        {/* Ação */}
-                        <td>
-                          <span
-                            className="tfd-tag tfd-tag--rounded"
-                            style={{
-                              backgroundColor: severityStyle.bg,
-                              color: severityStyle.color,
-                            }}
-                          >
-                            {getAcaoLabel(log.acao)}
-                          </span>
-                        </td>
+                      {/* Ação */}
+                      <td className="px-4 py-3.5">
+                        <span
+                          className="tfd-tag tfd-tag--rounded"
+                          style={{ backgroundColor: severityStyle.bg, color: severityStyle.color }}
+                        >
+                          {getAcaoLabel(log.acao)}
+                        </span>
+                      </td>
 
-                        {/* Entidade */}
-                        <td>
-                          <span
-                            className="tfd-tag tfd-tag--rounded"
-                            style={{
-                              backgroundColor: 'var(--tfd-surface-100)',
-                              color: 'var(--tfd-surface-700)',
-                            }}
-                          >
-                            {getEntidadeIcon(log.entidade_alterada)}{' '}
-                            {log.entidade_alterada}
-                          </span>
-                        </td>
+                      {/* Entidade */}
+                      <td className="px-4 py-3.5">
+                        <span
+                          className="tfd-tag tfd-tag--rounded"
+                          style={{ backgroundColor: 'var(--tfd-surface-100)', color: 'var(--tfd-surface-700)' }}
+                        >
+                          {getEntidadeIcon(log.entidade_alterada)}{' '}
+                          {log.entidade_alterada}
+                        </span>
+                      </td>
 
-                        {/* Módulo */}
-                        <td className="hidden md:table-cell">
-                          <span
-                            className="tfd-tag tfd-tag--rounded"
-                            style={{
-                              backgroundColor: moduloStyle.bg,
-                              color: moduloStyle.color,
-                            }}
-                          >
-                            {log.modulo}
-                          </span>
-                        </td>
+                      {/* Módulo */}
+                      <td className="px-4 py-3.5 hidden md:table-cell">
+                        <span
+                          className="tfd-tag tfd-tag--rounded"
+                          style={{ backgroundColor: moduloStyle.bg, color: moduloStyle.color }}
+                        >
+                          {log.modulo}
+                        </span>
+                      </td>
 
-                        {/* Descrição */}
-                        <td className="hidden lg:table-cell">
-                          <p
-                            className="text-sm max-w-[280px] truncate"
-                            style={{ color: 'var(--tfd-text-secondary)' }}
-                            title={log.descricao}
-                          >
-                            {getResumoTabela(log)}
-                          </p>
-                        </td>
+                      {/* Descrição */}
+                      <td className="px-4 py-3.5 hidden lg:table-cell max-w-[320px]" style={{ color: 'var(--tfd-text-secondary)' }}>
+                        <p className="truncate" title={log.descricao}>
+                          {getResumoTabela(log)}
+                        </p>
+                      </td>
 
-                        {/* Data/Hora */}
-                        <td className="whitespace-nowrap">
-                          <span
-                            className="text-sm"
-                            style={{ color: 'var(--tfd-text-secondary)' }}
-                          >
-                            {formatDateTimeShort(log.created_at)}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
+                      {/* Data/Hora */}
+                      <td className="px-4 py-3.5 text-right whitespace-nowrap" style={{ color: 'var(--tfd-text-secondary)', fontSize: 12 }}>
+                        {formatDateTimeShort(log.created_at)}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
 
-        {!loading && table.totalPages > 1 && (
-          <div className="px-4 py-3" style={{ borderTop: '1px solid var(--tfd-surface-border)' }}>
-            <Pagination
-              total={filtered.length}
-              pageSize={20}
-              page={table.page}
-              onPageChange={table.setPage}
-            />
-          </div>
+        {!loading && filtered.length > 0 && (
+          <Pagination
+            total={filtered.length}
+            pageSize={table.pageSize}
+            page={table.page}
+            onPageChange={table.setPage}
+            onPageSizeChange={table.setPageSize}
+            recordLabel="eventos"
+          />
         )}
       </div>
 
       <LogDrawer log={selectedLog} onClose={() => setSelectedLog(null)} />
     </>
+  );
+}
+
+/* -------------------------------------------------- */
+/*  Helpers                                            */
+/* -------------------------------------------------- */
+
+function Th({
+  children,
+  align = 'left',
+  className = '',
+}: {
+  children: React.ReactNode;
+  align?: 'left' | 'right' | 'center';
+  className?: string;
+}) {
+  const cls = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
+  return (
+    <th
+      className={`px-4 py-3 font-semibold ${cls} ${className}`}
+      style={{ color: '#64748B', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}
+    >
+      {children}
+    </th>
   );
 }
