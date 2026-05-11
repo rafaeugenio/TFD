@@ -20,6 +20,8 @@ import {
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import StatsRow from '@/shared/components/stats-row/StatsRow';
+import Pagination from '@/shared/components/pagination/Pagination';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import { useToast } from '@/shared/components/toast/Toast';
@@ -314,65 +316,54 @@ function RegionaisSaudePage() {
         }
       />
 
-      {/* ========== Summary Cards ========== */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}
-          >
-            <MapPin size={20} />
-          </div>
-          <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Total de Regionais</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.total}</p>
-          </div>
+      <StatsRow
+        stats={[
+          { label: 'Total de Regionais', value: counts.total },
+          { label: 'Regionais Ativas', value: counts.ativas },
+        ]}
+      />
+
+      {/* ========== Toolbar (estilo v2) ========== */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div
+          className="flex items-center gap-2 px-3"
+          style={{
+            background: 'white', border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8, height: 36, minWidth: 280,
+          }}
+        >
+          <Search size={14} style={{ color: '#9CA3AF' }} />
+          <input
+            type="text"
+            placeholder="Buscar por nome, código ou sede..."
+            value={table.search}
+            onChange={(e) => table.setSearch(e.target.value)}
+            className="flex-1 bg-transparent outline-none text-[13px]"
+          />
         </div>
 
-        <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: 'var(--tfd-status-success-bg)', color: 'var(--tfd-status-success)' }}
-          >
-            <CheckCircle2 size={20} />
-          </div>
-          <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Regionais Ativas</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-success)' }}>{counts.ativas}</p>
-          </div>
+        <div
+          className="flex items-center gap-2 px-3"
+          style={{
+            background: 'white', border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8, height: 36,
+          }}
+        >
+          <Calendar size={14} style={{ color: '#9CA3AF', flexShrink: 0 }} />
+          <input type="date" className="bg-transparent outline-none text-[13px]"
+            value={table.dateStart} onChange={(e) => table.setDateStart(e.target.value)} title="Data início" />
+          <span className="text-[12px]" style={{ color: '#94A3B8' }}>até</span>
+          <input type="date" className="bg-transparent outline-none text-[13px]"
+            value={table.dateEnd} onChange={(e) => table.setDateEnd(e.target.value)} title="Data fim" />
         </div>
-      </div>
 
-      {/* ========== Toolbar ========== */}
-      <div className="tfd-toolbar mb-4 flex-wrap">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="relative flex-1 max-w-sm">
-            <Search size={16} className="tfd-input-leading-icon" style={{ color: 'var(--tfd-text-muted)' }} />
-            <input
-              type="text"
-              className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
-              placeholder="Buscar por nome, código ou sede..."
-              value={table.search}
-              onChange={(e) => table.setSearch(e.target.value)}
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
-            <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
-              value={table.dateStart} onChange={(e) => table.setDateStart(e.target.value)} title="Data início" />
-            <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>até</span>
-            <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
-              value={table.dateEnd} onChange={(e) => table.setDateEnd(e.target.value)} title="Data fim" />
-          </div>
-        </div>
-        <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
+        <p className="text-[13px] ml-auto" style={{ color: '#94A3B8' }}>
           {table.filtered.length} resultado{table.filtered.length !== 1 && 's'}
         </p>
       </div>
 
-      {/* ========== Table ========== */}
-      <div className="tfd-card p-0 overflow-hidden">
+      {/* ========== Table (estilo v2) ========== */}
+      <div className="tfd-table-wrap">
         <div className="overflow-x-auto">
           <table className="tfd-table">
             <thead>
@@ -467,8 +458,9 @@ function RegionaisSaudePage() {
                           <Pencil size={15} />
                         </button>
                         <button
-                          className="tfd-btn tfd-btn-danger tfd-btn--icon-only"
+                          className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
                           title="Desativar"
+                          style={{ color: '#DC2626' }}
                           onClick={(e) => { e.stopPropagation(); handleOpenDeactivate(reg as Record<string, unknown>); }}
                         >
                           <Power size={15} />
@@ -483,29 +475,13 @@ function RegionaisSaudePage() {
         </div>
 
         {table.totalPages > 1 && (
-          <div
-            className="flex items-center justify-between px-4 py-3"
-            style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
-          >
-            <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-              Página {table.page} de {table.totalPages}
-            </p>
-            <div className="flex items-center gap-1">
-              <button
-                className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                disabled={table.page <= 1}
-                onClick={() => table.setPage(Math.max(1, table.page - 1))}
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <button
-                className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                disabled={table.page >= table.totalPages}
-                onClick={() => table.setPage(Math.min(table.totalPages, table.page + 1))}
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
+          <div className="px-4 py-3" style={{ borderTop: '1px solid var(--tfd-surface-border)' }}>
+            <Pagination
+              total={table.filtered.length}
+              pageSize={20}
+              page={table.page}
+              onPageChange={table.setPage}
+            />
           </div>
         )}
       </div>

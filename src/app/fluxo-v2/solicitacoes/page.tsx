@@ -21,8 +21,8 @@ import {
   type StatusGlobalV2,
   type MotivoEncerramento,
 } from '@/core/mocks/fluxo-v2-v3-seed';
-import Pagination from '../_components/Pagination';
-import StatsRow from '../_components/StatsRow';
+import Pagination from '@/shared/components/pagination/Pagination';
+import StatsRow from '@/shared/components/stats-row/StatsRow';
 import {
   contarPorStatus,
   contarEncerradasNoMes,
@@ -30,7 +30,7 @@ import {
 } from '../_utils/stats';
 import NewSolicitacaoDrawer from './_NewSolicitacaoDrawer';
 import PageHeader from '@/shared/components/page-header/PageHeader';
-import SortTh, { compareValues, nextSort, type SortDir } from '../_components/SortTh';
+import SortTh, { compareValues, nextSort, type SortDir } from '@/shared/components/sort-th/SortTh';
 
 const PAGE_SIZE = 10;
 

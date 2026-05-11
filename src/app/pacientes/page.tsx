@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import StatsRow from '@/shared/components/stats-row/StatsRow';
+import Pagination from '@/shared/components/pagination/Pagination';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import SortableHeader from '@/shared/components/table/SortableHeader';
@@ -703,83 +705,55 @@ function PacientesPage() {
         }
       />
 
-      {/* ========== Summary Cards ========== */}
-      <div className="grid grid-cols-2 xl:grid-cols-3 gap-4 mb-6">
-        <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}
-          >
-            <Users size={20} />
-          </div>
-          <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Total de Pacientes</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.total}</p>
-          </div>
+      <StatsRow
+        stats={[
+          { label: 'Total de Pacientes', value: counts.total },
+          { label: 'Pacientes Ativos', value: counts.ativos },
+          { label: 'Com Processo Ativo', value: '\u2014' },
+        ]}
+      />
+
+      {/* ========== Toolbar (estilo v2) ========== */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div
+          className="flex items-center gap-2 px-3"
+          style={{
+            background: 'white', border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8, height: 36, minWidth: 280,
+          }}
+        >
+          <Search size={14} style={{ color: '#9CA3AF' }} />
+          <input
+            type="text"
+            placeholder="Buscar por nome, CPF ou CNS..."
+            value={table.search}
+            onChange={(e) => table.setSearch(e.target.value)}
+            className="flex-1 bg-transparent outline-none text-[13px]"
+          />
         </div>
 
-        <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: 'var(--tfd-status-success-bg)', color: 'var(--tfd-status-success)' }}
-          >
-            <UserCheck size={20} />
-          </div>
-          <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Pacientes Ativos</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-success)' }}>{counts.ativos}</p>
-          </div>
+        <div
+          className="flex items-center gap-2 px-3"
+          style={{
+            background: 'white', border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8, height: 36,
+          }}
+        >
+          <Calendar size={14} style={{ color: '#9CA3AF', flexShrink: 0 }} />
+          <input type="date" className="bg-transparent outline-none text-[13px]"
+            value={table.dateStart} onChange={(e) => table.setDateStart(e.target.value)} title="Data início" />
+          <span className="text-[12px]" style={{ color: '#94A3B8' }}>até</span>
+          <input type="date" className="bg-transparent outline-none text-[13px]"
+            value={table.dateEnd} onChange={(e) => table.setDateEnd(e.target.value)} title="Data fim" />
         </div>
 
-        <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: '#FFFBEB', color: '#F59E0B' }}
-          >
-            <FileText size={20} />
-          </div>
-          <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Com Processo Ativo</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{'\u2014'}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* ========== Toolbar ========== */}
-      <div className="tfd-toolbar mb-4 flex-wrap">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="relative flex-1 max-w-sm">
-            <Search
-              size={16}
-              className="tfd-input-leading-icon"
-              style={{ color: 'var(--tfd-text-muted)' }}
-            />
-            <input
-              type="text"
-              className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
-              placeholder="Buscar por nome, CPF ou CNS..."
-              value={table.search}
-              onChange={(e) => table.setSearch(e.target.value)}
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
-            <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
-              value={table.dateStart} onChange={(e) => table.setDateStart(e.target.value)} title="Data inicio" />
-            <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>ate</span>
-            <input type="date" className="tfd-input tfd-input--sm" style={{ width: 'auto' }}
-              value={table.dateEnd} onChange={(e) => table.setDateEnd(e.target.value)} title="Data fim" />
-          </div>
-        </div>
-
-        <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
+        <p className="text-[13px] ml-auto" style={{ color: '#94A3B8' }}>
           {table.filtered.length} resultado{table.filtered.length !== 1 && 's'}
         </p>
       </div>
 
-      {/* ========== Table ========== */}
-      <div className="tfd-card p-0 overflow-hidden">
+      {/* ========== Table (estilo v2) ========== */}
+      <div className="tfd-table-wrap">
         <div className="overflow-x-auto">
           <table className="tfd-table">
             <thead>
@@ -879,8 +853,9 @@ function PacientesPage() {
                           <Pencil size={15} />
                         </button>
                         <button
-                          className="tfd-btn tfd-btn-danger tfd-btn--icon-only"
+                          className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
                           title="Excluir"
+                          style={{ color: '#DC2626' }}
                           onClick={(e) => { e.stopPropagation(); handleOpenDelete(pac); }}
                         >
                           <Trash2 size={15} />
@@ -894,31 +869,14 @@ function PacientesPage() {
           </table>
         </div>
 
-        {/* Pagination */}
         {table.totalPages > 1 && (
-          <div
-            className="flex items-center justify-between px-4 py-3"
-            style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
-          >
-            <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-              Pagina {table.page} de {table.totalPages}
-            </p>
-            <div className="flex items-center gap-1">
-              <button
-                className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                disabled={table.page <= 1}
-                onClick={() => table.setPage(table.page - 1)}
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <button
-                className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                disabled={table.page >= table.totalPages}
-                onClick={() => table.setPage(table.page + 1)}
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
+          <div className="px-4 py-3" style={{ borderTop: '1px solid var(--tfd-surface-border)' }}>
+            <Pagination
+              total={table.filtered.length}
+              pageSize={10}
+              page={table.page}
+              onPageChange={table.setPage}
+            />
           </div>
         )}
       </div>

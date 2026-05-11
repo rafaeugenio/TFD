@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import StatsRow from '@/shared/components/stats-row/StatsRow';
+import Pagination from '@/shared/components/pagination/Pagination';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import { useToast } from '@/shared/components/toast/Toast';
@@ -225,95 +227,55 @@ function MedicosPage() {
         }
       />
 
-      {/* ========== Summary Cards ========== */}
-      <div className="grid grid-cols-2 xl:grid-cols-3 gap-4 mb-6">
-        <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}
-          >
-            <Stethoscope size={20} />
-          </div>
-          <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Total de Medicos</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.total}</p>
-          </div>
-        </div>
+      <StatsRow
+        stats={[
+          { label: 'Total de Médicos', value: counts.total },
+          { label: 'Médicos Ativos', value: counts.ativos },
+          { label: 'Especialidades', value: counts.especialidades },
+        ]}
+      />
 
-        <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: 'var(--tfd-status-success-bg)', color: 'var(--tfd-status-success)' }}
-          >
-            <CheckCircle2 size={20} />
-          </div>
-          <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Medicos Ativos</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-status-success)' }}>{counts.ativos}</p>
-          </div>
-        </div>
-
-        <div className="tfd-card flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-            style={{ backgroundColor: 'var(--tfd-status-info-bg)', color: 'var(--tfd-status-info)' }}
-          >
-            <Award size={20} />
-          </div>
-          <div>
-            <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>Especialidades</p>
-            <p className="text-xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{counts.especialidades}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* ========== Toolbar ========== */}
-      <div className="tfd-toolbar mb-4 flex-wrap gap-3">
-        {/* Search */}
-        <div className="relative flex-1 min-w-[220px] max-w-sm">
-          <Search
-            size={16}
-            className="tfd-input-leading-icon"
-            style={{ color: 'var(--tfd-text-muted)' }}
-          />
+      {/* ========== Toolbar (estilo v2) ========== */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div
+          className="flex items-center gap-2 px-3"
+          style={{
+            background: 'white', border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8, height: 36, minWidth: 280,
+          }}
+        >
+          <Search size={14} style={{ color: '#9CA3AF' }} />
           <input
             type="text"
-            className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
             placeholder="Buscar por nome ou CRM..."
             value={table.search}
             onChange={(e) => table.setSearch(e.target.value)}
+            className="flex-1 bg-transparent outline-none text-[13px]"
           />
         </div>
 
-        {/* Date range */}
-        <div className="flex items-center gap-2">
-          <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
-          <input
-            type="date"
-            className="tfd-input tfd-input--sm"
-            style={{ width: 'auto' }}
-            value={table.dateStart}
-            onChange={(e) => table.setDateStart(e.target.value)}
-            title="Data início"
-          />
-          <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>até</span>
-          <input
-            type="date"
-            className="tfd-input tfd-input--sm"
-            style={{ width: 'auto' }}
-            value={table.dateEnd}
-            onChange={(e) => table.setDateEnd(e.target.value)}
-            title="Data fim"
-          />
+        <div
+          className="flex items-center gap-2 px-3"
+          style={{
+            background: 'white', border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8, height: 36,
+          }}
+        >
+          <Calendar size={14} style={{ color: '#9CA3AF', flexShrink: 0 }} />
+          <input type="date" className="bg-transparent outline-none text-[13px]"
+            value={table.dateStart} onChange={(e) => table.setDateStart(e.target.value)} title="Data início" />
+          <span className="text-[12px]" style={{ color: '#94A3B8' }}>até</span>
+          <input type="date" className="bg-transparent outline-none text-[13px]"
+            value={table.dateEnd} onChange={(e) => table.setDateEnd(e.target.value)} title="Data fim" />
         </div>
 
-        <p className="text-sm ml-auto" style={{ color: 'var(--tfd-text-muted)' }}>
+        <p className="text-[13px] ml-auto" style={{ color: '#94A3B8' }}>
           {allFiltered.length} resultado{allFiltered.length !== 1 && 's'}
         </p>
       </div>
 
-      {/* ========== Table ========== */}
-      <div className="tfd-card p-0 overflow-hidden">
+      {/* ========== Table (estilo v2) ========== */}
+      <div className="tfd-table-wrap">
         <div className="overflow-x-auto">
           <table className="tfd-table">
             <thead>
@@ -421,31 +383,14 @@ function MedicosPage() {
           </table>
         </div>
 
-        {/* Pagination */}
         {table.totalPages > 1 && (
-          <div
-            className="flex items-center justify-between px-4 py-3"
-            style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
-          >
-            <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-              Pagina {table.page} de {table.totalPages}
-            </p>
-            <div className="flex items-center gap-1">
-              <button
-                className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                disabled={table.page <= 1}
-                onClick={() => table.setPage(Math.max(1, table.page - 1))}
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <button
-                className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                disabled={table.page >= table.totalPages}
-                onClick={() => table.setPage(Math.min(table.totalPages, table.page + 1))}
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
+          <div className="px-4 py-3" style={{ borderTop: '1px solid var(--tfd-surface-border)' }}>
+            <Pagination
+              total={allFiltered.length}
+              pageSize={10}
+              page={table.page}
+              onPageChange={table.setPage}
+            />
           </div>
         )}
       </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import SortTh, { compareValues, nextSort, type SortDir } from '@/app/fluxo-v2/_components/SortTh';
+import SortTh, { compareValues, nextSort, type SortDir } from '@/shared/components/sort-th/SortTh';
 import {
   Palette,
   Type,
@@ -1776,7 +1776,7 @@ function DataSection() {
 
       <SubSection title="Tabela com ordenação (padrão Fluxo v2)" hint="Use SortTh nas colunas ordenáveis. Toggle: null → asc → desc → null.">
         <SortableTableDemo />
-        <CodeBlock code={`import SortTh, { compareValues, nextSort, type SortDir } from '@/app/fluxo-v2/_components/SortTh';
+        <CodeBlock code={`import SortTh, { compareValues, nextSort, type SortDir } from '@/shared/components/sort-th/SortTh';
 
 const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'data', dir: 'desc' });
 const toggleSort = (field: string) => setSort((prev) => nextSort(field, prev));
@@ -1813,7 +1813,7 @@ const ordenadas = useMemo(() => {
               <TokenRow token="tbody td"     value="13px / weight 500 / regular case" description="cor: --tfd-text-primary · padding 14px 16px" />
               <TokenRow token="Borda linha"  value="1px solid --tfd-surface-border" description="border-bottom em cada tr (exceto última)" />
               <TokenRow token="Hover linha"  value="background #F8FAFC + transition 200ms" description="Apenas em tabelas interativas" />
-              <TokenRow token="SortTh"       value="cursor-pointer + ícone ArrowUpDown/Up/Down" description="Use para colunas ordenáveis (fluxo-v2/_components/SortTh)" />
+              <TokenRow token="SortTh"       value="cursor-pointer + ícone ArrowUpDown/Up/Down" description="Use para colunas ordenáveis (shared/components/sort-th/SortTh)" />
             </tbody>
           </table>
         </div>

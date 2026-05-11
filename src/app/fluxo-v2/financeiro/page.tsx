@@ -17,8 +17,8 @@ import { tempoNoSetor } from '../_utils/tempoSetor';
 import { isTramitacaoRecente } from '../_utils/tramitacao';
 import { TramitacaoInfoPopover } from '../_components/TramitacaoBadge';
 import { isLocked, setorAtual, tooltipLocked } from '../_utils/lock';
-import Pagination from '../_components/Pagination';
-import StatsRow from '../_components/StatsRow';
+import Pagination from '@/shared/components/pagination/Pagination';
+import StatsRow from '@/shared/components/stats-row/StatsRow';
 import {
   contarViagensAguardandoEmissao,
   contarViagensProximas7Dias,
@@ -33,7 +33,7 @@ import {
   type SolicitacaoMock,
 } from '@/core/mocks/fluxo-v2-v3-seed';
 import PageHeader from '@/shared/components/page-header/PageHeader';
-import SortTh, { compareValues, nextSort, type SortDir } from '../_components/SortTh';
+import SortTh, { compareValues, nextSort, type SortDir } from '@/shared/components/sort-th/SortTh';
 
 const PAGE_SIZE = 10;
 
