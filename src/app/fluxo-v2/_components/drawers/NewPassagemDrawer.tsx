@@ -10,6 +10,13 @@ import { STATUS_VIAGEM_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
 import { calcularIdade } from '@/shared/utils/idade';
 import { listarRotas, criarRota } from '@/services/rotas-deslocamento.service';
 import type { RotaDeslocamento } from '@/core/models';
+import { createClient } from '@/lib/supabase/client';
+
+interface CompanhiaRow {
+  id: string;
+  nome: string;
+  tipo_modal: string;
+}
 
 const inputStyle: React.CSSProperties = {
   background: 'white',
@@ -50,6 +57,10 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
   // T2.AF — Beneficiário. Valor "p" = paciente; "a:<id>" = acompanhante.
   const [beneficiario, setBeneficiario] = useState<string>('p');
 
+  // Companhia de transporte
+  const [companhias, setCompanhias] = useState<CompanhiaRow[]>([]);
+  const [companhiaId, setCompanhiaId] = useState('');
+
   // Rotas (origem/destino vêm de rotas_deslocamento)
   const [rotas, setRotas] = useState<RotaDeslocamento[]>([]);
   const [rotaId, setRotaId] = useState<string>('');
@@ -72,7 +83,27 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
   useEffect(() => {
     if (!open) return;
     carregarRotas();
+    // Companhias filtradas pelo modal selecionado
+    const supabase = createClient();
+    supabase
+      .from('companhias_transporte')
+      .select('id, nome, tipo_modal')
+      .eq('ativo', true)
+      .order('nome', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn('[NewPassagemDrawer] companhias:', error.message);
+          return;
+        }
+        setCompanhias((data ?? []) as unknown as CompanhiaRow[]);
+      });
   }, [open]);
+
+  // Filtra companhias pelo modal selecionado (aéreo, terrestre, fluvial)
+  const companhiasDoModal = useMemo(
+    () => companhias.filter((c) => c.tipo_modal === modal.toUpperCase() || c.tipo_modal === modal),
+    [companhias, modal],
+  );
 
   function sincronizarOrigemDestino(rid: string) {
     setRotaId(rid);
@@ -129,6 +160,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
             : `a:${editar.beneficiarioId ?? ''}`,
         );
         setRotaId('');
+        setCompanhiaId('');
       } else {
         setOrigem('');
         setDestino('');
@@ -140,11 +172,19 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         setStatus('agendada');
         setBeneficiario('p');
         setRotaId('');
+        setCompanhiaId('');
       }
       setNovaRotaOpen(false);
       setTimeout(() => firstInputRef.current?.focus(), 100);
     }
   }, [open, editar]);
+
+  // Quando carregam as companhias e estamos editando, casa pelo nome
+  useEffect(() => {
+    if (!editar || companhias.length === 0 || companhiaId || !editar.companhia) return;
+    const match = companhias.find((c) => c.nome === editar.companhia);
+    if (match) setCompanhiaId(match.id);
+  }, [editar, companhias, companhiaId]);
 
   // Quando rotas carregam e estamos editando, tenta casar origem/destino com uma rota existente.
   useEffect(() => {
@@ -169,6 +209,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
 
   function handleSalvar() {
     if (!origem || !destino || !data || !valor) return;
+    const companhiaNome = companhias.find((c) => c.id === companhiaId)?.nome;
     if (isEdicao && editar) {
       // T2.AL — Edição não suporta ida_e_volta (cada viagem é independente).
       editarViagem(solicitacaoId, editar.id, {
@@ -179,6 +220,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         tipo: tipo as 'ida' | 'volta' | 'transfer',
         status,
         valor: Number(valor),
+        companhia: companhiaNome,
         ...beneficiarioPayload,
       });
       onClose();
@@ -205,6 +247,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         tipo: tipo as 'ida' | 'volta' | 'transfer',
         status,
         valor: Number(valor),
+        companhia: companhiaNome,
         ...beneficiarioPayload,
       });
     }
@@ -489,6 +532,25 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
           </select>
         </div>
       </div>
+
+      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+        Companhia de transporte
+      </label>
+      <select
+        value={companhiaId}
+        onChange={(e) => setCompanhiaId(e.target.value)}
+        className="w-full px-3 py-2 text-[13px] mb-4"
+        style={inputStyle}
+      >
+        <option value="">
+          {companhiasDoModal.length === 0
+            ? 'Nenhuma companhia cadastrada para este modal'
+            : 'Selecione a companhia...'}
+        </option>
+        {companhiasDoModal.map((c) => (
+          <option key={c.id} value={c.id}>{c.nome}</option>
+        ))}
+      </select>
 
       <p className="text-[11px]" style={{ color: '#9CA3AF' }}>
         Anexo do bilhete poderá ser adicionado após salvar.

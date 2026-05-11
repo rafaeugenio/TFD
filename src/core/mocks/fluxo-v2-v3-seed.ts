@@ -210,6 +210,8 @@ export interface ViagemMock {
   status: StatusViagem;
   valor: number;
   bilheteUrl?: string;
+  /** Nome da companhia de transporte (vinculada à `companhias_transporte`). */
+  companhia?: string;
   /**
    * T2.AF — Indica para quem é a passagem. Quando 'acompanhante',
    * `beneficiarioId` aponta para o id do acompanhante na solicitação.

@@ -93,8 +93,6 @@ const SECOES: SecaoConfig[] = [
     icon: Stethoscope,
     categorias: [
       { key: 'tipo_procedimento', label: 'Tipos de Procedimento', icon: Activity, desc: 'Consulta, cirurgia, exame, tratamento' },
-      { key: 'origem_laudo', label: 'Origens de Laudo', icon: FileText, desc: 'Origem do laudo médico (estadual, municipal)' },
-      { key: 'carater_atendimento', label: 'Caráter de Atendimento', icon: Activity, desc: 'Hospitalar, ambulatorial e outros' },
       { key: 'tipo_documento', label: 'Tipos de Documento', icon: FileText, desc: 'Categorias de documentos aceitos no sistema' },
     ],
   },
@@ -117,7 +115,7 @@ const SECOES: SecaoConfig[] = [
     icon: DollarSign,
     categorias: [
       { key: 'motivo_encerramento', label: 'Motivos de Encerramento', icon: XCircle, desc: 'Tipos de encerramento do processo' },
-      { key: 'comunicado_por', label: 'Comunicado Por', icon: Megaphone, desc: 'Quem comunicou a permanência' },
+      { key: 'tipo_despesa', label: 'Tipos de Despesa', icon: DollarSign, desc: 'Categorias de despesa para adicionais' },
     ],
   },
   {

@@ -469,7 +469,7 @@ export default function RegulacaoTab({ s }: Props) {
                           Tipo
                         </span>
                         <StatusDot tone="neutral">
-                          {TIPO_PROCEDIMENTO_LABEL[confirmada.tipoProcedimento]}
+                          {getTipoProcedimentoLabel(confirmada.tipoProcedimento)}
                         </StatusDot>
                       </div>
                     )}
