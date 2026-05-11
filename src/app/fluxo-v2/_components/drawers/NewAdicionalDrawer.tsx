@@ -6,9 +6,7 @@ import Drawer from '@/shared/components/drawer/Drawer';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import type { AdicionalMock } from '@/core/mocks/fluxo-v2-v3-seed';
-import { listarPorCategoria } from '@/services/tabelas-auxiliares.service';
-
-interface TipoDespesaRow { codigo: string; nome: string }
+import AuxSelectInline from '@/shared/components/aux-select-inline/AuxSelectInline';
 
 const inputStyle: React.CSSProperties = {
   background: 'white',
@@ -35,21 +33,6 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
   const [valor, setValor] = useState('');
   const [anexoNome, setAnexoNome] = useState<string | null>(null);
   const [tipoDespesa, setTipoDespesa] = useState('');
-  const [tiposDespesa, setTiposDespesa] = useState<TipoDespesaRow[]>([]);
-
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    listarPorCategoria('tipo_despesa').then(({ data, error }) => {
-      if (cancelled) return;
-      if (error) {
-        console.warn('[NewAdicionalDrawer] tipo_despesa:', error.message);
-        return;
-      }
-      setTiposDespesa(((data ?? []) as unknown as TipoDespesaRow[]));
-    });
-    return () => { cancelled = true; };
-  }, [open]);
 
   useEffect(() => {
     if (open) {
@@ -141,20 +124,13 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
         Descreva o item: transfer extra, bagagem despachada, corrida de Uber, etc.
       </p>
 
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-        Tipo de despesa
-      </label>
-      <select
+      <AuxSelectInline
+        categoria="tipo_despesa"
+        label="Tipo de despesa"
         value={tipoDespesa}
-        onChange={(e) => setTipoDespesa(e.target.value)}
-        className="w-full px-3 py-2 text-[13px] mb-4"
-        style={inputStyle}
-      >
-        <option value="">Selecione...</option>
-        {tiposDespesa.map((t) => (
-          <option key={t.codigo} value={t.codigo}>{t.nome}</option>
-        ))}
-      </select>
+        onChange={setTipoDespesa}
+        className="mb-4"
+      />
 
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div>

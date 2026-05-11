@@ -18,7 +18,7 @@ import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { listarPacientes } from '@/services/pacientes.service';
 import { listarPorPaciente, criarAcompanhante } from '@/services/acompanhantes.service';
 import { listarUnidadesSaude } from '@/services/unidades-saude.service';
-import { listarPorCategoria } from '@/services/tabelas-auxiliares.service';
+import { listarPorCategoria, criarItemAuxiliar } from '@/services/tabelas-auxiliares.service';
 import { calcularIdade } from '@/shared/utils/idade';
 import { maskCPF } from '@/shared/pipes/formatters';
 
@@ -670,9 +670,21 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
 
         {/* Anexos */}
         <section>
-          <h3 className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Documentos anexos <span className="font-normal normal-case" style={{ color: '#94A3B8' }}>(opcional, múltiplos arquivos)</span>
-          </h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
+              Documentos anexos <span className="font-normal normal-case" style={{ color: '#94A3B8' }}>(opcional, múltiplos arquivos)</span>
+            </h3>
+            <a
+              href="/sistema/configuracoes"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] inline-flex items-center gap-1 hover:underline"
+              style={{ color: 'var(--tfd-blue)' }}
+            >
+              <ExternalLink size={11} />
+              Cadastrar novo tipo
+            </a>
+          </div>
 
           <input
             ref={fileInputRef}

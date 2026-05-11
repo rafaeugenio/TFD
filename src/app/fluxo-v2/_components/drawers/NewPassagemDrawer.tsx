@@ -364,39 +364,47 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
             style={{ background: '#F8FAFC', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
           >
             <p className="text-[12px] font-semibold" style={{ color: '#1A1D2B' }}>Cadastrar nova rota</p>
-            <div className="grid grid-cols-[1fr_70px_1fr_70px] gap-2">
-              <input
-                placeholder="Cidade origem"
-                value={novaRotaOrigemCidade}
-                onChange={(e) => setNovaRotaOrigemCidade(e.target.value)}
-                className="px-3 py-2 text-[13px]"
-                style={inputStyle}
-              />
-              <input
-                placeholder="UF"
-                maxLength={2}
-                value={novaRotaOrigemUf}
-                onChange={(e) => setNovaRotaOrigemUf(e.target.value.toUpperCase())}
-                className="px-3 py-2 text-[13px] text-center font-mono"
-                style={inputStyle}
-              />
-              <input
-                placeholder="Cidade destino"
-                value={novaRotaDestinoCidade}
-                onChange={(e) => setNovaRotaDestinoCidade(e.target.value)}
-                className="px-3 py-2 text-[13px]"
-                style={inputStyle}
-              />
-              <input
-                placeholder="UF"
-                maxLength={2}
-                value={novaRotaDestinoUf}
-                onChange={(e) => setNovaRotaDestinoUf(e.target.value.toUpperCase())}
-                className="px-3 py-2 text-[13px] text-center font-mono"
-                style={inputStyle}
-              />
+            <div>
+              <p className="text-[11px] mb-1" style={{ color: '#94A3B8' }}>Origem</p>
+              <div className="grid grid-cols-[1fr_70px] gap-2">
+                <input
+                  placeholder="Cidade"
+                  value={novaRotaOrigemCidade}
+                  onChange={(e) => setNovaRotaOrigemCidade(e.target.value)}
+                  className="px-3 py-2 text-[13px] min-w-0"
+                  style={inputStyle}
+                />
+                <input
+                  placeholder="UF"
+                  maxLength={2}
+                  value={novaRotaOrigemUf}
+                  onChange={(e) => setNovaRotaOrigemUf(e.target.value.toUpperCase())}
+                  className="px-3 py-2 text-[13px] text-center font-mono min-w-0"
+                  style={inputStyle}
+                />
+              </div>
             </div>
-            <div className="flex items-center gap-2 justify-end">
+            <div>
+              <p className="text-[11px] mb-1" style={{ color: '#94A3B8' }}>Destino</p>
+              <div className="grid grid-cols-[1fr_70px] gap-2">
+                <input
+                  placeholder="Cidade"
+                  value={novaRotaDestinoCidade}
+                  onChange={(e) => setNovaRotaDestinoCidade(e.target.value)}
+                  className="px-3 py-2 text-[13px] min-w-0"
+                  style={inputStyle}
+                />
+                <input
+                  placeholder="UF"
+                  maxLength={2}
+                  value={novaRotaDestinoUf}
+                  onChange={(e) => setNovaRotaDestinoUf(e.target.value.toUpperCase())}
+                  className="px-3 py-2 text-[13px] text-center font-mono min-w-0"
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 justify-end mt-1">
               <button
                 type="button"
                 onClick={() => setNovaRotaOpen(false)}

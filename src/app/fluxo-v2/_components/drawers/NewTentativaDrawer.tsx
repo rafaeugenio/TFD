@@ -13,7 +13,7 @@ import {
 import { agendamentoConfirmado } from '../../_utils/agendamento';
 import { listarUnidadesSaude } from '@/services/unidades-saude.service';
 import { listarPorCategoria } from '@/services/tabelas-auxiliares.service';
-import { useTiposProcedimento } from '@/shared/hooks/useTiposProcedimento';
+import AuxSelectInline from '@/shared/components/aux-select-inline/AuxSelectInline';
 
 interface UnidadeRow {
   id: string;
@@ -68,10 +68,7 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
   const [obs, setObs] = useState('');
   const [forcarSubstituicao, setForcarSubstituicao] = useState(false);
 
-  // Tipo de procedimento (tabela auxiliar)
-  const { tipos: tiposProcedimentoList, loading: tiposProcedimentoLoading } = useTiposProcedimento();
-
-  // Unidades de saúde + canais de comunicação (tabela auxiliar)
+  // Unidades de saúde + canais (canal_comunicacao agora vem do AuxSelectInline)
   const [unidades, setUnidades] = useState<UnidadeRow[]>([]);
   const [loadingUnidades, setLoadingUnidades] = useState(false);
   const [canais, setCanais] = useState<CanalRow[]>([]);
@@ -286,22 +283,12 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
             style={inputStyle}
           />
         </div>
-        <div>
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Meio de contato
-          </label>
-          <select
-            value={meioContato}
-            onChange={(e) => setMeioContato(e.target.value)}
-            className="w-full px-3 py-2 text-[13px]"
-            style={inputStyle}
-          >
-            <option value="">Selecione...</option>
-            {canais.map((c) => (
-              <option key={c.codigo} value={c.codigo}>{c.nome}</option>
-            ))}
-          </select>
-        </div>
+        <AuxSelectInline
+          categoria="canal_comunicacao"
+          label="Meio de contato"
+          value={meioContato}
+          onChange={setMeioContato}
+        />
       </div>
 
       <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
@@ -347,23 +334,14 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
             style={inputStyle}
           />
 
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Tipo de procedimento
-          </label>
-          <select
+          <AuxSelectInline
+            categoria="tipo_procedimento"
+            label="Tipo de procedimento"
             value={tipoProcedimento}
-            onChange={(e) => setTipoProcedimento(e.target.value as TipoProcedimento | '')}
-            className="w-full px-3 py-2 text-[13px] mb-4"
-            style={inputStyle}
-            disabled={tiposProcedimentoLoading}
-          >
-            <option value="">{tiposProcedimentoLoading ? 'Carregando...' : '— não informado —'}</option>
-            {tiposProcedimentoList.map((t) => (
-              <option key={t.codigo} value={t.codigo}>
-                {t.nome}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setTipoProcedimento(v as TipoProcedimento | '')}
+            placeholder="— não informado —"
+            className="mb-4"
+          />
 
           <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
             Observações de chegada

@@ -21,6 +21,7 @@ import {
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import StatsRow from '@/shared/components/stats-row/StatsRow';
 import Pagination from '@/shared/components/pagination/Pagination';
+import ConfirmDialog, { buildDiff, type DiffField } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import { useToast } from '@/shared/components/toast/Toast';
@@ -73,6 +74,11 @@ function RegionaisSaudePage() {
   /* ---- Deactivate confirmation ---- */
   const [deactivateConfirmId, setDeactivateConfirmId] = useState<string | null>(null);
   const [deactivateConfirmName, setDeactivateConfirmName] = useState('');
+
+  /* ---- Confirmação de cadastro/edição ---- */
+  const [editingSnapshot, setEditingSnapshot] = useState<Record<string, string> | null>(null);
+  const [saveConfirm, setSaveConfirm] = useState<{ tone: 'create' | 'edit'; diff: DiffField[] } | null>(null);
+  const [savingRegional, setSavingRegional] = useState(false);
 
   /* ---- Form: Identificação ---- */
   const [codigo, setCodigo] = useState('');
@@ -191,6 +197,19 @@ function RegionaisSaudePage() {
   async function handleOpenEdit(reg: Record<string, unknown>) {
     const id = reg.id as string;
     setEditingId(id);
+    setEditingSnapshot({
+      codigo: (reg.codigo as string) ?? '',
+      nome: (reg.nome as string) ?? '',
+      municipioSede: (reg.municipio_sede as string) ?? '',
+      logradouro: (reg.logradouro as string) ?? '',
+      bairro: (reg.bairro as string) ?? '',
+      municipio: (reg.municipio as string) ?? '',
+      telefone: (reg.telefone as string) ?? '',
+      telefone2: (reg.telefone2 as string) ?? '',
+      email: (reg.email as string) ?? '',
+      email2: (reg.email2 as string) ?? '',
+      regiaoId: (reg.regiao_id as string) ?? '',
+    });
     setCodigo((reg.codigo as string) ?? '');
     setNome((reg.nome as string) ?? '');
     setMunicipioSede((reg.municipio_sede as string) ?? '');
@@ -253,15 +272,66 @@ function RegionaisSaudePage() {
   /*  Submit                                             */
   /* -------------------------------------------------- */
 
+  /** Valida e abre o modal de confirmação. */
+  function handleRequestSubmit() {
+    if (!codigo.trim()) { toast.error('Campo obrigatório', 'Informe o código da regional (ex: URS I).'); return; }
+    if (!nome.trim()) { toast.error('Campo obrigatório', 'Informe o nome da regional.'); return; }
+
+    const enderecoCompleto = [logradouro.trim(), bairro.trim(), municipio.trim()].filter(Boolean).join(', ');
+    const regiaoNomeFromId = (id: string) => regioes.find((r) => r.id === id)?.nome ?? '';
+
+    if (editingId && editingSnapshot) {
+      const before = {
+        codigo: editingSnapshot.codigo,
+        nome: editingSnapshot.nome,
+        municipioSede: editingSnapshot.municipioSede,
+        endereco: [editingSnapshot.logradouro, editingSnapshot.bairro, editingSnapshot.municipio].filter(Boolean).join(', '),
+        telefone: editingSnapshot.telefone ? maskPhone(editingSnapshot.telefone) : '',
+        telefone2: editingSnapshot.telefone2 ? maskPhone(editingSnapshot.telefone2) : '',
+        email: editingSnapshot.email,
+        email2: editingSnapshot.email2,
+        regiao: regiaoNomeFromId(editingSnapshot.regiaoId),
+      };
+      const after = {
+        codigo: codigo.trim().toUpperCase(),
+        nome: nome.trim(),
+        municipioSede: municipioSede.trim(),
+        endereco: enderecoCompleto,
+        telefone: telefone,
+        telefone2: telefone2,
+        email: email.trim(),
+        email2: email2.trim(),
+        regiao: regiaoNomeFromId(regiaoId),
+      };
+      const diff = buildDiff(before, after, [
+        { key: 'codigo', label: 'Código' },
+        { key: 'nome', label: 'Nome' },
+        { key: 'municipioSede', label: 'Município sede' },
+        { key: 'regiao', label: 'Região' },
+        { key: 'endereco', label: 'Endereço' },
+        { key: 'telefone', label: 'Telefone 1' },
+        { key: 'telefone2', label: 'Telefone 2' },
+        { key: 'email', label: 'E-mail' },
+        { key: 'email2', label: 'E-mail 2' },
+      ]);
+      setSaveConfirm({ tone: 'edit', diff });
+    } else {
+      setSaveConfirm({
+        tone: 'create',
+        diff: [
+          { label: 'Código', after: codigo.trim().toUpperCase() },
+          { label: 'Nome', after: nome.trim() },
+          { label: 'Município sede', after: municipioSede.trim() },
+          { label: 'Região', after: regiaoNomeFromId(regiaoId) },
+          { label: 'Endereço', after: enderecoCompleto },
+          { label: 'Telefone', after: telefone },
+          { label: 'E-mail', after: email.trim() },
+        ],
+      });
+    }
+  }
+
   async function handleSubmit() {
-    if (!codigo.trim()) {
-      toast.error('Campo obrigatório', 'Informe o código da regional (ex: URS I).');
-      return;
-    }
-    if (!nome.trim()) {
-      toast.error('Campo obrigatório', 'Informe o nome da regional.');
-      return;
-    }
 
     const cleanTel = telefone.replace(/\D/g, '');
     const cleanTel2 = telefone2.replace(/\D/g, '');

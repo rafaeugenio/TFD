@@ -23,6 +23,7 @@ import {
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import StatsRow from '@/shared/components/stats-row/StatsRow';
 import Pagination from '@/shared/components/pagination/Pagination';
+import ConfirmDialog, { buildDiff, type DiffField } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import SortableHeader from '@/shared/components/table/SortableHeader';
@@ -163,6 +164,11 @@ function PacientesPage() {
   /* ---- Drawer state ---- */
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  /** Snapshot dos campos no momento de abrir o drawer em modo edição — usado para gerar o diff. */
+  const [editingSnapshot, setEditingSnapshot] = useState<Record<string, string> | null>(null);
+  /** Modal de confirmação de cadastro/edição. */
+  const [saveConfirm, setSaveConfirm] = useState<{ tone: 'create' | 'edit'; diff: DiffField[] } | null>(null);
+  const [savingPaciente, setSavingPaciente] = useState(false);
 
   /* ---- Delete confirmation state ---- */
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -346,6 +352,22 @@ function PacientesPage() {
   async function handleOpenEdit(pac: Record<string, unknown>) {
     const id = pac.id as string;
     setEditingId(id);
+    setEditingSnapshot({
+      nome: (pac.nome_completo as string) ?? '',
+      cpf: (pac.cpf as string) ?? '',
+      cns: (pac.cns as string) ?? '',
+      dataNascimento: (pac.data_nascimento as string) ?? '',
+      sexo: (pac.sexo as string) ?? '',
+      telefoneCelular: (pac.telefone_celular as string) ?? '',
+      telefoneFixo: (pac.telefone_fixo as string) ?? '',
+      email: (pac.email as string) ?? '',
+      cep: (pac.cep as string) ?? '',
+      logradouro: (pac.logradouro as string) ?? '',
+      numero: (pac.numero as string) ?? '',
+      bairro: (pac.bairro as string) ?? '',
+      municipio: (pac.municipio as string) ?? '',
+      uf: (pac.uf as string) ?? 'MA',
+    });
     setNome((pac.nome_completo as string) ?? '');
     setCpf(maskCPF((pac.cpf as string) ?? ''));
     setCns(maskCNS((pac.cns as string) ?? ''));
@@ -402,6 +424,84 @@ function PacientesPage() {
   /* -------------------------------------------------- */
   /*  Submit patient                                    */
   /* -------------------------------------------------- */
+
+  /** Valida campos e abre o modal de confirmação. */
+  function handleRequestSubmit() {
+    // Validações essenciais (mesmas do handleSubmitPaciente).
+    if (!nome.trim()) { toast.error('Campo obrigatório', 'Informe o nome completo do paciente.'); return; }
+    if (!cpf.trim()) { toast.error('Campo obrigatório', 'Informe o CPF do paciente.'); return; }
+    if (!validarCpfModulo11(cpf)) { toast.error('CPF inválido', 'O CPF informado não é válido.'); return; }
+    if (!dataNascimento) { toast.error('Campo obrigatório', 'Informe a data de nascimento.'); return; }
+    const dateErr = validarDataNascimento(dataNascimento);
+    if (dateErr) { toast.error('Data inválida', dateErr); return; }
+    if (!sexo) { toast.error('Campo obrigatório', 'Selecione o sexo do paciente.'); return; }
+    if (!telefoneCelular.trim() && !telefoneFixo.trim()) {
+      toast.error('Campo obrigatório', 'Informe ao menos um telefone de contato.'); return;
+    }
+    if (!logradouro.trim()) { toast.error('Campo obrigatório', 'Informe o logradouro do endereço.'); return; }
+    if (!numero.trim()) { toast.error('Campo obrigatório', 'Informe o número do endereço.'); return; }
+    if (!bairro.trim()) { toast.error('Campo obrigatório', 'Informe o bairro do endereço.'); return; }
+    if (!municipio) { toast.error('Campo obrigatório', 'Selecione o município de residência.'); return; }
+    if (cns.replace(/\D/g, '') && !validarCns(cns)) {
+      toast.error('CNS inválido', 'O Cartão SUS informado não é válido.'); return;
+    }
+
+    if (editingId && editingSnapshot) {
+      const before = {
+        nome: editingSnapshot.nome,
+        cpf: editingSnapshot.cpf ? maskCPF(editingSnapshot.cpf) : '',
+        cns: editingSnapshot.cns ? maskCNS(editingSnapshot.cns) : '',
+        sexo: editingSnapshot.sexo,
+        nascimento: editingSnapshot.dataNascimento,
+        telefoneCelular: editingSnapshot.telefoneCelular ? maskPhone(editingSnapshot.telefoneCelular) : '',
+        telefoneFixo: editingSnapshot.telefoneFixo ? maskPhone(editingSnapshot.telefoneFixo) : '',
+        email: editingSnapshot.email,
+        endereco: [editingSnapshot.logradouro, editingSnapshot.numero, editingSnapshot.bairro].filter(Boolean).join(', '),
+        municipio: editingSnapshot.municipio ? `${editingSnapshot.municipio}/${editingSnapshot.uf}` : '',
+        cep: editingSnapshot.cep,
+      };
+      const after = {
+        nome: nome.trim(),
+        cpf: cpf,
+        cns: cns,
+        sexo: sexo,
+        nascimento: dataNascimento,
+        telefoneCelular: telefoneCelular,
+        telefoneFixo: telefoneFixo,
+        email: email.trim(),
+        endereco: [logradouro.trim(), numero.trim(), bairro.trim()].filter(Boolean).join(', '),
+        municipio: municipio ? `${municipio}/${uf}` : '',
+        cep: cep,
+      };
+      const diff = buildDiff(before, after, [
+        { key: 'nome', label: 'Nome' },
+        { key: 'cpf', label: 'CPF' },
+        { key: 'cns', label: 'CNS' },
+        { key: 'sexo', label: 'Sexo' },
+        { key: 'nascimento', label: 'Nascimento' },
+        { key: 'telefoneCelular', label: 'Celular' },
+        { key: 'telefoneFixo', label: 'Telefone fixo' },
+        { key: 'email', label: 'E-mail' },
+        { key: 'endereco', label: 'Endereço' },
+        { key: 'municipio', label: 'Município' },
+        { key: 'cep', label: 'CEP' },
+      ]);
+      setSaveConfirm({ tone: 'edit', diff });
+    } else {
+      setSaveConfirm({
+        tone: 'create',
+        diff: [
+          { label: 'Nome', after: nome.trim() },
+          { label: 'CPF', after: cpf },
+          { label: 'Nascimento', after: dataNascimento },
+          { label: 'Sexo', after: sexo },
+          { label: 'Telefone', after: telefoneCelular || telefoneFixo },
+          { label: 'E-mail', after: email.trim() },
+          { label: 'Município', after: municipio ? `${municipio}/${uf}` : '' },
+        ],
+      });
+    }
+  }
 
   async function handleSubmitPaciente() {
     try {
@@ -869,42 +969,35 @@ function PacientesPage() {
       </div>
 
       {/* ========== Delete Confirmation Modal ========== */}
-      {deleteConfirmId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div
-            className="tfd-card p-6 max-w-md w-full mx-4"
-            style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-                style={{ backgroundColor: 'var(--tfd-status-error-bg)', color: 'var(--tfd-status-error)' }}
-              >
-                <Trash2 size={20} />
-              </div>
-              <h3 className="text-lg font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-                Confirmar exclusao
-              </h3>
-            </div>
-            <p className="text-sm mb-6" style={{ color: 'var(--tfd-text-secondary)' }}>
-              Tem certeza que deseja excluir o paciente{' '}
-              <strong style={{ color: 'var(--tfd-text-primary)' }}>{deleteConfirmName}</strong>?
-              Esta acao nao pode ser desfeita.
-            </p>
-            <div className="flex items-center justify-end gap-2">
-              <button
-                className="tfd-btn tfd-btn-secondary"
-                onClick={() => { setDeleteConfirmId(null); setDeleteConfirmName(''); }}
-              >
-                Cancelar
-              </button>
-              <button className="tfd-btn tfd-btn-danger" onClick={handleConfirmDelete}>
-                Excluir
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!deleteConfirmId}
+        tone="delete"
+        title="Excluir paciente?"
+        subject={deleteConfirmName}
+        description="Esta ação não pode ser desfeita."
+        onClose={() => { setDeleteConfirmId(null); setDeleteConfirmName(''); }}
+        onConfirm={handleConfirmDelete}
+      />
+
+      {/* ========== Save Confirmation Modal ========== */}
+      <ConfirmDialog
+        open={!!saveConfirm}
+        tone={saveConfirm?.tone ?? 'create'}
+        title={editingId ? 'Confirmar alterações no paciente?' : 'Confirmar cadastro de paciente?'}
+        subject={nome.trim() || undefined}
+        diff={saveConfirm?.diff}
+        busy={savingPaciente}
+        onClose={() => setSaveConfirm(null)}
+        onConfirm={async () => {
+          setSavingPaciente(true);
+          try {
+            await handleSubmitPaciente();
+            setSaveConfirm(null);
+          } finally {
+            setSavingPaciente(false);
+          }
+        }}
+      />
 
       {/* ========== Patient Drawer ========== */}
       <Drawer
@@ -918,8 +1011,8 @@ function PacientesPage() {
             <button className="tfd-btn tfd-btn-secondary" onClick={handleCloseDrawer}>
               Cancelar
             </button>
-            <button className="tfd-btn tfd-btn-primary" onClick={handleSubmitPaciente}>
-              {editingId ? 'Salvar Alteracoes' : 'Cadastrar Paciente'}
+            <button className="tfd-btn tfd-btn-primary" onClick={handleRequestSubmit} disabled={savingPaciente}>
+              {editingId ? 'Salvar Alterações' : 'Cadastrar Paciente'}
             </button>
           </>
         }

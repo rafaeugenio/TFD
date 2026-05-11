@@ -18,6 +18,7 @@ import {
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import StatsRow from '@/shared/components/stats-row/StatsRow';
 import Pagination from '@/shared/components/pagination/Pagination';
+import ConfirmDialog, { buildDiff, type DiffField } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import { useToast } from '@/shared/components/toast/Toast';
@@ -56,6 +57,9 @@ function UnidadesSaudePage() {
   /* ---- Drawer state ---- */
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingSnapshot, setEditingSnapshot] = useState<Record<string, string> | null>(null);
+  const [saveConfirm, setSaveConfirm] = useState<{ tone: 'create' | 'edit'; diff: DiffField[] } | null>(null);
+  const [savingUnidade, setSavingUnidade] = useState(false);
 
   /* ---- Deactivate confirmation state ---- */
   const [deactivateConfirmId, setDeactivateConfirmId] = useState<string | null>(null);
@@ -218,6 +222,20 @@ function UnidadesSaudePage() {
   function handleOpenEdit(uni: Record<string, unknown>) {
     const id = uni.id as string;
     setEditingId(id);
+    setEditingSnapshot({
+      nome: (uni.nome as string) ?? '',
+      cnes: (uni.cnes as string) ?? '',
+      tipo: (uni.tipo as string) ?? '',
+      cep: (uni.cep as string) ?? '',
+      logradouro: (uni.logradouro as string) ?? '',
+      numero: (uni.numero as string) ?? '',
+      bairro: (uni.bairro as string) ?? '',
+      municipio: (uni.municipio as string) ?? (uni.cidade as string) ?? '',
+      uf: (uni.uf as string) ?? 'MA',
+      telefone: (uni.telefone as string) ?? '',
+      email: (uni.email as string) ?? '',
+      responsavel: (uni.responsavel as string) ?? '',
+    });
     setNome((uni.nome as string) ?? '');
     setCnes((uni.cnes as string) ?? '');
     setTipo((uni.tipo as string) ?? '');
@@ -231,6 +249,63 @@ function UnidadesSaudePage() {
     setEmail((uni.email as string) ?? '');
     setResponsavel((uni.responsavel as string) ?? '');
     setDrawerOpen(true);
+  }
+
+  /** Valida e abre o modal de confirmação. */
+  function handleRequestSubmit() {
+    if (!nome.trim()) { toast.error('Campo obrigatório', 'Informe o nome da unidade.'); return; }
+    if (cnes && cnes.length !== 7) { toast.error('CNES inválido', 'O CNES deve conter exatamente 7 dígitos.'); return; }
+
+    if (editingId && editingSnapshot) {
+      const before = {
+        nome: editingSnapshot.nome,
+        cnes: editingSnapshot.cnes,
+        tipo: editingSnapshot.tipo,
+        endereco: [editingSnapshot.logradouro, editingSnapshot.numero, editingSnapshot.bairro].filter(Boolean).join(', '),
+        municipio: editingSnapshot.municipio ? `${editingSnapshot.municipio}/${editingSnapshot.uf}` : '',
+        cep: editingSnapshot.cep,
+        telefone: editingSnapshot.telefone ? maskPhone(editingSnapshot.telefone) : '',
+        email: editingSnapshot.email,
+        responsavel: editingSnapshot.responsavel,
+      };
+      const after = {
+        nome: nome.trim(),
+        cnes: cnes,
+        tipo: tipo,
+        endereco: [logradouro.trim(), numero.trim(), bairro.trim()].filter(Boolean).join(', '),
+        municipio: municipio ? `${municipio}/${uf}` : '',
+        cep: cep,
+        telefone: telefone,
+        email: email.trim(),
+        responsavel: responsavel.trim(),
+      };
+      const diff = buildDiff(before, after, [
+        { key: 'nome', label: 'Nome' },
+        { key: 'cnes', label: 'CNES' },
+        { key: 'tipo', label: 'Tipo' },
+        { key: 'endereco', label: 'Endereço' },
+        { key: 'municipio', label: 'Município' },
+        { key: 'cep', label: 'CEP' },
+        { key: 'telefone', label: 'Telefone' },
+        { key: 'email', label: 'E-mail' },
+        { key: 'responsavel', label: 'Responsável' },
+      ]);
+      setSaveConfirm({ tone: 'edit', diff });
+    } else {
+      setSaveConfirm({
+        tone: 'create',
+        diff: [
+          { label: 'Nome', after: nome.trim() },
+          { label: 'CNES', after: cnes },
+          { label: 'Tipo', after: tipo },
+          { label: 'Município', after: municipio ? `${municipio}/${uf}` : '' },
+          { label: 'Endereço', after: [logradouro.trim(), numero.trim(), bairro.trim()].filter(Boolean).join(', ') },
+          { label: 'Telefone', after: telefone },
+          { label: 'E-mail', after: email.trim() },
+          { label: 'Responsável', after: responsavel.trim() },
+        ],
+      });
+    }
   }
 
   function handleOpenDeactivate(uni: Record<string, unknown>) {
@@ -478,42 +553,35 @@ function UnidadesSaudePage() {
       </div>
 
       {/* ========== Delete Confirmation Modal ========== */}
-      {deactivateConfirmId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div
-            className="tfd-card p-6 max-w-md w-full mx-4"
-            style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-                style={{ backgroundColor: 'var(--tfd-status-error-bg)', color: 'var(--tfd-status-error)' }}
-              >
-                <Trash2 size={20} />
-              </div>
-              <h3 className="text-lg font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-                Confirmar exclusao
-              </h3>
-            </div>
-            <p className="text-sm mb-6" style={{ color: 'var(--tfd-text-secondary)' }}>
-              Tem certeza que deseja excluir a unidade{' '}
-              <strong style={{ color: 'var(--tfd-text-primary)' }}>{deactivateConfirmName}</strong>?
-              Esta acao nao pode ser desfeita.
-            </p>
-            <div className="flex items-center justify-end gap-2">
-              <button
-                className="tfd-btn tfd-btn-secondary"
-                onClick={() => { setDeactivateConfirmId(null); setDeactivateConfirmName(''); }}
-              >
-                Cancelar
-              </button>
-              <button className="tfd-btn tfd-btn-danger" onClick={handleConfirmDeactivate}>
-                Excluir
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!deactivateConfirmId}
+        tone="delete"
+        title="Excluir unidade?"
+        subject={deactivateConfirmName}
+        description="Esta ação não pode ser desfeita."
+        onClose={() => { setDeactivateConfirmId(null); setDeactivateConfirmName(''); }}
+        onConfirm={handleConfirmDeactivate}
+      />
+
+      {/* ========== Save Confirmation Modal ========== */}
+      <ConfirmDialog
+        open={!!saveConfirm}
+        tone={saveConfirm?.tone ?? 'create'}
+        title={editingId ? 'Confirmar alterações na unidade?' : 'Confirmar cadastro de unidade?'}
+        subject={nome.trim() || undefined}
+        diff={saveConfirm?.diff}
+        busy={savingUnidade}
+        onClose={() => setSaveConfirm(null)}
+        onConfirm={async () => {
+          setSavingUnidade(true);
+          try {
+            await handleSubmitUnidade();
+            setSaveConfirm(null);
+          } finally {
+            setSavingUnidade(false);
+          }
+        }}
+      />
 
       {/* ========== Unidade Drawer ========== */}
       <Drawer
@@ -527,8 +595,8 @@ function UnidadesSaudePage() {
             <button className="tfd-btn tfd-btn-secondary" onClick={handleCloseDrawer}>
               Cancelar
             </button>
-            <button className="tfd-btn tfd-btn-primary" onClick={handleSubmitUnidade}>
-              {editingId ? 'Salvar Alteracoes' : 'Cadastrar Unidade'}
+            <button className="tfd-btn tfd-btn-primary" onClick={handleRequestSubmit} disabled={savingUnidade}>
+              {editingId ? 'Salvar Alterações' : 'Cadastrar Unidade'}
             </button>
           </>
         }
