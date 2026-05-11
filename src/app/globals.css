@@ -495,34 +495,45 @@ body {
 .tfd-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.875rem;
+  font-size: 0.8125rem; /* 13px — densidade v2 */
+}
+
+.tfd-table thead tr {
+  background: #F8FAFC;
+  border-bottom: 1px solid var(--tfd-surface-border);
 }
 
 .tfd-table thead th {
-  padding: 0.75rem 1rem;
+  padding: 0.625rem 1rem;
   text-align: left;
   font-size: 0.75rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--tfd-text-muted);
-  border-bottom: 1px solid var(--tfd-200);
+  letter-spacing: 0.01em;
+  color: var(--tfd-text-secondary);
 }
 
 .tfd-table tbody td {
-  padding: 0.75rem 1rem;
+  padding: 0.875rem 1rem; /* py-3.5 v2 */
   color: var(--tfd-text-primary);
-  border-bottom: 1px solid var(--tfd-100);
+  border-bottom: 1px solid var(--tfd-surface-border);
   vertical-align: middle;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
 }
 
 .tfd-table tbody tr {
   transition: background var(--tfd-duration) var(--tfd-ease);
 }
 
-.tfd-table tbody tr:hover { background: var(--tfd-100); }
+.tfd-table tbody tr:hover { background: #F8FAFC; }
 .tfd-table tbody tr:last-child td { border-bottom: none; }
+
+/* Container padrão para tabelas (v2 wrapper) */
+.tfd-table-wrap {
+  background: white;
+  border: 1px solid var(--tfd-surface-border);
+  border-radius: var(--tfd-radius-lg);
+  overflow: hidden;
+}
 
 /* ────────────────────────────────────────────────────
    TAG — PrimeOne Tag component (sm radius)
