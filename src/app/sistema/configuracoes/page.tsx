@@ -5,7 +5,6 @@ import {
   Settings,
   Users,
   Building2,
-  MapPin,
   DollarSign,
   Plane,
   Stethoscope,
@@ -14,16 +13,13 @@ import {
   Trash2,
   Activity,
   FileText,
-  CalendarClock,
   XCircle,
   MessageSquare,
   Loader2,
   ChevronRight,
   Package,
-  Navigation,
   Megaphone,
   FileCode2,
-
   Route,
   type LucideIcon,
 } from 'lucide-react';
@@ -86,12 +82,10 @@ const SECOES: SecaoConfig[] = [
     title: 'Clínico',
     icon: Stethoscope,
     categorias: [
-      { key: 'especialidade', label: 'Especialidades Médicas', icon: Stethoscope, desc: 'Especialidades para encaminhamento TFD' },
       { key: 'tipo_procedimento', label: 'Tipos de Procedimento', icon: Activity, desc: 'Consulta, cirurgia, exame, tratamento' },
       { key: 'origem_laudo', label: 'Origens de Laudo', icon: FileText, desc: 'Origem do laudo médico (estadual, municipal)' },
       { key: 'carater_atendimento', label: 'Caráter de Atendimento', icon: Activity, desc: 'Hospitalar, ambulatorial e outros' },
       { key: 'tipo_documento', label: 'Tipos de Documento', icon: FileText, desc: 'Categorias de documentos aceitos no sistema' },
-      { key: 'tipo_unidade', label: 'Tipos de Unidade de Saúde', icon: Building2, desc: 'Tipos oficiais CNES/DATASUS de estabelecimentos de saúde' },
     ],
   },
   {
@@ -102,18 +96,9 @@ const SECOES: SecaoConfig[] = [
     ],
   },
   {
-    title: 'Regulação e Agendamento',
-    icon: Navigation,
-    categorias: [
-      { key: 'origem_agendamento', label: 'Origens de Agendamento', icon: MapPin, desc: 'Como o agendamento foi obtido' },
-      { key: 'destinatario_rota', label: 'Destinatários de Rota', icon: Navigation, desc: 'Instituições de encaminhamento na regulação' },
-    ],
-  },
-  {
     title: 'Transporte',
     icon: Plane,
     categorias: [
-      { key: 'modal_transporte', label: 'Modais de Transporte', icon: Plane, desc: 'Tipos de transporte disponíveis' },
       { key: '_companhias', label: 'Companhias de Transporte', icon: Plane, desc: 'Empresas aéreas, rodoviárias e fluviais' },
     ],
   },
@@ -121,9 +106,7 @@ const SECOES: SecaoConfig[] = [
     title: 'Financeiro e Permanência',
     icon: DollarSign,
     categorias: [
-      { key: 'motivo_permanencia', label: 'Motivos de Permanência', icon: CalendarClock, desc: 'Razões para extensão de estada' },
       { key: 'motivo_encerramento', label: 'Motivos de Encerramento', icon: XCircle, desc: 'Tipos de encerramento do processo' },
-      { key: 'status_ajuda_custo', label: 'Status Ajuda de Custo', icon: DollarSign, desc: 'Status gerenciais para controle financeiro' },
       { key: 'comunicado_por', label: 'Comunicado Por', icon: Megaphone, desc: 'Quem comunicou a permanência' },
     ],
   },
@@ -132,7 +115,6 @@ const SECOES: SecaoConfig[] = [
     icon: Settings,
     categorias: [
       { key: 'canal_comunicacao', label: 'Canais de Comunicação', icon: MessageSquare, desc: 'Canais de notificação ao paciente' },
-      { key: 'regional', label: 'Regionais', icon: Building2, desc: 'Regionais de saúde do estado' },
     ],
   },
 ];
