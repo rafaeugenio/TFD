@@ -164,6 +164,7 @@ export default function FinanceiroTab({ s }: Props) {
                   <th className="text-left px-3 py-2 font-medium" style={{ color: '#475569' }}>Trecho</th>
                   <th className="text-left px-3 py-2 font-medium" style={{ color: '#475569' }}>Data</th>
                   <th className="text-left px-3 py-2 font-medium" style={{ color: '#475569' }}>Modal</th>
+                  <th className="text-left px-3 py-2 font-medium" style={{ color: '#475569' }}>Companhia</th>
                   <th className="text-left px-3 py-2 font-medium" style={{ color: '#475569' }}>Tipo</th>
                   <th className="text-left px-3 py-2 font-medium" style={{ color: '#475569' }}>Status</th>
                   <th className="text-right px-3 py-2 font-medium" style={{ color: '#475569' }}>Valor</th>
@@ -189,6 +190,9 @@ export default function FinanceiroTab({ s }: Props) {
                       </td>
                       <td className="px-3 py-2" style={{ color: '#475569' }}>{v.data}</td>
                       <td className="px-3 py-2 capitalize" style={{ color: '#475569' }}>{v.modal}</td>
+                      <td className="px-3 py-2" style={{ color: v.companhia ? '#1A1D2B' : '#9CA3AF' }}>
+                        {v.companhia ?? '—'}
+                      </td>
                       <td className="px-3 py-2 capitalize" style={{ color: '#475569' }}>{v.tipo}</td>
                       <td className="px-3 py-2"><ViagemStatusBadge status={v.status} /></td>
                       <td className="px-3 py-2 text-right font-mono" style={{ color: '#1A1D2B' }}>{fmtBRL(v.valor)}</td>
