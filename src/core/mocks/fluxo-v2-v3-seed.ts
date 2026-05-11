@@ -259,6 +259,8 @@ export interface AdicionalMock {
   status: StatusAdicional;
   documentoUrl?: string;
   prorrogacaoDias?: number; // for ajuda_extra (prorrogação)
+  /** Código do tipo de despesa vindo da tabela auxiliar `tipo_despesa`. */
+  tipoDespesa?: string;
 }
 
 export type MotivoEncerramento =

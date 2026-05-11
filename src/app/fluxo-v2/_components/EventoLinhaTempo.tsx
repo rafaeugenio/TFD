@@ -2,7 +2,7 @@
 
 import {
   FilePlus2, FileHeart, Stethoscope, ClipboardCheck, PhoneCall,
-  CalendarCheck, ShieldCheck, Plane, Wallet, Receipt, LogOut,
+  CalendarCheck, ShieldCheck, Plane, Wallet, Receipt, Archive,
   CheckCircle2, XCircle, ArrowRight, Undo2,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -61,7 +61,7 @@ const VISUAL: Record<TipoEvento, VisualConfig> = {
   envio_financeiro:          { categoria: 'tramitacao',  Icon: ArrowRight,   rotulo: 'Enviada ao Financeiro' },
   devolucao_regulacao:       { categoria: 'tramitacao',  Icon: Undo2,        rotulo: 'Devolvida do Financeiro' },
   devolucao_dados_basicos:   { categoria: 'tramitacao',  Icon: Undo2,        rotulo: 'Devolvida aos Dados Básicos' },
-  encerramento:              { categoria: 'decisao_neg', Icon: LogOut,       rotulo: 'Encerramento' },
+  encerramento:              { categoria: 'decisao_neg', Icon: Archive,       rotulo: 'Encerramento' },
 };
 
 export default function EventoLinhaTempo({

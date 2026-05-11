@@ -1,11 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
+import Autocomplete, { type AutocompleteOption } from '@/shared/components/autocomplete/Autocomplete';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import { templatesParecer, aplicarPlaceholders } from '../../_data/templates-parecer';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
+import { buscarCid10 } from '@/services/cid10.service';
+import { buscarCid11 } from '@/services/cid11.service';
 import type { DecisaoParecer, ParecerMock, TipoParecer } from '@/core/mocks/fluxo-v2-v3-seed';
 import { TIPO_PARECER_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
 
@@ -29,7 +32,6 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
   const { addParecer, editarParecer, getById } = useFluxoV2State();
   const solicitacao = getById(solicitacaoId);
   const isEdicao = !!editar;
-  const firstInputRef = useRef<HTMLInputElement>(null);
 
   const [decisao, setDecisao] = useState<DecisaoParecer>('deferido');
   const [tipo, setTipo] = useState<TipoParecer>('tfd_completo');
@@ -38,7 +40,6 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
   const [versaoCID, setVersaoCID] = useState<'10' | '11'>('10');
   const [obs, setObs] = useState('');
   const [medico, setMedico] = useState('Dr. Ricardo Mello');
-  const [tplOpen, setTplOpen] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -58,26 +59,51 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
         setVersaoCID('10');
         setObs('');
       }
-      setTplOpen(false);
-      setTimeout(() => firstInputRef.current?.focus(), 100);
     }
   }, [open, editar]);
 
-  function aplicarTemplate(tplId: string) {
-    const tpl = templatesParecer.find((t) => t.id === tplId);
-    if (!tpl) return;
+  /**
+   * Template é único para cada combinação de tipo + decisão.
+   * Pegamos o primeiro disponível — se houver mais de um, vence o primeiro
+   * registrado no array. Se não houver, o botão fica desabilitado.
+   */
+  const templateAtual = templatesParecer.find(
+    (t) => t.tipo === tipo && t.decisao === decisao,
+  );
+
+  function aplicarModelo() {
+    if (!templateAtual) return;
     const textoFinal = solicitacao
-      ? aplicarPlaceholders(tpl.texto, solicitacao, tpl.tipo)
-      : tpl.texto;
+      ? aplicarPlaceholders(templateAtual.texto, solicitacao, templateAtual.tipo)
+      : templateAtual.texto;
     setObs(textoFinal);
-    setDecisao(tpl.decisao);
-    setTipo(tpl.tipo);
-    setTplOpen(false);
   }
 
-  // Templates filtrados pela combinação atual de tipo + decisão.
-  const templatesDisponiveis = templatesParecer.filter(
-    (t) => t.tipo === tipo && t.decisao === decisao,
+  /* Search handlers para autocomplete dos CIDs — depende da versão selecionada */
+  const cidSearch = useCallback(
+    async (q: string): Promise<AutocompleteOption[]> => {
+      if (!q.trim()) return [];
+      const fn = versaoCID === '11' ? buscarCid11 : buscarCid10;
+      const { data } = await fn(q);
+      const rows = (data ?? []) as { codigo: string; descricao: string }[];
+      return rows.map((r) => ({
+        value: r.codigo,
+        label: r.codigo,
+        descricao: r.descricao,
+      }));
+    },
+    [versaoCID],
+  );
+
+  const renderCidOption = (item: AutocompleteOption) => (
+    <div className="flex flex-col gap-0.5">
+      <span className="font-mono text-[12px] font-semibold" style={{ color: '#146BFA' }}>
+        {item.value}
+      </span>
+      <span className="text-[12px]" style={{ color: '#475569' }}>
+        {item.descricao as string}
+      </span>
+    </div>
   );
 
   function handleSalvar() {
@@ -172,61 +198,29 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
         ))}
       </select>
 
-      {/* Templates */}
-      <div className="relative mb-4">
+      {/* Template — único botão de ação direta */}
+      <div className="mb-4">
         <button
           type="button"
-          onClick={() => setTplOpen((v) => !v)}
+          onClick={aplicarModelo}
+          disabled={!templateAtual}
           className="inline-flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium transition-colors"
           style={{
             background: 'white',
             border: '1px solid var(--tfd-surface-border)',
             borderRadius: 8,
-            color: '#475569',
+            color: templateAtual ? '#475569' : '#CBD5E1',
+            cursor: templateAtual ? 'pointer' : 'not-allowed',
           }}
+          title={
+            templateAtual
+              ? 'Preencher a observação com o modelo padrão para esta combinação.'
+              : 'Nenhum modelo padrão para esta combinação de tipo e decisão.'
+          }
         >
-          <Sparkles size={13} style={{ color: 'var(--tfd-blue)' }} /> Inserir modelo
+          <Sparkles size={13} style={{ color: templateAtual ? 'var(--tfd-blue)' : '#CBD5E1' }} />
+          Inserir modelo
         </button>
-        {tplOpen && (
-          <>
-            <div className="fixed inset-0 z-30" onClick={() => setTplOpen(false)} />
-            <div
-              className="absolute z-40 mt-1 w-full max-w-[480px] p-1.5"
-              style={{
-                background: 'white',
-                border: '1px solid var(--tfd-surface-border)',
-                borderRadius: 10,
-                boxShadow: '0 12px 32px rgba(15,23,42,0.12)',
-              }}
-            >
-              {templatesDisponiveis.length === 0 ? (
-                <div className="px-3 py-3 text-[12px]" style={{ color: '#9CA3AF' }}>
-                  Nenhum modelo disponível para esta combinação de tipo e decisão.
-                </div>
-              ) : (
-                templatesDisponiveis.map((tpl) => (
-                  <button
-                    key={tpl.id}
-                    type="button"
-                    onClick={() => aplicarTemplate(tpl.id)}
-                    className="w-full text-left px-3 py-2 transition-colors hover:bg-[#F8FAFC]"
-                    style={{ borderRadius: 6 }}
-                  >
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <DecisaoBadge decisao={tpl.decisao} />
-                      <span className="text-[13px] font-semibold" style={{ color: '#1A1D2B' }}>
-                        {tpl.titulo}
-                      </span>
-                    </div>
-                    <p className="text-[11px] line-clamp-2" style={{ color: '#6B7280' }}>
-                      {tpl.texto}
-                    </p>
-                  </button>
-                ))
-              )}
-            </div>
-          </>
-        )}
       </div>
 
       {/* T2.AI — Versão CID (pills) */}
@@ -262,26 +256,33 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
         })}
       </div>
 
-      {/* CIDs */}
+      {/* CIDs — autocomplete puxando da tabela CID-10 ou CID-11 */}
       <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
         CIDs
       </label>
       <div className="grid grid-cols-2 gap-2 mb-4">
-        <input
-          ref={firstInputRef}
-          value={cidPrincipal}
-          onChange={(e) => setCidPrincipal(e.target.value)}
-          placeholder="CID principal"
-          className="px-3 py-2 text-[13px]"
-          style={inputStyle}
-        />
-        <input
-          value={cidSecundario}
-          onChange={(e) => setCidSecundario(e.target.value)}
-          placeholder="CID secundário"
-          className="px-3 py-2 text-[13px]"
-          style={inputStyle}
-        />
+        <div>
+          <Autocomplete
+            placeholder={`CID principal (CID-${versaoCID})`}
+            value={cidPrincipal}
+            onChange={(v) => setCidPrincipal(v)}
+            onSearch={cidSearch}
+            onSelect={(item) => setCidPrincipal(item.value)}
+            renderOption={renderCidOption}
+            size="sm"
+          />
+        </div>
+        <div>
+          <Autocomplete
+            placeholder={`CID secundário (CID-${versaoCID})`}
+            value={cidSecundario}
+            onChange={(v) => setCidSecundario(v)}
+            onSearch={cidSearch}
+            onSelect={(item) => setCidSecundario(item.value)}
+            renderOption={renderCidOption}
+            size="sm"
+          />
+        </div>
       </div>
 
       {/* Observação */}
@@ -309,29 +310,5 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
         style={inputStyle}
       />
     </Drawer>
-  );
-}
-
-function DecisaoBadge({ decisao }: { decisao: DecisaoParecer }) {
-  const map = {
-    deferido: { bg: '#DCFCE7', fg: '#15803D', label: 'Deferido' },
-    indeferido: { bg: '#FEE2E2', fg: '#B91C1C', label: 'Indeferido' },
-  } as const;
-  const c = map[decisao];
-  return (
-    <span
-      style={{
-        background: c.bg,
-        color: c.fg,
-        fontSize: 10,
-        fontWeight: 700,
-        padding: '2px 8px',
-        borderRadius: 999,
-        textTransform: 'uppercase',
-        letterSpacing: '0.04em',
-      }}
-    >
-      {c.label}
-    </span>
   );
 }

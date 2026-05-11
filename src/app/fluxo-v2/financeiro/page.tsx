@@ -139,7 +139,9 @@ export default function FinanceiroListPage() {
   const filaOrdenada = useMemo(() => {
     if (!sort.field || !sort.dir) return fila;
     const totalPrevisto = (s: SolicitacaoMock): number => {
-      const p = s.viagens.reduce((a, v) => a + v.valor, 0);
+      const p = s.viagens
+        .filter((v) => v.status !== 'reembolso' && v.status !== 'cancelada')
+        .reduce((a, v) => a + v.valor, 0);
       const ac = s.ajudasCusto.reduce(
         (a, x) => a + calcularValorAjuda(x.dataInicio, x.dataFim, x.pernoiteRetorno).valor,
         0,
@@ -281,7 +283,9 @@ export default function FinanceiroListPage() {
               </tr>
             )}
             {paginadas.map((s) => {
-              const totalPassagens = s.viagens.reduce((acc, v) => acc + v.valor, 0);
+              const totalPassagens = s.viagens
+                .filter((v) => v.status !== 'reembolso' && v.status !== 'cancelada')
+                .reduce((acc, v) => acc + v.valor, 0);
               const totalAjuda = s.ajudasCusto.reduce(
                 (acc, a) => acc + calcularValorAjuda(a.dataInicio, a.dataFim, a.pernoiteRetorno).valor,
                 0,

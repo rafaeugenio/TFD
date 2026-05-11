@@ -5,12 +5,12 @@ import Drawer from '@/shared/components/drawer/Drawer';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import {
-  TIPO_PROCEDIMENTO_LABEL,
   type AgendamentoMock,
   type CarimboRegulacao,
   type TipoProcedimento,
 } from '@/core/mocks/fluxo-v2-v3-seed';
 import { agendamentoConfirmado } from '../../_utils/agendamento';
+import { useTiposProcedimento } from '@/shared/hooks/useTiposProcedimento';
 
 const inputStyle: React.CSSProperties = {
   background: 'white',
@@ -38,6 +38,7 @@ export default function RegistrarAgendamentoDrawer({
 }: Props) {
   const { setAgendamento, getById } = useFluxoV2State();
   const firstInputRef = useRef<HTMLInputElement>(null);
+  const { tipos: tiposProcedimento, loading: tiposLoading } = useTiposProcedimento();
 
   // T2.AM — campos do agendamento agora vivem na tentativa confirmada.
   const solic = getById(solicitacaoId);
@@ -166,11 +167,12 @@ export default function RegistrarAgendamentoDrawer({
           onChange={(e) => setTipoProcedimento(e.target.value as TipoProcedimento | '')}
           className="w-full px-3 py-2 text-[13px] mb-4"
           style={inputStyle}
+          disabled={tiposLoading}
         >
-          <option value="">— não informado —</option>
-          {(Object.keys(TIPO_PROCEDIMENTO_LABEL) as TipoProcedimento[]).map((t) => (
-            <option key={t} value={t}>
-              {TIPO_PROCEDIMENTO_LABEL[t]}
+          <option value="">{tiposLoading ? 'Carregando...' : '— não informado —'}</option>
+          {tiposProcedimento.map((t) => (
+            <option key={t.codigo} value={t.codigo}>
+              {t.nome}
             </option>
           ))}
         </select>

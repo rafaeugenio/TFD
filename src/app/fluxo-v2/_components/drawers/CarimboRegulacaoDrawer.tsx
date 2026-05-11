@@ -106,22 +106,15 @@ export default function CarimboRegulacaoDrawer({
 
   const editando = !!carimboAtual;
   const isOutros = selecionado === 'OUTROS';
-  const valid = !!selecionado && (!isOutros || unidadeOrgao.trim().length > 0);
+  // Os detalhes do contato vivem agora em Agendamentos & tentativas.
+  const valid = !!selecionado;
 
   function handleSalvar() {
     if (!selecionado) return;
-    if (isOutros && !unidadeOrgao.trim()) return;
-    const outrosInfo: CarimboOutrosInfo | undefined = isOutros
-      ? {
-          unidadeOrgao: unidadeOrgao.trim(),
-          formaContato,
-          observacao: obsOutros.trim() ? obsOutros.trim() : undefined,
-        }
-      : undefined;
     onSalvar(
       selecionado,
       observacao.trim() ? observacao.trim() : undefined,
-      outrosInfo,
+      undefined,
     );
     onClose();
   }
@@ -215,69 +208,18 @@ export default function CarimboRegulacaoDrawer({
         })}
       </div>
 
-      {/* T2.AP — Bloco extra "Outros" */}
       {isOutros && (
         <div
-          className="mb-5 p-4"
+          className="mb-5 p-3 text-[12px]"
           style={{
             background: '#FBFCFE',
             border: '1px solid var(--tfd-surface-border)',
-            borderRadius: 10,
+            borderRadius: 8,
+            color: '#475569',
           }}
         >
-          <p className="text-[11px] font-semibold uppercase tracking-wider mb-3" style={{ color: '#6B7280', letterSpacing: '0.08em' }}>
-            Detalhes do contato
-          </p>
-
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Nome da unidade/órgão <span style={{ color: '#DC2626' }}>*</span>
-          </label>
-          <input
-            type="text"
-            value={unidadeOrgao}
-            onChange={(e) => setUnidadeOrgao(e.target.value)}
-            placeholder="Ex.: SAIS, Hospital Universitário, Secretaria Municipal"
-            className="w-full px-3 py-2 text-[13px] mb-3"
-            style={{
-              background: 'white',
-              border: '1px solid var(--tfd-surface-border)',
-              borderRadius: 8,
-            }}
-          />
-
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Forma de contato
-          </label>
-          <select
-            value={formaContato}
-            onChange={(e) => setFormaContato(e.target.value as CarimboOutrosInfo['formaContato'])}
-            className="w-full px-3 py-2 text-[13px] mb-3"
-            style={{
-              background: 'white',
-              border: '1px solid var(--tfd-surface-border)',
-              borderRadius: 8,
-            }}
-          >
-            {FORMA_OPTIONS.map((f) => (
-              <option key={f} value={f}>{FORMA_CONTATO_LABEL[f]}</option>
-            ))}
-          </select>
-
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Observação <span style={{ color: '#9CA3AF', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(opcional)</span>
-          </label>
-          <textarea
-            value={obsOutros}
-            onChange={(e) => setObsOutros(e.target.value)}
-            rows={3}
-            placeholder="Ex.: contato realizado com a coordenação SAIS no dia 10/04."
-            className="w-full px-3 py-2 text-[13px]"
-            style={{
-              background: 'white',
-              border: '1px solid var(--tfd-surface-border)',
-              borderRadius: 8,
-            }}
-          />
+          Os detalhes da unidade/órgão contactado ficam registrados em{' '}
+          <strong>Agendamentos &amp; tentativas</strong>.
         </div>
       )}
 

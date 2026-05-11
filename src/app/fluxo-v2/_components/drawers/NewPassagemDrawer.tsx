@@ -1,12 +1,15 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Plus, Loader2 } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import type { ModalViagem, StatusViagem, ViagemMock } from '@/core/mocks/fluxo-v2-v3-seed';
 import { STATUS_VIAGEM_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
 import { calcularIdade } from '@/shared/utils/idade';
+import { listarRotas, criarRota } from '@/services/rotas-deslocamento.service';
+import type { RotaDeslocamento } from '@/core/models';
 
 const inputStyle: React.CSSProperties = {
   background: 'white',
@@ -47,6 +50,68 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
   // T2.AF — Beneficiário. Valor "p" = paciente; "a:<id>" = acompanhante.
   const [beneficiario, setBeneficiario] = useState<string>('p');
 
+  // Rotas (origem/destino vêm de rotas_deslocamento)
+  const [rotas, setRotas] = useState<RotaDeslocamento[]>([]);
+  const [rotaId, setRotaId] = useState<string>('');
+  const [loadingRotas, setLoadingRotas] = useState(false);
+  const [novaRotaOpen, setNovaRotaOpen] = useState(false);
+  const [novaRotaOrigemCidade, setNovaRotaOrigemCidade] = useState('');
+  const [novaRotaOrigemUf, setNovaRotaOrigemUf] = useState('MA');
+  const [novaRotaDestinoCidade, setNovaRotaDestinoCidade] = useState('');
+  const [novaRotaDestinoUf, setNovaRotaDestinoUf] = useState('');
+  const [savingRota, setSavingRota] = useState(false);
+
+  const carregarRotas = async () => {
+    setLoadingRotas(true);
+    const { data, error } = await listarRotas({ pageSize: 9999 });
+    if (error) console.warn('[NewPassagemDrawer] rotas:', error.message);
+    setRotas((data ?? []) as unknown as RotaDeslocamento[]);
+    setLoadingRotas(false);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    carregarRotas();
+  }, [open]);
+
+  function sincronizarOrigemDestino(rid: string) {
+    setRotaId(rid);
+    const r = rotas.find((x) => String(x.id) === rid);
+    if (r) {
+      setOrigem(`${r.cidade_origem} - ${r.uf_origem}`);
+      setDestino(`${r.cidade_destino} - ${r.uf_destino}`);
+    } else {
+      setOrigem('');
+      setDestino('');
+    }
+  }
+
+  async function salvarNovaRota() {
+    if (!novaRotaOrigemCidade.trim() || !novaRotaOrigemUf.trim() || !novaRotaDestinoCidade.trim() || !novaRotaDestinoUf.trim()) return;
+    setSavingRota(true);
+    const { data: criada, error } = await criarRota({
+      cidade_origem: novaRotaOrigemCidade.trim(),
+      uf_origem: novaRotaOrigemUf.trim().toUpperCase(),
+      cidade_destino: novaRotaDestinoCidade.trim(),
+      uf_destino: novaRotaDestinoUf.trim().toUpperCase(),
+    });
+    setSavingRota(false);
+    if (error) {
+      console.warn('[NewPassagemDrawer] erro ao criar rota:', error.message);
+      return;
+    }
+    if (criada) {
+      const nova = criada as unknown as RotaDeslocamento;
+      setRotas((prev) => [...prev, nova]);
+      sincronizarOrigemDestino(String(nova.id));
+    }
+    setNovaRotaOpen(false);
+    setNovaRotaOrigemCidade('');
+    setNovaRotaOrigemUf('MA');
+    setNovaRotaDestinoCidade('');
+    setNovaRotaDestinoUf('');
+  }
+
   useEffect(() => {
     if (open) {
       if (editar) {
@@ -63,6 +128,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
             ? 'p'
             : `a:${editar.beneficiarioId ?? ''}`,
         );
+        setRotaId('');
       } else {
         setOrigem('');
         setDestino('');
@@ -73,10 +139,23 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         setValor('');
         setStatus('agendada');
         setBeneficiario('p');
+        setRotaId('');
       }
+      setNovaRotaOpen(false);
       setTimeout(() => firstInputRef.current?.focus(), 100);
     }
   }, [open, editar]);
+
+  // Quando rotas carregam e estamos editando, tenta casar origem/destino com uma rota existente.
+  useEffect(() => {
+    if (!editar || rotas.length === 0 || rotaId) return;
+    const match = rotas.find(
+      (r) =>
+        `${r.cidade_origem} - ${r.uf_origem}` === editar.origem &&
+        `${r.cidade_destino} - ${r.uf_destino}` === editar.destino,
+    );
+    if (match) setRotaId(String(match.id));
+  }, [editar, rotas, rotaId]);
 
   const isIdaEVolta = tipo === 'ida_e_volta';
 
@@ -188,31 +267,100 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <div>
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Origem
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-[12px] font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
+            Rota (origem → destino)
           </label>
-          <input
-            value={origem}
-            onChange={(e) => setOrigem(e.target.value)}
-            placeholder="Cidade - UF"
-            className="w-full px-3 py-2 text-[13px]"
-            style={inputStyle}
-          />
+          {!novaRotaOpen && (
+            <button
+              type="button"
+              onClick={() => setNovaRotaOpen(true)}
+              className="text-[11px] inline-flex items-center gap-1 hover:underline"
+              style={{ color: 'var(--tfd-blue)' }}
+            >
+              <Plus size={11} /> Cadastrar nova rota
+            </button>
+          )}
         </div>
-        <div>
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Destino
-          </label>
-          <input
-            value={destino}
-            onChange={(e) => setDestino(e.target.value)}
-            placeholder="Cidade - UF"
-            className="w-full px-3 py-2 text-[13px]"
-            style={inputStyle}
-          />
-        </div>
+        <select
+          value={rotaId}
+          onChange={(e) => sincronizarOrigemDestino(e.target.value)}
+          disabled={loadingRotas}
+          className="w-full px-3 py-2 text-[13px]"
+          style={inputStyle}
+        >
+          <option value="">
+            {loadingRotas
+              ? 'Carregando rotas...'
+              : rotas.length === 0
+                ? 'Nenhuma rota cadastrada — clique em "Cadastrar nova rota"'
+                : 'Selecione a rota...'}
+          </option>
+          {rotas.map((r) => (
+            <option key={r.id} value={String(r.id)}>
+              {r.cidade_origem} - {r.uf_origem} → {r.cidade_destino} - {r.uf_destino}
+            </option>
+          ))}
+        </select>
+
+        {novaRotaOpen && (
+          <div
+            className="mt-2 p-3 flex flex-col gap-2"
+            style={{ background: '#F8FAFC', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
+          >
+            <p className="text-[12px] font-semibold" style={{ color: '#1A1D2B' }}>Cadastrar nova rota</p>
+            <div className="grid grid-cols-[1fr_70px_1fr_70px] gap-2">
+              <input
+                placeholder="Cidade origem"
+                value={novaRotaOrigemCidade}
+                onChange={(e) => setNovaRotaOrigemCidade(e.target.value)}
+                className="px-3 py-2 text-[13px]"
+                style={inputStyle}
+              />
+              <input
+                placeholder="UF"
+                maxLength={2}
+                value={novaRotaOrigemUf}
+                onChange={(e) => setNovaRotaOrigemUf(e.target.value.toUpperCase())}
+                className="px-3 py-2 text-[13px] text-center font-mono"
+                style={inputStyle}
+              />
+              <input
+                placeholder="Cidade destino"
+                value={novaRotaDestinoCidade}
+                onChange={(e) => setNovaRotaDestinoCidade(e.target.value)}
+                className="px-3 py-2 text-[13px]"
+                style={inputStyle}
+              />
+              <input
+                placeholder="UF"
+                maxLength={2}
+                value={novaRotaDestinoUf}
+                onChange={(e) => setNovaRotaDestinoUf(e.target.value.toUpperCase())}
+                className="px-3 py-2 text-[13px] text-center font-mono"
+                style={inputStyle}
+              />
+            </div>
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setNovaRotaOpen(false)}
+                className="tfd-btn tfd-btn-ghost tfd-btn--sm"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={salvarNovaRota}
+                disabled={savingRota}
+                className="tfd-btn tfd-btn-primary tfd-btn--sm"
+              >
+                {savingRota ? <><Loader2 size={12} className="animate-spin" /> Salvando...</> : <><Plus size={12} /> Adicionar rota</>}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {isIdaEVolta ? (

@@ -1,17 +1,32 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ExternalLink } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import {
   DESFECHO_TENTATIVA_LABEL,
-  TIPO_PROCEDIMENTO_LABEL,
   type DesfechoTentativa,
   type TentativaUnidadeMock,
   type TipoProcedimento,
 } from '@/core/mocks/fluxo-v2-v3-seed';
 import { agendamentoConfirmado } from '../../_utils/agendamento';
+import { listarUnidadesSaude } from '@/services/unidades-saude.service';
+import { listarPorCategoria } from '@/services/tabelas-auxiliares.service';
+import { useTiposProcedimento } from '@/shared/hooks/useTiposProcedimento';
+
+interface UnidadeRow {
+  id: string;
+  nome: string;
+  cnes: string | null;
+  cidade: string;
+  uf: string;
+}
+
+interface CanalRow {
+  codigo: string;
+  nome: string;
+}
 
 const inputStyle: React.CSSProperties = {
   background: 'white',
@@ -41,14 +56,50 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
   const firstInputRef = useRef<HTMLInputElement>(null);
 
   const [unidade, setUnidade] = useState('');
+  const [unidadeId, setUnidadeId] = useState('');
   const [data, setData] = useState('');
   const [desfecho, setDesfecho] = useState<DesfechoTentativa>('pendente');
   const [hora, setHora] = useState('');
   const [tipoProcedimento, setTipoProcedimento] = useState<TipoProcedimento | ''>('');
   const [contatoUnidade, setContatoUnidade] = useState('');
+  const [telefoneContato, setTelefoneContato] = useState('');
+  const [meioContato, setMeioContato] = useState('');
   const [observacoesChegada, setObservacoesChegada] = useState('');
   const [obs, setObs] = useState('');
   const [forcarSubstituicao, setForcarSubstituicao] = useState(false);
+
+  // Tipo de procedimento (tabela auxiliar)
+  const { tipos: tiposProcedimentoList, loading: tiposProcedimentoLoading } = useTiposProcedimento();
+
+  // Unidades de saúde + canais de comunicação (tabela auxiliar)
+  const [unidades, setUnidades] = useState<UnidadeRow[]>([]);
+  const [loadingUnidades, setLoadingUnidades] = useState(false);
+  const [canais, setCanais] = useState<CanalRow[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoadingUnidades(true);
+    listarUnidadesSaude({ pageSize: 9999 }).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) console.warn('[NewTentativaDrawer] unidades:', error.message);
+      setUnidades(((data ?? []) as unknown as UnidadeRow[]).filter((u) => u.nome));
+      setLoadingUnidades(false);
+    });
+    listarPorCategoria('canal_comunicacao').then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) console.warn('[NewTentativaDrawer] canais:', error.message);
+      const seen = new Set<string>();
+      const dedup = ((data ?? []) as unknown as CanalRow[]).filter((c) => {
+        const k = c.nome.toLowerCase();
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      setCanais(dedup);
+    });
+    return () => { cancelled = true; };
+  }, [open]);
 
   const isEdicao = !!editar;
   const solic = getById(solicitacaoId);
@@ -58,21 +109,27 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
     if (!open) return;
     if (editar) {
       setUnidade(editar.unidade);
+      setUnidadeId('');
       // Date input usa só YYYY-MM-DD; aceita ISO datetime cortando.
       setData(editar.data?.slice(0, 10) ?? '');
       setDesfecho(editar.desfecho);
       setHora(editar.hora ?? '');
       setTipoProcedimento(editar.tipoProcedimento ?? '');
       setContatoUnidade(editar.contatoUnidade ?? '');
+      setTelefoneContato(editar.contatoUnidade ?? '');
+      setMeioContato('');
       setObservacoesChegada(editar.observacoesChegada ?? '');
       setObs(editar.observacao ?? '');
     } else {
       setUnidade('');
+      setUnidadeId('');
       setData('');
       setDesfecho('pendente');
       setHora('');
       setTipoProcedimento('');
       setContatoUnidade('');
+      setTelefoneContato('');
+      setMeioContato('');
       setObservacoesChegada('');
       setObs('');
     }
@@ -90,13 +147,23 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
   }, [isConfirmacao, confirmadaAtual, editar]);
 
   const valido =
-    unidade.trim().length > 0 &&
+    (unidadeId.length > 0 || unidade.trim().length > 0) &&
     data.length > 0 &&
     (!isConfirmacao || hora.length > 0) &&
     (!conflitoConfirmacao || forcarSubstituicao);
+  // contatoUnidade não é mais usado diretamente — combinamos telefone + meio acima.
+  void contatoUnidade;
+  void setContatoUnidade;
 
   function handleSalvar() {
     if (!valido) return;
+    // Junta telefone + canal no campo `contatoUnidade` (registra como ele foi contactado)
+    const telTrim = telefoneContato.trim();
+    const meio = meioContato ? (canais.find((c) => c.codigo === meioContato)?.nome ?? meioContato) : '';
+    const contatoCombo = telTrim
+      ? meio ? `${telTrim} (${meio})` : telTrim
+      : meio || undefined;
+
     const payload = {
       unidade: unidade.trim(),
       data,
@@ -104,7 +171,9 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
       observacao: obs.trim() || undefined,
       hora: isConfirmacao ? hora : undefined,
       tipoProcedimento: isConfirmacao ? (tipoProcedimento || undefined) : undefined,
-      contatoUnidade: isConfirmacao ? (contatoUnidade.trim() || undefined) : undefined,
+      // O contato da unidade já foi registrado na tentativa (telefone + meio acima).
+      // No desfecho "confirmado" não pedimos de novo.
+      contatoUnidade: contatoCombo,
       observacoesChegada: isConfirmacao ? (observacoesChegada.trim() || undefined) : undefined,
     };
     if (isEdicao && editar) {
@@ -147,17 +216,49 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
         </>
       }
     >
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-        Unidade contatada
-      </label>
-      <input
-        ref={firstInputRef}
-        value={unidade}
-        onChange={(e) => setUnidade(e.target.value)}
-        placeholder="Ex.: Hospital de Base"
+      <div className="flex items-center justify-between mb-2">
+        <label className="block text-[12px] font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
+          Unidade contatada
+        </label>
+        <a
+          href="/unidades-saude"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[11px] inline-flex items-center gap-1 hover:underline"
+          style={{ color: 'var(--tfd-blue)' }}
+        >
+          <ExternalLink size={11} />
+          Cadastrar nova unidade
+        </a>
+      </div>
+      <select
+        ref={firstInputRef as unknown as React.RefObject<HTMLSelectElement>}
+        value={unidadeId}
+        onChange={(e) => {
+          const id = e.target.value;
+          setUnidadeId(id);
+          const u = unidades.find((x) => x.id === id);
+          setUnidade(u ? `${u.nome}${u.cnes ? ` (CNES ${u.cnes})` : ''}` : '');
+        }}
+        disabled={loadingUnidades}
         className="w-full px-3 py-2 text-[13px] mb-4"
         style={inputStyle}
-      />
+      >
+        <option value="">
+          {loadingUnidades
+            ? 'Carregando unidades...'
+            : unidades.length === 0
+              ? 'Nenhuma unidade cadastrada'
+              : 'Selecione a unidade...'}
+        </option>
+        {unidades.map((u) => (
+          <option key={u.id} value={u.id}>
+            {u.nome}
+            {u.cnes ? ` — CNES ${u.cnes}` : ''}
+            {u.cidade ? ` (${u.cidade}${u.uf ? `/${u.uf}` : ''})` : ''}
+          </option>
+        ))}
+      </select>
 
       <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
         Data da tentativa
@@ -169,6 +270,39 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
         className="w-full px-3 py-2 text-[13px] mb-4"
         style={inputStyle}
       />
+
+      {/* Telefone + meio de contato — registra como a unidade foi contactada */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+            Telefone
+          </label>
+          <input
+            type="tel"
+            value={telefoneContato}
+            onChange={(e) => setTelefoneContato(e.target.value)}
+            placeholder="(00) 0000-0000"
+            className="w-full px-3 py-2 text-[13px] font-mono"
+            style={inputStyle}
+          />
+        </div>
+        <div>
+          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+            Meio de contato
+          </label>
+          <select
+            value={meioContato}
+            onChange={(e) => setMeioContato(e.target.value)}
+            className="w-full px-3 py-2 text-[13px]"
+            style={inputStyle}
+          >
+            <option value="">Selecione...</option>
+            {canais.map((c) => (
+              <option key={c.codigo} value={c.codigo}>{c.nome}</option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
         Desfecho
@@ -221,26 +355,15 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
             onChange={(e) => setTipoProcedimento(e.target.value as TipoProcedimento | '')}
             className="w-full px-3 py-2 text-[13px] mb-4"
             style={inputStyle}
+            disabled={tiposProcedimentoLoading}
           >
-            <option value="">— não informado —</option>
-            {(Object.keys(TIPO_PROCEDIMENTO_LABEL) as TipoProcedimento[]).map((t) => (
-              <option key={t} value={t}>
-                {TIPO_PROCEDIMENTO_LABEL[t]}
+            <option value="">{tiposProcedimentoLoading ? 'Carregando...' : '— não informado —'}</option>
+            {tiposProcedimentoList.map((t) => (
+              <option key={t.codigo} value={t.codigo}>
+                {t.nome}
               </option>
             ))}
           </select>
-
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Contato da unidade
-          </label>
-          <input
-            type="tel"
-            value={contatoUnidade}
-            onChange={(e) => setContatoUnidade(e.target.value)}
-            placeholder="(00) 0000-0000"
-            className="w-full px-3 py-2 text-[13px] font-mono mb-4"
-            style={inputStyle}
-          />
 
           <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
             Observações de chegada

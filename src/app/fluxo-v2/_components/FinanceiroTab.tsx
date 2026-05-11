@@ -56,7 +56,14 @@ export default function FinanceiroTab({ s }: Props) {
   function abrirNovoAdicional() { setAdicionalEditar(undefined); setAdicionalOpen(true); }
   function abrirEditarAdicional(a: AdicionalMock) { setAdicionalEditar(a); setAdicionalOpen(true); }
 
-  const totalPassagens = useMemo(() => s.viagens.reduce((acc, v) => acc + v.valor, 0), [s.viagens]);
+  // Reembolsadas e canceladas saem do total — saíram do plano.
+  const totalPassagens = useMemo(
+    () =>
+      s.viagens
+        .filter((v) => v.status !== 'reembolso' && v.status !== 'cancelada')
+        .reduce((acc, v) => acc + v.valor, 0),
+    [s.viagens],
+  );
   const totalAjuda = useMemo(() => s.ajudasCusto.reduce((acc, a) => acc + calcularValorAjuda(a.dataInicio, a.dataFim, a.pernoiteRetorno).valor, 0), [s.ajudasCusto]);
   const totalAdicionais = useMemo(() => s.adicionais.reduce((acc, a) => acc + a.valor, 0), [s.adicionais]);
   const totalGeral = totalPassagens + totalAjuda + totalAdicionais;

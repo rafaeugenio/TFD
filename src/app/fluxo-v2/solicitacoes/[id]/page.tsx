@@ -4,7 +4,7 @@ import { use, useEffect, useMemo, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
-  ArrowLeft, LogOut, ArrowRight, Phone, Mail, ExternalLink, Paperclip, FileText, FileX,
+  ArrowLeft, Archive, ArrowRight, Phone, Mail, ExternalLink, Paperclip, FileText, FileX,
 } from 'lucide-react';
 import StatusV2Badge from '../../_components/StatusV2Badge';
 import { idadeAnos } from '../../_utils/idade';
@@ -147,7 +147,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
               onClick={() => setEncerrarOpen(true)}
               style={{ marginLeft: 12 }}
             >
-              <LogOut size={14} /> Encerrar solicitação
+              <Archive size={14} /> Encerrar solicitação
             </button>
           )}
         </div>
@@ -296,7 +296,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
             >
-              <LogOut size={16} />
+              <Archive size={16} />
             </div>
             <div>
               <h3 className="text-[15px] font-semibold" style={{ color: '#7F1D1D' }}>Solicitação encerrada</h3>

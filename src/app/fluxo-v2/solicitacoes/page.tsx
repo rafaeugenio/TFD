@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Eye, Pencil, LogOut, Send } from 'lucide-react';
+import { Plus, Search, Eye, Pencil, Archive, Send } from 'lucide-react';
 import { idadeAnos } from '../_utils/idade';
 import StatusV2Badge from '../_components/StatusV2Badge';
 import RowActions from '../_components/RowActions';
@@ -308,7 +308,7 @@ export default function SolicitacoesV2ListPage() {
                           },
                           {
                             key: 'encerrar',
-                            icon: LogOut,
+                            icon: Archive,
                             label: s.status === 'encerrada'
                               ? 'Solicitação já encerrada'
                               : 'Encerrar solicitação',

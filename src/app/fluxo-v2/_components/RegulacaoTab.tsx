@@ -20,7 +20,8 @@ import type {
   SolicitacaoMock,
   TentativaUnidadeMock,
 } from '@/core/mocks/fluxo-v2-v3-seed';
-import { DESFECHO_TENTATIVA_LABEL, TIPO_PROCEDIMENTO_LABEL, FORMA_CONTATO_LABEL, TIPO_PARECER_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
+import { DESFECHO_TENTATIVA_LABEL, FORMA_CONTATO_LABEL, TIPO_PARECER_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
+import { useTiposProcedimento } from '@/shared/hooks/useTiposProcedimento';
 import { descricaoCID } from '../_data/cid-labels';
 
 const CARIMBO_VISUAL: Record<CarimboRegulacao, { label: string; sublabel: string }> = {
@@ -36,6 +37,7 @@ interface Props {
 
 export default function RegulacaoTab({ s }: Props) {
   const { setCarimbo, removerParecer, removerTentativa } = useFluxoV2State();
+  const { getLabel: getTipoProcedimentoLabel } = useTiposProcedimento();
 
   const [parecerOpen, setParecerOpen] = useState(false);
   const [parecerEditar, setParecerEditar] = useState<ParecerMock | undefined>(undefined);
