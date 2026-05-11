@@ -99,11 +99,22 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       });
   }, [open]);
 
-  // Filtra companhias pelo modal selecionado (aéreo, terrestre, fluvial)
-  const companhiasDoModal = useMemo(
-    () => companhias.filter((c) => c.tipo_modal === modal.toUpperCase() || c.tipo_modal === modal),
-    [companhias, modal],
-  );
+  // Lista todas as companhias, ordenadas pelo modal selecionado primeiro
+  const companhiasDoModal = useMemo(() => {
+    const modalUp = modal.toUpperCase();
+    return [...companhias].sort((a, b) => {
+      const aMatch = a.tipo_modal === modalUp ? 0 : 1;
+      const bMatch = b.tipo_modal === modalUp ? 0 : 1;
+      if (aMatch !== bMatch) return aMatch - bMatch;
+      return a.nome.localeCompare(b.nome, 'pt-BR');
+    });
+  }, [companhias, modal]);
+
+  const MODAL_PT: Record<string, string> = {
+    AEREO: 'Aéreo',
+    TERRESTRE: 'Terrestre',
+    FLUVIAL: 'Fluvial',
+  };
 
   function sincronizarOrigemDestino(rid: string) {
     setRotaId(rid);
@@ -544,11 +555,13 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       >
         <option value="">
           {companhiasDoModal.length === 0
-            ? 'Nenhuma companhia cadastrada para este modal'
+            ? 'Nenhuma companhia cadastrada'
             : 'Selecione a companhia...'}
         </option>
         {companhiasDoModal.map((c) => (
-          <option key={c.id} value={c.id}>{c.nome}</option>
+          <option key={c.id} value={c.id}>
+            {c.nome} — {MODAL_PT[c.tipo_modal] ?? c.tipo_modal}
+          </option>
         ))}
       </select>
 

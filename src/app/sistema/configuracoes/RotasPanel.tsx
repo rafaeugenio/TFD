@@ -11,13 +11,13 @@ import {
   Package,
   Power,
   Route,
-  AlertTriangle,
 } from 'lucide-react';
 
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import Pagination from '@/shared/components/pagination/Pagination';
 import SortTh, { type SortDir, nextSort, compareValues } from '@/shared/components/sort-th/SortTh';
+import ConfirmDialog, { buildDiff, type DiffField } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import UfCidadeSelect from '@/shared/components/uf-cidade-select/UfCidadeSelect';
 import { useToast } from '@/shared/components/toast/Toast';
 import {
@@ -57,6 +57,7 @@ export default function RotasPanel() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<RotaDeslocamento | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<RotaDeslocamento | null>(null);
+  const [saveConfirm, setSaveConfirm] = useState<{ tone: 'create' | 'edit'; diff: DiffField[]; payload: Record<string, unknown> } | null>(null);
   const [deactivating, setDeactivating] = useState(false);
 
   /* Filters */
@@ -158,9 +159,11 @@ export default function RotasPanel() {
     setDrawerOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!fCidadeOrigem || !fUfOrigem || !fCidadeDestino || !fUfDestino) return;
-    setSaving(true);
+  const handleRequestSave = () => {
+    if (!fCidadeOrigem || !fUfOrigem || !fCidadeDestino || !fUfDestino) {
+      toast.warning('Campos obrigatórios', 'Preencha origem e destino antes de salvar.');
+      return;
+    }
     const payload = {
       cidade_origem: fCidadeOrigem,
       uf_origem: fUfOrigem,
@@ -175,31 +178,89 @@ export default function RotasPanel() {
       anexo_url: fAnexoUrl || undefined,
     };
 
-    if (editing) {
-      const { error } = await atualizarRota(editing.id, payload);
-      if (error) { toast.error('Erro ao salvar', error.message); setSaving(false); return; }
-      toast.success('Rota atualizada!');
-    } else {
-      const { error } = await criarRota(payload);
-      if (error) { toast.error('Erro ao criar', error.message); setSaving(false); return; }
-      toast.success('Rota cadastrada!');
-    }
+    const fmtDist = (modal: Modal, p: typeof payload) => {
+      if (modal === 'aereo' && p.distancia_milhas) return `${p.distancia_milhas} milhas`;
+      if (modal === 'terrestre' && p.distancia_km) return `${p.distancia_km} km`;
+      if (modal === 'fluvial' && p.distancia_milhas_nauticas) return `${p.distancia_milhas_nauticas} mn`;
+      return '';
+    };
 
-    setSaving(false);
-    setDrawerOpen(false);
-    resetForm();
-    await loadItems();
+    if (editing) {
+      const before = {
+        origem: `${editing.cidade_origem}/${editing.uf_origem}`,
+        destino: `${editing.cidade_destino}/${editing.uf_destino}`,
+        modal: MODAL_LABELS[inferModal(editing)],
+        distancia: fmtDist(inferModal(editing), {
+          distancia_milhas: editing.distancia_milhas,
+          distancia_km: editing.distancia_km,
+          distancia_milhas_nauticas: editing.distancia_milhas_nauticas,
+        } as typeof payload),
+        ativo: editing.ativo,
+      };
+      const after = {
+        origem: `${payload.cidade_origem}/${payload.uf_origem}`,
+        destino: `${payload.cidade_destino}/${payload.uf_destino}`,
+        modal: MODAL_LABELS[fModal],
+        distancia: fmtDist(fModal, payload),
+        ativo: payload.ativo,
+      };
+      const diff = buildDiff(before, after, [
+        { key: 'origem', label: 'Origem' },
+        { key: 'destino', label: 'Destino' },
+        { key: 'modal', label: 'Modal' },
+        { key: 'distancia', label: 'Distância' },
+        { key: 'ativo', label: 'Ativo' },
+      ]);
+      setSaveConfirm({ tone: 'edit', diff, payload });
+    } else {
+      setSaveConfirm({
+        tone: 'create',
+        payload,
+        diff: [
+          { label: 'Origem', after: `${payload.cidade_origem}/${payload.uf_origem}` },
+          { label: 'Destino', after: `${payload.cidade_destino}/${payload.uf_destino}` },
+          { label: 'Modal', after: MODAL_LABELS[fModal] },
+          { label: 'Distância', after: fmtDist(fModal, payload) },
+        ],
+      });
+    }
+  };
+
+  const handleConfirmSave = async () => {
+    if (!saveConfirm) return;
+    setSaving(true);
+    try {
+      const payload = saveConfirm.payload as Parameters<typeof criarRota>[0];
+      if (editing) {
+        const { error } = await atualizarRota(editing.id, payload);
+        if (error) { toast.error('Erro ao salvar', error.message); return; }
+        toast.success('Rota atualizada!', `${payload.cidade_origem}/${payload.uf_origem} → ${payload.cidade_destino}/${payload.uf_destino}`);
+      } else {
+        const { error } = await criarRota(payload);
+        if (error) { toast.error('Erro ao criar', error.message); return; }
+        toast.success('Rota cadastrada!', `${payload.cidade_origem}/${payload.uf_origem} → ${payload.cidade_destino}/${payload.uf_destino}`);
+      }
+      setSaveConfirm(null);
+      setDrawerOpen(false);
+      resetForm();
+      await loadItems();
+    } finally {
+      setSaving(false);
+    }
   };
 
   const confirmDeactivate = async () => {
     if (!deactivateTarget) return;
     setDeactivating(true);
-    const { error } = await desativarRota(deactivateTarget.id);
-    if (error) { toast.error('Erro ao desativar', error.message); setDeactivating(false); return; }
-    toast.success('Rota desativada!');
-    setDeactivating(false);
-    setDeactivateTarget(null);
-    await loadItems();
+    try {
+      const { error } = await desativarRota(deactivateTarget.id);
+      if (error) { toast.error('Erro ao desativar', error.message); return; }
+      toast.success('Rota desativada!', `${deactivateTarget.cidade_origem}/${deactivateTarget.uf_origem} → ${deactivateTarget.cidade_destino}/${deactivateTarget.uf_destino}`);
+      setDeactivateTarget(null);
+      await loadItems();
+    } finally {
+      setDeactivating(false);
+    }
   };
 
   /* Preview do cálculo de procedimentos no drawer */
@@ -435,37 +496,29 @@ export default function RotasPanel() {
       </div>
 
       {/* Modal: Confirmar desativação */}
-      {deactivateTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="tfd-card tfd-card--flat w-full max-w-md" style={{ backgroundColor: 'var(--tfd-surface-card)' }}>
-            <div className="flex items-start gap-3 mb-4">
-              <div className="flex items-center justify-center w-10 h-10 rounded-full shrink-0" style={{ backgroundColor: '#fef2f2' }}>
-                <AlertTriangle size={18} style={{ color: '#dc2626' }} />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold mb-1" style={{ color: 'var(--tfd-text-primary)' }}>
-                  Desativar rota?
-                </h3>
-                <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
-                  A rota{' '}
-                  <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                    {deactivateTarget.cidade_origem}/{deactivateTarget.uf_origem} → {deactivateTarget.cidade_destino}/{deactivateTarget.uf_destino}
-                  </span>{' '}
-                  ficará inativa e não será usada no cálculo automático SIGTAP.
-                </p>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button className="tfd-btn tfd-btn-secondary" onClick={() => setDeactivateTarget(null)} disabled={deactivating}>
-                Cancelar
-              </button>
-              <button className="tfd-btn tfd-btn-danger" onClick={confirmDeactivate} disabled={deactivating}>
-                {deactivating ? <><Loader2 size={14} className="animate-spin" /> Desativando...</> : <><Power size={14} /> Desativar</>}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!deactivateTarget}
+        tone="delete"
+        title="Desativar rota?"
+        subject={deactivateTarget ? `${deactivateTarget.cidade_origem}/${deactivateTarget.uf_origem} → ${deactivateTarget.cidade_destino}/${deactivateTarget.uf_destino}` : undefined}
+        description="A rota ficará inativa e não será usada no cálculo automático SIGTAP."
+        confirmLabel="Desativar"
+        busy={deactivating}
+        onClose={() => setDeactivateTarget(null)}
+        onConfirm={confirmDeactivate}
+      />
+
+      {/* Modal: Confirmar criação / edição */}
+      <ConfirmDialog
+        open={!!saveConfirm}
+        tone={saveConfirm?.tone ?? 'create'}
+        title={editing ? 'Confirmar alterações na rota?' : 'Confirmar cadastro da rota?'}
+        subject={fCidadeOrigem && fCidadeDestino ? `${fCidadeOrigem}/${fUfOrigem} → ${fCidadeDestino}/${fUfDestino}` : undefined}
+        diff={saveConfirm?.diff}
+        busy={saving}
+        onClose={() => setSaveConfirm(null)}
+        onConfirm={handleConfirmSave}
+      />
 
       {/* Drawer: Nova/Editar Rota */}
       <Drawer
@@ -479,7 +532,7 @@ export default function RotasPanel() {
             <button className="tfd-btn tfd-btn-secondary" onClick={() => { setDrawerOpen(false); resetForm(); }}>
               Cancelar
             </button>
-            <button className="tfd-btn tfd-btn-primary" onClick={handleSave} disabled={saving || !fCidadeOrigem || !fUfOrigem || !fCidadeDestino || !fUfDestino}>
+            <button className="tfd-btn tfd-btn-primary" onClick={handleRequestSave} disabled={saving || !fCidadeOrigem || !fUfOrigem || !fCidadeDestino || !fUfDestino}>
               {saving ? <><Loader2 size={14} className="animate-spin" /> Salvando...</> : (editing ? 'Salvar Alterações' : 'Criar Rota')}
             </button>
           </>

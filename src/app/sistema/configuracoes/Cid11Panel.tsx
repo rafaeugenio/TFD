@@ -8,13 +8,13 @@ import {
   Search,
   Package,
   Trash2,
-  AlertTriangle,
 } from 'lucide-react';
 
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import Pagination from '@/shared/components/pagination/Pagination';
 import SortTh, { type SortDir, nextSort } from '@/shared/components/sort-th/SortTh';
+import ConfirmDialog, { buildDiff, type DiffField } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import { useToast } from '@/shared/components/toast/Toast';
 import {
   listarCid11,
@@ -49,6 +49,10 @@ export default function Cid11Panel() {
 
   /* Delete confirmation */
   const [deleteTarget, setDeleteTarget] = useState<Cid11 | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  /* Save confirmation (create / edit) */
+  const [saveConfirm, setSaveConfirm] = useState<{ tone: 'create' | 'edit'; diff: DiffField[] } | null>(null);
 
   /* Debounce da busca (300ms) */
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -94,35 +98,67 @@ export default function Cid11Panel() {
     setDrawerOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!fCodigo || !fDescricao) return;
-    setSaving(true);
-
-    if (editing) {
-      const { error } = await atualizarCid11(editing.id, { codigo: fCodigo, descricao: fDescricao });
-      if (error) { toast.error('Erro ao salvar', error.message); setSaving(false); return; }
-      toast.success('CID atualizado!');
-    } else {
-      const { error } = await criarCid11({ codigo: fCodigo, descricao: fDescricao });
-      if (error) { toast.error('Erro ao criar', error.message); setSaving(false); return; }
-      toast.success('CID adicionado!');
+  const handleRequestSave = () => {
+    if (!fCodigo || !fDescricao) {
+      toast.warning('Campos obrigatórios', 'Preencha código e descrição antes de salvar.');
+      return;
     }
+    if (editing) {
+      const diff = buildDiff(
+        { codigo: editing.codigo, descricao: editing.descricao },
+        { codigo: fCodigo, descricao: fDescricao },
+        [
+          { key: 'codigo', label: 'Código' },
+          { key: 'descricao', label: 'Descrição' },
+        ],
+      );
+      setSaveConfirm({ tone: 'edit', diff });
+    } else {
+      setSaveConfirm({
+        tone: 'create',
+        diff: [
+          { label: 'Código', after: fCodigo },
+          { label: 'Descrição', after: fDescricao },
+        ],
+      });
+    }
+  };
 
-    invalidateCache('cid11');
-    setSaving(false);
-    setDrawerOpen(false);
-    resetForm();
-    await loadItems();
+  const handleConfirmSave = async () => {
+    setSaving(true);
+    try {
+      if (editing) {
+        const { error } = await atualizarCid11(editing.id, { codigo: fCodigo, descricao: fDescricao });
+        if (error) { toast.error('Erro ao salvar', error.message); return; }
+        toast.success('CID atualizado!', `${fCodigo} — ${fDescricao}`);
+      } else {
+        const { error } = await criarCid11({ codigo: fCodigo, descricao: fDescricao });
+        if (error) { toast.error('Erro ao criar', error.message); return; }
+        toast.success('CID adicionado!', `${fCodigo} — ${fDescricao}`);
+      }
+      invalidateCache('cid11');
+      setSaveConfirm(null);
+      setDrawerOpen(false);
+      resetForm();
+      await loadItems();
+    } finally {
+      setSaving(false);
+    }
   };
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
-    const { error } = await excluirCid11(deleteTarget.id);
-    if (error) { toast.error('Erro ao excluir', error.message); return; }
-    toast.success('CID removido!');
-    invalidateCache('cid11');
-    setDeleteTarget(null);
-    await loadItems();
+    setDeleting(true);
+    try {
+      const { error } = await excluirCid11(deleteTarget.id);
+      if (error) { toast.error('Erro ao excluir', error.message); return; }
+      toast.success('CID removido!', `${deleteTarget.codigo} — ${deleteTarget.descricao}`);
+      invalidateCache('cid11');
+      setDeleteTarget(null);
+      await loadItems();
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -278,7 +314,7 @@ export default function Cid11Panel() {
             </button>
             <button
               className="tfd-btn tfd-btn-primary"
-              onClick={handleSave}
+              onClick={handleRequestSave}
               disabled={saving || !fCodigo || !fDescricao}
             >
               {saving
@@ -313,42 +349,28 @@ export default function Cid11Panel() {
       </Drawer>
 
       {/* Modal: Confirmar exclusão */}
-      {deleteTarget && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
-        >
-          <div
-            className="tfd-card tfd-card--flat w-full max-w-md"
-            style={{ backgroundColor: 'var(--tfd-surface-card)' }}
-          >
-            <div className="flex items-start gap-3 mb-4">
-              <div
-                className="flex items-center justify-center w-10 h-10 rounded-full shrink-0"
-                style={{ backgroundColor: '#fef2f2' }}
-              >
-                <AlertTriangle size={18} style={{ color: '#dc2626' }} />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold mb-1" style={{ color: 'var(--tfd-text-primary)' }}>
-                  Excluir CID {deleteTarget.codigo}?
-                </h3>
-                <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-                  {deleteTarget.descricao}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-2">
-              <button className="tfd-btn tfd-btn-secondary" onClick={() => setDeleteTarget(null)}>
-                Cancelar
-              </button>
-              <button className="tfd-btn tfd-btn-danger" onClick={confirmDelete}>
-                <Trash2 size={14} /> Excluir
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        tone="delete"
+        title="Excluir CID-11?"
+        subject={deleteTarget ? `${deleteTarget.codigo} — ${deleteTarget.descricao}` : undefined}
+        description="Esta ação não pode ser desfeita."
+        busy={deleting}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+      />
+
+      {/* Modal: Confirmar criação / edição */}
+      <ConfirmDialog
+        open={!!saveConfirm}
+        tone={saveConfirm?.tone ?? 'create'}
+        title={editing ? 'Confirmar alterações no CID-11?' : 'Confirmar cadastro de CID-11?'}
+        subject={fCodigo ? `${fCodigo} — ${fDescricao}` : undefined}
+        diff={saveConfirm?.diff}
+        busy={saving}
+        onClose={() => setSaveConfirm(null)}
+        onConfirm={handleConfirmSave}
+      />
     </>
   );
 }

@@ -9,13 +9,13 @@ import {
   Search,
   FileCode2,
   Package,
-  AlertTriangle,
 } from 'lucide-react';
 
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import Pagination from '@/shared/components/pagination/Pagination';
 import SortTh, { type SortDir, nextSort, compareValues } from '@/shared/components/sort-th/SortTh';
+import ConfirmDialog, { buildDiff, type DiffField } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import { useToast } from '@/shared/components/toast/Toast';
 import {
   listarSigtapAdmin,
@@ -51,6 +51,7 @@ export default function SigtapPanel() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<SigtapProcedimento | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SigtapProcedimento | null>(null);
+  const [saveConfirm, setSaveConfirm] = useState<{ tone: 'create' | 'edit'; diff: DiffField[]; payload: Record<string, unknown> } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   /* Filters */
@@ -147,9 +148,11 @@ export default function SigtapPanel() {
     setDrawerOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!fCodigo || !fDescricao || !fValor) return;
-    setSaving(true);
+  const handleRequestSave = () => {
+    if (!fCodigo || !fDescricao || !fValor) {
+      toast.warning('Campos obrigatórios', 'Preencha código, descrição e valor antes de salvar.');
+      return;
+    }
     const payload = {
       codigo: fCodigo,
       descricao: fDescricao,
@@ -164,31 +167,105 @@ export default function SigtapPanel() {
       ativo: fAtivo,
     };
 
-    if (editing) {
-      const { error } = await atualizarSigtap(editing.id, payload);
-      if (error) { toast.error('Erro ao salvar', error.message); setSaving(false); return; }
-      toast.success('Procedimento atualizado!');
-    } else {
-      const { error } = await criarSigtap(payload);
-      if (error) { toast.error('Erro ao criar', error.message); setSaving(false); return; }
-      toast.success('Procedimento criado!');
-    }
+    const fmtMoney = (v: unknown) => typeof v === 'number'
+      ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+      : String(v ?? '');
 
-    setSaving(false);
-    setDrawerOpen(false);
-    resetForm();
-    await loadItems();
+    if (editing) {
+      const before = {
+        codigo: editing.codigo,
+        descricao: editing.descricao,
+        tipo: TIPO_LABELS[editing.tipo] ?? editing.tipo,
+        subtipo: editing.subtipo ? SUBTIPO_LABELS[editing.subtipo] : '',
+        beneficiario: BENEFICIARIO_LABELS[editing.beneficiario],
+        valor_unitario: editing.valor_unitario,
+        unidade_medida: editing.unidade_medida ?? '',
+        cnrac: editing.cnrac,
+        portaria_referencia: editing.portaria_referencia ?? '',
+        data_vigencia: editing.data_vigencia ?? '',
+        ativo: editing.ativo,
+      };
+      const after = {
+        codigo: payload.codigo,
+        descricao: payload.descricao,
+        tipo: TIPO_LABELS[payload.tipo] ?? payload.tipo,
+        subtipo: payload.subtipo ? SUBTIPO_LABELS[payload.subtipo] : '',
+        beneficiario: BENEFICIARIO_LABELS[payload.beneficiario],
+        valor_unitario: payload.valor_unitario,
+        unidade_medida: payload.unidade_medida ?? '',
+        cnrac: payload.cnrac,
+        portaria_referencia: payload.portaria_referencia ?? '',
+        data_vigencia: payload.data_vigencia ?? '',
+        ativo: payload.ativo,
+      };
+      const diff = buildDiff(before, after, [
+        { key: 'codigo', label: 'Código' },
+        { key: 'descricao', label: 'Descrição' },
+        { key: 'tipo', label: 'Tipo' },
+        { key: 'subtipo', label: 'Subtipo' },
+        { key: 'beneficiario', label: 'Beneficiário' },
+        { key: 'valor_unitario', label: 'Valor', format: fmtMoney },
+        { key: 'unidade_medida', label: 'Unidade' },
+        { key: 'cnrac', label: 'CNRAC' },
+        { key: 'portaria_referencia', label: 'Portaria' },
+        { key: 'data_vigencia', label: 'Vigência' },
+        { key: 'ativo', label: 'Ativo' },
+      ]);
+      setSaveConfirm({ tone: 'edit', diff, payload });
+    } else {
+      setSaveConfirm({
+        tone: 'create',
+        payload,
+        diff: [
+          { label: 'Código', after: payload.codigo },
+          { label: 'Descrição', after: payload.descricao },
+          { label: 'Tipo', after: TIPO_LABELS[payload.tipo] ?? payload.tipo },
+          { label: 'Subtipo', after: payload.subtipo ? SUBTIPO_LABELS[payload.subtipo] : '' },
+          { label: 'Beneficiário', after: BENEFICIARIO_LABELS[payload.beneficiario] },
+          { label: 'Valor', after: fmtMoney(payload.valor_unitario) },
+          { label: 'Unidade', after: payload.unidade_medida ?? '' },
+          { label: 'CNRAC', after: payload.cnrac ? 'Sim' : 'Não' },
+          { label: 'Portaria', after: payload.portaria_referencia ?? '' },
+        ],
+      });
+    }
+  };
+
+  const handleConfirmSave = async () => {
+    if (!saveConfirm) return;
+    setSaving(true);
+    try {
+      const payload = saveConfirm.payload as Parameters<typeof criarSigtap>[0];
+      if (editing) {
+        const { error } = await atualizarSigtap(editing.id, payload);
+        if (error) { toast.error('Erro ao salvar', error.message); return; }
+        toast.success('Procedimento atualizado!', `${payload.codigo} — ${payload.descricao}`);
+      } else {
+        const { error } = await criarSigtap(payload);
+        if (error) { toast.error('Erro ao criar', error.message); return; }
+        toast.success('Procedimento criado!', `${payload.codigo} — ${payload.descricao}`);
+      }
+      setSaveConfirm(null);
+      setDrawerOpen(false);
+      resetForm();
+      await loadItems();
+    } finally {
+      setSaving(false);
+    }
   };
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
-    const { error } = await desativarSigtap(deleteTarget.id);
-    if (error) { toast.error('Erro ao remover', error.message); setDeleting(false); return; }
-    toast.success('Procedimento removido!');
-    setDeleting(false);
-    setDeleteTarget(null);
-    await loadItems();
+    try {
+      const { error } = await desativarSigtap(deleteTarget.id);
+      if (error) { toast.error('Erro ao remover', error.message); return; }
+      toast.success('Procedimento removido!', `${deleteTarget.codigo} — ${deleteTarget.descricao}`);
+      setDeleteTarget(null);
+      await loadItems();
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const isFiltered = Boolean(search || filterTipo || filterBeneficiario);
@@ -399,37 +476,29 @@ export default function SigtapPanel() {
       </div>
 
       {/* Modal: Confirmar remoção */}
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="tfd-card tfd-card--flat w-full max-w-md" style={{ backgroundColor: 'var(--tfd-surface-card)' }}>
-            <div className="flex items-start gap-3 mb-4">
-              <div className="flex items-center justify-center w-10 h-10 rounded-full shrink-0" style={{ backgroundColor: '#fef2f2' }}>
-                <AlertTriangle size={18} style={{ color: '#dc2626' }} />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold mb-1" style={{ color: 'var(--tfd-text-primary)' }}>
-                  Remover procedimento?
-                </h3>
-                <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
-                  O procedimento{' '}
-                  <span className="font-mono font-semibold" style={{ color: 'var(--tfd-primary-600)' }}>
-                    {deleteTarget.codigo}
-                  </span>{' '}
-                  — {deleteTarget.descricao} — será desativado e não aparecerá mais nas listagens.
-                </p>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button className="tfd-btn tfd-btn-secondary" onClick={() => setDeleteTarget(null)} disabled={deleting}>
-                Cancelar
-              </button>
-              <button className="tfd-btn tfd-btn-danger" onClick={confirmDelete} disabled={deleting}>
-                {deleting ? <><Loader2 size={14} className="animate-spin" /> Removendo...</> : <><Trash2 size={14} /> Remover</>}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        tone="delete"
+        title="Remover procedimento SIGTAP?"
+        subject={deleteTarget ? `${deleteTarget.codigo} — ${deleteTarget.descricao}` : undefined}
+        description="O procedimento será desativado e não aparecerá mais nas listagens."
+        confirmLabel="Remover"
+        busy={deleting}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+      />
+
+      {/* Modal: Confirmar criação / edição */}
+      <ConfirmDialog
+        open={!!saveConfirm}
+        tone={saveConfirm?.tone ?? 'create'}
+        title={editing ? 'Confirmar alterações no procedimento?' : 'Confirmar cadastro do procedimento?'}
+        subject={fCodigo ? `${fCodigo} — ${fDescricao}` : undefined}
+        diff={saveConfirm?.diff}
+        busy={saving}
+        onClose={() => setSaveConfirm(null)}
+        onConfirm={handleConfirmSave}
+      />
 
       {/* Drawer: Editar/Novo SIGTAP */}
       <Drawer
@@ -443,7 +512,7 @@ export default function SigtapPanel() {
             <button className="tfd-btn tfd-btn-secondary" onClick={() => { setDrawerOpen(false); resetForm(); }}>
               Cancelar
             </button>
-            <button className="tfd-btn tfd-btn-primary" onClick={handleSave} disabled={saving || !fCodigo || !fDescricao || !fValor}>
+            <button className="tfd-btn tfd-btn-primary" onClick={handleRequestSave} disabled={saving || !fCodigo || !fDescricao || !fValor}>
               {saving ? <><Loader2 size={14} className="animate-spin" /> Salvando...</> : (editing ? 'Salvar Alterações' : 'Criar Procedimento')}
             </button>
           </>
