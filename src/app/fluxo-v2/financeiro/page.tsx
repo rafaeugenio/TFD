@@ -32,6 +32,7 @@ import {
   calcularValorAjuda,
   type SolicitacaoMock,
 } from '@/core/mocks/fluxo-v2-v3-seed';
+import PageHeader from '@/shared/components/page-header/PageHeader';
 
 const PAGE_SIZE = 10;
 
@@ -148,12 +149,10 @@ export default function FinanceiroListPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-[22px] font-bold" style={{ color: '#1A1D2B', letterSpacing: '-0.02em' }}>Financeiro</h1>
-        <p className="text-[13px] mt-1" style={{ color: '#6B7280' }}>
-          Solicitações em execução: passagens, ajudas de custo e adicionais.
-        </p>
-      </div>
+      <PageHeader
+        title="Financeiro"
+        subtitle="Solicitações em execução: passagens, ajudas de custo e adicionais."
+      />
 
       <StatsRow
         stats={[

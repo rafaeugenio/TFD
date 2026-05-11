@@ -20,6 +20,7 @@ import { isLocked, setorAtual, tooltipLocked } from '../_utils/lock';
 import { temAgendamentoConfirmado } from '../_utils/agendamento';
 import Pagination from '../_components/Pagination';
 import StatsRow from '../_components/StatsRow';
+import PageHeader from '@/shared/components/page-header/PageHeader';
 import {
   contarAguardandoParecer,
   contarAguardandoAgendamento,
@@ -105,14 +106,10 @@ export default function RegulacaoListPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-[22px] font-bold" style={{ color: '#1A1D2B', letterSpacing: '-0.02em' }}>
-          Regulação
-        </h1>
-        <p className="text-[13px] mt-1" style={{ color: '#6B7280' }}>
-          Fila de solicitações aguardando parecer médico, encaminhamento ou agendamento de exceção.
-        </p>
-      </div>
+      <PageHeader
+        title="Regulação"
+        subtitle="Fila de solicitações aguardando parecer médico, encaminhamento ou agendamento de exceção."
+      />
 
       <StatsRow
         stats={[

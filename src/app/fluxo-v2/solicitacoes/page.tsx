@@ -29,6 +29,7 @@ import {
   taxaAprovacao,
 } from '../_utils/stats';
 import NewSolicitacaoDrawer from './_NewSolicitacaoDrawer';
+import PageHeader from '@/shared/components/page-header/PageHeader';
 
 const PAGE_SIZE = 10;
 
@@ -107,23 +108,19 @@ export default function SolicitacoesV2ListPage() {
 
   return (
     <div>
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-[22px] font-bold" style={{ color: '#1A1D2B', letterSpacing: '-0.02em' }}>
-            Solicitações
-          </h1>
-          <p className="text-[13px] mt-1" style={{ color: '#6B7280' }}>
-            Visão geral de todas as solicitações com seu estado consolidado.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setDrawerOpen(true)}
-          className="tfd-btn tfd-btn-primary"
-        >
-          <Plus size={16} /> Nova solicitação
-        </button>
-      </div>
+      <PageHeader
+        title="Solicitações"
+        subtitle="Visão geral de todas as solicitações com seu estado consolidado."
+        actions={
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            className="tfd-btn tfd-btn-primary"
+          >
+            <Plus size={16} /> Nova solicitação
+          </button>
+        }
+      />
 
       <StatsRow
         stats={[
