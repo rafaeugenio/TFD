@@ -16,7 +16,6 @@ import {
   Loader2,
   Phone,
   Mail,
-  Calendar,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -342,24 +341,6 @@ function RegionaisSaudePage() {
           />
         </div>
 
-        <div
-          className="flex items-center gap-2 px-3"
-          style={{
-            background: 'white', border: '1px solid var(--tfd-surface-border)',
-            borderRadius: 8, height: 36,
-          }}
-        >
-          <Calendar size={14} style={{ color: '#9CA3AF', flexShrink: 0 }} />
-          <input type="date" className="bg-transparent outline-none text-[13px]"
-            value={table.dateStart} onChange={(e) => table.setDateStart(e.target.value)} title="Data início" />
-          <span className="text-[12px]" style={{ color: '#94A3B8' }}>até</span>
-          <input type="date" className="bg-transparent outline-none text-[13px]"
-            value={table.dateEnd} onChange={(e) => table.setDateEnd(e.target.value)} title="Data fim" />
-        </div>
-
-        <p className="text-[13px] ml-auto" style={{ color: '#94A3B8' }}>
-          {table.filtered.length} resultado{table.filtered.length !== 1 && 's'}
-        </p>
       </div>
 
       {/* ========== Table (estilo v2) ========== */}
@@ -474,15 +455,15 @@ function RegionaisSaudePage() {
           </table>
         </div>
 
-        {table.totalPages > 1 && (
-          <div className="px-4 py-3" style={{ borderTop: '1px solid var(--tfd-surface-border)' }}>
-            <Pagination
-              total={table.filtered.length}
-              pageSize={20}
-              page={table.page}
-              onPageChange={table.setPage}
-            />
-          </div>
+        {table.filtered.length > 0 && (
+          <Pagination
+            total={table.filtered.length}
+            pageSize={table.pageSize}
+            page={table.page}
+            onPageChange={table.setPage}
+            onPageSizeChange={table.setPageSize}
+            recordLabel="regionais"
+          />
         )}
       </div>
 
