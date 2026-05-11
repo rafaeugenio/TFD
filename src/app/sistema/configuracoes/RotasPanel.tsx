@@ -196,8 +196,8 @@ export default function RotasPanel() {
             </button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto -mx-5 -mb-5">
+            <table className="tfd-table">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
                   <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>Origem</th>

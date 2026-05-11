@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import Pagination from '@/shared/components/pagination/Pagination';
 import { useToast } from '@/shared/components/toast/Toast';
 import { formatDateTime } from '@/shared/pipes/formatters';
 import Drawer from '@/shared/components/drawer/Drawer';
@@ -1029,63 +1030,49 @@ export default function LogsAuditoriaPage() {
         </span>
       </div>
 
-      {/* ========== Toolbar ========== */}
-      <div className="tfd-toolbar mb-4 flex-wrap gap-3">
-        {/* Search */}
-        <div className="relative flex-1 min-w-[220px] max-w-sm">
-          <Search
-            size={16}
-            className="tfd-input-leading-icon"
-            style={{ color: 'var(--tfd-text-muted)' }}
-          />
+      {/* ========== Toolbar (estilo v2) ========== */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div
+          className="flex items-center gap-2 px-3"
+          style={{
+            background: 'white', border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8, height: 36, minWidth: 280,
+          }}
+        >
+          <Search size={14} style={{ color: '#9CA3AF' }} />
           <input
             type="text"
-            className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
             placeholder="Buscar por usuário, descrição..."
             value={table.search}
             onChange={(e) => table.setSearch(e.target.value)}
+            className="flex-1 bg-transparent outline-none text-[13px]"
           />
         </div>
 
-        {/* Date range */}
-        <div className="flex items-center gap-2">
-          <Calendar size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
-          <input
-            type="date"
-            className="tfd-input tfd-input--sm"
-            style={{ width: 'auto' }}
-            value={table.dateStart}
-            onChange={(e) => table.setDateStart(e.target.value)}
-            placeholder="Início"
-            title="Data início"
-          />
-          <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>até</span>
-          <input
-            type="date"
-            className="tfd-input tfd-input--sm"
-            style={{ width: 'auto' }}
-            value={table.dateEnd}
-            onChange={(e) => table.setDateEnd(e.target.value)}
-            placeholder="Fim"
-            title="Data fim"
-          />
+        <div
+          className="flex items-center gap-2 px-3"
+          style={{
+            background: 'white', border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8, height: 36,
+          }}
+        >
+          <Calendar size={14} style={{ color: '#9CA3AF', flexShrink: 0 }} />
+          <input type="date" className="bg-transparent outline-none text-[13px]"
+            value={table.dateStart} onChange={(e) => table.setDateStart(e.target.value)} title="Data início" />
+          <span className="text-[12px]" style={{ color: '#94A3B8' }}>até</span>
+          <input type="date" className="bg-transparent outline-none text-[13px]"
+            value={table.dateEnd} onChange={(e) => table.setDateEnd(e.target.value)} title="Data fim" />
         </div>
 
-        {/* Action buttons */}
         <div className="flex items-center gap-2 ml-auto">
           <button
             className="tfd-btn tfd-btn-secondary tfd-btn--sm"
             onClick={handleRefresh}
             disabled={loading}
           >
-            {loading ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <RefreshCw size={14} />
-            )}
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
             Atualizar
           </button>
-
           <button
             className="tfd-btn tfd-btn-primary tfd-btn--sm tfd-btn--outlined"
             onClick={handleExportCSV}
@@ -1096,8 +1083,8 @@ export default function LogsAuditoriaPage() {
         </div>
       </div>
 
-      {/* ========== Table ========== */}
-      <div className="tfd-card p-0 overflow-hidden">
+      {/* ========== Table (estilo v2) ========== */}
+      <div className="tfd-table-wrap">
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2
@@ -1287,54 +1274,14 @@ export default function LogsAuditoriaPage() {
           </div>
         )}
 
-        {/* ========== Pagination ========== */}
-        {!loading && filtered.length > 0 && (
-          <div
-            className="flex items-center justify-between px-4 py-3"
-            style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
-          >
-            <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-              Exibindo{' '}
-              <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                {(table.page - 1) * 20 + 1}
-              </span>
-              {' '}&ndash;{' '}
-              <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                {Math.min(table.page * 20, filtered.length)}
-              </span>
-              {' '}de{' '}
-              <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                {filtered.length}
-              </span>
-              {' '}registros
-            </p>
-
-            <div className="flex items-center gap-1">
-              <button
-                className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                onClick={() => table.setPage(Math.max(1, table.page - 1))}
-                disabled={table.page === 1}
-                aria-label="Página anterior"
-              >
-                <ChevronLeft size={16} />
-              </button>
-
-              <span
-                className="text-sm px-3 font-medium"
-                style={{ color: 'var(--tfd-text-primary)' }}
-              >
-                {table.page} / {table.totalPages}
-              </span>
-
-              <button
-                className="tfd-btn tfd-btn-secondary tfd-btn--sm tfd-btn--icon-only"
-                onClick={() => table.setPage(Math.min(table.totalPages, table.page + 1))}
-                disabled={table.page === table.totalPages}
-                aria-label="Próxima página"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
+        {!loading && table.totalPages > 1 && (
+          <div className="px-4 py-3" style={{ borderTop: '1px solid var(--tfd-surface-border)' }}>
+            <Pagination
+              total={filtered.length}
+              pageSize={20}
+              page={table.page}
+              onPageChange={table.setPage}
+            />
           </div>
         )}
       </div>

@@ -403,51 +403,43 @@ export default function UsuariosPage() {
         ]}
       />
 
-      {/* Toolbar */}
-      <div
-        className="tfd-card flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-4"
-        style={{ padding: '0.75rem 1rem' }}
-      >
-        {/* Search */}
-        <div className="relative flex-1 min-w-0 w-full sm:w-auto">
-          <Search
-            size={16}
-            className="tfd-input-leading-icon"
-            style={{ color: 'var(--tfd-text-muted)' }}
-          />
+      {/* Toolbar (estilo v2) */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+        <div
+          className="flex items-center gap-2 px-3"
+          style={{
+            background: 'white', border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8, height: 36, minWidth: 280, maxWidth: 320,
+          }}
+        >
+          <Search size={14} style={{ color: '#9CA3AF' }} />
           <input
             type="text"
-            className="tfd-input tfd-input--sm tfd-input--with-leading-icon"
-            placeholder="Buscar usuario..."
+            placeholder="Buscar usuário..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ maxWidth: '320px' }}
+            className="flex-1 bg-transparent outline-none text-[13px]"
           />
         </div>
 
-        {/* Counter */}
-        <span
-          className="text-sm whitespace-nowrap"
-          style={{ color: 'var(--tfd-text-muted)' }}
-        >
-          {filtered.length} {filtered.length === 1 ? 'usuario' : 'usuarios'}
+        <span className="text-[13px] whitespace-nowrap" style={{ color: '#94A3B8' }}>
+          {filtered.length} {filtered.length === 1 ? 'usuário' : 'usuários'}
         </span>
 
-        {/* Actions */}
         <div className="flex items-center gap-2 ml-auto">
           <Link
             href="/sistema/papeis"
             className="tfd-btn tfd-btn-secondary tfd-btn--sm"
           >
             <Shield size={14} />
-            Gerenciar Permissoes
+            Gerenciar Permissões
           </Link>
           <button
             className="tfd-btn tfd-btn-primary tfd-btn--sm"
             onClick={handleOpenCreateDrawer}
           >
             <Plus size={14} />
-            Adicionar Usuario
+            Adicionar Usuário
           </button>
         </div>
       </div>

@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import StatsRow from '@/shared/components/stats-row/StatsRow';
 
 /* -------------------------------------------------- */
 /*  Report card data                                   */
@@ -272,29 +273,13 @@ export default function RelatoriosPage() {
         subtitle="Relatórios operacionais, financeiros, de gestão e auditoria"
       />
 
-      {/* ========== Quick Stats ========== */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
-        {quickStats.map((stat) => (
-          <div key={stat.label} className="tfd-card">
-            <p className="text-xs mb-1" style={{ color: 'var(--tfd-text-secondary)' }}>
-              {stat.label}
-            </p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-                {stat.value}
-              </span>
-              <span
-                className="text-xs font-medium"
-                style={{
-                  color: stat.trendUp ? 'var(--tfd-status-success)' : 'var(--tfd-status-danger)',
-                }}
-              >
-                {stat.trend}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
+      <StatsRow
+        stats={quickStats.map((s) => ({
+          label: s.label,
+          value: s.value,
+          hint: s.trend,
+        }))}
+      />
 
       {/* ========== Operacionais ========== */}
       <section className="mb-8">

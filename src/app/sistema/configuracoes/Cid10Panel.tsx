@@ -7,7 +7,6 @@ import {
   Loader2,
   Search,
   Filter,
-  FileText,
   Package,
   Trash2,
 } from 'lucide-react';
@@ -16,18 +15,19 @@ import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import { useToast } from '@/shared/components/toast/Toast';
 import {
-  listarPorCategoriaAdmin,
-  criarItemAuxiliar,
-  atualizarItemAuxiliar,
-  excluirItemAuxiliar,
-  type TabelaAuxiliar,
-} from '@/services/tabelas-auxiliares.service';
+  listarCid10,
+  criarCid10,
+  atualizarCid10,
+  excluirCid10,
+} from '@/services/cid10.service';
+import type { Cid10 } from '@/core/models/cid10.model';
 import { invalidateCache } from '@/shared/hooks/useLookup';
 
-/* ── Agrupamentos por especialidade ── */
+/* ── Agrupamentos por capítulo (primeira letra) ── */
 
 const GRUPOS: { key: string; label: string }[] = [
   { key: '', label: 'Todos os grupos' },
+  { key: 'A', label: 'Infectologia (A-B)' },
   { key: 'C', label: 'Oncologia (C)' },
   { key: 'D', label: 'Hematologia / Neoplasias benignas (D)' },
   { key: 'E', label: 'Endócrino / Metabólico (E)' },
@@ -45,10 +45,7 @@ const GRUPOS: { key: string; label: string }[] = [
   { key: 'Q', label: 'Malformações congênitas (Q)' },
   { key: 'R', label: 'Sintomas e sinais (R)' },
   { key: 'S', label: 'Lesões / Trauma (S-T)' },
-  { key: 'T', label: 'Complicações / Rejeição (T)' },
   { key: 'Z', label: 'Transplantes / Acompanhamento (Z)' },
-  { key: 'A', label: 'Infectologia (A-B)' },
-  { key: 'B', label: 'Infectologia (A-B)' },
 ];
 
 function getGrupoLetra(codigo: string): string {
@@ -59,77 +56,75 @@ const PAGE_SIZE = 30;
 
 export default function Cid10Panel() {
   const toast = useToast();
-  const [items, setItems] = useState<TabelaAuxiliar[]>([]);
+  const [items, setItems] = useState<Cid10[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [editing, setEditing] = useState<TabelaAuxiliar | null>(null);
+  const [editing, setEditing] = useState<Cid10 | null>(null);
 
   /* Filters */
   const [search, setSearch] = useState('');
   const [filterGrupo, setFilterGrupo] = useState('');
-  const [showInativos, setShowInativos] = useState(false);
   const [page, setPage] = useState(1);
 
   /* Form state */
   const [fCodigo, setFCodigo] = useState('');
   const [fDescricao, setFDescricao] = useState('');
-  const [fAtivo, setFAtivo] = useState(true);
 
   const loadItems = async () => {
     setLoading(true);
-    const { data } = await listarPorCategoriaAdmin('cid10');
-    if (data) setItems(data as unknown as TabelaAuxiliar[]);
+    const { data, error } = await listarCid10();
+    if (error) {
+      toast.error('Erro ao carregar', error.message);
+    } else if (data) {
+      setItems(data as Cid10[]);
+    }
     setLoading(false);
   };
 
   useEffect(() => { loadItems(); }, []);
 
   /* Reset page on filter change */
-  useEffect(() => { setPage(1); }, [search, filterGrupo, showInativos]);
+  useEffect(() => { setPage(1); }, [search, filterGrupo]);
 
   const filtered = useMemo(() => {
     return items.filter((item) => {
-      if (!showInativos && !item.ativo) return false;
       if (filterGrupo) {
         const letra = getGrupoLetra(item.codigo);
-        if (filterGrupo === 'A' || filterGrupo === 'B') {
+        if (filterGrupo === 'A') {
           if (letra !== 'A' && letra !== 'B') return false;
         } else if (filterGrupo === 'S') {
           if (letra !== 'S' && letra !== 'T') return false;
-        } else {
-          if (letra !== filterGrupo) return false;
+        } else if (letra !== filterGrupo) {
+          return false;
         }
       }
       if (search) {
         const q = search.toLowerCase();
         if (
           !item.codigo.toLowerCase().includes(q) &&
-          !item.nome.toLowerCase().includes(q) &&
-          !(item.descricao ?? '').toLowerCase().includes(q)
+          !item.descricao.toLowerCase().includes(q)
         ) return false;
       }
       return true;
     });
-  }, [items, filterGrupo, showInativos, search]);
+  }, [items, filterGrupo, search]);
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const resetForm = () => {
     setFCodigo('');
     setFDescricao('');
-    setFAtivo(true);
     setEditing(null);
   };
 
   const handleNew = () => { resetForm(); setDrawerOpen(true); };
 
-  const handleEdit = (item: TabelaAuxiliar) => {
+  const handleEdit = (item: Cid10) => {
     setEditing(item);
     setFCodigo(item.codigo);
-    setFDescricao(item.descricao ?? '');
-    setFAtivo(item.ativo);
+    setFDescricao(item.descricao);
     setDrawerOpen(true);
   };
 
@@ -138,19 +133,15 @@ export default function Cid10Panel() {
     setSaving(true);
 
     if (editing) {
-      const { error } = await atualizarItemAuxiliar(editing.id, {
+      const { error } = await atualizarCid10(editing.id, {
         codigo: fCodigo,
-        nome: fCodigo,
         descricao: fDescricao,
-        ativo: fAtivo,
       });
       if (error) { toast.error('Erro ao salvar', error.message); setSaving(false); return; }
       toast.success('CID atualizado!');
     } else {
-      const { error } = await criarItemAuxiliar({
-        categoria: 'cid10',
+      const { error } = await criarCid10({
         codigo: fCodigo,
-        nome: fCodigo,
         descricao: fDescricao,
       });
       if (error) { toast.error('Erro ao criar', error.message); setSaving(false); return; }
@@ -164,9 +155,9 @@ export default function Cid10Panel() {
     await loadItems();
   };
 
-  const handleDelete = async (item: TabelaAuxiliar) => {
+  const handleDelete = async (item: Cid10) => {
     if (!confirm(`Excluir o CID ${item.codigo}?`)) return;
-    const { error } = await excluirItemAuxiliar(item.id);
+    const { error } = await excluirCid10(item.id);
     if (error) { toast.error('Erro ao excluir', error.message); return; }
     toast.success('CID removido!');
     invalidateCache('cid10');
@@ -210,22 +201,10 @@ export default function Cid10Panel() {
               value={filterGrupo}
               onChange={(e) => setFilterGrupo(e.target.value)}
             >
-              {GRUPOS.filter((g, i, arr) =>
-                arr.findIndex((x) => x.label === g.label) === i
-              ).map((g) => (
+              {GRUPOS.map((g) => (
                 <option key={g.key} value={g.key}>{g.label}</option>
               ))}
             </select>
-            <label className="flex items-center gap-1.5 text-xs cursor-pointer whitespace-nowrap" style={{ color: 'var(--tfd-text-secondary)' }}>
-              <input
-                type="checkbox"
-                checked={showInativos}
-                onChange={(e) => setShowInativos(e.target.checked)}
-                className="w-3.5 h-3.5 rounded"
-                style={{ accentColor: 'var(--tfd-primary-600)' }}
-              />
-              Inativos
-            </label>
           </div>
         </div>
 
@@ -251,8 +230,8 @@ export default function Cid10Panel() {
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto -mx-5 -mb-5">
+            <table className="tfd-table">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
                   <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>
@@ -260,9 +239,6 @@ export default function Cid10Panel() {
                   </th>
                   <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>
                     Descrição
-                  </th>
-                  <th className="text-center py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)', width: 80 }}>
-                    Status
                   </th>
                   <th className="text-center py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)', width: 90 }}>
                     Ações
@@ -285,19 +261,8 @@ export default function Cid10Panel() {
                     </td>
                     <td className="py-2.5 px-3">
                       <p className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>
-                        {item.descricao || item.nome}
+                        {item.descricao}
                       </p>
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      {!item.ativo && (
-                        <span className="tfd-tag tfd-tag--rounded" style={{
-                          backgroundColor: 'var(--tfd-status-warning-bg)',
-                          color: 'var(--tfd-status-warning)',
-                          fontSize: '10px',
-                        }}>
-                          Inativo
-                        </span>
-                      )}
                     </td>
                     <td className="py-2.5 px-3 text-center">
                       <div className="flex items-center justify-center gap-1">
@@ -403,21 +368,6 @@ export default function Cid10Panel() {
             onChange={(e) => setFDescricao(e.target.value)}
           />
         </FormField>
-
-        {editing && (
-          <div className="mb-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={fAtivo}
-                onChange={(e) => setFAtivo(e.target.checked)}
-                className="w-4 h-4 rounded"
-                style={{ accentColor: 'var(--tfd-primary-600)' }}
-              />
-              <span className="text-sm" style={{ color: 'var(--tfd-text-primary)' }}>CID ativo</span>
-            </label>
-          </div>
-        )}
       </Drawer>
     </>
   );
