@@ -18,6 +18,7 @@ import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { listarPacientes } from '@/services/pacientes.service';
 import { listarPorPaciente, criarAcompanhante } from '@/services/acompanhantes.service';
 import { listarUnidadesSaude } from '@/services/unidades-saude.service';
+import { listarPorCategoria } from '@/services/tabelas-auxiliares.service';
 import { calcularIdade } from '@/shared/utils/idade';
 import { maskCPF } from '@/shared/pipes/formatters';
 
@@ -48,6 +49,11 @@ interface UnidadeRow {
   uf: string;
 }
 
+interface TipoDocRow {
+  codigo: string;
+  nome: string;
+}
+
 const VINCULO_OPTIONS = [
   { value: 'CONJUGE', label: 'Cônjuge' },
   { value: 'FILHO', label: 'Filho(a)' },
@@ -69,8 +75,11 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
   const [dataLaudo, setDataLaudo] = useState('');
   const [numeroSEI, setNumeroSEI] = useState('');
   const [seiUrl, setSeiUrl] = useState('');
-  const [anexos, setAnexos] = useState<{ nome: string; tipo: string }[]>([]);
+  const [anexos, setAnexos] = useState<{ nome: string; tipo: string; tipoDocumento?: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Tipos de documento (tabela auxiliar)
+  const [tiposDocumento, setTiposDocumento] = useState<TipoDocRow[]>([]);
   const seiUrlInvalido = seiUrl.trim().length > 0 && !/^https?:\/\//i.test(seiUrl.trim());
 
   // Pacientes do banco (carregados quando o drawer abre)
@@ -125,6 +134,29 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
       }
       setUnidades(((data ?? []) as unknown as UnidadeRow[]).filter((u) => u.nome));
       setLoadingUnidades(false);
+    });
+    return () => { cancelled = true; };
+  }, [open]);
+
+  // Carrega tipos de documento (tabela auxiliar)
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    listarPorCategoria('tipo_documento').then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) {
+        console.warn('[NewSolicitacaoDrawer] erro ao carregar tipos de documento:', error.message);
+        return;
+      }
+      // Deduplica por nome (categoria tem entries duplicados — ex.: "Comprovante de Residência" 2x)
+      const seen = new Set<string>();
+      const dedup = ((data ?? []) as unknown as TipoDocRow[]).filter((t) => {
+        const key = t.nome.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      setTiposDocumento(dedup);
     });
     return () => { cancelled = true; };
   }, [open]);
@@ -672,12 +704,41 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
           </button>
 
           {anexos.length > 0 && (
-            <ul className="flex flex-col gap-1 mt-3">
+            <ul className="flex flex-col gap-1.5 mt-3">
               {anexos.map((a, idx) => (
-                <li key={idx} className="flex items-center gap-2 px-3 py-2 text-[13px]"
-                  style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 6 }}>
+                <li
+                  key={idx}
+                  className="flex items-center gap-2 px-3 py-2 text-[13px]"
+                  style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 6 }}
+                >
                   <Paperclip size={13} style={{ color: '#64748B' }} />
-                  <span className="flex-1 truncate" style={{ color: '#1A1D2B' }}>{a.nome}</span>
+                  <span className="flex-1 min-w-0 truncate" style={{ color: '#1A1D2B' }}>
+                    {a.nome}
+                  </span>
+                  <select
+                    value={a.tipoDocumento ?? ''}
+                    onChange={(e) => {
+                      const v = e.target.value || undefined;
+                      setAnexos((prev) =>
+                        prev.map((it, i) => (i === idx ? { ...it, tipoDocumento: v } : it)),
+                      );
+                    }}
+                    className="px-2 py-1 text-[12px] shrink-0"
+                    style={{
+                      background: 'white',
+                      border: '1px solid var(--tfd-surface-border)',
+                      borderRadius: 6,
+                      maxWidth: 220,
+                    }}
+                    title="Tipo do documento"
+                  >
+                    <option value="">Tipo do documento...</option>
+                    {tiposDocumento.map((t) => (
+                      <option key={t.codigo} value={t.codigo}>
+                        {t.nome}
+                      </option>
+                    ))}
+                  </select>
                   <button
                     type="button"
                     onClick={() => setAnexos((prev) => prev.filter((_, i) => i !== idx))}

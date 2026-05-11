@@ -277,8 +277,11 @@ export interface EncerramentoMock {
 export interface AnexoMock {
   id: string;
   nome: string;
+  /** MIME type do arquivo (ex.: application/pdf). */
   tipo: string;
   tamanhoKB?: number;
+  /** Categoria do documento (vem da tabela auxiliar `tipo_documento`). */
+  tipoDocumento?: string;
 }
 
 export interface ObservacaoChat {
