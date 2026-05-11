@@ -21,6 +21,7 @@ import { temAgendamentoConfirmado } from '../_utils/agendamento';
 import Pagination from '../_components/Pagination';
 import StatsRow from '../_components/StatsRow';
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import SortTh, { compareValues, nextSort, type SortDir } from '../_components/SortTh';
 import {
   contarAguardandoParecer,
   contarAguardandoAgendamento,
@@ -55,6 +56,7 @@ export default function RegulacaoListPage() {
   const [busca, setBusca] = useState('');
   const [carimboFiltro, setCarimboFiltro] = useState<CarimboFiltro>('all');
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'tempo', dir: 'desc' });
 
   const stats = useMemo(() => ({
     aguardandoParecer: contarAguardandoParecer(solicitacoes),
@@ -87,12 +89,30 @@ export default function RegulacaoListPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [busca, carimboFiltro]);
+  }, [busca, carimboFiltro, sort]);
+
+  const filaOrdenada = useMemo(() => {
+    if (!sort.field || !sort.dir) return fila;
+    const getValue = (s: SolicitacaoMock): unknown => {
+      switch (sort.field) {
+        case 'numero': return s.numero;
+        case 'paciente': return s.paciente.nome;
+        case 'municipio': return s.paciente.municipio;
+        case 'carimbo': return s.carimboRegulacao ?? '';
+        case 'tempo': return tempoNoSetor(s.dataCriacao);
+        default: return '';
+      }
+    };
+    const sorted = [...fila].sort((a, b) => compareValues(getValue(a), getValue(b)));
+    return sort.dir === 'desc' ? sorted.reverse() : sorted;
+  }, [fila, sort]);
 
   const paginadas = useMemo(
-    () => fila.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [fila, page],
+    () => filaOrdenada.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filaOrdenada, page],
   );
+
+  const toggleSort = (field: string) => setSort((prev) => nextSort(field, prev));
 
   function open(kind: Exclude<DrawerKind, null>, sol: SolicitacaoMock) {
     setDrawer({ kind, sol });
@@ -199,12 +219,12 @@ export default function RegulacaoListPage() {
         <table className="w-full text-[13px]">
           <thead>
             <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--tfd-surface-border)' }}>
-              <Th>Número</Th>
-              <Th>Paciente</Th>
-              <Th>Município</Th>
+              <SortTh label="Número" field="numero" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Paciente" field="paciente" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Município" field="municipio" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <Th>Pareceres</Th>
-              <Th>Carimbo</Th>
-              <Th>Tempo</Th>
+              <SortTh label="Carimbo" field="carimbo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Tempo" field="tempo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <Th align="right">Ações</Th>
             </tr>
           </thead>

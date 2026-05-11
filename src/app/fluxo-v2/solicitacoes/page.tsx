@@ -30,6 +30,7 @@ import {
 } from '../_utils/stats';
 import NewSolicitacaoDrawer from './_NewSolicitacaoDrawer';
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import SortTh, { compareValues, nextSort, type SortDir } from '../_components/SortTh';
 
 const PAGE_SIZE = 10;
 
@@ -47,6 +48,7 @@ export default function SolicitacoesV2ListPage() {
   const [statusFilter, setStatusFilter] = useState<StatusGlobalV2 | 'all'>('all');
   const [busca, setBusca] = useState('');
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'numero', dir: 'desc' });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editar, setEditar] = useState<SolicitacaoMock | null>(null);
   const [encerrarTarget, setEncerrarTarget] = useState<SolicitacaoMock | null>(null);
@@ -86,11 +88,32 @@ export default function SolicitacoesV2ListPage() {
   // pode acabar olhando uma página vazia.
   useEffect(() => {
     setPage(1);
-  }, [busca, statusFilter]);
+  }, [busca, statusFilter, sort]);
+
+  const ordenadas = useMemo(() => {
+    if (!sort.field || !sort.dir) return filtradas;
+    const getValue = (s: SolicitacaoMock): unknown => {
+      switch (sort.field) {
+        case 'numero': return s.numero;
+        case 'paciente': return s.paciente.nome;
+        case 'municipio': return s.paciente.municipio;
+        case 'status': return s.status;
+        case 'atualizacao': {
+          const ev = derivarEventos(s)[0];
+          return ev?.data ?? '';
+        }
+        default: return '';
+      }
+    };
+    const sorted = [...filtradas].sort((a, b) => compareValues(getValue(a), getValue(b)));
+    return sort.dir === 'desc' ? sorted.reverse() : sorted;
+  }, [filtradas, sort]);
+
+  const toggleSort = (field: string) => setSort((prev) => nextSort(field, prev));
 
   const paginadas = useMemo(
-    () => filtradas.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [filtradas, page],
+    () => ordenadas.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [ordenadas, page],
   );
 
   function abrirEncerrar(s: SolicitacaoMock) {
@@ -208,11 +231,11 @@ export default function SolicitacoesV2ListPage() {
         <table className="w-full text-[13px]">
           <thead>
             <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--tfd-surface-border)' }}>
-              <Th>Número</Th>
-              <Th>Paciente</Th>
-              <Th>Município / Regional</Th>
-              <Th>Status</Th>
-              <Th>Última atualização</Th>
+              <SortTh label="Número" field="numero" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Paciente" field="paciente" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Município / Regional" field="municipio" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Status" field="status" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Última atualização" field="atualizacao" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <Th align="right">Ações</Th>
             </tr>
           </thead>

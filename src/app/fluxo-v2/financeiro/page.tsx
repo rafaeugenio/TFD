@@ -33,6 +33,7 @@ import {
   type SolicitacaoMock,
 } from '@/core/mocks/fluxo-v2-v3-seed';
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import SortTh, { compareValues, nextSort, type SortDir } from '../_components/SortTh';
 
 const PAGE_SIZE = 10;
 
@@ -91,6 +92,7 @@ export default function FinanceiroListPage() {
   const [busca, setBusca] = useState('');
   const [filtro, setFiltro] = useState<FinanceiroFiltro>('all');
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'proxima', dir: 'asc' });
 
   const stats = useMemo(() => ({
     aguardandoEmissao: contarViagensAguardandoEmissao(solicitacoes),
@@ -131,11 +133,40 @@ export default function FinanceiroListPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [busca, filtro]);
+  }, [busca, filtro, sort]);
+
+  const filaOrdenada = useMemo(() => {
+    if (!sort.field || !sort.dir) return fila;
+    const totalPrevisto = (s: SolicitacaoMock): number => {
+      const p = s.viagens.reduce((a, v) => a + v.valor, 0);
+      const ac = s.ajudasCusto.reduce(
+        (a, x) => a + calcularValorAjuda(x.dataInicio, x.dataFim, x.pernoiteRetorno).valor,
+        0,
+      );
+      const ad = s.adicionais.reduce((a, x) => a + x.valor, 0);
+      return p + ac + ad;
+    };
+    const getValue = (s: SolicitacaoMock): unknown => {
+      switch (sort.field) {
+        case 'numero': return s.numero;
+        case 'paciente': return s.paciente.nome;
+        case 'municipio': return s.paciente.municipio;
+        case 'proxima': return proximaViagem(s)?.data ?? '9999-99-99';
+        case 'total': return totalPrevisto(s);
+        case 'carimbo': return s.carimboRegulacao ?? '';
+        case 'tempo': return tempoNoSetor(s.dataCriacao);
+        default: return '';
+      }
+    };
+    const sorted = [...fila].sort((a, b) => compareValues(getValue(a), getValue(b)));
+    return sort.dir === 'desc' ? sorted.reverse() : sorted;
+  }, [fila, sort]);
+
+  const toggleSort = (field: string) => setSort((prev) => nextSort(field, prev));
 
   const paginadas = useMemo(
-    () => fila.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [fila, page],
+    () => filaOrdenada.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filaOrdenada, page],
   );
 
   function open(kind: Exclude<DrawerKind, null>, sol: SolicitacaoMock) {
@@ -230,13 +261,13 @@ export default function FinanceiroListPage() {
         <table className="w-full text-[13px]">
           <thead>
             <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--tfd-surface-border)' }}>
-              <Th>Número</Th>
-              <Th>Paciente</Th>
-              <Th>Município</Th>
-              <Th>Próx. viagem</Th>
-              <Th align="right">Total previsto</Th>
-              <Th>Carimbo</Th>
-              <Th>Tempo</Th>
+              <SortTh label="Número" field="numero" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Paciente" field="paciente" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Município" field="municipio" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Próx. viagem" field="proxima" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Total previsto" field="total" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} align="right" />
+              <SortTh label="Carimbo" field="carimbo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Tempo" field="tempo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <Th align="right">Ações</Th>
             </tr>
           </thead>
