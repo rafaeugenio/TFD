@@ -249,7 +249,7 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
     resetNovoAcompForm();
   }
 
-  function handleSalvar() {
+  async function handleSalvar() {
     if (!paciente) return;
 
     // Snapshots no shape do mock (PacienteMock/AcompanhanteMock) — o Provider
@@ -283,7 +283,7 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
         ? `${unidadeSelecionada.nome}${unidadeSelecionada.cnes ? ` (CNES ${unidadeSelecionada.cnes})` : ''}`
         : unidade;
 
-    const id = createSolicitacao({
+    const id = await createSolicitacao({
       pacienteId: paciente.id,
       acompanhanteIds,
       agendamento: !semAgendamento ? { unidade: unidadeNome, data, hora } : undefined,

@@ -29,8 +29,20 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import { solicitacoesFromSupabase } from '../_adapters/fromSupabase';
 import { SOLICITACAO_V2_SELECT } from '../_adapters/selectShape';
-import { buildEnvioSetor } from '../_adapters/toSupabase';
+import {
+  buildEnvioSetor,
+  buildParecer,
+  buildRotaRegulacao,
+  buildTentativa,
+  buildViagem,
+  buildAjudaCusto,
+  buildAdicional,
+  buildEncerramento,
+  buildObservacao,
+  buildNewSolicitacao,
+} from '../_adapters/toSupabase';
 import { statusGlobalToSetor } from '../_adapters/statusMapping';
+import { persistInsert, persistUpdate, persistDelete, currentUserId } from './persist';
 
 /* -------------------------------------------------------------------------- */
 /*  Context                                                                   */
@@ -42,7 +54,7 @@ interface FluxoV2ContextValue {
   isLoading: boolean;
   getById: (id: string) => SolicitacaoMock | undefined;
 
-  createSolicitacao: (input: NewSolicitacaoInput) => string; // returns id
+  createSolicitacao: (input: NewSolicitacaoInput) => Promise<string>; // returns id real do banco
   updateSolicitacao: (id: string, patch: Partial<SolicitacaoMock>) => void;
   setStatus: (id: string, status: StatusGlobalV2) => void;
 
@@ -288,7 +300,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     [mutate],
   );
 
-  const createSolicitacao = useCallback((input: NewSolicitacaoInput): string => {
+  const createSolicitacao = useCallback(async (input: NewSolicitacaoInput): Promise<string> => {
     // Prefere snapshot vindo do banco; fallback para o pool mock.
     const paciente =
       input.pacienteSnapshot ?? pacientesPool.find((p) => p.id === input.pacienteId);
@@ -297,8 +309,19 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       ? input.acompanhantesSnapshot.filter((a) => input.acompanhanteIds.includes(a.id))
       : acompanhantesPool.filter((a) => input.acompanhanteIds.includes(a.id));
 
-    const id = uid('s');
     const proximoNumero = `2025/${String(130 + solicitacoes.length).padStart(6, '0')}`;
+
+    // 1) Persiste no Supabase para receber o id real ANTES de inserir no estado.
+    //    Filhos (parecer, viagem, etc.) precisam de FK válida.
+    const novaSolicitacaoPayload = buildNewSolicitacao({
+      pacienteId: paciente.id,
+      numeroProcesso: proximoNumero,
+      numeroSEI: input.numeroSEI?.trim() || undefined,
+      seiUrl: input.seiUrl?.trim() || undefined,
+      dataLaudo: input.dataLaudo,
+    });
+    const realId = await persistInsert('solicitacoes', novaSolicitacaoPayload);
+    const id = realId ?? uid('s');
 
     // T2.AM — Quando criação informa um agendamento, ele entra como tentativa
     // confirmada (única) dentro do AgendamentoMock-container.
@@ -342,12 +365,18 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
   }, [solicitacoes.length]);
 
   const addParecer = useCallback<FluxoV2ContextValue['addParecer']>((id, p) => {
+    const tempId = uid('pa');
     mutate(id, (s) => {
-      const parecer: ParecerMock = { ...p, id: uid('pa'), data: nowIso() };
+      const parecer: ParecerMock = { ...p, id: tempId, data: nowIso() };
       s.pareceres = [...s.pareceres, parecer];
-      // T2.AB: nenhuma transição automática de status — só o botão de
-      // tramitação na tabela move a solicitação entre setores.
       return s;
+    });
+    void persistInsert('pareceres', buildParecer(id, p, null)).then((realId) => {
+      if (!realId) return;
+      mutate(id, (s) => {
+        s.pareceres = s.pareceres.map((pa) => (pa.id === tempId ? { ...pa, id: realId } : pa));
+        return s;
+      });
     });
   }, [mutate]);
 
@@ -357,6 +386,14 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         s.pareceres = s.pareceres.map((p) => (p.id === parecerId ? { ...p, ...patch } : p));
         return s;
       });
+      const dbPatch: Record<string, unknown> = {};
+      if (patch.decisao) dbPatch.decisao = patch.decisao === 'indeferido' ? 'INDEFERIDO' : 'DEFERIDO';
+      if (patch.tipo !== undefined) dbPatch.tipo = patch.tipo;
+      if (patch.cidPrincipal !== undefined) dbPatch.cid_principal = patch.cidPrincipal;
+      if (patch.cidSecundario !== undefined) dbPatch.cid_secundario = patch.cidSecundario || null;
+      if (patch.versaoCID !== undefined) dbPatch.versao_cid = patch.versaoCID;
+      if (patch.observacao !== undefined) dbPatch.justificativa = patch.observacao;
+      if (Object.keys(dbPatch).length) persistUpdate('pareceres', parecerId, dbPatch);
     },
     [mutate],
   );
@@ -367,6 +404,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         s.pareceres = s.pareceres.filter((p) => p.id !== parecerId);
         return s;
       });
+      persistDelete('pareceres', parecerId);
     },
     [mutate],
   );
@@ -375,17 +413,22 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     mutate(id, (s) => {
       s.carimboRegulacao = c;
       s.carimboObservacao = observacao?.trim() ? observacao.trim() : undefined;
-      // T2.AP — outrosInfo só faz sentido quando carimbo === 'OUTROS'.
       s.carimboOutrosInfo = c === 'OUTROS' ? outrosInfo : undefined;
-      // T2.AB: sem transição automática — quem move é o botão de tramitação.
       return s;
+    });
+    void currentUserId().then((userId) => {
+      void persistInsert(
+        'rotas_regulacao',
+        buildRotaRegulacao(id, c, userId, observacao, c === 'OUTROS' ? outrosInfo : undefined),
+      );
     });
   }, [mutate]);
 
   const addTentativa = useCallback<FluxoV2ContextValue['addTentativa']>((id, t) => {
+    const tempId = uid('t');
     mutate(id, (s) => {
       const tentativa: TentativaUnidadeMock = {
-        id: uid('t'),
+        id: tempId,
         unidade: t.unidade,
         data: t.data || nowIso(),
         desfecho: t.desfecho,
@@ -414,6 +457,20 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       }
       return s;
     });
+    void currentUserId().then(async (userId) => {
+      const realId = await persistInsert(
+        'tentativas_agendamento',
+        buildTentativa(id, { ...t, data: t.data || nowIso() }, null, userId),
+      );
+      if (!realId) return;
+      mutate(id, (s) => {
+        if (!s.agendamento) return s;
+        s.agendamento.tentativas = s.agendamento.tentativas.map((tt) =>
+          tt.id === tempId ? { ...tt, id: realId } : tt,
+        );
+        return s;
+      });
+    });
   }, [mutate]);
 
   const editarTentativa = useCallback<FluxoV2ContextValue['editarTentativa']>(
@@ -423,7 +480,6 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         const promovendo = patch.desfecho === 'agendamento_confirmado';
         s.agendamento.tentativas = s.agendamento.tentativas.map((t) => {
           if (t.id === tentativaId) return { ...t, ...patch };
-          // Se estamos promovendo essa pra confirmada, rebaixa as outras.
           if (promovendo && t.desfecho === 'agendamento_confirmado') {
             return { ...t, desfecho: 'aceitou' as const };
           }
@@ -431,6 +487,21 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         });
         return s;
       });
+      const dbPatch: Record<string, unknown> = {};
+      if (patch.unidade !== undefined) dbPatch.unidade_nome = patch.unidade;
+      if (patch.data !== undefined) dbPatch.data_contato = patch.data;
+      if (patch.desfecho !== undefined) {
+        const m: Record<string, string> = {
+          negou: 'NEGOU', aceitou: 'ACEITOU', pediu_documento: 'PEDIU_DOCUMENTACAO',
+          sem_resposta: 'AGUARDANDO', pendente: 'AGUARDANDO', agendamento_confirmado: 'AGENDAMENTO_CONFIRMADO',
+        };
+        dbPatch.resultado = m[patch.desfecho] ?? 'AGUARDANDO';
+      }
+      if (patch.observacao !== undefined) dbPatch.observacao = patch.observacao;
+      if (patch.hora !== undefined) dbPatch.hora_agendamento = patch.hora;
+      if (patch.contatoUnidade !== undefined) dbPatch.contato_unidade = patch.contatoUnidade;
+      if (patch.observacoesChegada !== undefined) dbPatch.observacoes_chegada = patch.observacoesChegada;
+      if (Object.keys(dbPatch).length) persistUpdate('tentativas_agendamento', tentativaId, dbPatch);
     },
     [mutate],
   );
@@ -442,6 +513,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         s.agendamento.tentativas = s.agendamento.tentativas.filter((t) => t.id !== tentativaId);
         return s;
       });
+      persistDelete('tentativas_agendamento', tentativaId);
     },
     [mutate],
   );
@@ -497,13 +569,23 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
   }, [mutate]);
 
   const addViagem = useCallback<FluxoV2ContextValue['addViagem']>((id, v) => {
+    const tempId = uid('v');
     mutate(id, (s) => {
-      s.viagens = [...s.viagens, { ...v, id: uid('v') }];
+      s.viagens = [...s.viagens, { ...v, id: tempId }];
       return s;
+    });
+    void persistInsert('viagens', buildViagem(id, v)).then((realId) => {
+      if (!realId) return;
+      mutate(id, (s) => {
+        s.viagens = s.viagens.map((vv) => (vv.id === tempId ? { ...vv, id: realId } : vv));
+        return s;
+      });
     });
   }, [mutate]);
 
   const addViagensIdaEVolta = useCallback<FluxoV2ContextValue['addViagensIdaEVolta']>((id, input) => {
+    const tempIdIda = uid('v');
+    const tempIdVolta = uid('v');
     mutate(id, (s) => {
       // Valor 50/50, arredondado a 2 casas. Resíduo de centavo (caso o total
       // seja ímpar em centavos) fica na ida — irrelevante pra demo, mas a
@@ -511,7 +593,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       const metade = Math.round((input.valorTotal / 2) * 100) / 100;
       const restoIda = Math.round((input.valorTotal - metade) * 100) / 100;
       const ida: ViagemMock = {
-        id: uid('v'),
+        id: tempIdIda,
         origem: input.origem,
         destino: input.destino,
         data: input.dataIda,
@@ -523,9 +605,9 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         beneficiarioId: input.beneficiarioId,
       };
       const volta: ViagemMock = {
-        id: uid('v'),
-        origem: input.destino, // invertido
-        destino: input.origem, // invertido
+        id: tempIdVolta,
+        origem: input.destino,
+        destino: input.origem,
         data: input.dataVolta,
         modal: input.modal,
         tipo: 'volta',
@@ -537,6 +619,33 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       s.viagens = [...s.viagens, ida, volta];
       return s;
     });
+    void (async () => {
+      const idaPayload = buildViagem(id, {
+        origem: input.origem, destino: input.destino, data: input.dataIda,
+        modal: input.modal, tipo: 'ida', status: input.status,
+        valor: Math.round((input.valorTotal / 2) * 100) / 100,
+        beneficiarioTipo: input.beneficiarioTipo, beneficiarioId: input.beneficiarioId,
+      });
+      const voltaPayload = buildViagem(id, {
+        origem: input.destino, destino: input.origem, data: input.dataVolta,
+        modal: input.modal, tipo: 'volta', status: input.status,
+        valor: Math.round((input.valorTotal / 2) * 100) / 100,
+        beneficiarioTipo: input.beneficiarioTipo, beneficiarioId: input.beneficiarioId,
+      });
+      const [idaReal, voltaReal] = await Promise.all([
+        persistInsert('viagens', idaPayload),
+        persistInsert('viagens', voltaPayload),
+      ]);
+      if (!idaReal && !voltaReal) return;
+      mutate(id, (s) => {
+        s.viagens = s.viagens.map((vv) => {
+          if (vv.id === tempIdIda && idaReal) return { ...vv, id: idaReal };
+          if (vv.id === tempIdVolta && voltaReal) return { ...vv, id: voltaReal };
+          return vv;
+        });
+        return s;
+      });
+    })();
   }, [mutate]);
 
   const updateViagem = useCallback<FluxoV2ContextValue['updateViagem']>((id, viagemId, patch) => {
@@ -544,6 +653,20 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       s.viagens = s.viagens.map((v) => (v.id === viagemId ? { ...v, ...patch } : v));
       return s;
     });
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.status !== undefined) {
+      const m: Record<string, string> = {
+        agendada: 'EMITIDA', confirmada: 'UTILIZADA', remarcada: 'REMARCADA',
+        nao_compareceu: 'NO_SHOW', cancelada: 'CANCELADA', reembolso: 'CANCELADA',
+      };
+      dbPatch.situacao = m[patch.status] ?? 'EMITIDA';
+      dbPatch.embarcou = patch.status === 'confirmada';
+    }
+    if (patch.data !== undefined) dbPatch.data_embarque_prevista = patch.data;
+    if (patch.valor !== undefined) dbPatch.valor = patch.valor;
+    if (patch.bilheteUrl !== undefined) dbPatch.numero_bilhete = patch.bilheteUrl;
+    if (patch.companhia !== undefined) dbPatch.companhia = patch.companhia;
+    if (Object.keys(dbPatch).length) persistUpdate('viagens', viagemId, dbPatch);
   }, [mutate]);
 
   const editarViagem = updateViagem;
@@ -554,14 +677,23 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         s.viagens = s.viagens.filter((v) => v.id !== viagemId);
         return s;
       });
+      persistDelete('viagens', viagemId);
     },
     [mutate],
   );
 
   const addAjudaCusto = useCallback<FluxoV2ContextValue['addAjudaCusto']>((id, a) => {
+    const tempId = uid('ac');
     mutate(id, (s) => {
-      s.ajudasCusto = [...s.ajudasCusto, { ...a, id: uid('ac') }];
+      s.ajudasCusto = [...s.ajudasCusto, { ...a, id: tempId }];
       return s;
+    });
+    void persistInsert('ajudas_custo', buildAjudaCusto(id, a)).then((realId) => {
+      if (!realId) return;
+      mutate(id, (s) => {
+        s.ajudasCusto = s.ajudasCusto.map((aa) => (aa.id === tempId ? { ...aa, id: realId } : aa));
+        return s;
+      });
     });
   }, [mutate]);
 
@@ -570,6 +702,21 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       s.ajudasCusto = s.ajudasCusto.map((a) => (a.id === ajudaId ? { ...a, ...patch } : a));
       return s;
     });
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.dataInicio !== undefined) dbPatch.data_inicio = patch.dataInicio;
+    if (patch.dataFim !== undefined) dbPatch.data_fim = patch.dataFim;
+    if (patch.status !== undefined) {
+      const m: Record<string, string> = {
+        em_analise: 'EM_ANALISE', aprovada: 'APROVADA', em_pagamento: 'EM_PAGAMENTO',
+        concluida: 'CONCLUIDA', glosada: 'GLOSADA',
+      };
+      dbPatch.status = m[patch.status] ?? 'EM_ANALISE';
+    }
+    if (patch.observacao !== undefined) dbPatch.observacoes = patch.observacao;
+    if (patch.beneficiarioTipo !== undefined) {
+      dbPatch.tipo = patch.beneficiarioTipo === 'acompanhante' ? 'ACOMPANHANTE' : 'PACIENTE';
+    }
+    if (Object.keys(dbPatch).length) persistUpdate('ajudas_custo', ajudaId, dbPatch);
   }, [mutate]);
 
   const editarAjudaCusto = updateAjudaCusto;
@@ -580,14 +727,23 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         s.ajudasCusto = s.ajudasCusto.filter((a) => a.id !== ajudaId);
         return s;
       });
+      persistDelete('ajudas_custo', ajudaId);
     },
     [mutate],
   );
 
   const addAdicional = useCallback<FluxoV2ContextValue['addAdicional']>((id, a) => {
+    const tempId = uid('ad');
     mutate(id, (s) => {
-      s.adicionais = [...s.adicionais, { ...a, id: uid('ad') }];
+      s.adicionais = [...s.adicionais, { ...a, id: tempId }];
       return s;
+    });
+    void persistInsert('adicionais', buildAdicional(id, a)).then((realId) => {
+      if (!realId) return;
+      mutate(id, (s) => {
+        s.adicionais = s.adicionais.map((aa) => (aa.id === tempId ? { ...aa, id: realId } : aa));
+        return s;
+      });
     });
   }, [mutate]);
 
@@ -597,6 +753,25 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         s.adicionais = s.adicionais.map((a) => (a.id === adicionalId ? { ...a, ...patch } : a));
         return s;
       });
+      const dbPatch: Record<string, unknown> = {};
+      if (patch.categoria !== undefined) {
+        const m: Record<string, string> = {
+          passagem_extra: 'PASSAGEM_EXTRA', ajuda_extra: 'AJUDA_EXTRA',
+          bagagem: 'BAGAGEM', transfer: 'TRANSFER', outro: 'OUTRO',
+        };
+        dbPatch.categoria = m[patch.categoria] ?? 'OUTRO';
+      }
+      if (patch.descricao !== undefined) dbPatch.descricao = patch.descricao;
+      if (patch.data !== undefined) dbPatch.data_ocorrencia = patch.data;
+      if (patch.valor !== undefined) dbPatch.valor = patch.valor;
+      if (patch.status !== undefined) {
+        const m: Record<string, string> = {
+          pendente_aprovacao: 'PENDENTE_APROVACAO', aprovado: 'APROVADO',
+          indeferido: 'INDEFERIDO', pago: 'PAGO',
+        };
+        dbPatch.status = m[patch.status] ?? 'PENDENTE_APROVACAO';
+      }
+      if (Object.keys(dbPatch).length) persistUpdate('adicionais', adicionalId, dbPatch);
     },
     [mutate],
   );
@@ -607,6 +782,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         s.adicionais = s.adicionais.filter((a) => a.id !== adicionalId);
         return s;
       });
+      persistDelete('adicionais', adicionalId);
     },
     [mutate],
   );
@@ -616,6 +792,15 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       s.encerramento = e;
       s.status = 'encerrada';
       return s;
+    });
+    void currentUserId().then((userId) => {
+      void persistInsert('encerramentos', buildEncerramento(id, e, userId));
+    });
+    persistUpdate('solicitacoes', id, {
+      setor_atual: 'encerrada',
+      status: 'CONCLUIDO',
+      data_encerramento: e.data,
+      motivo_encerramento: e.motivo,
     });
   }, [mutate]);
 
@@ -627,17 +812,31 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
   }, [mutate]);
 
   const addObservacao = useCallback<FluxoV2ContextValue['addObservacao']>((id, texto) => {
+    const tempId = `obs-${Date.now()}`;
     mutate(id, (s) => {
-      // TODO: substituir autor mockado pelo usuário logado quando houver autenticação real.
       const nova: ObservacaoChat = {
-        id: `obs-${Date.now()}`,
-        autor: 'Maria Silva',
+        id: tempId,
+        autor: 'Você',
         perfilAutor: 'Coordenação Estadual',
         texto: texto.trim(),
         data: nowIso(),
       };
       s.observacoes = [...(s.observacoes ?? []), nova];
       return s;
+    });
+    void currentUserId().then(async (userId) => {
+      if (!userId) return;
+      const realId = await persistInsert(
+        'observacoes_processo',
+        buildObservacao(id, texto.trim(), userId, 'COORDENACAO_ESTADUAL'),
+      );
+      if (!realId) return;
+      mutate(id, (s) => {
+        s.observacoes = (s.observacoes ?? []).map((o) =>
+          o.id === tempId ? { ...o, id: realId } : o,
+        );
+        return s;
+      });
     });
   }, [mutate]);
 
@@ -782,6 +981,11 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       }
       return s;
     });
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.dataLaudo !== undefined) dbPatch.data_laudo = patch.dataLaudo || null;
+    if (patch.numeroSEI !== undefined) dbPatch.numero_protocolo = patch.numeroSEI?.trim() || null;
+    if (patch.seiUrl !== undefined) dbPatch.url_sei = patch.seiUrl?.trim() || null;
+    if (Object.keys(dbPatch).length) persistUpdate('solicitacoes', id, dbPatch);
   }, [mutate]);
 
   const trocarPaciente = useCallback<FluxoV2ContextValue['trocarPaciente']>(
@@ -807,6 +1011,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         }));
         return s;
       });
+      persistUpdate('solicitacoes', solicitacaoId, { paciente_id: novoPacienteId });
     },
     [mutate],
   );

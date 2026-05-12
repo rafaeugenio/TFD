@@ -275,6 +275,8 @@ export interface AjudaDb {
   data_inicio: string;
   data_fim: string;
   status: string;
+  valor_diaria: number;
+  valor_total?: number;
   observacoes?: string;
 }
 
@@ -288,6 +290,7 @@ export function buildAjudaCusto(
     data_inicio: a.dataInicio,
     data_fim: a.dataFim,
     status: STATUS_AJUDA_TO_DB[a.status] ?? 'EM_ANALISE',
+    valor_diaria: 0,
     observacoes: a.observacao,
   };
 }
