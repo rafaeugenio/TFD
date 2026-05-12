@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { randomBytes } from 'crypto';
 import type { NextRequest } from 'next/server';
+import { getAppBaseUrl } from '@/lib/url';
 
 function gerarSenhaAleatoria(): string {
   return randomBytes(16).toString('base64url');
@@ -53,7 +54,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       return Response.json({ error: flagError.message }, { status: 500 });
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+    const appUrl = await getAppBaseUrl();
     const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(usuario.email, {
       redirectTo: `${appUrl}/redefinir-senha`,
     });

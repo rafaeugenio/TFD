@@ -11,7 +11,7 @@ import { DetailPageSkeleton } from '@/shared/components/skeleton';
 const BP_MD = 768;
 const BP_XL = 1280;
 
-const AUTH_ROUTES = ['/login', '/recuperar-senha', '/redefinir-senha', '/consulta'];
+const AUTH_ROUTES = ['/login', '/recuperar-senha', '/redefinir-senha', '/primeiro-acesso', '/consulta'];
 const STANDALONE_ROUTES = ['/design-system', '/fluxo-v2/parecer-print'];
 
 interface AppLayoutProps {

@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { randomBytes } from 'crypto';
 import type { NextRequest } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase/server';
+import { getAppBaseUrl } from '@/lib/url';
 
 const PERFIS_VALIDOS = new Set([
   'ATENDENTE_MUNICIPAL',
@@ -119,10 +120,10 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: dbError.message }, { status: 500 });
     }
 
-    // 6) Dispara email para o usuário definir a senha.
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+    // 6) Dispara email para o usuário definir a senha no primeiro acesso.
+    const appUrl = await getAppBaseUrl();
     const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${appUrl}/redefinir-senha`,
+      redirectTo: `${appUrl}/primeiro-acesso`,
     });
 
     return Response.json({

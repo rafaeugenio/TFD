@@ -9,6 +9,7 @@ const PUBLIC_PATHS = [
   '/login',
   '/recuperar-senha',
   '/redefinir-senha',
+  '/primeiro-acesso',
   '/consulta',
   '/design-system',
 ];
