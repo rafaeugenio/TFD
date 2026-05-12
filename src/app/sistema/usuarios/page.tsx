@@ -29,7 +29,6 @@ import { useToast } from '@/shared/components/toast/Toast';
 import {
   listarUsuarios,
   atualizarUsuario,
-  desativarUsuario,
 } from '@/services/usuarios.service';
 import {
   listarPapeis,
@@ -289,16 +288,22 @@ export default function UsuariosPage() {
       return;
     }
 
-    const { error } = await desativarUsuario(deleteTarget.id);
-    if (error) {
-      setErrorMsg(`Erro ao desativar: ${error.message}`);
+    try {
+      const res = await fetch(`/api/usuarios/${deleteTarget.id}`, { method: 'DELETE' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error('Erro ao excluir', json.error ?? 'Tente novamente.');
+        setDeleting(false);
+        return;
+      }
+      setUsuarios((prev) => prev.filter((u) => u.id !== deleteTarget.id));
+      toast.success('Usuário excluído!', 'A conta foi removida do sistema permanentemente.');
+      setDeleteTarget(null);
+    } catch (err) {
+      toast.error('Erro ao excluir', err instanceof Error ? err.message : 'Tente novamente.');
+    } finally {
       setDeleting(false);
-      return;
     }
-    setUsuarios((prev) => prev.filter((u) => u.id !== deleteTarget.id));
-    toast.success('Usuário removido!', 'O usuário foi desvinculado do sistema.');
-    setDeleteTarget(null);
-    setDeleting(false);
   };
 
   /* ---- Create user drawer handlers ---- */
