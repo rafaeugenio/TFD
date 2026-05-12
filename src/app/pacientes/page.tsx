@@ -551,53 +551,53 @@ function PacientesPage() {
     try {
       // Validate required fields
       if (!nome.trim()) {
-        toast.error('Campo obrigatorio', 'Informe o nome completo do paciente.');
+        toast.error('Campo obrigatório', 'Informe o nome completo do paciente.');
         return;
       }
       if (!cpf.trim()) {
-        toast.error('Campo obrigatorio', 'Informe o CPF do paciente.');
+        toast.error('Campo obrigatório', 'Informe o CPF do paciente.');
         return;
       }
       if (!validarCpfModulo11(cpf)) {
-        toast.error('CPF invalido', 'O CPF informado nao e valido.');
+        toast.error('CPF inválido', 'O CPF informado não é válido.');
         return;
       }
       if (!dataNascimento) {
-        toast.error('Campo obrigatorio', 'Informe a data de nascimento.');
+        toast.error('Campo obrigatório', 'Informe a data de nascimento.');
         return;
       }
       const dateErr = validarDataNascimento(dataNascimento);
       if (dateErr) {
-        toast.error('Data invalida', dateErr);
+        toast.error('Data inválida', dateErr);
         return;
       }
       if (!sexo) {
-        toast.error('Campo obrigatorio', 'Selecione o sexo do paciente.');
+        toast.error('Campo obrigatório', 'Selecione o sexo do paciente.');
         return;
       }
       if (!telefoneCelular.trim() && !telefoneFixo.trim()) {
-        toast.error('Campo obrigatorio', 'Informe ao menos um telefone de contato.');
+        toast.error('Campo obrigatório', 'Informe ao menos um telefone de contato.');
         return;
       }
       if (!logradouro.trim()) {
-        toast.error('Campo obrigatorio', 'Informe o logradouro do endereco.');
+        toast.error('Campo obrigatório', 'Informe o logradouro do endereço.');
         return;
       }
       if (!numero.trim()) {
-        toast.error('Campo obrigatorio', 'Informe o numero do endereco.');
+        toast.error('Campo obrigatório', 'Informe o número do endereço.');
         return;
       }
       if (!bairro.trim()) {
-        toast.error('Campo obrigatorio', 'Informe o bairro do endereco.');
+        toast.error('Campo obrigatório', 'Informe o bairro do endereço.');
         return;
       }
       if (!municipio) {
-        toast.error('Campo obrigatorio', 'Selecione o municipio de residencia.');
+        toast.error('Campo obrigatório', 'Selecione o município de residência.');
         return;
       }
       const cleanCns = cns.replace(/\D/g, '');
       if (cleanCns && !validarCns(cns)) {
-        toast.error('CNS invalido', 'O Cartao SUS informado nao e valido.');
+        toast.error('CNS inválido', 'O Cartão SUS informado não é válido.');
         return;
       }
 
@@ -759,7 +759,7 @@ function PacientesPage() {
     setAcompTelefone(maskPhone((acomp.telefone as string) ?? ''));
     const age = calcularIdade((acomp.data_nascimento as string) ?? '');
     if (age !== null && (age < 20 || age > 65)) {
-      setAcompAgeWarning(`Acompanhante com ${age} anos — fora da faixa padrao (20–65). Exige autorizacao da coordenacao.`);
+      setAcompAgeWarning(`Acompanhante com ${age} anos — fora da faixa padrão (20–65). Exige autorização da coordenação.`);
     } else {
       setAcompAgeWarning('');
     }
@@ -789,28 +789,28 @@ function PacientesPage() {
 
   async function handleSaveAcomp() {
     if (!acompNome.trim()) {
-      toast.error('Campo obrigatorio', 'Informe o nome do acompanhante.');
+      toast.error('Campo obrigatório', 'Informe o nome do acompanhante.');
       return;
     }
     if (!acompCpf.trim() || !validarCpfModulo11(acompCpf)) {
-      toast.error('CPF invalido', 'Informe um CPF valido para o acompanhante.');
+      toast.error('CPF inválido', 'Informe um CPF válido para o acompanhante.');
       return;
     }
     if (!acompDataNascimento) {
-      toast.error('Campo obrigatorio', 'Informe a data de nascimento do acompanhante.');
+      toast.error('Campo obrigatório', 'Informe a data de nascimento do acompanhante.');
       return;
     }
     const dateErr = validarDataNascimento(acompDataNascimento);
     if (dateErr) {
-      toast.error('Data invalida', dateErr);
+      toast.error('Data inválida', dateErr);
       return;
     }
     if (!acompVinculo) {
-      toast.error('Campo obrigatorio', 'Selecione o vinculo do acompanhante.');
+      toast.error('Campo obrigatório', 'Selecione o vínculo do acompanhante.');
       return;
     }
     if (!acompTelefone.trim()) {
-      toast.error('Campo obrigatorio', 'Informe o telefone do acompanhante.');
+      toast.error('Campo obrigatório', 'Informe o telefone do acompanhante.');
       return;
     }
 
@@ -1146,7 +1146,7 @@ function PacientesPage() {
           />
         </FormField>
 
-        <FormField label="Cartao SUS (CNS)" hint="opcional">
+        <FormField label="Cartão SUS (CNS)" hint="opcional">
           <input
             type="text"
             className="tfd-input"
@@ -1181,7 +1181,7 @@ function PacientesPage() {
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Telefone celular" hint="ao menos um obrigatorio">
+          <FormField label="Telefone celular" hint="ao menos um obrigatório">
             <input
               type="tel"
               className="tfd-input"
@@ -1216,16 +1216,16 @@ function PacientesPage() {
           <textarea
             className="tfd-input"
             rows={2}
-            placeholder="Informacoes adicionais de contato..."
+            placeholder="Informações adicionais de contato..."
             value={outrosContatos}
             onChange={(e) => setOutrosContatos(e.target.value)}
           />
         </FormField>
 
-        {/* ── Section: Endereco ── */}
+        {/* ── Section: Endereço ── */}
         <hr className="tfd-divider" />
         <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
-          Endereco
+          Endereço
         </h3>
 
         <div className="grid grid-cols-3 gap-4">
@@ -1355,14 +1355,14 @@ function PacientesPage() {
         </h3>
 
         <p className="text-xs mb-3" style={{ color: 'var(--tfd-text-muted)' }}>
-          Anexe os documentos pessoais do paciente (RG, CPF, comprovante de residencia, Cartao SUS).
+          Anexe os documentos pessoais do paciente (RG, CPF, comprovante de residência, Cartão SUS).
         </p>
 
         {/* Existing documents (edit mode) */}
         {existingDocs.length > 0 && (
           <div className="space-y-2 mb-3">
             <p className="text-xs font-medium" style={{ color: 'var(--tfd-text-secondary)' }}>
-              Documentos ja enviados
+              Documentos já enviados
             </p>
             {existingDocs.map((doc) => (
               <div
@@ -1424,7 +1424,7 @@ function PacientesPage() {
             />
           </label>
           <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
-            PDF, PNG, JPG, WEBP, DOC — ate 50 MB por arquivo
+            PDF, PNG, JPG, WEBP, DOC — até 50 MB por arquivo
           </p>
         </div>
 
@@ -1462,8 +1462,8 @@ function PacientesPage() {
                 >
                   <option value="RG">RG</option>
                   <option value="CPF">CPF</option>
-                  <option value="CNS">Cartao SUS</option>
-                  <option value="COMPROVANTE_RESIDENCIA">Comp. Residencia</option>
+                  <option value="CNS">Cartão SUS</option>
+                  <option value="COMPROVANTE_RESIDENCIA">Comp. Residência</option>
                   <option value="OUTROS">Outros</option>
                 </select>
                 <button
@@ -1641,7 +1641,7 @@ function PacientesPage() {
                             CPF: {formatCPF((acomp.cpf as string) ?? '')}
                           </span>
                           <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>
-                            Vinculo: {VINCULO_LABELS[(acomp.vinculo as string)] ?? (acomp.vinculo as string)}
+                            Vínculo: {VINCULO_LABELS[(acomp.vinculo as string)] ?? (acomp.vinculo as string)}
                           </span>
                           {(acomp.telefone as string) && (
                             <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>
@@ -1713,7 +1713,7 @@ function PacientesPage() {
                     setAcompDataNascimento(e.target.value);
                     const age = calcularIdade(e.target.value);
                     if (age !== null && (age < 20 || age > 65)) {
-                      setAcompAgeWarning(`Acompanhante com ${age} anos — fora da faixa padrao (20–65). Exige autorizacao da coordenacao.`);
+                      setAcompAgeWarning(`Acompanhante com ${age} anos — fora da faixa padrão (20–65). Exige autorização da coordenação.`);
                     } else {
                       setAcompAgeWarning('');
                     }
@@ -1746,7 +1746,7 @@ function PacientesPage() {
             <div className="grid grid-cols-2 gap-4">
               <LookupSelect
                 categoria="vinculo_acompanhante"
-                label="Vinculo"
+                label="Vínculo"
                 value={acompVinculo}
                 onChange={(v) => setAcompVinculo(v as VinculoAcompanhante | '')}
                 required

@@ -323,7 +323,7 @@ function UnidadesSaudePage() {
         toast.error('Erro ao excluir', (result.error as { message?: string }).message ?? 'Erro desconhecido');
         return;
       }
-      toast.success('Unidade excluida', 'O registro foi desativado do sistema.');
+      toast.success('Unidade excluída', 'O registro foi desativado do sistema.');
       setDeactivateConfirmId(null);
       setDeactivateConfirmName('');
       refresh();
@@ -341,12 +341,12 @@ function UnidadesSaudePage() {
   async function handleSubmitUnidade() {
     try {
       if (!nome.trim()) {
-        toast.error('Campo obrigatorio', 'Informe o nome da unidade.');
+        toast.error('Campo obrigatório', 'Informe o nome da unidade.');
         return;
       }
       const cleanCnes = cnes.replace(/\D/g, '');
       if (!cleanCnes || cleanCnes.length !== 7) {
-        toast.error('CNES invalido', 'O CNES deve conter exatamente 7 digitos.');
+        toast.error('CNES inválido', 'O CNES deve conter exatamente 7 dígitos.');
         return;
       }
 
@@ -404,8 +404,8 @@ function UnidadesSaudePage() {
   return (
     <>
       <PageHeader
-        title="Unidades de Saude"
-        subtitle="Gerenciamento de unidades de saude de destino TFD"
+        title="Unidades de Saúde"
+        subtitle="Gerenciamento de unidades de saúde de destino TFD"
         actions={
           <Can action="unidades_saude.criar">
             <button className="tfd-btn tfd-btn-primary" onClick={() => { setEditingId(null); resetForm(); setDrawerOpen(true); }}>
@@ -471,13 +471,13 @@ function UnidadesSaudePage() {
                   onFilterChange={(v) => table.setColumnFilter('tipo', v)}
                 />
                 <SortableHeader
-                  label="Municipio"
+                  label="Município"
                   className="hidden xl:table-cell"
                   sortDirection={table.getSortDirection('municipio')}
                   onSort={() => table.toggleSort('municipio')}
                 />
                 <th className="hidden md:table-cell">Telefone</th>
-                <th className="w-[100px]">Acoes</th>
+                <th className="w-[100px]">Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -700,7 +700,7 @@ function UnidadesSaudePage() {
             />
           </FormField>
 
-          <FormField label="Numero">
+          <FormField label="Número">
             <input
               type="text"
               className="tfd-input"
@@ -747,7 +747,7 @@ function UnidadesSaudePage() {
           />
         </FormField>
 
-        <FormField label="Responsavel">
+        <FormField label="Responsável">
           <input
             type="text"
             className="tfd-input"

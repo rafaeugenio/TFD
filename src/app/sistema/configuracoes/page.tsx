@@ -550,9 +550,10 @@ function CadastrosPanel() {
       </FormField>
       <FormField label="Tipo Modal" required>
         <select className="tfd-input" value={fCModal} onChange={(e) => setFCModal(e.target.value)}>
-          <option value="Aéreo">Aéreo</option>
-          <option value="Terrestre">Terrestre</option>
-          <option value="Fluvial">Fluvial</option>
+          <option value="AEREO">Aéreo</option>
+          <option value="TERRESTRE">Terrestre</option>
+          <option value="FLUVIAL">Fluvial</option>
+          <option value="TRANSFER">Transfer (porta-a-porta)</option>
         </select>
       </FormField>
       <FormField label="CNPJ">

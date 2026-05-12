@@ -155,7 +155,7 @@ export default function MeuPerfilPage() {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      toast.error('Arquivo invalido', 'Selecione uma imagem (JPG, PNG, etc.).');
+      toast.error('Arquivo inválido', 'Selecione uma imagem (JPG, PNG, etc.).');
       return;
     }
 
@@ -283,7 +283,7 @@ export default function MeuPerfilPage() {
     if (error) {
       toast.error('Erro ao salvar', (error as any).message);
     } else {
-      toast.success('Perfil atualizado!', 'As alteracoes foram salvas com sucesso.');
+      toast.success('Perfil atualizado!', 'As alterações foram salvas com sucesso.');
     }
     setSaving(false);
   }
@@ -300,7 +300,7 @@ export default function MeuPerfilPage() {
   if (loading) {
     return (
       <>
-        <PageHeader title="Meu Perfil" subtitle="Informacoes pessoais e configuracoes" />
+        <PageHeader title="Meu Perfil" subtitle="Informações pessoais e configurações" />
         <DetailHeaderSkeleton />
         <SectionSkeleton rows={6} />
       </>
@@ -309,7 +309,7 @@ export default function MeuPerfilPage() {
 
   return (
     <>
-      <PageHeader title="Meu Perfil" subtitle="Informacoes pessoais e configuracoes" />
+      <PageHeader title="Meu Perfil" subtitle="Informações pessoais e configurações" />
 
       <div className="space-y-4 tfd-stagger">
 
@@ -529,7 +529,7 @@ export default function MeuPerfilPage() {
             <div className="tfd-message tfd-message--info mb-4">
               <span className="tfd-message-icon mt-0.5 shrink-0"><Stethoscope size={14} /></span>
               <p className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>
-                Essas informacoes sao obrigatorias para emissao de pareceres medicos e serao exibidas automaticamente no registro do parecer.
+                Essas informações são obrigatórias para emissão de pareceres médicos e serão exibidas automaticamente no registro do parecer.
               </p>
             </div>
 
