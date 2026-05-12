@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Loader2, Calculator } from 'lucide-react';
+import { Plus, Loader2 } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
@@ -134,33 +134,43 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
     }
   }
 
-  async function calcularDistanciaNovaRota() {
+  const [distRotaErro, setDistRotaErro] = useState<string | null>(null);
+
+  /** Auto-cálculo da distância sempre que origem, destino ou modal mudam.
+   *  Campo é readOnly — valor derivado das coordenadas IBGE. */
+  useEffect(() => {
+    if (!novaRotaOpen) return;
     if (!novaRotaOrigemCidade.trim() || !novaRotaOrigemUf.trim() || !novaRotaDestinoCidade.trim() || !novaRotaDestinoUf.trim()) {
-      toast.warning('Preencha origem e destino', 'Informe cidade e UF antes de calcular.');
+      setNovaRotaDistancia('');
+      setDistRotaErro(null);
       return;
     }
+    let cancelado = false;
     setCalculandoDistRota(true);
-    try {
-      const [o, d] = await Promise.all([
-        buscarMunicipio(novaRotaOrigemCidade, novaRotaOrigemUf),
-        buscarMunicipio(novaRotaDestinoCidade, novaRotaDestinoUf),
-      ]);
-      if (!o) { toast.error('Cidade de origem não encontrada', `"${novaRotaOrigemCidade}/${novaRotaOrigemUf}" não está na base IBGE.`); return; }
-      if (!d) { toast.error('Cidade de destino não encontrada', `"${novaRotaDestinoCidade}/${novaRotaDestinoUf}" não está na base IBGE.`); return; }
-      const valor = modal === 'aereo'
-        ? Math.round(distanciaMilhas(o, d))
-        : modal === 'fluvial'
-          ? Math.round(distanciaMilhasNauticas(o, d))
-          : Math.round(distanciaKm(o, d));
-      setNovaRotaDistancia(String(valor));
-      const unidade = modal === 'aereo' ? 'milhas' : modal === 'fluvial' ? 'mn' : 'km';
-      toast.success('Distância calculada', `${valor.toLocaleString('pt-BR')} ${unidade} (linha reta).`);
-    } catch (err) {
-      toast.error('Erro ao calcular', err instanceof Error ? err.message : 'Falha ao carregar base de municípios.');
-    } finally {
-      setCalculandoDistRota(false);
-    }
-  }
+    setDistRotaErro(null);
+    (async () => {
+      try {
+        const [o, d] = await Promise.all([
+          buscarMunicipio(novaRotaOrigemCidade, novaRotaOrigemUf),
+          buscarMunicipio(novaRotaDestinoCidade, novaRotaDestinoUf),
+        ]);
+        if (cancelado) return;
+        if (!o) { setDistRotaErro(`Cidade "${novaRotaOrigemCidade}/${novaRotaOrigemUf}" não está na base IBGE.`); setNovaRotaDistancia(''); return; }
+        if (!d) { setDistRotaErro(`Cidade "${novaRotaDestinoCidade}/${novaRotaDestinoUf}" não está na base IBGE.`); setNovaRotaDistancia(''); return; }
+        const valor = modal === 'aereo'
+          ? Math.round(distanciaMilhas(o, d))
+          : modal === 'fluvial'
+            ? Math.round(distanciaMilhasNauticas(o, d))
+            : Math.round(distanciaKm(o, d));
+        setNovaRotaDistancia(String(valor));
+      } catch (err) {
+        if (!cancelado) setDistRotaErro(err instanceof Error ? err.message : 'Falha ao carregar base de municípios.');
+      } finally {
+        if (!cancelado) setCalculandoDistRota(false);
+      }
+    })();
+    return () => { cancelado = true; };
+  }, [novaRotaOpen, novaRotaOrigemCidade, novaRotaOrigemUf, novaRotaDestinoCidade, novaRotaDestinoUf, modal]);
 
   async function salvarNovaRota() {
     if (!novaRotaOrigemCidade.trim() || !novaRotaOrigemUf.trim() || !novaRotaDestinoCidade.trim() || !novaRotaDestinoUf.trim()) return;
@@ -452,31 +462,26 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
               <p className="text-[11px] mb-1" style={{ color: '#94A3B8' }}>
                 Distância ({modal === 'aereo' ? 'milhas' : modal === 'fluvial' ? 'milhas náuticas' : 'km'})
               </p>
-              <div className="grid grid-cols-[1fr_auto] gap-2">
+              <div className="relative">
                 <input
-                  type="number"
-                  step="1"
-                  min="0"
-                  placeholder={modal === 'aereo' ? 'Ex: 1456' : modal === 'fluvial' ? 'Ex: 180' : 'Ex: 320'}
+                  type="text"
+                  readOnly
+                  tabIndex={-1}
+                  placeholder={
+                    !novaRotaOrigemCidade || !novaRotaOrigemUf || !novaRotaDestinoCidade || !novaRotaDestinoUf
+                      ? 'Preencha origem e destino'
+                      : calculandoDistRota ? 'Calculando…' : ''
+                  }
                   value={novaRotaDistancia}
-                  onChange={(e) => setNovaRotaDistancia(e.target.value)}
-                  className="px-3 py-2 text-[13px] min-w-0"
-                  style={inputStyle}
+                  className="px-3 py-2 text-[13px] min-w-0 w-full"
+                  style={{ ...inputStyle, background: '#F1F5F9', cursor: 'not-allowed' }}
                 />
-                <button
-                  type="button"
-                  onClick={calcularDistanciaNovaRota}
-                  disabled={calculandoDistRota || !novaRotaOrigemCidade || !novaRotaOrigemUf || !novaRotaDestinoCidade || !novaRotaDestinoUf}
-                  className="tfd-btn tfd-btn-secondary tfd-btn--sm"
-                  title="Calcular distância em linha reta entre origem e destino"
-                  style={{ whiteSpace: 'nowrap' }}
-                >
-                  {calculandoDistRota ? <Loader2 size={12} className="animate-spin" /> : <Calculator size={12} />}
-                  Calcular
-                </button>
+                {calculandoDistRota && (
+                  <Loader2 size={12} className="animate-spin absolute right-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+                )}
               </div>
-              <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>
-                Cálculo em linha reta via coordenadas IBGE. Ajuste se necessário.
+              <p className="text-[10px] mt-1" style={{ color: distRotaErro ? '#DC2626' : '#94A3B8' }}>
+                {distRotaErro ?? 'Calculado automaticamente em linha reta a partir das coordenadas IBGE.'}
               </p>
             </div>
             <div className="flex items-center gap-2 justify-end mt-1">
