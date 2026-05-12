@@ -134,6 +134,13 @@ const SECOES: SecaoConfig[] = [
 // Flat list for lookups
 const ALL_CATEGORIAS = SECOES.flatMap((s) => s.categorias);
 
+const MODAL_LABELS: Record<string, string> = {
+  AEREO: 'Aéreo',
+  TERRESTRE: 'Terrestre',
+  FLUVIAL: 'Fluvial',
+  TRANSFER: 'Transfer (porta-a-porta)',
+};
+
 /* -------------------------------------------------- */
 /*  CadastrosPanel (Card-based layout by sections)     */
 /* -------------------------------------------------- */
@@ -455,7 +462,7 @@ function CadastrosPanel() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{c.nome}</p>
                 <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-                  {c.tipo_modal} {c.cnpj ? `· ${c.cnpj}` : ''}
+                  {MODAL_LABELS[c.tipo_modal as string] ?? c.tipo_modal} {c.cnpj ? `· ${c.cnpj}` : ''}
                 </p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
