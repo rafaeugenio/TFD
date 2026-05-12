@@ -465,7 +465,7 @@ function PareceresCell({ s }: { s: SolicitacaoMock }) {
   const decisaoLabel = ultimo.decisao === 'deferido' ? 'Deferido' : 'Indeferido';
   return (
     <Link
-      href={`/fluxo-v2/parecer-print/${ultimo.id}?solicitacao=${s.id}`}
+      href={`/parecer/${ultimo.id}`}
       target="_blank"
       rel="noopener noreferrer"
       className="inline-flex items-center gap-1 hover:underline"

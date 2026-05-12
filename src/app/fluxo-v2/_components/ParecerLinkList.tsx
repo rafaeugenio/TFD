@@ -63,7 +63,7 @@ export default function ParecerLinkList({
             return (
               <li key={p.id}>
                 <a
-                  href={`/fluxo-v2/parecer-print/${p.id}?solicitacao=${s.id}`}
+                  href={`/parecer/${p.id}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 px-3 py-2 transition-colors hover:bg-[#F1F5F9]"

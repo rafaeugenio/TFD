@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
 /* -------------------------------------------------------------------------- */
@@ -47,9 +47,16 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [permissions, setPermissions] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
+  /** Evita que recargas em background (ex: TOKEN_REFRESHED ao voltar de alt-tab)
+   *  forcem `isLoading=true` e re-montagem dos children — o que descartaria
+   *  estado local de drawers/forms. Só o primeiro load mostra skeleton. */
+  const hasLoadedRef = useRef(false);
+  /** Última identidade conhecida — usado pra ignorar eventos de refresh de token
+   *  que não mudam o usuário logado. */
+  const lastUserIdRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
-    setIsLoading(true);
+    if (!hasLoadedRef.current) setIsLoading(true);
     try {
       const supabase = createClient();
       const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -108,18 +115,31 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
       setPermissions(acc);
     } finally {
       setIsLoading(false);
+      hasLoadedRef.current = true;
     }
   }, []);
 
   useEffect(() => {
     load();
-    // Reage a login/logout em outra aba.
+    // Só recarrega em mudança real de identidade (login/logout/troca de user).
+    // `TOKEN_REFRESHED` e `INITIAL_SESSION` mantêm o mesmo user e não devem
+    // re-disparar o load — caso contrário, voltar de alt-tab re-monta tudo
+    // e fecha drawers/formulários abertos.
     const supabase = createClient();
-    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      const novoUserId = session?.user?.id ?? null;
+      if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') return;
+      if (novoUserId === lastUserIdRef.current) return;
+      lastUserIdRef.current = novoUserId;
       load();
     });
     return () => sub.subscription.unsubscribe();
   }, [load]);
+
+  // Sincroniza a ref de identidade após o primeiro load.
+  useEffect(() => {
+    lastUserIdRef.current = user?.id ?? null;
+  }, [user?.id]);
 
   const can = useCallback(
     (permission: string) => {

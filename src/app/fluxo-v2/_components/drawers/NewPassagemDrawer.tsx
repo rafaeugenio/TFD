@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Loader2 } from 'lucide-react';
+import { Plus, Loader2, Calculator } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
@@ -12,6 +12,8 @@ import { calcularIdade } from '@/shared/utils/idade';
 import { listarRotas, criarRota } from '@/services/rotas-deslocamento.service';
 import type { RotaDeslocamento } from '@/core/models';
 import { createClient } from '@/lib/supabase/client';
+import { buscarMunicipio } from '@/services/municipios.service';
+import { distanciaKm, distanciaMilhas, distanciaMilhasNauticas } from '@/lib/distancia/haversine';
 
 interface CompanhiaRow {
   id: string;
@@ -72,6 +74,8 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
   const [novaRotaOrigemUf, setNovaRotaOrigemUf] = useState('MA');
   const [novaRotaDestinoCidade, setNovaRotaDestinoCidade] = useState('');
   const [novaRotaDestinoUf, setNovaRotaDestinoUf] = useState('');
+  const [novaRotaDistancia, setNovaRotaDistancia] = useState('');
+  const [calculandoDistRota, setCalculandoDistRota] = useState(false);
   const [savingRota, setSavingRota] = useState(false);
 
   const carregarRotas = async () => {
@@ -130,14 +134,46 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
     }
   }
 
+  async function calcularDistanciaNovaRota() {
+    if (!novaRotaOrigemCidade.trim() || !novaRotaOrigemUf.trim() || !novaRotaDestinoCidade.trim() || !novaRotaDestinoUf.trim()) {
+      toast.warning('Preencha origem e destino', 'Informe cidade e UF antes de calcular.');
+      return;
+    }
+    setCalculandoDistRota(true);
+    try {
+      const [o, d] = await Promise.all([
+        buscarMunicipio(novaRotaOrigemCidade, novaRotaOrigemUf),
+        buscarMunicipio(novaRotaDestinoCidade, novaRotaDestinoUf),
+      ]);
+      if (!o) { toast.error('Cidade de origem não encontrada', `"${novaRotaOrigemCidade}/${novaRotaOrigemUf}" não está na base IBGE.`); return; }
+      if (!d) { toast.error('Cidade de destino não encontrada', `"${novaRotaDestinoCidade}/${novaRotaDestinoUf}" não está na base IBGE.`); return; }
+      const valor = modal === 'aereo'
+        ? Math.round(distanciaMilhas(o, d))
+        : modal === 'fluvial'
+          ? Math.round(distanciaMilhasNauticas(o, d))
+          : Math.round(distanciaKm(o, d));
+      setNovaRotaDistancia(String(valor));
+      const unidade = modal === 'aereo' ? 'milhas' : modal === 'fluvial' ? 'mn' : 'km';
+      toast.success('Distância calculada', `${valor.toLocaleString('pt-BR')} ${unidade} (linha reta).`);
+    } catch (err) {
+      toast.error('Erro ao calcular', err instanceof Error ? err.message : 'Falha ao carregar base de municípios.');
+    } finally {
+      setCalculandoDistRota(false);
+    }
+  }
+
   async function salvarNovaRota() {
     if (!novaRotaOrigemCidade.trim() || !novaRotaOrigemUf.trim() || !novaRotaDestinoCidade.trim() || !novaRotaDestinoUf.trim()) return;
     setSavingRota(true);
+    const distNum = novaRotaDistancia ? parseFloat(novaRotaDistancia) : undefined;
     const { data: criada, error } = await criarRota({
       cidade_origem: novaRotaOrigemCidade.trim(),
       uf_origem: novaRotaOrigemUf.trim().toUpperCase(),
       cidade_destino: novaRotaDestinoCidade.trim(),
       uf_destino: novaRotaDestinoUf.trim().toUpperCase(),
+      distancia_milhas: modal === 'aereo' ? distNum : undefined,
+      distancia_km: modal === 'terrestre' ? distNum : undefined,
+      distancia_milhas_nauticas: modal === 'fluvial' ? distNum : undefined,
     });
     setSavingRota(false);
     if (error) {
@@ -156,6 +192,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
     setNovaRotaOrigemUf('MA');
     setNovaRotaDestinoCidade('');
     setNovaRotaDestinoUf('');
+    setNovaRotaDistancia('');
   }
 
   useEffect(() => {
@@ -410,6 +447,37 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
                   style={inputStyle}
                 />
               </div>
+            </div>
+            <div>
+              <p className="text-[11px] mb-1" style={{ color: '#94A3B8' }}>
+                Distância ({modal === 'aereo' ? 'milhas' : modal === 'fluvial' ? 'milhas náuticas' : 'km'})
+              </p>
+              <div className="grid grid-cols-[1fr_auto] gap-2">
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  placeholder={modal === 'aereo' ? 'Ex: 1456' : modal === 'fluvial' ? 'Ex: 180' : 'Ex: 320'}
+                  value={novaRotaDistancia}
+                  onChange={(e) => setNovaRotaDistancia(e.target.value)}
+                  className="px-3 py-2 text-[13px] min-w-0"
+                  style={inputStyle}
+                />
+                <button
+                  type="button"
+                  onClick={calcularDistanciaNovaRota}
+                  disabled={calculandoDistRota || !novaRotaOrigemCidade || !novaRotaOrigemUf || !novaRotaDestinoCidade || !novaRotaDestinoUf}
+                  className="tfd-btn tfd-btn-secondary tfd-btn--sm"
+                  title="Calcular distância em linha reta entre origem e destino"
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  {calculandoDistRota ? <Loader2 size={12} className="animate-spin" /> : <Calculator size={12} />}
+                  Calcular
+                </button>
+              </div>
+              <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>
+                Cálculo em linha reta via coordenadas IBGE. Ajuste se necessário.
+              </p>
             </div>
             <div className="flex items-center gap-2 justify-end mt-1">
               <button

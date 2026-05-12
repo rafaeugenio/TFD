@@ -229,7 +229,7 @@ export default function RegulacaoTab({ s }: Props) {
                       type="button"
                       className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 transition-colors hover:bg-white"
                       style={{ color: 'var(--tfd-blue)', borderRadius: 6, border: '1px solid var(--tfd-surface-border)' }}
-                      onClick={() => window.open(`/fluxo-v2/parecer-print/${p.id}?solicitacao=${s.id}`, '_blank')}
+                      onClick={() => window.open(`/parecer/${p.id}`, '_blank')}
                     >
                       <Printer size={11} /> Exportar
                     </button>

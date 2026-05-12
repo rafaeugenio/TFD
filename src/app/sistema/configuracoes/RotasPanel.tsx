@@ -89,9 +89,6 @@ export default function RotasPanel() {
   const [fDistMn, setFDistMn] = useState('');
   const [fModal, setFModal] = useState<Modal>('aereo');
   const [fAtivo, setFAtivo] = useState(true);
-  const [fCodigoBilhete, setFCodigoBilhete] = useState('');
-  const [fAnexoNome, setFAnexoNome] = useState('');
-  const [fAnexoUrl, setFAnexoUrl] = useState('');
 
   /* Debounce da busca (300ms) — refaz a query no banco */
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -146,7 +143,6 @@ export default function RotasPanel() {
     setFCidadeDestino(''); setFUfDestino('');
     setFDistMilhas(''); setFDistKm(''); setFDistMn('');
     setFModal('aereo'); setFAtivo(true); setEditing(null);
-    setFCodigoBilhete(''); setFAnexoNome(''); setFAnexoUrl('');
   };
 
   const [calculandoDist, setCalculandoDist] = useState(false);
@@ -205,9 +201,6 @@ export default function RotasPanel() {
     setFDistMn(item.distancia_milhas_nauticas != null ? String(item.distancia_milhas_nauticas) : '');
     setFModal(inferModal(item));
     setFAtivo(item.ativo);
-    setFCodigoBilhete(item.codigo_bilhete ?? '');
-    setFAnexoNome(item.anexo_nome ?? '');
-    setFAnexoUrl(item.anexo_url ?? '');
     setDrawerOpen(true);
   };
 
@@ -225,9 +218,6 @@ export default function RotasPanel() {
       distancia_km: fModal === 'terrestre' && fDistKm ? parseFloat(fDistKm) : undefined,
       distancia_milhas_nauticas: fModal === 'fluvial' && fDistMn ? parseFloat(fDistMn) : undefined,
       ativo: fAtivo,
-      codigo_bilhete: fCodigoBilhete.trim() || undefined,
-      anexo_nome: fAnexoNome || undefined,
-      anexo_url: fAnexoUrl || undefined,
     };
 
     const fmtDist = (modal: Modal, p: typeof payload) => {
@@ -684,60 +674,6 @@ export default function RotasPanel() {
             </div>
           </>
         )}
-
-        <hr className="tfd-divider mt-4" />
-        <div className="grid grid-cols-1 gap-3 mt-4">
-          <div>
-            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--tfd-text-secondary)' }}>
-              Código do bilhete (padrão)
-            </label>
-            <input
-              type="text"
-              className="tfd-input font-mono"
-              placeholder="Ex.: ABC123"
-              value={fCodigoBilhete}
-              onChange={(e) => setFCodigoBilhete(e.target.value.toUpperCase())}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--tfd-text-secondary)' }}>
-              Anexo
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                className="tfd-input flex-1"
-                placeholder="Nome do arquivo"
-                value={fAnexoNome}
-                onChange={(e) => setFAnexoNome(e.target.value)}
-              />
-              <input
-                type="file"
-                className="hidden"
-                id="rota-anexo-input"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  setFAnexoNome(file.name);
-                  // mock URL — no futuro fazer upload real ao Storage
-                  setFAnexoUrl(`mock://${file.name}`);
-                }}
-              />
-              <label
-                htmlFor="rota-anexo-input"
-                className="tfd-btn tfd-btn-secondary tfd-btn--sm cursor-pointer"
-                style={{ whiteSpace: 'nowrap' }}
-              >
-                Selecionar
-              </label>
-            </div>
-            {fAnexoUrl && (
-              <p className="text-[11px] mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
-                {fAnexoUrl.startsWith('mock://') ? 'Anexo (mock) — upload real será implementado' : fAnexoUrl}
-              </p>
-            )}
-          </div>
-        </div>
 
         {editing && (
           <div className="mb-4 mt-4">
