@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Paperclip, X } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
+import { useToast } from '@/shared/components/toast/Toast';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import type { AdicionalMock } from '@/core/mocks/fluxo-v2-v3-seed';
@@ -25,6 +26,7 @@ interface Props {
 
 export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar }: Props) {
   const { addAdicional, editarAdicional } = useFluxoV2State();
+  const toast = useToast();
   const isEdicao = !!editar;
   const firstInputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -82,6 +84,7 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
         tipoDespesa: tipoDespesa || undefined,
       });
     }
+    toast.success(isEdicao ? 'Adicional atualizado' : 'Adicional registrado', descricao.trim());
     onClose();
   }
 

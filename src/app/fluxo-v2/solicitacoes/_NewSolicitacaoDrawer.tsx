@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Drawer from '@/shared/components/drawer/Drawer';
+import { useToast } from '@/shared/components/toast/Toast';
 import IdadeBadge from '@/shared/components/idade-badge';
 import {
   Paperclip,
@@ -64,6 +65,7 @@ const VINCULO_OPTIONS = [
 
 export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
   const { createSolicitacao } = useFluxoV2State();
+  const toast = useToast();
   const router = useRouter();
 
   const [pacienteId, setPacienteId] = useState('');
@@ -296,6 +298,7 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
     });
     reset();
     onClose();
+    toast.success('Solicitação criada', paciente.nome_completo ?? 'Paciente cadastrado');
     router.push(`/fluxo-v2/solicitacoes/${id}`);
   }
 

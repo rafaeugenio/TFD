@@ -269,8 +269,9 @@ export default function SolicitacoesV2ListPage() {
               return (
                 <tr
                   key={s.id}
-                  style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}
+                  style={{ borderBottom: '1px solid var(--tfd-surface-border)', cursor: 'pointer' }}
                   className="hover:bg-[#F8FAFC] transition-colors"
+                  onClick={() => router.push(`/fluxo-v2/solicitacoes/${s.id}`)}
                 >
                   <td className="px-4 py-3.5 font-mono text-[12px]" style={{ color: '#1A1D2B' }}>{s.numero}</td>
                   <td className="px-4 py-3.5.5">
@@ -279,6 +280,7 @@ export default function SolicitacoesV2ListPage() {
                         href={`/pacientes/${s.paciente.id}`}
                         className="transition-colors hover:underline"
                         style={{ color: '#146BFA', fontWeight: 500, fontSize: 14, textUnderlineOffset: 3 }}
+                        onClick={(e) => e.stopPropagation()}
                       >
                         {s.paciente.nome}
                       </Link>
@@ -302,7 +304,7 @@ export default function SolicitacoesV2ListPage() {
                       <span style={{ color: '#9CA3AF' }}>—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3.5 text-right">
+                  <td className="px-4 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="inline-flex items-center">
                       <RowActions
                         actions={[

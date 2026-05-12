@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ExternalLink } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
+import { useToast } from '@/shared/components/toast/Toast';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import {
   DESFECHO_TENTATIVA_LABEL,
@@ -53,6 +54,7 @@ const DESFECHOS_ORDENADOS: DesfechoTentativa[] = [
 
 export default function NewTentativaDrawer({ open, onClose, solicitacaoId, editar }: Props) {
   const { addTentativa, editarTentativa, getById } = useFluxoV2State();
+  const toast = useToast();
   const firstInputRef = useRef<HTMLInputElement>(null);
 
   const [unidade, setUnidade] = useState('');
@@ -175,8 +177,10 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
     };
     if (isEdicao && editar) {
       editarTentativa(solicitacaoId, editar.id, payload);
+      toast.success('Tentativa atualizada', unidade);
     } else {
       addTentativa(solicitacaoId, payload);
+      toast.success('Tentativa registrada', unidade);
     }
     onClose();
   }

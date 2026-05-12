@@ -4,7 +4,7 @@ import { use, useEffect, useMemo, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
-  ArrowLeft, Archive, ArrowRight, Phone, Mail, ExternalLink, Paperclip, FileText, FileX,
+  ArrowLeft, Archive, Send, Phone, Mail, ExternalLink, Paperclip, FileText, FileX,
 } from 'lucide-react';
 import StatusV2Badge from '../../_components/StatusV2Badge';
 import { idadeAnos } from '../../_utils/idade';
@@ -12,14 +12,16 @@ import LinhaDoTempoTab from '../../_components/LinhaDoTempoTab';
 import ObservacoesTab from '../../_components/ObservacoesTab';
 import RegulacaoTab from '../../_components/RegulacaoTab';
 import FinanceiroTab from '../../_components/FinanceiroTab';
-import { derivarEventos, tempoRelativo } from '../../_utils/derivarLinhaDoTempo';
+import EnviarParaSetorDrawer from '../../_components/drawers/EnviarParaSetorDrawer';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import {
   MOTIVO_ENCERRAMENTO_LABEL,
   type MotivoEncerramento,
 } from '@/core/mocks/fluxo-v2-v3-seed';
-import { isLocked, tooltipLocked } from '../../_utils/lock';
+import { isLocked, tooltipLocked, setorAtual } from '../../_utils/lock';
 import { DetailPageSkeleton } from '@/shared/components/skeleton';
+import { Can } from '@/shared/auth/Can';
+import { useToast } from '@/shared/components/toast/Toast';
 
 type TabKey = 'timeline' | 'regulacao' | 'financeiro' | 'observacoes';
 
@@ -48,6 +50,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { getById, encerrar, isLoading } = useFluxoV2State();
+  const toast = useToast();
   const s = getById(id);
 
   const tabParam = searchParams.get('tab');
@@ -64,6 +67,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
   }, [tabParam, pathname, router, searchParams]);
 
   const [encerrarOpen, setEncerrarOpen] = useState(false);
+  const [enviarOpen, setEnviarOpen] = useState(false);
   const [motivo, setMotivo] = useState<MotivoEncerramento>('alta_medica');
   const [dataEnc, setDataEnc] = useState(new Date().toISOString().slice(0, 10));
   const [obs, setObs] = useState('');
@@ -75,13 +79,6 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
     const qs = params.toString();
     router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
-
-  const ultimoEvento = useMemo(() => {
-    if (!s) return null;
-    const list = derivarEventos(s);
-    // Eventos vêm ordenados descendente (mais recente primeiro), então pegamos o índice 0.
-    return list.length > 0 ? list[0] : null;
-  }, [s]);
 
   if (!s) {
     if (isLoading) {
@@ -99,6 +96,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
 
   function handleEncerrar() {
     encerrar(s!.id, { data: dataEnc, motivo, observacao: obs.trim() || undefined });
+    toast.success('Solicitação encerrada', MOTIVO_ENCERRAMENTO_LABEL[motivo]);
     setEncerrarOpen(false);
     router.refresh();
   }
@@ -145,14 +143,25 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
             </div>
           </div>
           {s.status !== 'encerrada' && (
-            <button
-              type="button"
-              className="tfd-btn tfd-btn-danger shrink-0"
-              onClick={() => setEncerrarOpen(true)}
-              style={{ marginLeft: 12 }}
-            >
-              <Archive size={14} /> Encerrar solicitação
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <Can action="tramitacao.tramitar">
+                <button
+                  type="button"
+                  className="tfd-btn tfd-btn-secondary"
+                  onClick={() => setEnviarOpen(true)}
+                  title="Enviar para outro setor"
+                >
+                  <Send size={14} /> Enviar para setor
+                </button>
+              </Can>
+              <button
+                type="button"
+                className="tfd-btn tfd-btn-danger"
+                onClick={() => setEncerrarOpen(true)}
+              >
+                <Archive size={14} /> Encerrar solicitação
+              </button>
+            </div>
           )}
         </div>
 
@@ -252,34 +261,6 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
           </div>
         </div>
 
-        {/* Linha final — última atualização (sutil, sempre visível quando há evento) */}
-        {ultimoEvento && (
-          <button
-            type="button"
-            onClick={() => {
-              setTab('timeline');
-              if (typeof window !== 'undefined') {
-                setTimeout(() => {
-                  document.getElementById('linha-do-tempo')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }, 80);
-              }
-            }}
-            className="w-full flex items-center gap-2 text-left px-6 py-3 transition-colors hover:bg-[#F8FAFC]"
-            style={{
-              borderTop: '1px solid #E2E8F0',
-              background: 'white',
-              cursor: 'pointer',
-            }}
-          >
-            <span className="text-[13px]" style={{ color: '#64748B' }}>
-              Última atualização: <span style={{ color: '#1E293B', fontWeight: 500 }}>{ultimoEvento.titulo}</span>
-              <span style={{ color: '#94A3B8' }}> · {tempoRelativo(ultimoEvento.data)}</span>
-            </span>
-            <span className="ml-auto inline-flex items-center gap-1 text-[13px] font-medium shrink-0" style={{ color: '#146BFA' }}>
-              Ver linha do tempo <ArrowRight size={13} />
-            </span>
-          </button>
-        )}
       </div>
 
       {/* ============ Encerramento (visível em todas as abas) ============ */}
@@ -392,6 +373,16 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Enviar para outro setor */}
+      {s.status !== 'encerrada' && (
+        <EnviarParaSetorDrawer
+          open={enviarOpen}
+          onClose={() => setEnviarOpen(false)}
+          solicitacaoId={s.id}
+          setorAtual={setorAtual(s) as 'dados_basicos' | 'regulacao' | 'financeiro'}
+        />
       )}
 
       <style jsx>{`

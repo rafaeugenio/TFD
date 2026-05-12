@@ -62,10 +62,10 @@ const UF_OPTIONS = [
 ];
 
 const VINCULO_LABELS: Record<string, string> = {
-  CONJUGE: 'Conjuge',
+  CONJUGE: 'Cônjuge',
   FILHO: 'Filho(a)',
-  PAI_MAE: 'Pai/Mae',
-  RESPONSAVEL_LEGAL: 'Responsavel Legal',
+  PAI_MAE: 'Pai/Mãe',
+  RESPONSAVEL_LEGAL: 'Responsável Legal',
   OUTRO: 'Outro',
 };
 
@@ -127,10 +127,10 @@ function validarCns(value: string): boolean {
 function validarDataNascimento(value: string): string {
   if (!value) return '';
   const d = new Date(value + 'T00:00:00');
-  if (isNaN(d.getTime())) return 'Data invalida.';
+  if (isNaN(d.getTime())) return 'Data inválida.';
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  if (d > today) return 'A data de nascimento nao pode ser futura.';
+  if (d > today) return 'A data de nascimento não pode ser futura.';
   const minDate = new Date('1900-01-01');
   if (d < minDate) return 'Data de nascimento muito antiga.';
   return '';

@@ -321,8 +321,10 @@ export default function FinanceiroListPage() {
                   style={{
                     borderBottom: '1px solid #E2E8F0',
                     boxShadow: destaque ? 'inset 3px 0 0 0 #94A3B8' : undefined,
+                    cursor: 'pointer',
                   }}
                   className={'hover:bg-[#F8FAFC] transition-colors'}
+                  onClick={() => router.push(`/fluxo-v2/solicitacoes/${s.id}?tab=financeiro`)}
                 >
                   <td className="px-4 py-3.5 font-mono text-[13px]">
                     <span className="inline-flex items-center gap-1.5 flex-wrap">
@@ -343,6 +345,7 @@ export default function FinanceiroListPage() {
                         href={`/pacientes/${s.paciente.id}`}
                         className="transition-colors hover:underline"
                         style={{ color: '#146BFA', fontWeight: 500, fontSize: 14, textUnderlineOffset: 3 }}
+                        onClick={(e) => e.stopPropagation()}
                       >
                         {s.paciente.nome}
                       </Link>
@@ -392,7 +395,7 @@ export default function FinanceiroListPage() {
                   <td className="px-4 py-3.5" style={{ color: '#64748B', fontSize: 13 }}>
                     {tempoNoSetor(s.dataCriacao)}d
                   </td>
-                  <td className="px-4 py-3.5 text-right">
+                  <td className="px-4 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="inline-flex items-center">
                       <RowActions
                         actions={[

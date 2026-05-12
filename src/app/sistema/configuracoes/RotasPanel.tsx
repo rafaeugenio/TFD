@@ -11,7 +11,15 @@ import {
   Package,
   Power,
   Route,
+  Calculator,
 } from 'lucide-react';
+
+import { buscarMunicipio } from '@/services/municipios.service';
+import {
+  distanciaKm,
+  distanciaMilhas,
+  distanciaMilhasNauticas,
+} from '@/lib/distancia/haversine';
 
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
@@ -140,6 +148,49 @@ export default function RotasPanel() {
     setFModal('aereo'); setFAtivo(true); setEditing(null);
     setFCodigoBilhete(''); setFAnexoNome(''); setFAnexoUrl('');
   };
+
+  const [calculandoDist, setCalculandoDist] = useState(false);
+
+  const handleCalcularDistancia = async () => {
+    if (!fCidadeOrigem || !fUfOrigem || !fCidadeDestino || !fUfDestino) {
+      toast.warning('Preencha origem e destino', 'Informe cidade e UF antes de calcular.');
+      return;
+    }
+    setCalculandoDist(true);
+    try {
+      const [origem, destino] = await Promise.all([
+        buscarMunicipio(fCidadeOrigem, fUfOrigem),
+        buscarMunicipio(fCidadeDestino, fUfDestino),
+      ]);
+      if (!origem) {
+        toast.error('Cidade de origem não encontrada', `"${fCidadeOrigem}/${fUfOrigem}" não está na base IBGE.`);
+        return;
+      }
+      if (!destino) {
+        toast.error('Cidade de destino não encontrada', `"${fCidadeDestino}/${fUfDestino}" não está na base IBGE.`);
+        return;
+      }
+      if (fModal === 'aereo') {
+        const milhas = Math.round(distanciaMilhas(origem, destino));
+        setFDistMilhas(String(milhas));
+        toast.success('Distância calculada', `${milhas.toLocaleString('pt-BR')} milhas (linha reta).`);
+      } else if (fModal === 'terrestre') {
+        const km = Math.round(distanciaKm(origem, destino));
+        setFDistKm(String(km));
+        toast.success('Distância calculada', `${km.toLocaleString('pt-BR')} km em linha reta — ajuste se necessário para a rota real.`);
+      } else {
+        const mn = Math.round(distanciaMilhasNauticas(origem, destino));
+        setFDistMn(String(mn));
+        toast.success('Distância calculada', `${mn.toLocaleString('pt-BR')} milhas náuticas (linha reta).`);
+      }
+    } catch (err) {
+      toast.error('Erro ao calcular', err instanceof Error ? err.message : 'Falha ao carregar base de municípios.');
+    } finally {
+      setCalculandoDist(false);
+    }
+  };
+
+  const podeCalcular = Boolean(fCidadeOrigem && fUfOrigem && fCidadeDestino && fUfDestino);
 
   const handleNew = () => { resetForm(); setDrawerOpen(true); };
 
@@ -573,30 +624,48 @@ export default function RotasPanel() {
           </select>
         </FormField>
 
-        {fModal === 'aereo' && (
-          <FormField label="Distância (milhas)" required>
-            <div className="relative">
-              <input type="number" step="1" min="0" className="tfd-input pr-16" placeholder="Ex: 1456" value={fDistMilhas} onChange={(e) => setFDistMilhas(e.target.value)} />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium pointer-events-none" style={{ color: 'var(--tfd-text-muted)' }}>milhas</span>
-            </div>
-          </FormField>
-        )}
-        {fModal === 'terrestre' && (
-          <FormField label="Distância (km)" required>
-            <div className="relative">
-              <input type="number" step="1" min="0" className="tfd-input pr-10" placeholder="Ex: 320" value={fDistKm} onChange={(e) => setFDistKm(e.target.value)} />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium pointer-events-none" style={{ color: 'var(--tfd-text-muted)' }}>km</span>
-            </div>
-          </FormField>
-        )}
-        {fModal === 'fluvial' && (
-          <FormField label="Distância (milhas náuticas)" required>
-            <div className="relative">
-              <input type="number" step="1" min="0" className="tfd-input pr-10" placeholder="Ex: 180" value={fDistMn} onChange={(e) => setFDistMn(e.target.value)} />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium pointer-events-none" style={{ color: 'var(--tfd-text-muted)' }}>mn</span>
-            </div>
-          </FormField>
-        )}
+        {(() => {
+          const cfg =
+            fModal === 'aereo'
+              ? { label: 'Distância (milhas)', unidade: 'milhas', placeholder: 'Ex: 1456', value: fDistMilhas, set: setFDistMilhas, pr: 'pr-16' }
+              : fModal === 'terrestre'
+                ? { label: 'Distância (km)', unidade: 'km', placeholder: 'Ex: 320', value: fDistKm, set: setFDistKm, pr: 'pr-10' }
+                : { label: 'Distância (milhas náuticas)', unidade: 'mn', placeholder: 'Ex: 180', value: fDistMn, set: setFDistMn, pr: 'pr-10' };
+          return (
+            <FormField label={cfg.label} required>
+              <div className="flex items-stretch gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="number"
+                    step="1"
+                    min="0"
+                    className={`tfd-input ${cfg.pr}`}
+                    placeholder={cfg.placeholder}
+                    value={cfg.value}
+                    onChange={(e) => cfg.set(e.target.value)}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium pointer-events-none" style={{ color: 'var(--tfd-text-muted)' }}>
+                    {cfg.unidade}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="tfd-btn tfd-btn-secondary tfd-btn--sm"
+                  onClick={handleCalcularDistancia}
+                  disabled={!podeCalcular || calculandoDist}
+                  title={podeCalcular ? 'Calcular distância em linha reta entre origem e destino' : 'Preencha origem e destino primeiro'}
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  {calculandoDist ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14} />}
+                  Calcular
+                </button>
+              </div>
+              <p className="text-[11px] mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
+                O cálculo automático retorna a distância em linha reta a partir das coordenadas IBGE das cidades. Ajuste manualmente se a rota real for diferente.
+              </p>
+            </FormField>
+          );
+        })()}
 
         {/* Preview de cálculo */}
         {prevCalc && (

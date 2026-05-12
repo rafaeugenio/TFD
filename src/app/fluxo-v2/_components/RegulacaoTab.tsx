@@ -10,6 +10,7 @@ import ConfirmarExclusaoModal from './ConfirmarExclusaoModal';
 import NewParecerDrawer from './drawers/NewParecerDrawer';
 import NewTentativaDrawer from './drawers/NewTentativaDrawer';
 import CarimboRegulacaoDrawer from './drawers/CarimboRegulacaoDrawer';
+import { useToast } from '@/shared/components/toast/Toast';
 import { isLocked, tooltipLocked } from '../_utils/lock';
 import { agendamentoConfirmado, tentativasHistoricas } from '../_utils/agendamento';
 import type {
@@ -37,6 +38,7 @@ interface Props {
 
 export default function RegulacaoTab({ s }: Props) {
   const { setCarimbo, removerParecer, removerTentativa } = useFluxoV2State();
+  const toast = useToast();
   const { getLabel: getTipoProcedimentoLabel } = useTiposProcedimento();
 
   const [parecerOpen, setParecerOpen] = useState(false);
@@ -603,7 +605,10 @@ export default function RegulacaoTab({ s }: Props) {
         carimboAtual={s.carimboRegulacao}
         observacaoAtual={s.carimboObservacao}
         outrosInfoAtual={s.carimboOutrosInfo}
-        onSalvar={(c, obs, info) => setCarimbo(s.id, c, obs, info)}
+        onSalvar={(c, obs, info) => {
+          setCarimbo(s.id, c, obs, info);
+          toast.success('Carimbo aplicado', c === 'OUTROS' ? 'OUTROS' : c);
+        }}
       />
 
       {/* Modais de confirmação de exclusão */}
@@ -619,7 +624,10 @@ export default function RegulacaoTab({ s }: Props) {
             : ''
         }
         onConfirmar={() => {
-          if (parecerExcluir) removerParecer(s.id, parecerExcluir.id);
+          if (parecerExcluir) {
+            removerParecer(s.id, parecerExcluir.id);
+            toast.success('Parecer removido', `${parecerExcluir.medico}`);
+          }
         }}
       />
       <ConfirmarExclusaoModal
@@ -632,7 +640,10 @@ export default function RegulacaoTab({ s }: Props) {
             : ''
         }
         onConfirmar={() => {
-          if (tentativaExcluir) removerTentativa(s.id, tentativaExcluir.id);
+          if (tentativaExcluir) {
+            removerTentativa(s.id, tentativaExcluir.id);
+            toast.success('Tentativa removida', tentativaExcluir.unidade);
+          }
         }}
       />
     </div>

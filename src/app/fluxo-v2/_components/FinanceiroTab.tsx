@@ -11,6 +11,7 @@ import NewAjudaCustoDrawer from './drawers/NewAjudaCustoDrawer';
 import NewAdicionalDrawer from './drawers/NewAdicionalDrawer';
 import { isLocked, tooltipLocked } from '../_utils/lock';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
+import { useToast } from '@/shared/components/toast/Toast';
 import {
   STATUS_AJUDA_LABEL,
   STATUS_VIAGEM_LABEL,
@@ -34,6 +35,7 @@ interface Props {
 
 export default function FinanceiroTab({ s }: Props) {
   const { removerViagem, removerAjudaCusto, removerAdicional } = useFluxoV2State();
+  const toast = useToast();
 
   const [passagemOpen, setPassagemOpen] = useState(false);
   const [passagemEditar, setPassagemEditar] = useState<ViagemMock | undefined>(undefined);
@@ -384,7 +386,10 @@ export default function FinanceiroTab({ s }: Props) {
             : ''
         }
         onConfirmar={() => {
-          if (passagemExcluir) removerViagem(s.id, passagemExcluir.id);
+          if (passagemExcluir) {
+            removerViagem(s.id, passagemExcluir.id);
+            toast.success('Passagem removida', `${passagemExcluir.origem} → ${passagemExcluir.destino}`);
+          }
         }}
       />
       <ConfirmarExclusaoModal
@@ -397,7 +402,10 @@ export default function FinanceiroTab({ s }: Props) {
             : ''
         }
         onConfirmar={() => {
-          if (ajudaExcluir) removerAjudaCusto(s.id, ajudaExcluir.id);
+          if (ajudaExcluir) {
+            removerAjudaCusto(s.id, ajudaExcluir.id);
+            toast.success('Ajuda removida', `${ajudaExcluir.dataInicio} → ${ajudaExcluir.dataFim}`);
+          }
         }}
       />
       <ConfirmarExclusaoModal
@@ -410,7 +418,10 @@ export default function FinanceiroTab({ s }: Props) {
             : ''
         }
         onConfirmar={() => {
-          if (adicionalExcluir) removerAdicional(s.id, adicionalExcluir.id);
+          if (adicionalExcluir) {
+            removerAdicional(s.id, adicionalExcluir.id);
+            toast.success('Adicional removido', adicionalExcluir.descricao);
+          }
         }}
       />
     </div>

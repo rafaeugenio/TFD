@@ -13,6 +13,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
+import { useToast } from '@/shared/components/toast/Toast';
 import IdadeBadge from '@/shared/components/idade-badge';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import RegistrarAgendamentoDrawer from './RegistrarAgendamentoDrawer';
@@ -97,6 +98,7 @@ export default function NewEditarSolicitacaoDrawer({
   snapshotPaciente,
 }: Props) {
   const { editarSolicitacao, trocarPaciente } = useFluxoV2State();
+  const toast = useToast();
 
   const originalPacienteId = solicitacao.paciente.id;
   const originalAcompanhanteIds = useMemo(
@@ -369,6 +371,7 @@ export default function NewEditarSolicitacaoDrawer({
         seiUrl: seiUrl.trim() || undefined,
       });
     }
+    toast.success(trocouPaciente ? 'Paciente atualizado' : 'Solicitação atualizada', solicitacao.numero);
     onClose();
   }
 

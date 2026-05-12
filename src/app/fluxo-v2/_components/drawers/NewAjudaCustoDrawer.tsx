@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Drawer from '@/shared/components/drawer/Drawer';
+import { useToast } from '@/shared/components/toast/Toast';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import {
@@ -33,6 +34,7 @@ interface Props {
 
 export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar }: Props) {
   const { addAjudaCusto, editarAjudaCusto, getById } = useFluxoV2State();
+  const toast = useToast();
   const isEdicao = !!editar;
   const firstInputRef = useRef<HTMLSelectElement>(null);
 
@@ -98,6 +100,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         pernoiteRetorno: pernoiteRetorno || undefined,
       });
     }
+    toast.success(isEdicao ? 'Ajuda de custo atualizada' : 'Ajuda de custo registrada', `${dataInicio} → ${dataFim}`);
     onClose();
   }
 

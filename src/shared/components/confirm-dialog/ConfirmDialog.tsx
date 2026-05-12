@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, ArrowRight, Loader2, Plus, Pencil, Trash2 } from 'lucide-react';
 
 /* -------------------------------------------------- */
@@ -101,16 +102,20 @@ export default function ConfirmDialog({
     return () => document.removeEventListener('keydown', onKey);
   }, [open, onClose, busy]);
 
-  if (!open) return null;
+  /* Portal só monta no client */
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  if (!open || !mounted) return null;
 
   const v = TONE_VISUAL[tone];
   const Icon = v.icon;
   const changedDiff = diff?.filter((d) => normalizeValue(d.before) !== normalizeValue(d.after)) ?? [];
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+      className="fixed inset-0 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000 }}
       onClick={() => !busy && onClose()}
     >
       <div
@@ -227,7 +232,8 @@ export default function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

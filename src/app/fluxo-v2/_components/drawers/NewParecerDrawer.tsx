@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import Autocomplete, { type AutocompleteOption } from '@/shared/components/autocomplete/Autocomplete';
+import { useToast } from '@/shared/components/toast/Toast';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import { templatesParecer, aplicarPlaceholders } from '../../_data/templates-parecer';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
@@ -30,6 +31,7 @@ interface Props {
 
 export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar }: Props) {
   const { addParecer, editarParecer, getById } = useFluxoV2State();
+  const toast = useToast();
   const solicitacao = getById(solicitacaoId);
   const isEdicao = !!editar;
 
@@ -118,8 +120,10 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
     };
     if (isEdicao && editar) {
       editarParecer(solicitacaoId, editar.id, payload);
+      toast.success('Parecer atualizado', `Decisão: ${decisao}.`);
     } else {
       addParecer(solicitacaoId, payload);
+      toast.success('Parecer registrado', `Decisão: ${decisao}.`);
     }
     onClose();
   }

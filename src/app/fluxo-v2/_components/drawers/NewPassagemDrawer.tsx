@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Loader2 } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
+import { useToast } from '@/shared/components/toast/Toast';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import type { ModalViagem, StatusViagem, ViagemMock } from '@/core/mocks/fluxo-v2-v3-seed';
@@ -41,6 +42,7 @@ interface Props {
 
 export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar }: Props) {
   const { addViagem, addViagensIdaEVolta, editarViagem, getById } = useFluxoV2State();
+  const toast = useToast();
   const isEdicao = !!editar;
   const firstInputRef = useRef<HTMLSelectElement>(null);
 
@@ -140,12 +142,14 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
     setSavingRota(false);
     if (error) {
       console.warn('[NewPassagemDrawer] erro ao criar rota:', error.message);
+      toast.error('Erro ao cadastrar rota', error.message);
       return;
     }
     if (criada) {
       const nova = criada as unknown as RotaDeslocamento;
       setRotas((prev) => [...prev, nova]);
       sincronizarOrigemDestino(String(nova.id));
+      toast.success('Rota cadastrada', `${nova.cidade_origem}/${nova.uf_origem} → ${nova.cidade_destino}/${nova.uf_destino}`);
     }
     setNovaRotaOpen(false);
     setNovaRotaOrigemCidade('');
@@ -234,6 +238,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         companhia: companhiaNome,
         ...beneficiarioPayload,
       });
+      toast.success('Passagem atualizada', `${origem} → ${destino}`);
       onClose();
       return;
     }
@@ -249,6 +254,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         valorTotal: Number(valor),
         ...beneficiarioPayload,
       });
+      toast.success('Passagens criadas', `Ida e volta — ${origem} ⇄ ${destino}`);
     } else {
       addViagem(solicitacaoId, {
         origem,
@@ -261,6 +267,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         companhia: companhiaNome,
         ...beneficiarioPayload,
       });
+      toast.success('Passagem registrada', `${origem} → ${destino}`);
     }
     onClose();
   }

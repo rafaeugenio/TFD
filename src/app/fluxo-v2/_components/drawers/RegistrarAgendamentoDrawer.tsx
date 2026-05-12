@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
+import { useToast } from '@/shared/components/toast/Toast';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import {
@@ -47,6 +48,7 @@ export default function RegistrarAgendamentoDrawer({
   snapshotPaciente,
 }: Props) {
   const { setAgendamento, getById } = useFluxoV2State();
+  const toast = useToast();
   const firstInputRef = useRef<HTMLSelectElement>(null);
   const { tipos: tiposProcedimento, loading: tiposLoading } = useTiposProcedimento();
 
@@ -122,6 +124,7 @@ export default function RegistrarAgendamentoDrawer({
       contatoUnidade: contatoUnidade || undefined,
       observacoesChegada: observacoesChegada || undefined,
     });
+    toast.success('Agendamento registrado', `${unidadeNome} — ${data} ${hora}`);
     onClose();
   }
 

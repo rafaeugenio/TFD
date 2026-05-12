@@ -12,6 +12,7 @@ import {
 import Drawer from '@/shared/components/drawer/Drawer';
 import SnapshotPaciente, { snapshotFromSolicitacao } from '../SnapshotPaciente';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
+import { useToast } from '@/shared/components/toast/Toast';
 import { type SetorAcao } from '../../_utils/lock';
 
 export type DestinoEnvio = SetorAcao;
@@ -70,6 +71,7 @@ export default function EnviarParaSetorDrawer({
   setorAtual,
 }: Props) {
   const { getById, enviarParaSetor } = useFluxoV2State();
+  const toast = useToast();
   const s = getById(solicitacaoId);
 
   const [destino, setDestino] = useState<DestinoEnvio | null>(null);
@@ -126,6 +128,8 @@ export default function EnviarParaSetorDrawer({
       observacao.trim() || undefined,
       tipo,
     );
+    const labelDest = destino === 'dados_basicos' ? 'Dados Básicos' : destino === 'regulacao' ? 'Regulação' : 'Financeiro';
+    toast.success(tipo === 'devolver' ? 'Solicitação devolvida' : 'Solicitação enviada', `Destino: ${labelDest}.`);
     onClose();
   }
 
