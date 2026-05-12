@@ -29,6 +29,7 @@ import SigtapPanel from './SigtapPanel';
 import RotasPanel from './RotasPanel';
 import Cid10Panel from './Cid10Panel';
 import Cid11Panel from './Cid11Panel';
+import RelatorioFinanceiroPanel from './RelatorioFinanceiroPanel';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import Drawer from '@/shared/components/drawer/Drawer';
@@ -61,7 +62,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 /*  Tab config                                         */
 /* -------------------------------------------------- */
 
-type TabKey = 'tabelas' | 'cid10' | 'cid11' | 'sigtap' | 'rotas';
+type TabKey = 'tabelas' | 'cid10' | 'cid11' | 'sigtap' | 'rotas' | 'financeiro';
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'tabelas', label: 'Tabelas Auxiliares', icon: <Building2 size={16} /> },
@@ -69,6 +70,7 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'cid11', label: 'CID-11', icon: <FileText size={16} /> },
   { key: 'sigtap', label: 'Códigos SIGTAP', icon: <FileCode2 size={16} /> },
   { key: 'rotas', label: 'Rotas', icon: <Route size={16} /> },
+  { key: 'financeiro', label: 'Relatório Financeiro', icon: <DollarSign size={16} /> },
 ];
 
 /* -------------------------------------------------- */
@@ -755,6 +757,7 @@ export default function SistemaConfiguracoesPage() {
       {activeTab === 'sigtap' && <SigtapPanel />}
 
       {activeTab === 'rotas' && <RotasPanel />}
+      {activeTab === 'financeiro' && <RelatorioFinanceiroPanel />}
     </>
   );
 }
