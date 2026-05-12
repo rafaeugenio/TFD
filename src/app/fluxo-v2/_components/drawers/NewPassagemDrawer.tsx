@@ -1,24 +1,23 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
+import UfCidadeSelect from '@/shared/components/uf-cidade-select/UfCidadeSelect';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import type { ModalViagem, StatusViagem, ViagemMock } from '@/core/mocks/fluxo-v2-v3-seed';
 import { STATUS_VIAGEM_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
 import { calcularIdade } from '@/shared/utils/idade';
-import { listarRotas, criarRota } from '@/services/rotas-deslocamento.service';
-import type { RotaDeslocamento } from '@/core/models';
 import { createClient } from '@/lib/supabase/client';
 import { buscarMunicipio } from '@/services/municipios.service';
 import { distanciaKm, distanciaMilhas, distanciaMilhasNauticas } from '@/lib/distancia/haversine';
+import { calcularAjudaCusto, unidadeDoModal, type AjudaCustoCalculada } from '@/lib/distancia/ajuda-custo';
 
 interface CompanhiaRow {
   id: string;
   nome: string;
-  tipo_modal: string;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -26,6 +25,24 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid var(--tfd-surface-border)',
   borderRadius: 8,
 };
+
+const readonlyInputStyle: React.CSSProperties = {
+  background: '#F1F5F9',
+  border: '1px solid var(--tfd-surface-border)',
+  borderRadius: 8,
+  cursor: 'not-allowed',
+};
+
+const UNIDADE_LABEL: Record<'km' | 'milhas' | 'milhas_nauticas', string> = {
+  km: 'km',
+  milhas: 'milhas',
+  milhas_nauticas: 'milhas náuticas',
+};
+
+function formatarMoeda(v: number | null | undefined): string {
+  if (v == null) return '—';
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
 
 /**
  * Tipo do select. `'ida_e_volta'` é virtual: ao salvar, o provider expande
@@ -50,50 +67,39 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
 
   const solicitacao = getById(solicitacaoId);
 
-  const [origem, setOrigem] = useState('');
-  const [destino, setDestino] = useState('');
+  // Origem / destino — UF + cidade separados
+  const [origemUf, setOrigemUf] = useState('MA');
+  const [origemCidade, setOrigemCidade] = useState('');
+  const [destinoUf, setDestinoUf] = useState('');
+  const [destinoCidade, setDestinoCidade] = useState('');
+
+  // Demais campos
   const [data, setData] = useState('');
   const [dataVolta, setDataVolta] = useState('');
   const [modal, setModal] = useState<ModalViagem>('aereo');
   const [tipo, setTipo] = useState<TipoOpcao>('ida');
   const [valor, setValor] = useState('');
   const [status, setStatus] = useState<StatusViagem>('agendada');
-  // T2.AF — Beneficiário. Valor "p" = paciente; "a:<id>" = acompanhante.
   const [beneficiario, setBeneficiario] = useState<string>('p');
 
   // Companhia de transporte
   const [companhias, setCompanhias] = useState<CompanhiaRow[]>([]);
   const [companhiaId, setCompanhiaId] = useState('');
 
-  // Rotas (origem/destino vêm de rotas_deslocamento)
-  const [rotas, setRotas] = useState<RotaDeslocamento[]>([]);
-  const [rotaId, setRotaId] = useState<string>('');
-  const [loadingRotas, setLoadingRotas] = useState(false);
-  const [novaRotaOpen, setNovaRotaOpen] = useState(false);
-  const [novaRotaOrigemCidade, setNovaRotaOrigemCidade] = useState('');
-  const [novaRotaOrigemUf, setNovaRotaOrigemUf] = useState('MA');
-  const [novaRotaDestinoCidade, setNovaRotaDestinoCidade] = useState('');
-  const [novaRotaDestinoUf, setNovaRotaDestinoUf] = useState('');
-  const [novaRotaDistancia, setNovaRotaDistancia] = useState('');
-  const [calculandoDistRota, setCalculandoDistRota] = useState(false);
-  const [savingRota, setSavingRota] = useState(false);
+  // Distância e ajuda de custo (calculados)
+  const [distanciaValor, setDistanciaValor] = useState<number | null>(null);
+  const [calculandoDist, setCalculandoDist] = useState(false);
+  const [distErro, setDistErro] = useState<string | null>(null);
+  const [ajudaPaciente, setAjudaPaciente] = useState<AjudaCustoCalculada | null>(null);
+  const [ajudaAcompanhante, setAjudaAcompanhante] = useState<AjudaCustoCalculada | null>(null);
 
-  const carregarRotas = async () => {
-    setLoadingRotas(true);
-    const { data, error } = await listarRotas({ pageSize: 9999 });
-    if (error) console.warn('[NewPassagemDrawer] rotas:', error.message);
-    setRotas((data ?? []) as unknown as RotaDeslocamento[]);
-    setLoadingRotas(false);
-  };
-
+  // Carrega companhias ativas (todas — sem filtrar por modal).
   useEffect(() => {
     if (!open) return;
-    carregarRotas();
-    // Companhias filtradas pelo modal selecionado
     const supabase = createClient();
     supabase
       .from('companhias_transporte')
-      .select('id, nome, tipo_modal')
+      .select('id, nome')
       .eq('ativo', true)
       .order('nome', { ascending: true })
       .then(({ data, error }) => {
@@ -105,140 +111,91 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       });
   }, [open]);
 
-  // Lista todas as companhias, ordenadas pelo modal selecionado primeiro
-  const companhiasDoModal = useMemo(() => {
-    const modalUp = modal.toUpperCase();
-    return [...companhias].sort((a, b) => {
-      const aMatch = a.tipo_modal === modalUp ? 0 : 1;
-      const bMatch = b.tipo_modal === modalUp ? 0 : 1;
-      if (aMatch !== bMatch) return aMatch - bMatch;
-      return a.nome.localeCompare(b.nome, 'pt-BR');
-    });
-  }, [companhias, modal]);
-
-  const MODAL_PT: Record<string, string> = {
-    AEREO: 'Aéreo',
-    TERRESTRE: 'Terrestre',
-    FLUVIAL: 'Fluvial',
-  };
-
-  function sincronizarOrigemDestino(rid: string) {
-    setRotaId(rid);
-    const r = rotas.find((x) => String(x.id) === rid);
-    if (r) {
-      setOrigem(`${r.cidade_origem} - ${r.uf_origem}`);
-      setDestino(`${r.cidade_destino} - ${r.uf_destino}`);
-    } else {
-      setOrigem('');
-      setDestino('');
-    }
-  }
-
-  const [distRotaErro, setDistRotaErro] = useState<string | null>(null);
-
-  /** Auto-cálculo da distância sempre que origem, destino ou modal mudam.
-   *  Campo é readOnly — valor derivado das coordenadas IBGE. */
+  // Auto-cálculo de distância e ajuda de custo sempre que origem/destino/modal mudam.
   useEffect(() => {
-    if (!novaRotaOpen) return;
-    if (!novaRotaOrigemCidade.trim() || !novaRotaOrigemUf.trim() || !novaRotaDestinoCidade.trim() || !novaRotaDestinoUf.trim()) {
-      setNovaRotaDistancia('');
-      setDistRotaErro(null);
+    if (!origemCidade || !origemUf || !destinoCidade || !destinoUf) {
+      setDistanciaValor(null);
+      setDistErro(null);
+      setAjudaPaciente(null);
+      setAjudaAcompanhante(null);
       return;
     }
     let cancelado = false;
-    setCalculandoDistRota(true);
-    setDistRotaErro(null);
+    setCalculandoDist(true);
+    setDistErro(null);
     (async () => {
       try {
         const [o, d] = await Promise.all([
-          buscarMunicipio(novaRotaOrigemCidade, novaRotaOrigemUf),
-          buscarMunicipio(novaRotaDestinoCidade, novaRotaDestinoUf),
+          buscarMunicipio(origemCidade, origemUf),
+          buscarMunicipio(destinoCidade, destinoUf),
         ]);
         if (cancelado) return;
-        if (!o) { setDistRotaErro(`Cidade "${novaRotaOrigemCidade}/${novaRotaOrigemUf}" não está na base IBGE.`); setNovaRotaDistancia(''); return; }
-        if (!d) { setDistRotaErro(`Cidade "${novaRotaDestinoCidade}/${novaRotaDestinoUf}" não está na base IBGE.`); setNovaRotaDistancia(''); return; }
-        const valor = modal === 'aereo'
+        if (!o) {
+          setDistErro(`Cidade de origem "${origemCidade}/${origemUf}" não está na base IBGE.`);
+          setDistanciaValor(null); setAjudaPaciente(null); setAjudaAcompanhante(null);
+          return;
+        }
+        if (!d) {
+          setDistErro(`Cidade de destino "${destinoCidade}/${destinoUf}" não está na base IBGE.`);
+          setDistanciaValor(null); setAjudaPaciente(null); setAjudaAcompanhante(null);
+          return;
+        }
+        const valorDist = modal === 'aereo'
           ? Math.round(distanciaMilhas(o, d))
           : modal === 'fluvial'
             ? Math.round(distanciaMilhasNauticas(o, d))
             : Math.round(distanciaKm(o, d));
-        setNovaRotaDistancia(String(valor));
+        setDistanciaValor(valorDist);
+
+        // Ajuda de custo
+        const [paciente, acompanhante] = await Promise.all([
+          calcularAjudaCusto(valorDist, modal, 'paciente'),
+          calcularAjudaCusto(valorDist, modal, 'acompanhante'),
+        ]);
+        if (cancelado) return;
+        setAjudaPaciente(paciente);
+        setAjudaAcompanhante(acompanhante);
       } catch (err) {
-        if (!cancelado) setDistRotaErro(err instanceof Error ? err.message : 'Falha ao carregar base de municípios.');
+        if (!cancelado) {
+          setDistErro(err instanceof Error ? err.message : 'Falha ao calcular distância.');
+          setDistanciaValor(null); setAjudaPaciente(null); setAjudaAcompanhante(null);
+        }
       } finally {
-        if (!cancelado) setCalculandoDistRota(false);
+        if (!cancelado) setCalculandoDist(false);
       }
     })();
     return () => { cancelado = true; };
-  }, [novaRotaOpen, novaRotaOrigemCidade, novaRotaOrigemUf, novaRotaDestinoCidade, novaRotaDestinoUf, modal]);
+  }, [origemCidade, origemUf, destinoCidade, destinoUf, modal]);
 
-  async function salvarNovaRota() {
-    if (!novaRotaOrigemCidade.trim() || !novaRotaOrigemUf.trim() || !novaRotaDestinoCidade.trim() || !novaRotaDestinoUf.trim()) return;
-    setSavingRota(true);
-    const distNum = novaRotaDistancia ? parseFloat(novaRotaDistancia) : undefined;
-    const { data: criada, error } = await criarRota({
-      cidade_origem: novaRotaOrigemCidade.trim(),
-      uf_origem: novaRotaOrigemUf.trim().toUpperCase(),
-      cidade_destino: novaRotaDestinoCidade.trim(),
-      uf_destino: novaRotaDestinoUf.trim().toUpperCase(),
-      distancia_milhas: modal === 'aereo' ? distNum : undefined,
-      distancia_km: modal === 'terrestre' ? distNum : undefined,
-      distancia_milhas_nauticas: modal === 'fluvial' ? distNum : undefined,
-    });
-    setSavingRota(false);
-    if (error) {
-      console.warn('[NewPassagemDrawer] erro ao criar rota:', error.message);
-      toast.error('Erro ao cadastrar rota', error.message);
-      return;
-    }
-    if (criada) {
-      const nova = criada as unknown as RotaDeslocamento;
-      setRotas((prev) => [...prev, nova]);
-      sincronizarOrigemDestino(String(nova.id));
-      toast.success('Rota cadastrada', `${nova.cidade_origem}/${nova.uf_origem} → ${nova.cidade_destino}/${nova.uf_destino}`);
-    }
-    setNovaRotaOpen(false);
-    setNovaRotaOrigemCidade('');
-    setNovaRotaOrigemUf('MA');
-    setNovaRotaDestinoCidade('');
-    setNovaRotaDestinoUf('');
-    setNovaRotaDistancia('');
-  }
-
+  // Inicialização ao abrir
   useEffect(() => {
-    if (open) {
-      if (editar) {
-        setOrigem(editar.origem);
-        setDestino(editar.destino);
-        setData(editar.data);
-        setDataVolta('');
-        setModal(editar.modal);
-        setTipo(editar.tipo);
-        setValor(String(editar.valor));
-        setStatus(editar.status);
-        setBeneficiario(
-          editar.beneficiarioTipo === 'paciente'
-            ? 'p'
-            : `a:${editar.beneficiarioId ?? ''}`,
-        );
-        setRotaId('');
-        setCompanhiaId('');
-      } else {
-        setOrigem('');
-        setDestino('');
-        setData('');
-        setDataVolta('');
-        setModal('aereo');
-        setTipo('ida');
-        setValor('');
-        setStatus('agendada');
-        setBeneficiario('p');
-        setRotaId('');
-        setCompanhiaId('');
-      }
-      setNovaRotaOpen(false);
-      setTimeout(() => firstInputRef.current?.focus(), 100);
+    if (!open) return;
+    if (editar) {
+      setOrigemCidade(editar.origemCidade ?? '');
+      setOrigemUf(editar.origemUf ?? 'MA');
+      setDestinoCidade(editar.destinoCidade ?? '');
+      setDestinoUf(editar.destinoUf ?? '');
+      setData(editar.data);
+      setDataVolta('');
+      setModal(editar.modal);
+      setTipo(editar.tipo);
+      setValor(String(editar.valor));
+      setStatus(editar.status);
+      setBeneficiario(
+        editar.beneficiarioTipo === 'paciente'
+          ? 'p'
+          : `a:${editar.beneficiarioId ?? ''}`,
+      );
+      setCompanhiaId('');
+    } else {
+      setOrigemCidade(''); setOrigemUf('MA');
+      setDestinoCidade(''); setDestinoUf('');
+      setData(''); setDataVolta('');
+      setModal('aereo'); setTipo('ida');
+      setValor(''); setStatus('agendada');
+      setBeneficiario('p'); setCompanhiaId('');
     }
+    setTimeout(() => firstInputRef.current?.focus(), 100);
   }, [open, editar]);
 
   // Quando carregam as companhias e estamos editando, casa pelo nome
@@ -248,18 +205,9 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
     if (match) setCompanhiaId(match.id);
   }, [editar, companhias, companhiaId]);
 
-  // Quando rotas carregam e estamos editando, tenta casar origem/destino com uma rota existente.
-  useEffect(() => {
-    if (!editar || rotas.length === 0 || rotaId) return;
-    const match = rotas.find(
-      (r) =>
-        `${r.cidade_origem} - ${r.uf_origem}` === editar.origem &&
-        `${r.cidade_destino} - ${r.uf_destino}` === editar.destino,
-    );
-    if (match) setRotaId(String(match.id));
-  }, [editar, rotas, rotaId]);
-
   const isIdaEVolta = tipo === 'ida_e_volta';
+  const acompanhanteSelecionado = beneficiario.startsWith('a:');
+  const temAcompanhantes = (solicitacao?.acompanhantes.length ?? 0) > 0;
 
   const beneficiarioPayload = useMemo(() => {
     if (beneficiario === 'p') {
@@ -270,57 +218,74 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
   }, [beneficiario]);
 
   function handleSalvar() {
-    if (!origem || !destino || !data || !valor) return;
+    if (!origemCidade || !origemUf || !destinoCidade || !destinoUf || !data || !valor) return;
     const companhiaNome = companhias.find((c) => c.id === companhiaId)?.nome;
+    const origemStr = `${origemCidade} - ${origemUf}`;
+    const destinoStr = `${destinoCidade} - ${destinoUf}`;
+    const distExtras = distanciaValor != null
+      ? {
+          distanciaValor,
+          distanciaUnidade: unidadeDoModal(modal),
+          valorAjudaCustoPaciente: ajudaPaciente?.valorTotal,
+          valorAjudaCustoAcompanhante: acompanhanteSelecionado || temAcompanhantes ? ajudaAcompanhante?.valorTotal : undefined,
+        }
+      : {};
+
     if (isEdicao && editar) {
-      // T2.AL — Edição não suporta ida_e_volta (cada viagem é independente).
       editarViagem(solicitacaoId, editar.id, {
-        origem,
-        destino,
-        data,
-        modal,
+        origem: origemStr,
+        destino: destinoStr,
+        origemCidade, origemUf,
+        destinoCidade, destinoUf,
+        data, modal,
         tipo: tipo as 'ida' | 'volta' | 'transfer',
         status,
         valor: Number(valor),
         companhia: companhiaNome,
         ...beneficiarioPayload,
+        ...distExtras,
       });
-      toast.success('Passagem atualizada', `${origem} → ${destino}`);
+      toast.success('Passagem atualizada', `${origemStr} → ${destinoStr}`);
       onClose();
       return;
     }
     if (isIdaEVolta) {
       if (!dataVolta) return;
       addViagensIdaEVolta(solicitacaoId, {
-        origem,
-        destino,
-        modal,
-        status,
-        dataIda: data,
-        dataVolta,
+        origem: origemStr,
+        destino: destinoStr,
+        origemCidade, origemUf,
+        destinoCidade, destinoUf,
+        modal, status,
+        dataIda: data, dataVolta,
         valorTotal: Number(valor),
         ...beneficiarioPayload,
+        ...distExtras,
       });
-      toast.success('Passagens criadas', `Ida e volta — ${origem} ⇄ ${destino}`);
+      toast.success('Passagens criadas', `Ida e volta — ${origemStr} ⇄ ${destinoStr}`);
     } else {
       addViagem(solicitacaoId, {
-        origem,
-        destino,
-        data,
-        modal,
+        origem: origemStr,
+        destino: destinoStr,
+        origemCidade, origemUf,
+        destinoCidade, destinoUf,
+        data, modal,
         tipo: tipo as 'ida' | 'volta' | 'transfer',
         status,
         valor: Number(valor),
         companhia: companhiaNome,
         ...beneficiarioPayload,
+        ...distExtras,
       });
-      toast.success('Passagem registrada', `${origem} → ${destino}`);
+      toast.success('Passagem registrada', `${origemStr} → ${destinoStr}`);
     }
     onClose();
   }
 
   const valid =
-    origem && destino && data && valor && (!isIdaEVolta || !!dataVolta);
+    origemCidade && origemUf && destinoCidade && destinoUf && data && valor && (!isIdaEVolta || !!dataVolta);
+
+  const unidade = UNIDADE_LABEL[unidadeDoModal(modal)];
 
   return (
     <Drawer
@@ -347,7 +312,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
     >
       {snapshotPaciente && <SnapshotPaciente data={snapshotPaciente} />}
 
-      {/* T2.AF — Beneficiário (obrigatório, no topo do form) */}
+      {/* Beneficiário */}
       <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
         Beneficiário
       </label>
@@ -375,136 +340,145 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         </p>
       )}
 
-      <div className="mb-4">
-        <div className="flex items-center justify-between mb-2">
-          <label className="block text-[12px] font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
-            Rota (origem → destino)
-          </label>
-          {!novaRotaOpen && (
-            <button
-              type="button"
-              onClick={() => setNovaRotaOpen(true)}
-              className="text-[11px] inline-flex items-center gap-1 hover:underline"
-              style={{ color: 'var(--tfd-blue)' }}
-            >
-              <Plus size={11} /> Cadastrar nova rota
-            </button>
-          )}
-        </div>
-        <select
-          value={rotaId}
-          onChange={(e) => sincronizarOrigemDestino(e.target.value)}
-          disabled={loadingRotas}
-          className="w-full px-3 py-2 text-[13px]"
-          style={inputStyle}
-        >
-          <option value="">
-            {loadingRotas
-              ? 'Carregando rotas...'
-              : rotas.length === 0
-                ? 'Nenhuma rota cadastrada — clique em "Cadastrar nova rota"'
-                : 'Selecione a rota...'}
-          </option>
-          {rotas.map((r) => (
-            <option key={r.id} value={String(r.id)}>
-              {r.cidade_origem} - {r.uf_origem} → {r.cidade_destino} - {r.uf_destino}
-            </option>
-          ))}
-        </select>
+      {/* Origem */}
+      <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Origem</h3>
+      <UfCidadeSelect
+        ufLabel="UF"
+        cidadeLabel="Cidade"
+        uf={origemUf}
+        cidade={origemCidade}
+        onUfChange={setOrigemUf}
+        onCidadeChange={setOrigemCidade}
+        required
+      />
 
-        {novaRotaOpen && (
-          <div
-            className="mt-2 p-3 flex flex-col gap-2"
-            style={{ background: '#F8FAFC', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
+      {/* Destino */}
+      <h3 className="text-sm font-semibold mb-3 mt-4" style={{ color: 'var(--tfd-text-primary)' }}>Destino</h3>
+      <UfCidadeSelect
+        ufLabel="UF"
+        cidadeLabel="Cidade"
+        uf={destinoUf}
+        cidade={destinoCidade}
+        onUfChange={setDestinoUf}
+        onCidadeChange={setDestinoCidade}
+        required
+      />
+
+      {/* Modal */}
+      <div className="grid grid-cols-3 gap-3 mb-4 mt-4">
+        <div>
+          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+            Modal
+          </label>
+          <select
+            value={modal}
+            onChange={(e) => setModal(e.target.value as ModalViagem)}
+            className="w-full px-3 py-2 text-[13px]"
+            style={inputStyle}
           >
-            <p className="text-[12px] font-semibold" style={{ color: '#1A1D2B' }}>Cadastrar nova rota</p>
-            <div>
-              <p className="text-[11px] mb-1" style={{ color: '#94A3B8' }}>Origem</p>
-              <div className="grid grid-cols-[1fr_70px] gap-2">
-                <input
-                  placeholder="Cidade"
-                  value={novaRotaOrigemCidade}
-                  onChange={(e) => setNovaRotaOrigemCidade(e.target.value)}
-                  className="px-3 py-2 text-[13px] min-w-0"
-                  style={inputStyle}
-                />
-                <input
-                  placeholder="UF"
-                  maxLength={2}
-                  value={novaRotaOrigemUf}
-                  onChange={(e) => setNovaRotaOrigemUf(e.target.value.toUpperCase())}
-                  className="px-3 py-2 text-[13px] text-center font-mono min-w-0"
-                  style={inputStyle}
-                />
-              </div>
-            </div>
-            <div>
-              <p className="text-[11px] mb-1" style={{ color: '#94A3B8' }}>Destino</p>
-              <div className="grid grid-cols-[1fr_70px] gap-2">
-                <input
-                  placeholder="Cidade"
-                  value={novaRotaDestinoCidade}
-                  onChange={(e) => setNovaRotaDestinoCidade(e.target.value)}
-                  className="px-3 py-2 text-[13px] min-w-0"
-                  style={inputStyle}
-                />
-                <input
-                  placeholder="UF"
-                  maxLength={2}
-                  value={novaRotaDestinoUf}
-                  onChange={(e) => setNovaRotaDestinoUf(e.target.value.toUpperCase())}
-                  className="px-3 py-2 text-[13px] text-center font-mono min-w-0"
-                  style={inputStyle}
-                />
-              </div>
-            </div>
-            <div>
-              <p className="text-[11px] mb-1" style={{ color: '#94A3B8' }}>
-                Distância ({modal === 'aereo' ? 'milhas' : modal === 'fluvial' ? 'milhas náuticas' : 'km'})
-              </p>
-              <div className="relative">
-                <input
-                  type="text"
-                  readOnly
-                  tabIndex={-1}
-                  placeholder={
-                    !novaRotaOrigemCidade || !novaRotaOrigemUf || !novaRotaDestinoCidade || !novaRotaDestinoUf
-                      ? 'Preencha origem e destino'
-                      : calculandoDistRota ? 'Calculando…' : ''
-                  }
-                  value={novaRotaDistancia}
-                  className="px-3 py-2 text-[13px] min-w-0 w-full"
-                  style={{ ...inputStyle, background: '#F1F5F9', cursor: 'not-allowed' }}
-                />
-                {calculandoDistRota && (
-                  <Loader2 size={12} className="animate-spin absolute right-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
-                )}
-              </div>
-              <p className="text-[10px] mt-1" style={{ color: distRotaErro ? '#DC2626' : '#94A3B8' }}>
-                {distRotaErro ?? 'Calculado automaticamente em linha reta a partir das coordenadas IBGE.'}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 justify-end mt-1">
-              <button
-                type="button"
-                onClick={() => setNovaRotaOpen(false)}
-                className="tfd-btn tfd-btn-ghost tfd-btn--sm"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={salvarNovaRota}
-                disabled={savingRota}
-                className="tfd-btn tfd-btn-primary tfd-btn--sm"
-              >
-                {savingRota ? <><Loader2 size={12} className="animate-spin" /> Salvando...</> : <><Plus size={12} /> Adicionar rota</>}
-              </button>
-            </div>
-          </div>
-        )}
+            <option value="aereo">Aéreo</option>
+            <option value="terrestre">Terrestre</option>
+            <option value="fluvial">Fluvial</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+            Tipo
+          </label>
+          <select
+            value={tipo}
+            onChange={(e) => setTipo(e.target.value as TipoOpcao)}
+            className="w-full px-3 py-2 text-[13px]"
+            style={inputStyle}
+          >
+            <option value="ida">Ida</option>
+            <option value="volta">Volta</option>
+            <option value="transfer">Transfer</option>
+            {!isEdicao && <option value="ida_e_volta">Ida e volta</option>}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+            Status
+          </label>
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value as StatusViagem)}
+            className="w-full px-3 py-2 text-[13px]"
+            style={inputStyle}
+          >
+            {(Object.keys(STATUS_VIAGEM_LABEL) as StatusViagem[]).map((s) => (
+              <option key={s} value={s}>
+                {STATUS_VIAGEM_LABEL[s]}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
+      {/* Distância (calculada) */}
+      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+        Distância ({unidade})
+      </label>
+      <div className="relative mb-1">
+        <input
+          type="text"
+          readOnly
+          tabIndex={-1}
+          className="w-full px-3 py-2 text-[13px]"
+          placeholder={
+            !origemCidade || !destinoCidade
+              ? 'Selecione origem e destino'
+              : calculandoDist ? 'Calculando…' : ''
+          }
+          value={distanciaValor != null ? `${distanciaValor.toLocaleString('pt-BR')} ${unidade}` : ''}
+          style={readonlyInputStyle}
+        />
+        {calculandoDist && (
+          <Loader2 size={14} className="animate-spin absolute right-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+        )}
+      </div>
+      <p className="text-[10px] mb-4" style={{ color: distErro ? '#DC2626' : '#94A3B8' }}>
+        {distErro ?? 'Calculado automaticamente em linha reta a partir das coordenadas IBGE.'}
+      </p>
+
+      {/* Ajuda de custo (paciente sempre; acompanhante se houver) */}
+      {(ajudaPaciente || ajudaAcompanhante) && (
+        <div className="mb-4 p-3 rounded-lg" style={{ background: '#F0F9FF', border: '1px solid #BAE6FD' }}>
+          <p className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#0369A1' }}>
+            Ajuda de custo (SIGTAP)
+          </p>
+          {ajudaPaciente && (
+            <div className="flex items-baseline justify-between text-[13px]">
+              <span style={{ color: '#0C4A6E' }}>Paciente</span>
+              <span className="font-mono font-semibold" style={{ color: '#0C4A6E' }}>
+                {formatarMoeda(ajudaPaciente.valorTotal)}
+                <span className="text-[10px] font-normal ml-2" style={{ color: '#0369A1' }}>
+                  {ajudaPaciente.quantidade}× {formatarMoeda(ajudaPaciente.valorUnitario)}
+                </span>
+              </span>
+            </div>
+          )}
+          {ajudaAcompanhante && temAcompanhantes && (
+            <div className="flex items-baseline justify-between text-[13px] mt-1">
+              <span style={{ color: '#0C4A6E' }}>Acompanhante</span>
+              <span className="font-mono font-semibold" style={{ color: '#0C4A6E' }}>
+                {formatarMoeda(ajudaAcompanhante.valorTotal)}
+                <span className="text-[10px] font-normal ml-2" style={{ color: '#0369A1' }}>
+                  {ajudaAcompanhante.quantidade}× {formatarMoeda(ajudaAcompanhante.valorUnitario)}
+                </span>
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+      {distanciaValor != null && !ajudaPaciente && !ajudaAcompanhante && (
+        <p className="text-[11px] mb-4" style={{ color: '#94A3B8' }}>
+          Nenhum procedimento SIGTAP de ajuda de custo cadastrado para o modal {modal}. Cadastre em Configurações → SIGTAP.
+        </p>
+      )}
+
+      {/* Data / Valor */}
       {isIdaEVolta ? (
         <>
           <div className="grid grid-cols-2 gap-3 mb-2">
@@ -581,57 +555,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-3 mb-4">
-        <div>
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Modal
-          </label>
-          <select
-            value={modal}
-            onChange={(e) => setModal(e.target.value as ModalViagem)}
-            className="w-full px-3 py-2 text-[13px]"
-            style={inputStyle}
-          >
-            <option value="aereo">Aéreo</option>
-            <option value="terrestre">Terrestre</option>
-            <option value="fluvial">Fluvial</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Tipo
-          </label>
-          <select
-            value={tipo}
-            onChange={(e) => setTipo(e.target.value as TipoOpcao)}
-            className="w-full px-3 py-2 text-[13px]"
-            style={inputStyle}
-          >
-            <option value="ida">Ida</option>
-            <option value="volta">Volta</option>
-            <option value="transfer">Transfer</option>
-            {!isEdicao && <option value="ida_e_volta">Ida e volta</option>}
-          </select>
-        </div>
-        <div>
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Status
-          </label>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value as StatusViagem)}
-            className="w-full px-3 py-2 text-[13px]"
-            style={inputStyle}
-          >
-            {(Object.keys(STATUS_VIAGEM_LABEL) as StatusViagem[]).map((s) => (
-              <option key={s} value={s}>
-                {STATUS_VIAGEM_LABEL[s]}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
+      {/* Companhia */}
       <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
         Companhia de transporte
       </label>
@@ -642,13 +566,13 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         style={inputStyle}
       >
         <option value="">
-          {companhiasDoModal.length === 0
+          {companhias.length === 0
             ? 'Nenhuma companhia cadastrada'
             : 'Selecione a companhia...'}
         </option>
-        {companhiasDoModal.map((c) => (
+        {companhias.map((c) => (
           <option key={c.id} value={c.id}>
-            {c.nome} — {MODAL_PT[c.tipo_modal] ?? c.tipo_modal}
+            {c.nome}
           </option>
         ))}
       </select>

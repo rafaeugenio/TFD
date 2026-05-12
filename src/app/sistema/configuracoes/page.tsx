@@ -21,12 +21,10 @@ import {
   Package,
   Megaphone,
   FileCode2,
-  Route,
   type LucideIcon,
 } from 'lucide-react';
 import SigtapPanel from './SigtapPanel';
 
-import RotasPanel from './RotasPanel';
 import Cid10Panel from './Cid10Panel';
 import Cid11Panel from './Cid11Panel';
 import RelatorioFinanceiroPanel from './RelatorioFinanceiroPanel';
@@ -55,21 +53,19 @@ import {
 } from '@/services/regioes.service';
 import type { Regiao } from '@/core/models/regiao.model';
 import { invalidateCache } from '@/shared/hooks/useLookup';
-import { maskCNPJ } from '@/shared/pipes/formatters';
 import { Skeleton } from '@/components/ui/skeleton';
 
 /* -------------------------------------------------- */
 /*  Tab config                                         */
 /* -------------------------------------------------- */
 
-type TabKey = 'tabelas' | 'cid10' | 'cid11' | 'sigtap' | 'rotas' | 'financeiro';
+type TabKey = 'tabelas' | 'cid10' | 'cid11' | 'sigtap' | 'financeiro';
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'tabelas', label: 'Tabelas Auxiliares', icon: <Building2 size={16} /> },
   { key: 'cid10', label: 'CID-10', icon: <FileText size={16} /> },
   { key: 'cid11', label: 'CID-11', icon: <FileText size={16} /> },
   { key: 'sigtap', label: 'Códigos SIGTAP', icon: <FileCode2 size={16} /> },
-  { key: 'rotas', label: 'Rotas', icon: <Route size={16} /> },
   { key: 'financeiro', label: 'Relatório Financeiro', icon: <DollarSign size={16} /> },
 ];
 
@@ -134,13 +130,6 @@ const SECOES: SecaoConfig[] = [
 // Flat list for lookups
 const ALL_CATEGORIAS = SECOES.flatMap((s) => s.categorias);
 
-const MODAL_LABELS: Record<string, string> = {
-  AEREO: 'Aéreo',
-  TERRESTRE: 'Terrestre',
-  FLUVIAL: 'Fluvial',
-  TRANSFER: 'Transfer (porta-a-porta)',
-};
-
 /* -------------------------------------------------- */
 /*  CadastrosPanel (Card-based layout by sections)     */
 /* -------------------------------------------------- */
@@ -171,11 +160,6 @@ function CadastrosPanel() {
   const [fNome, setFNome] = useState('');
   const [fDescricao, setFDescricao] = useState('');
   const [fAtivo, setFAtivo] = useState(true);
-
-  /* ---- Form state — companhia ---- */
-  const [fCModal, setFCModal] = useState('Aéreo');
-  const [fCCnpj, setFCCnpj] = useState('');
-  const [fCContato, setFCContato] = useState('');
 
   /* ---- Inline form mode (list vs form in same drawer) ---- */
   const [formMode, setFormMode] = useState(false);
@@ -252,7 +236,6 @@ function CadastrosPanel() {
   /* ---- Reset form ---- */
   const resetForm = () => {
     setFNome(''); setFDescricao(''); setFAtivo(true);
-    setFCModal('Aéreo'); setFCCnpj(''); setFCContato('');
     setEditingItem(null); setEditingCompanhia(null); setEditingRegiao(null);
   };
 
@@ -269,8 +252,7 @@ function CadastrosPanel() {
   const handleEditCompanhia = (c: CompanhiaTransporte) => {
     resetForm();
     setEditingCompanhia(c);
-    setFNome(c.nome); setFCModal(c.tipo_modal); setFCCnpj(c.cnpj ?? '');
-    setFCContato(c.contato ?? ''); setFAtivo(c.ativo);
+    setFNome(c.nome); setFAtivo(c.ativo);
     setFormMode(true);
   };
 
@@ -311,10 +293,7 @@ function CadastrosPanel() {
         if (result.error) { setErrorMsg(result.error.message); setSaving(false); return; }
         invalidateCache('_regioes');
       } else {
-        const payload = {
-          nome: fNome, tipo_modal: fCModal as import('@/lib/supabase/database.types').ModalTransporte,
-          cnpj: fCCnpj || null, contato: fCContato || null, ativo: fAtivo,
-        };
+        const payload = { nome: fNome, ativo: fAtivo };
         if (editingCompanhia) {
           result = await atualizarCompanhia(editingCompanhia.id, payload);
         } else {
@@ -461,9 +440,6 @@ function CadastrosPanel() {
             >
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{c.nome}</p>
-                <p className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-                  {MODAL_LABELS[c.tipo_modal as string] ?? c.tipo_modal} {c.cnpj ? `· ${c.cnpj}` : ''}
-                </p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 {!c.ativo && (
@@ -554,20 +530,6 @@ function CadastrosPanel() {
     <div>
       <FormField label="Nome" required>
         <input type="text" className="tfd-input" placeholder="Nome da companhia" value={fNome} onChange={(e) => setFNome(e.target.value)} />
-      </FormField>
-      <FormField label="Tipo Modal" required>
-        <select className="tfd-input" value={fCModal} onChange={(e) => setFCModal(e.target.value)}>
-          <option value="AEREO">Aéreo</option>
-          <option value="TERRESTRE">Terrestre</option>
-          <option value="FLUVIAL">Fluvial</option>
-          <option value="TRANSFER">Transfer (porta-a-porta)</option>
-        </select>
-      </FormField>
-      <FormField label="CNPJ">
-        <input type="text" className="tfd-input" placeholder="00.000.000/0000-00" value={fCCnpj} onChange={(e) => setFCCnpj(maskCNPJ(e.target.value))} />
-      </FormField>
-      <FormField label="Contato">
-        <input type="text" className="tfd-input" placeholder="Telefone ou e-mail" value={fCContato} onChange={(e) => setFCContato(e.target.value)} />
       </FormField>
       <div className="mb-4">
         <label className="flex items-center gap-2 cursor-pointer">
@@ -763,8 +725,6 @@ export default function SistemaConfiguracoesPage() {
       {activeTab === 'cid10' && <Cid10Panel />}
         {activeTab === 'cid11' && <Cid11Panel />}
       {activeTab === 'sigtap' && <SigtapPanel />}
-
-      {activeTab === 'rotas' && <RotasPanel />}
       {activeTab === 'financeiro' && <RelatorioFinanceiroPanel />}
     </>
   );

@@ -204,6 +204,13 @@ export interface ViagemMock {
   id: string;
   origem: string;
   destino: string;
+  /** Cidade e UF separados — usados pelo form de cadastro e pelo cálculo de
+   *  distância/ajuda de custo. `origem`/`destino` derivados são mantidos para
+   *  compatibilidade com listagens existentes. */
+  origemCidade?: string;
+  origemUf?: string;
+  destinoCidade?: string;
+  destinoUf?: string;
   data: string;
   modal: ModalViagem;
   tipo: TipoViagem;
@@ -218,6 +225,12 @@ export interface ViagemMock {
    */
   beneficiarioTipo: 'paciente' | 'acompanhante';
   beneficiarioId?: string;
+  /** Distância em linha reta calculada via coordenadas IBGE. */
+  distanciaValor?: number;
+  distanciaUnidade?: 'km' | 'milhas' | 'milhas_nauticas';
+  /** Valor calculado de ajuda de custo (SIGTAP) — paciente e acompanhante. */
+  valorAjudaCustoPaciente?: number;
+  valorAjudaCustoAcompanhante?: number;
 }
 
 export type StatusAjuda = 'em_analise' | 'aprovada' | 'em_pagamento' | 'concluida' | 'glosada';

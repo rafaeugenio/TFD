@@ -117,6 +117,11 @@ interface FluxoV2ContextValue {
     input: {
       origem: string;
       destino: string;
+      /** Campos estruturados de origem/destino. */
+      origemCidade?: string;
+      origemUf?: string;
+      destinoCidade?: string;
+      destinoUf?: string;
       modal: ViagemMock['modal'];
       status: ViagemMock['status'];
       dataIda: string;
@@ -125,6 +130,11 @@ interface FluxoV2ContextValue {
       /** T2.AF — Mesmo beneficiário aplica-se às duas passagens geradas. */
       beneficiarioTipo: 'paciente' | 'acompanhante';
       beneficiarioId?: string;
+      /** Distância e ajuda de custo (calculados, idem para ida e volta). */
+      distanciaValor?: number;
+      distanciaUnidade?: 'km' | 'milhas' | 'milhas_nauticas';
+      valorAjudaCustoPaciente?: number;
+      valorAjudaCustoAcompanhante?: number;
     },
   ) => void;
   updateViagem: (id: string, viagemId: string, patch: Partial<ViagemMock>) => void;
@@ -592,10 +602,20 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       // soma das duas continua igual ao total informado.
       const metade = Math.round((input.valorTotal / 2) * 100) / 100;
       const restoIda = Math.round((input.valorTotal - metade) * 100) / 100;
+      const camposDistancia = {
+        distanciaValor: input.distanciaValor,
+        distanciaUnidade: input.distanciaUnidade,
+        valorAjudaCustoPaciente: input.valorAjudaCustoPaciente,
+        valorAjudaCustoAcompanhante: input.valorAjudaCustoAcompanhante,
+      };
       const ida: ViagemMock = {
         id: tempIdIda,
         origem: input.origem,
         destino: input.destino,
+        origemCidade: input.origemCidade,
+        origemUf: input.origemUf,
+        destinoCidade: input.destinoCidade,
+        destinoUf: input.destinoUf,
         data: input.dataIda,
         modal: input.modal,
         tipo: 'ida',
@@ -603,11 +623,16 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         valor: restoIda,
         beneficiarioTipo: input.beneficiarioTipo,
         beneficiarioId: input.beneficiarioId,
+        ...camposDistancia,
       };
       const volta: ViagemMock = {
         id: tempIdVolta,
         origem: input.destino,
         destino: input.origem,
+        origemCidade: input.destinoCidade,
+        origemUf: input.destinoUf,
+        destinoCidade: input.origemCidade,
+        destinoUf: input.origemUf,
         data: input.dataVolta,
         modal: input.modal,
         tipo: 'volta',
@@ -615,22 +640,37 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         valor: metade,
         beneficiarioTipo: input.beneficiarioTipo,
         beneficiarioId: input.beneficiarioId,
+        ...camposDistancia,
       };
       s.viagens = [...s.viagens, ida, volta];
       return s;
     });
     void (async () => {
+      const camposDistancia = {
+        distanciaValor: input.distanciaValor,
+        distanciaUnidade: input.distanciaUnidade,
+        valorAjudaCustoPaciente: input.valorAjudaCustoPaciente,
+        valorAjudaCustoAcompanhante: input.valorAjudaCustoAcompanhante,
+      };
       const idaPayload = buildViagem(id, {
-        origem: input.origem, destino: input.destino, data: input.dataIda,
+        origem: input.origem, destino: input.destino,
+        origemCidade: input.origemCidade, origemUf: input.origemUf,
+        destinoCidade: input.destinoCidade, destinoUf: input.destinoUf,
+        data: input.dataIda,
         modal: input.modal, tipo: 'ida', status: input.status,
         valor: Math.round((input.valorTotal / 2) * 100) / 100,
         beneficiarioTipo: input.beneficiarioTipo, beneficiarioId: input.beneficiarioId,
+        ...camposDistancia,
       });
       const voltaPayload = buildViagem(id, {
-        origem: input.destino, destino: input.origem, data: input.dataVolta,
+        origem: input.destino, destino: input.origem,
+        origemCidade: input.destinoCidade, origemUf: input.destinoUf,
+        destinoCidade: input.origemCidade, destinoUf: input.origemUf,
+        data: input.dataVolta,
         modal: input.modal, tipo: 'volta', status: input.status,
         valor: Math.round((input.valorTotal / 2) * 100) / 100,
         beneficiarioTipo: input.beneficiarioTipo, beneficiarioId: input.beneficiarioId,
+        ...camposDistancia,
       });
       const [idaReal, voltaReal] = await Promise.all([
         persistInsert('viagens', idaPayload),

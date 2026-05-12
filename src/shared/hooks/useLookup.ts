@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { listarPorCategoria, listarUnidadesDestino, listarCompanhias } from '@/services/tabelas-auxiliares.service';
 import type { TabelaAuxiliar, UnidadeDestino, CompanhiaTransporte } from '@/services/tabelas-auxiliares.service';
-import type { RotaDeslocamento } from '@/core/models/rota-deslocamento.model';
 import { createClient } from '@/lib/supabase/client';
 
 interface LookupOption {
@@ -97,7 +96,7 @@ export function useCompanhias() {
           rows.map((c) => ({
             ...c,
             value: c.id,
-            label: `${c.nome} (${c.tipo_modal})`,
+            label: c.nome,
           })),
         );
       }
@@ -157,28 +156,3 @@ export function invalidateCache(categoria?: string) {
   }
 }
 
-export function useRotas() {
-  const [rotas, setRotas] = useState<RotaDeslocamento[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(() => {
-    setLoading(true);
-    createClient()
-      .from('rotas_deslocamento')
-      .select('*')
-      .eq('ativo', true)
-      .order('cidade_origem', { ascending: true })
-      .then(({ data, error }) => {
-        if (error || !data) {
-          setRotas([]);
-        } else {
-          setRotas(data as unknown as RotaDeslocamento[]);
-        }
-        setLoading(false);
-      });
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  return { rotas, loading, refresh: load };
-}

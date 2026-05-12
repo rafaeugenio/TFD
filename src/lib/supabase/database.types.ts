@@ -927,6 +927,10 @@ export type Database = {
           prorrogacao_id: string | null;
           motivo_cancelamento: string | null;
           numero_sequencial: number;
+          distancia_valor: number | null;
+          distancia_unidade: 'km' | 'milhas' | 'milhas_nauticas' | null;
+          valor_ajuda_custo_paciente: number | null;
+          valor_ajuda_custo_acompanhante: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -959,6 +963,10 @@ export type Database = {
           prorrogacao_id?: string | null;
           motivo_cancelamento?: string | null;
           numero_sequencial?: number;
+          distancia_valor?: number | null;
+          distancia_unidade?: 'km' | 'milhas' | 'milhas_nauticas' | null;
+          valor_ajuda_custo_paciente?: number | null;
+          valor_ajuda_custo_acompanhante?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -991,6 +999,10 @@ export type Database = {
           prorrogacao_id?: string | null;
           motivo_cancelamento?: string | null;
           numero_sequencial?: number;
+          distancia_valor?: number | null;
+          distancia_unidade?: 'km' | 'milhas' | 'milhas_nauticas' | null;
+          valor_ajuda_custo_paciente?: number | null;
+          valor_ajuda_custo_acompanhante?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1657,9 +1669,6 @@ export type Database = {
         Row: {
           id: string;
           nome: string;
-          tipo_modal: ModalTransporte;
-          cnpj: string | null;
-          contato: string | null;
           ativo: boolean;
           created_at: string;
           updated_at: string;
@@ -1667,9 +1676,6 @@ export type Database = {
         Insert: {
           id?: string;
           nome: string;
-          tipo_modal: ModalTransporte;
-          cnpj?: string | null;
-          contato?: string | null;
           ativo?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -1677,9 +1683,6 @@ export type Database = {
         Update: {
           id?: string;
           nome?: string;
-          tipo_modal?: ModalTransporte;
-          cnpj?: string | null;
-          contato?: string | null;
           ativo?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -1981,49 +1984,8 @@ export type Database = {
         Relationships: [];
       };
 
-      // ── Rotas de Deslocamento ───────────────────────────────
-      rotas_deslocamento: {
-        Row: {
-          id: number;
-          cidade_origem: string;
-          uf_origem: string;
-          cidade_destino: string;
-          uf_destino: string;
-          distancia_milhas: number | null;
-          distancia_km: number | null;
-          distancia_milhas_nauticas: number | null;
-          ativo: boolean;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: number;
-          cidade_origem: string;
-          uf_origem: string;
-          cidade_destino: string;
-          uf_destino: string;
-          distancia_milhas?: number | null;
-          distancia_km?: number | null;
-          distancia_milhas_nauticas?: number | null;
-          ativo?: boolean;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: number;
-          cidade_origem?: string;
-          uf_origem?: string;
-          cidade_destino?: string;
-          uf_destino?: string;
-          distancia_milhas?: number | null;
-          distancia_km?: number | null;
-          distancia_milhas_nauticas?: number | null;
-          ativo?: boolean;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Relationships: [];
-      };
+      // Tabela rotas_deslocamento removida na migration 00041 — substituída
+      // pelo cálculo automático de distância via coordenadas IBGE.
 
       // ── Regiões (agrupamento das URS) ───────────────────────
       regioes: {

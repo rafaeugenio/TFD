@@ -228,6 +228,10 @@ export interface ViagemDb {
   embarcou: boolean;
   valor: number;
   numero_bilhete?: string;
+  distancia_valor?: number;
+  distancia_unidade?: 'km' | 'milhas' | 'milhas_nauticas';
+  valor_ajuda_custo_paciente?: number;
+  valor_ajuda_custo_acompanhante?: number;
 }
 
 function splitCidadeUf(s: string): { cidade: string; uf: string } {
@@ -239,8 +243,14 @@ export function buildViagem(
   solicitacaoId: string,
   v: Omit<ViagemMock, 'id'>,
 ): ViagemDb {
-  const o = splitCidadeUf(v.origem);
-  const d = splitCidadeUf(v.destino);
+  // Prefere os campos estruturados (origemCidade/origemUf) quando presentes;
+  // cai pra split do `origem` (formato "Cidade - UF") como fallback de compat.
+  const o = v.origemCidade && v.origemUf
+    ? { cidade: v.origemCidade, uf: v.origemUf }
+    : splitCidadeUf(v.origem);
+  const d = v.destinoCidade && v.destinoUf
+    ? { cidade: v.destinoCidade, uf: v.destinoUf }
+    : splitCidadeUf(v.destino);
   return {
     solicitacao_id: solicitacaoId,
     tipo: TIPO_VIAGEM_TO_DB[v.tipo] ?? 'IDA',
@@ -254,6 +264,10 @@ export function buildViagem(
     embarcou: v.status === 'confirmada',
     valor: v.valor,
     numero_bilhete: v.bilheteUrl,
+    distancia_valor: v.distanciaValor,
+    distancia_unidade: v.distanciaUnidade,
+    valor_ajuda_custo_paciente: v.valorAjudaCustoPaciente,
+    valor_ajuda_custo_acompanhante: v.valorAjudaCustoAcompanhante,
   };
 }
 

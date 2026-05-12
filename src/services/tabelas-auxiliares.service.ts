@@ -1,5 +1,4 @@
 import { createClient } from '@/lib/supabase/client';
-import type { ModalTransporte } from '@/lib/supabase/database.types';
 
 function getSupabase() {
   return createClient();
@@ -37,9 +36,6 @@ export interface UnidadeDestino {
 export interface CompanhiaTransporte {
   id: string;
   nome: string;
-  tipo_modal: ModalTransporte;
-  cnpj: string | null;
-  contato: string | null;
   ativo: boolean;
   created_at: string;
   updated_at: string;
