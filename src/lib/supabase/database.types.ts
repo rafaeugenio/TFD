@@ -446,6 +446,7 @@ export type Database = {
           nome_completo: string;
           cpf: string;
           cns: string | null;
+          data_nascimento: string | null;
           vinculo: VinculoAcompanhante;
           telefone: string;
           necessidade_especial: boolean;
@@ -459,6 +460,7 @@ export type Database = {
           nome_completo: string;
           cpf: string;
           cns?: string | null;
+          data_nascimento?: string | null;
           vinculo: VinculoAcompanhante;
           telefone: string;
           necessidade_especial?: boolean;
@@ -472,6 +474,7 @@ export type Database = {
           nome_completo?: string;
           cpf?: string;
           cns?: string | null;
+          data_nascimento?: string | null;
           vinculo?: VinculoAcompanhante;
           telefone?: string;
           necessidade_especial?: boolean;

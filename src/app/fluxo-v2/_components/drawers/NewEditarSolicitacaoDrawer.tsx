@@ -7,7 +7,6 @@ import {
   Loader2,
   Paperclip,
   Pencil,
-  Plus,
   Trash2,
   Upload,
   UserPlus,
@@ -28,7 +27,8 @@ import { listarPacientes } from '@/services/pacientes.service';
 import { listarPorPaciente, criarAcompanhante } from '@/services/acompanhantes.service';
 import { listarPorCategoria } from '@/services/tabelas-auxiliares.service';
 import { calcularIdade } from '@/shared/utils/idade';
-import { maskCPF } from '@/shared/pipes/formatters';
+import { maskCPF, maskCNS, maskPhone } from '@/shared/pipes/formatters';
+import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import { agendamentoConfirmado } from '../../_utils/agendamento';
 
 const inputStyle: React.CSSProperties = {
@@ -76,14 +76,6 @@ interface AnexoEdit {
   tipo: string;
   tipoDocumento?: string;
 }
-
-const VINCULO_OPTIONS = [
-  { value: 'CONJUGE', label: 'Cônjuge' },
-  { value: 'FILHO', label: 'Filho(a)' },
-  { value: 'PAI_MAE', label: 'Pai/Mãe' },
-  { value: 'RESPONSAVEL_LEGAL', label: 'Responsável Legal' },
-  { value: 'OUTRO', label: 'Outro' },
-] as const;
 
 /**
  * Drawer de edição da solicitação. Espelha o NewSolicitacaoDrawer (cadastro)
@@ -137,8 +129,10 @@ export default function NewEditarSolicitacaoDrawer({
   const [novoAcompNome, setNovoAcompNome] = useState('');
   const [novoAcompCpf, setNovoAcompCpf] = useState('');
   const [novoAcompNasc, setNovoAcompNasc] = useState('');
-  const [novoAcompVinculo, setNovoAcompVinculo] = useState<string>('OUTRO');
+  const [novoAcompCns, setNovoAcompCns] = useState('');
+  const [novoAcompVinculo, setNovoAcompVinculo] = useState<string>('');
   const [novoAcompTelefone, setNovoAcompTelefone] = useState('');
+  const [novoAcompAgeWarning, setNovoAcompAgeWarning] = useState('');
   const [savingAcomp, setSavingAcomp] = useState(false);
 
   /* ── Reset quando reabre ────────────────────────────────────────────── */
@@ -256,21 +250,28 @@ export default function NewEditarSolicitacaoDrawer({
     setNovoAcompNome('');
     setNovoAcompCpf('');
     setNovoAcompNasc('');
-    setNovoAcompVinculo('OUTRO');
+    setNovoAcompCns('');
+    setNovoAcompVinculo('');
     setNovoAcompTelefone('');
+    setNovoAcompAgeWarning('');
   }
 
   async function salvarNovoAcompanhante() {
-    if (!pacienteId || !novoAcompNome.trim() || !novoAcompCpf.trim() || !novoAcompNasc) return;
+    if (!pacienteId || !novoAcompNome.trim() || !novoAcompCpf.trim() || !novoAcompNasc || !novoAcompVinculo || !novoAcompTelefone.trim()) return;
     setSavingAcomp(true);
     const cpfLimpo = novoAcompCpf.replace(/\D/g, '');
+    const cnsLimpo = novoAcompCns.replace(/\D/g, '');
+    const telLimpo = novoAcompTelefone.replace(/\D/g, '');
     const payload = {
       paciente_id: pacienteId,
       nome_completo: novoAcompNome.trim(),
       cpf: cpfLimpo,
+      cns: cnsLimpo || null,
       data_nascimento: novoAcompNasc,
       vinculo: novoAcompVinculo,
-      telefone: novoAcompTelefone.trim() || null,
+      telefone: telLimpo,
+      necessidade_especial: false,
+      descricao_necessidade: null,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
     const { data: criado, error } = await criarAcompanhante(payload);
@@ -589,7 +590,7 @@ export default function NewEditarSolicitacaoDrawer({
 
             {novoAcompForm && pacienteId && (
               <div
-                className="mt-3 p-3 flex flex-col gap-2"
+                className="mt-3 p-4 flex flex-col gap-3"
                 style={{
                   background: '#F8FAFC',
                   border: '1px solid var(--tfd-surface-border)',
@@ -597,73 +598,103 @@ export default function NewEditarSolicitacaoDrawer({
                 }}
               >
                 <p className="text-[12px] font-semibold" style={{ color: '#1A1D2B' }}>
-                  Cadastrar acompanhante para este paciente
+                  Novo Acompanhante
                 </p>
-                <input
-                  placeholder="Nome completo"
-                  value={novoAcompNome}
-                  onChange={(e) => setNovoAcompNome(e.target.value)}
-                  className="px-3 py-2 text-[13px]"
-                  style={{
-                    background: 'white',
-                    border: '1px solid var(--tfd-surface-border)',
-                    borderRadius: 6,
-                  }}
-                />
-                <div className="grid grid-cols-2 gap-2">
+
+                <div>
+                  <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--tfd-text-secondary)' }}>
+                    Nome completo <span style={{ color: 'var(--tfd-status-danger)' }}>*</span>
+                  </label>
                   <input
-                    placeholder="CPF"
-                    value={novoAcompCpf}
-                    onChange={(e) => setNovoAcompCpf(maskCPF(e.target.value))}
-                    className="px-3 py-2 text-[13px] font-mono"
-                    style={{
-                      background: 'white',
-                      border: '1px solid var(--tfd-surface-border)',
-                      borderRadius: 6,
-                    }}
-                  />
-                  <input
-                    type="date"
-                    value={novoAcompNasc}
-                    onChange={(e) => setNovoAcompNasc(e.target.value)}
-                    className="px-3 py-2 text-[13px]"
-                    style={{
-                      background: 'white',
-                      border: '1px solid var(--tfd-surface-border)',
-                      borderRadius: 6,
-                    }}
+                    type="text"
+                    value={novoAcompNome}
+                    onChange={(e) => setNovoAcompNome(e.target.value)}
+                    className="tfd-input"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <select
-                    value={novoAcompVinculo}
-                    onChange={(e) => setNovoAcompVinculo(e.target.value)}
-                    className="px-3 py-2 text-[13px]"
-                    style={{
-                      background: 'white',
-                      border: '1px solid var(--tfd-surface-border)',
-                      borderRadius: 6,
-                    }}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--tfd-text-secondary)' }}>
+                      CPF <span style={{ color: 'var(--tfd-status-danger)' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="000.000.000-00"
+                      value={novoAcompCpf}
+                      onChange={(e) => setNovoAcompCpf(maskCPF(e.target.value))}
+                      className="tfd-input"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--tfd-text-secondary)' }}>
+                      Data de Nascimento <span style={{ color: 'var(--tfd-status-danger)' }}>*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={novoAcompNasc}
+                      onChange={(e) => {
+                        setNovoAcompNasc(e.target.value);
+                        const age = calcularIdade(e.target.value);
+                        if (age !== null && (age < 20 || age > 65)) {
+                          setNovoAcompAgeWarning(`Acompanhante com ${age} anos — fora da faixa padrão (20–65). Exige autorização da coordenação.`);
+                        } else {
+                          setNovoAcompAgeWarning('');
+                        }
+                      }}
+                      className="tfd-input"
+                    />
+                  </div>
+                </div>
+
+                {novoAcompAgeWarning && (
+                  <div
+                    className="flex items-start gap-2 px-3 py-2"
+                    style={{ backgroundColor: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8 }}
                   >
-                    {VINCULO_OPTIONS.map((v) => (
-                      <option key={v.value} value={v.value}>
-                        {v.label}
-                      </option>
-                    ))}
-                  </select>
+                    <AlertTriangle size={14} style={{ color: '#92400E', flexShrink: 0, marginTop: 2 }} />
+                    <span className="text-[11px] font-medium" style={{ color: '#92400E' }}>
+                      {novoAcompAgeWarning}
+                    </span>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--tfd-text-secondary)' }}>
+                    CNS <span style={{ color: 'var(--tfd-text-muted)', fontWeight: 400 }}>(opcional)</span>
+                  </label>
                   <input
-                    placeholder="Telefone (opcional)"
-                    value={novoAcompTelefone}
-                    onChange={(e) => setNovoAcompTelefone(e.target.value)}
-                    className="px-3 py-2 text-[13px]"
-                    style={{
-                      background: 'white',
-                      border: '1px solid var(--tfd-surface-border)',
-                      borderRadius: 6,
-                    }}
+                    type="text"
+                    placeholder="000 0000 0000 0000"
+                    value={novoAcompCns}
+                    onChange={(e) => setNovoAcompCns(maskCNS(e.target.value))}
+                    className="tfd-input"
                   />
                 </div>
-                <div className="flex items-center gap-2 justify-end">
+
+                <div className="grid grid-cols-2 gap-3">
+                  <LookupSelect
+                    categoria="vinculo_acompanhante"
+                    label="Vínculo"
+                    value={novoAcompVinculo}
+                    onChange={setNovoAcompVinculo}
+                    required
+                  />
+                  <div>
+                    <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--tfd-text-secondary)' }}>
+                      Telefone <span style={{ color: 'var(--tfd-status-danger)' }}>*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      placeholder="(99) 99999-0000"
+                      value={novoAcompTelefone}
+                      onChange={(e) => setNovoAcompTelefone(maskPhone(e.target.value))}
+                      className="tfd-input"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 justify-end mt-1">
                   <button
                     type="button"
                     onClick={resetNovoAcompForm}
@@ -678,7 +709,9 @@ export default function NewEditarSolicitacaoDrawer({
                       savingAcomp ||
                       !novoAcompNome.trim() ||
                       !novoAcompCpf.trim() ||
-                      !novoAcompNasc
+                      !novoAcompNasc ||
+                      !novoAcompVinculo ||
+                      !novoAcompTelefone.trim()
                     }
                     className="tfd-btn tfd-btn-primary tfd-btn--sm"
                   >
@@ -687,9 +720,7 @@ export default function NewEditarSolicitacaoDrawer({
                         <Loader2 size={12} className="animate-spin" /> Salvando...
                       </>
                     ) : (
-                      <>
-                        <Plus size={12} /> Adicionar
-                      </>
+                      <>Salvar Acompanhante</>
                     )}
                   </button>
                 </div>
