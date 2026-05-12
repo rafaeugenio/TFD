@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   Search,
   RefreshCw,
@@ -15,11 +15,20 @@ import {
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import Pagination from '@/shared/components/pagination/Pagination';
+import { TableRowsSkeleton } from '@/shared/components/skeleton';
 import SortTh from '@/shared/components/sort-th/SortTh';
 import { useToast } from '@/shared/components/toast/Toast';
 import { formatDateTime } from '@/shared/pipes/formatters';
 import Drawer from '@/shared/components/drawer/Drawer';
 import { useTableControls } from '@/shared/hooks/useTableControls';
+import {
+  listarLogs,
+  diffCampos,
+  ACAO_LABEL as ACAO_REAL_LABEL,
+  ENTIDADE_LABEL,
+  ENTIDADE_MODULO,
+  type LogAuditoria,
+} from '@/services/logs.service';
 
 /* -------------------------------------------------- */
 /*  Types                                              */
@@ -237,476 +246,6 @@ function formatDateTimeShort(iso: string): string {
   const minutes = String(d.getMinutes()).padStart(2, '0');
   return `${day}/${month}/${year} ${hours}:${minutes}`;
 }
-
-/* -------------------------------------------------- */
-/*  Mock data                                          */
-/* -------------------------------------------------- */
-
-const MOCK_LOGS: LogEntry[] = [
-  {
-    id: 'log-001',
-    solicitacao_id: 'sol-001',
-    usuario_id: 'usr-001',
-    nome_usuario: 'Rafael Eugenio',
-    perfil_usuario: 'ADMIN',
-    acao: 'SOLICITACAO_CRIADA',
-    entidade_alterada: 'solicitacoes',
-    entidade_id: 'sol-001',
-    campo_alterado: null,
-    valor_anterior: null,
-    valor_novo: null,
-    ip: '192.168.1.10',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-24T14:32:00',
-    modulo: 'Operacional',
-    descricao: 'Criou solicitação TFD-2026-0047 para paciente Maria das Graças',
-    referencia: 'TFD-2026-0047',
-    alteracoes: [
-      { campo: 'paciente', label: 'Paciente', anterior: null, novo: 'Maria das Graças Pereira' },
-      { campo: 'cid', label: 'CID', anterior: null, novo: 'C50.9 – Neoplasia maligna da mama' },
-      { campo: 'municipio_origem', label: 'Município de origem', anterior: null, novo: 'São Luís – MA' },
-      { campo: 'municipio_destino', label: 'Município de destino', anterior: null, novo: 'São Paulo – SP' },
-      { campo: 'prioridade', label: 'Prioridade', anterior: null, novo: 'NORMAL' },
-      { campo: 'status', label: 'Status', anterior: null, novo: 'NOVO' },
-    ],
-  },
-  {
-    id: 'log-002',
-    solicitacao_id: 'sol-001',
-    usuario_id: 'usr-002',
-    nome_usuario: 'Maria Silva',
-    perfil_usuario: 'MEDICO_AUDITOR',
-    acao: 'PARECER_EMITIDO',
-    entidade_alterada: 'regulacao',
-    entidade_id: 'reg-001',
-    campo_alterado: 'parecer',
-    valor_anterior: null,
-    valor_novo: 'DEFERIDO',
-    ip: '192.168.1.22',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-24T13:45:00',
-    modulo: 'Regulação',
-    descricao: 'Emitiu parecer DEFERIDO para solicitação TFD-2026-0047',
-    referencia: 'TFD-2026-0047',
-    alteracoes: [
-      { campo: 'parecer', label: 'Parecer', anterior: null, novo: 'DEFERIDO' },
-      { campo: 'justificativa', label: 'Justificativa', anterior: null, novo: 'Tratamento não disponível na rede municipal.' },
-    ],
-  },
-  {
-    id: 'log-003',
-    solicitacao_id: 'sol-002',
-    usuario_id: 'usr-003',
-    nome_usuario: 'João Santos',
-    perfil_usuario: 'PASSAGENS',
-    acao: 'PASSAGEM_EMITIDA',
-    entidade_alterada: 'viagens',
-    entidade_id: 'viag-001',
-    campo_alterado: null,
-    valor_anterior: null,
-    valor_novo: null,
-    ip: '192.168.1.35',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-24T11:20:00',
-    modulo: 'Passagens',
-    descricao: 'Emitiu passagem aérea SLZ → BSB para paciente José Oliveira',
-    referencia: 'José Oliveira',
-    alteracoes: [
-      { campo: 'tipo', label: 'Tipo', anterior: null, novo: 'Aérea' },
-      { campo: 'origem', label: 'Origem', anterior: null, novo: 'SLZ – São Luís' },
-      { campo: 'destino', label: 'Destino', anterior: null, novo: 'BSB – Brasília' },
-      { campo: 'localizador', label: 'Localizador', anterior: null, novo: 'GLO-3321' },
-    ],
-  },
-  {
-    id: 'log-004',
-    solicitacao_id: 'sol-003',
-    usuario_id: 'usr-004',
-    nome_usuario: 'Ana Costa',
-    perfil_usuario: 'FINANCEIRO',
-    acao: 'DIARIA_APROVADA',
-    entidade_alterada: 'diarias',
-    entidade_id: 'dia-001',
-    campo_alterado: 'status',
-    valor_anterior: 'PENDENTE',
-    valor_novo: 'APROVADA',
-    ip: '192.168.1.41',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-24T10:15:00',
-    modulo: 'Financeiro',
-    descricao: 'Aprovou diária de R$ 320,00 para paciente Raimunda Ferreira',
-    referencia: 'Raimunda Ferreira',
-    alteracoes: [
-      { campo: 'status', label: 'Status', anterior: 'PENDENTE', novo: 'APROVADA' },
-      { campo: 'valor', label: 'Valor', anterior: null, novo: 'R$ 320,00' },
-    ],
-  },
-  {
-    id: 'log-005',
-    solicitacao_id: 'sol-002',
-    usuario_id: 'usr-001',
-    nome_usuario: 'Rafael Eugenio',
-    perfil_usuario: 'ADMIN',
-    acao: 'STATUS_ALTERADO',
-    entidade_alterada: 'solicitacoes',
-    entidade_id: 'sol-002',
-    campo_alterado: 'status',
-    valor_anterior: 'AGUARDANDO_REGULACAO',
-    valor_novo: 'REGULADA_DEFERIDA',
-    ip: '192.168.1.10',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-24T09:50:00',
-    modulo: 'Operacional',
-    descricao: 'Alterou status da solicitação TFD-2026-0032 para Regulada (Deferida)',
-    referencia: 'TFD-2026-0032',
-    alteracoes: [
-      { campo: 'status', label: 'Status', anterior: 'AGUARDANDO_REGULACAO', novo: 'REGULADA_DEFERIDA' },
-    ],
-  },
-  {
-    id: 'log-006',
-    solicitacao_id: null,
-    usuario_id: 'usr-005',
-    nome_usuario: 'Carlos Mendes',
-    perfil_usuario: 'COORDENACAO',
-    acao: 'USUARIO_CRIADO',
-    entidade_alterada: 'usuarios',
-    entidade_id: 'usr-006',
-    campo_alterado: null,
-    valor_anterior: null,
-    valor_novo: null,
-    ip: '192.168.1.50',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-23T16:30:00',
-    modulo: 'Sistema',
-    descricao: 'Criou usuário Fernanda Lima com perfil Atendente',
-    referencia: 'Fernanda Lima',
-    alteracoes: [
-      { campo: 'nome', label: 'Nome', anterior: null, novo: 'Fernanda Lima' },
-      { campo: 'email', label: 'E-mail', anterior: null, novo: 'fernanda.lima@saude.ma.gov.br' },
-      { campo: 'perfil', label: 'Perfil', anterior: null, novo: 'ATENDENTE' },
-      { campo: 'status', label: 'Status', anterior: null, novo: 'ATIVO' },
-    ],
-  },
-  {
-    id: 'log-007',
-    solicitacao_id: 'sol-004',
-    usuario_id: 'usr-003',
-    nome_usuario: 'João Santos',
-    perfil_usuario: 'PASSAGENS',
-    acao: 'EMBARQUE_CONFIRMADO',
-    entidade_alterada: 'viagens',
-    entidade_id: 'viag-002',
-    campo_alterado: 'embarque',
-    valor_anterior: 'PENDENTE',
-    valor_novo: 'CONFIRMADO',
-    ip: '192.168.1.35',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-23T15:10:00',
-    modulo: 'Passagens',
-    descricao: 'Confirmou embarque do paciente Antonio Pereira no voo GLO-1234',
-    referencia: 'Antonio Pereira',
-    alteracoes: [
-      { campo: 'embarque', label: 'Embarque', anterior: 'PENDENTE', novo: 'CONFIRMADO' },
-      { campo: 'voo', label: 'Voo', anterior: null, novo: 'GLO-1234' },
-    ],
-  },
-  {
-    id: 'log-008',
-    solicitacao_id: 'sol-005',
-    usuario_id: 'usr-002',
-    nome_usuario: 'Maria Silva',
-    perfil_usuario: 'MEDICO_AUDITOR',
-    acao: 'PRIORIDADE_ALTERADA',
-    entidade_alterada: 'solicitacoes',
-    entidade_id: 'sol-005',
-    campo_alterado: 'prioridade',
-    valor_anterior: 'NORMAL',
-    valor_novo: 'URGENTE',
-    ip: '192.168.1.22',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-23T14:05:00',
-    modulo: 'Regulação',
-    descricao: 'Alterou prioridade para URGENTE na solicitação TFD-2026-0041',
-    referencia: 'TFD-2026-0041',
-    alteracoes: [
-      { campo: 'prioridade', label: 'Prioridade', anterior: 'NORMAL', novo: 'URGENTE' },
-      { campo: 'justificativa_prioridade', label: 'Justificativa', anterior: null, novo: 'Piora do quadro clínico relatada pelo médico assistente.' },
-    ],
-  },
-  {
-    id: 'log-009',
-    solicitacao_id: 'sol-006',
-    usuario_id: 'usr-004',
-    nome_usuario: 'Ana Costa',
-    perfil_usuario: 'FINANCEIRO',
-    acao: 'DIARIA_PAGA',
-    entidade_alterada: 'diarias',
-    entidade_id: 'dia-002',
-    campo_alterado: 'status',
-    valor_anterior: 'APROVADA',
-    valor_novo: 'PAGA',
-    ip: '192.168.1.41',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-23T11:45:00',
-    modulo: 'Financeiro',
-    descricao: 'Registrou pagamento de diária R$ 480,00 para paciente Luiza Santos',
-    referencia: 'Luiza Santos',
-    alteracoes: [
-      { campo: 'status', label: 'Status', anterior: 'APROVADA', novo: 'PAGA' },
-      { campo: 'valor', label: 'Valor pago', anterior: null, novo: 'R$ 480,00' },
-    ],
-  },
-  {
-    id: 'log-010',
-    solicitacao_id: 'sol-007',
-    usuario_id: 'usr-006',
-    nome_usuario: 'Fernanda Lima',
-    perfil_usuario: 'ATENDENTE',
-    acao: 'SOLICITACAO_CRIADA',
-    entidade_alterada: 'solicitacoes',
-    entidade_id: 'sol-007',
-    campo_alterado: null,
-    valor_anterior: null,
-    valor_novo: null,
-    ip: '192.168.1.60',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-23T10:20:00',
-    modulo: 'Operacional',
-    descricao: 'Criou solicitação TFD-2026-0048 para paciente Pedro Almeida',
-    referencia: 'TFD-2026-0048',
-    alteracoes: [
-      { campo: 'paciente', label: 'Paciente', anterior: null, novo: 'Pedro Almeida da Silva' },
-      { campo: 'cid', label: 'CID', anterior: null, novo: 'I25.1 – Doença aterosclerótica do coração' },
-      { campo: 'municipio_origem', label: 'Município de origem', anterior: null, novo: 'Imperatriz – MA' },
-      { campo: 'municipio_destino', label: 'Município de destino', anterior: null, novo: 'São Paulo – SP' },
-      { campo: 'status', label: 'Status', anterior: null, novo: 'NOVO' },
-    ],
-  },
-  {
-    id: 'log-011',
-    solicitacao_id: 'sol-003',
-    usuario_id: 'usr-003',
-    nome_usuario: 'João Santos',
-    perfil_usuario: 'PASSAGENS',
-    acao: 'NO_SHOW_REGISTRADO',
-    entidade_alterada: 'viagens',
-    entidade_id: 'viag-003',
-    campo_alterado: 'situacao',
-    valor_anterior: 'EMITIDA',
-    valor_novo: 'NO_SHOW',
-    ip: '192.168.1.35',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-23T09:00:00',
-    modulo: 'Passagens',
-    descricao: 'Registrou NO-SHOW para paciente Raimunda Ferreira no voo AZU-5678',
-    referencia: 'Raimunda Ferreira',
-    alteracoes: [
-      { campo: 'situacao', label: 'Situação', anterior: 'EMITIDA', novo: 'NO_SHOW' },
-      { campo: 'voo', label: 'Voo', anterior: null, novo: 'AZU-5678' },
-    ],
-  },
-  {
-    id: 'log-012',
-    solicitacao_id: 'sol-008',
-    usuario_id: 'usr-001',
-    nome_usuario: 'Rafael Eugenio',
-    perfil_usuario: 'ADMIN',
-    acao: 'PROCESSO_ENCERRADO',
-    entidade_alterada: 'encerramentos',
-    entidade_id: 'enc-001',
-    campo_alterado: 'status',
-    valor_anterior: 'EM_ANDAMENTO',
-    valor_novo: 'ENCERRADO_ALTA',
-    ip: '192.168.1.10',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-22T17:30:00',
-    modulo: 'Operacional',
-    descricao: 'Encerrou processo TFD-2026-0025 por alta médica',
-    referencia: 'TFD-2026-0025',
-    alteracoes: [
-      { campo: 'paciente', label: 'Paciente', anterior: 'Francisco Moraes', novo: null },
-      { campo: 'status_processo', label: 'Status do processo', anterior: 'EM_ANDAMENTO', novo: null },
-      { campo: 'motivo_encerramento', label: 'Motivo', anterior: 'Alta médica', novo: null },
-      { campo: 'data_encerramento', label: 'Data de encerramento', anterior: '22/03/2026', novo: null },
-    ],
-  },
-  {
-    id: 'log-013',
-    solicitacao_id: 'sol-009',
-    usuario_id: 'usr-002',
-    nome_usuario: 'Maria Silva',
-    perfil_usuario: 'MEDICO_AUDITOR',
-    acao: 'ROTA_DEFINIDA',
-    entidade_alterada: 'regulacao',
-    entidade_id: 'reg-002',
-    campo_alterado: 'rota',
-    valor_anterior: null,
-    valor_novo: 'SLZ → GRU',
-    ip: '192.168.1.22',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-22T16:15:00',
-    modulo: 'Regulação',
-    descricao: 'Definiu rota SLZ → GRU para solicitação TFD-2026-0044',
-    referencia: 'TFD-2026-0044',
-    alteracoes: [
-      { campo: 'rota', label: 'Rota', anterior: null, novo: 'SLZ → GRU' },
-      { campo: 'modal', label: 'Modal', anterior: null, novo: 'Aérea' },
-    ],
-  },
-  {
-    id: 'log-014',
-    solicitacao_id: null,
-    usuario_id: 'usr-005',
-    nome_usuario: 'Carlos Mendes',
-    perfil_usuario: 'COORDENACAO',
-    acao: 'STATUS_ALTERADO',
-    entidade_alterada: 'parametros',
-    entidade_id: 'param-001',
-    campo_alterado: 'valor_diaria',
-    valor_anterior: 'R$ 300,00',
-    valor_novo: 'R$ 320,00',
-    ip: '192.168.1.50',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-22T14:00:00',
-    modulo: 'Sistema',
-    descricao: 'Atualizou valor da diária padrão de R$ 300,00 para R$ 320,00',
-    referencia: 'Valor de Diária',
-    alteracoes: [
-      { campo: 'valor_diaria', label: 'Valor da diária', anterior: 'R$ 300,00', novo: 'R$ 320,00' },
-    ],
-  },
-  {
-    id: 'log-015',
-    solicitacao_id: 'sol-010',
-    usuario_id: 'usr-006',
-    nome_usuario: 'Fernanda Lima',
-    perfil_usuario: 'ATENDENTE',
-    acao: 'SOLICITACAO_CRIADA',
-    entidade_alterada: 'solicitacoes',
-    entidade_id: 'sol-010',
-    campo_alterado: null,
-    valor_anterior: null,
-    valor_novo: null,
-    ip: '192.168.1.60',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-22T11:30:00',
-    modulo: 'Operacional',
-    descricao: 'Criou solicitação TFD-2026-0049 para paciente Francisca Ribeiro',
-    referencia: 'TFD-2026-0049',
-  },
-  {
-    id: 'log-016',
-    solicitacao_id: 'sol-004',
-    usuario_id: 'usr-004',
-    nome_usuario: 'Ana Costa',
-    perfil_usuario: 'FINANCEIRO',
-    acao: 'DIARIA_APROVADA',
-    entidade_alterada: 'diarias',
-    entidade_id: 'dia-003',
-    campo_alterado: 'status',
-    valor_anterior: 'PENDENTE',
-    valor_novo: 'APROVADA',
-    ip: '192.168.1.41',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-22T10:05:00',
-    modulo: 'Financeiro',
-    descricao: 'Aprovou diária de R$ 640,00 para paciente Antonio Pereira (2 dias)',
-    referencia: 'Antonio Pereira',
-    alteracoes: [
-      { campo: 'status', label: 'Status', anterior: 'PENDENTE', novo: 'APROVADA' },
-      { campo: 'valor', label: 'Valor', anterior: null, novo: 'R$ 640,00' },
-      { campo: 'dias', label: 'Quantidade de dias', anterior: null, novo: '2 dias' },
-    ],
-  },
-  {
-    id: 'log-017',
-    solicitacao_id: 'sol-011',
-    usuario_id: 'usr-003',
-    nome_usuario: 'João Santos',
-    perfil_usuario: 'PASSAGENS',
-    acao: 'PASSAGEM_EMITIDA',
-    entidade_alterada: 'viagens',
-    entidade_id: 'viag-004',
-    campo_alterado: null,
-    valor_anterior: null,
-    valor_novo: null,
-    ip: '192.168.1.35',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-21T15:45:00',
-    modulo: 'Passagens',
-    descricao: 'Emitiu passagem rodoviária SLZ → THE para paciente Marcos Sousa',
-    referencia: 'Marcos Sousa',
-  },
-  {
-    id: 'log-018',
-    solicitacao_id: 'sol-012',
-    usuario_id: 'usr-002',
-    nome_usuario: 'Maria Silva',
-    perfil_usuario: 'MEDICO_AUDITOR',
-    acao: 'PARECER_EMITIDO',
-    entidade_alterada: 'regulacao',
-    entidade_id: 'reg-003',
-    campo_alterado: 'parecer',
-    valor_anterior: null,
-    valor_novo: 'INDEFERIDO',
-    ip: '192.168.1.22',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-21T14:10:00',
-    modulo: 'Regulação',
-    descricao: 'Emitiu parecer INDEFERIDO para solicitação TFD-2026-0038 — CID disponível em SLZ',
-    referencia: 'TFD-2026-0038',
-    alteracoes: [
-      { campo: 'parecer', label: 'Parecer', anterior: null, novo: 'INDEFERIDO' },
-      { campo: 'justificativa', label: 'Justificativa', anterior: null, novo: 'CID disponível na rede municipal de São Luís.' },
-    ],
-  },
-  {
-    id: 'log-019',
-    solicitacao_id: 'sol-001',
-    usuario_id: 'usr-001',
-    nome_usuario: 'Rafael Eugenio',
-    perfil_usuario: 'ADMIN',
-    acao: 'STATUS_ALTERADO',
-    entidade_alterada: 'solicitacoes',
-    entidade_id: 'sol-001',
-    campo_alterado: 'status',
-    valor_anterior: 'NOVO',
-    valor_novo: 'EM_ANALISE',
-    ip: '192.168.1.10',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-21T09:30:00',
-    modulo: 'Operacional',
-    descricao: 'Alterou status da solicitação TFD-2026-0047 de Novo para Em Análise',
-    referencia: 'TFD-2026-0047',
-    alteracoes: [
-      { campo: 'status', label: 'Status', anterior: 'NOVO', novo: 'EM_ANALISE' },
-    ],
-  },
-  {
-    id: 'log-020',
-    solicitacao_id: null,
-    usuario_id: 'usr-005',
-    nome_usuario: 'Carlos Mendes',
-    perfil_usuario: 'COORDENACAO',
-    acao: 'DIARIA_GLOSADA',
-    entidade_alterada: 'diarias',
-    entidade_id: 'dia-004',
-    campo_alterado: 'status',
-    valor_anterior: 'PENDENTE',
-    valor_novo: 'GLOSADA',
-    ip: '192.168.1.50',
-    user_agent: 'Mozilla/5.0',
-    created_at: '2026-03-21T08:15:00',
-    modulo: 'Financeiro',
-    descricao: 'Glosou diária de R$ 160,00 — documentação incompleta',
-    referencia: 'R$ 160,00',
-    alteracoes: [
-      { campo: 'status', label: 'Status', anterior: 'PENDENTE', novo: 'GLOSADA' },
-      { campo: 'motivo_glosa', label: 'Motivo da glosa', anterior: null, novo: 'Documentação incompleta' },
-    ],
-  },
-];
 
 /* -------------------------------------------------- */
 /*  Constants                                          */
@@ -938,13 +477,84 @@ function LogDrawer({ log, onClose }: { log: LogEntry | null; onClose: () => void
 /*  Component                                          */
 /* -------------------------------------------------- */
 
+/**
+ * Converte uma linha real de log_auditoria no shape `LogEntry` usado pela UI.
+ * Mapeia acao genérica (INSERT/UPDATE/DELETE) + entidade_alterada para
+ * labels de ação/módulo/descrição amigáveis.
+ */
+function toLogEntry(row: LogAuditoria): LogEntry {
+  const entidadeNome = ENTIDADE_LABEL[row.entidade_alterada] ?? row.entidade_alterada;
+  const modulo = ENTIDADE_MODULO[row.entidade_alterada] ?? 'Sistema';
+  const acaoLabel = ACAO_REAL_LABEL[row.acao] ?? row.acao;
+
+  let descricao = `${acaoLabel} ${entidadeNome}`;
+  const novo = row.valor_novo as Record<string, unknown> | null;
+  const anterior = row.valor_anterior as Record<string, unknown> | null;
+  const ref =
+    (novo?.['numero_processo'] as string) ??
+    (novo?.['nome_completo'] as string) ??
+    (novo?.['nome'] as string) ??
+    (anterior?.['numero_processo'] as string) ??
+    (anterior?.['nome_completo'] as string) ??
+    (anterior?.['nome'] as string) ??
+    undefined;
+  if (ref) descricao = `${acaoLabel} ${entidadeNome}: ${ref}`;
+
+  const alteracoes: Alteracao[] = diffCampos(row).map((d) => ({
+    campo: d.campo,
+    label: d.campo,
+    anterior: d.antes === null || d.antes === undefined ? null : String(d.antes),
+    novo: d.depois === null || d.depois === undefined ? null : String(d.depois),
+  }));
+
+  return {
+    id: row.id,
+    solicitacao_id: row.solicitacao_id,
+    usuario_id: row.usuario_id ?? '',
+    nome_usuario: row.nome_usuario ?? 'Sistema',
+    perfil_usuario: row.perfil_usuario ?? '',
+    acao: row.acao,
+    entidade_alterada: row.entidade_alterada,
+    entidade_id: row.entidade_id,
+    campo_alterado: null,
+    valor_anterior: null,
+    valor_novo: null,
+    ip: row.ip ?? '',
+    user_agent: row.user_agent ?? '',
+    created_at: row.created_at,
+    modulo,
+    descricao,
+    referencia: ref,
+    alteracoes,
+  };
+}
+
 export default function LogsAuditoriaPage() {
   const toast = useToast();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
 
+  const loadLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await listarLogs({ limit: 500 });
+      if (error) {
+        toast.error('Erro ao carregar logs', 'Verifique permissões ou conexão.');
+        setLogs([]);
+        return;
+      }
+      setLogs(data.map(toLogEntry));
+    } finally {
+      setLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => { loadLogs(); }, [loadLogs]);
+
   const table = useTableControls({
-    data: MOCK_LOGS as unknown as Record<string, unknown>[],
+    data: logs as unknown as Record<string, unknown>[],
     searchFields: ['nome_usuario', 'descricao', 'entidade_alterada'],
     dateField: 'created_at',
   });
@@ -959,15 +569,11 @@ export default function LogsAuditoriaPage() {
   const filterAcao = table.getActiveFilters('acao')[0] ?? '';
   const filterModulo = table.getActiveFilters('modulo')[0] ?? '';
 
-  /* ---- Refresh simulation ---- */
-  const handleRefresh = useCallback(() => {
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      toast.info('Logs atualizados', 'Os dados foram recarregados.');
-    }, 800);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  /* ---- Refresh real ---- */
+  const handleRefresh = useCallback(async () => {
+    await loadLogs();
+    toast.info('Logs atualizados', 'Dados recarregados do banco.');
+  }, [loadLogs, toast]);
 
   /* ---- CSV Export ---- */
   const handleExportCSV = useCallback(() => {
@@ -1133,14 +739,7 @@ export default function LogsAuditoriaPage() {
 
             <tbody>
               {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
-                    <div className="inline-flex items-center gap-2">
-                      <Loader2 size={16} className="animate-spin" />
-                      Carregando logs...
-                    </div>
-                  </td>
-                </tr>
+                <TableRowsSkeleton rows={6} columns={6} />
               ) : paginatedLogs.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-16 text-center" style={{ color: '#9CA3AF' }}>

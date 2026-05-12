@@ -29,6 +29,8 @@ import UfCidadeSelect from '@/shared/components/uf-cidade-select/UfCidadeSelect'
 import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import SortableHeader from '@/shared/components/table/SortableHeader';
 import { useTableControls } from '@/shared/hooks/useTableControls';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Can } from '@/shared/auth/Can';
 
 import {
   listarUnidadesSaude,
@@ -405,10 +407,12 @@ function UnidadesSaudePage() {
         title="Unidades de Saude"
         subtitle="Gerenciamento de unidades de saude de destino TFD"
         actions={
-          <button className="tfd-btn tfd-btn-primary" onClick={() => { setEditingId(null); resetForm(); setDrawerOpen(true); }}>
-            <Plus size={16} />
-            Nova Unidade
-          </button>
+          <Can action="unidades_saude.criar">
+            <button className="tfd-btn tfd-btn-primary" onClick={() => { setEditingId(null); resetForm(); setDrawerOpen(true); }}>
+              <Plus size={16} />
+              Nova Unidade
+            </button>
+          </Can>
         }
       />
 
@@ -478,13 +482,15 @@ function UnidadesSaudePage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td colSpan={6} className="text-center py-12">
-                    <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-                      Carregando...
-                    </p>
-                  </td>
-                </tr>
+                Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={`sk-${i}`}>
+                    {Array.from({ length: 6 }).map((__, c) => (
+                      <td key={c} className="px-4 py-3.5">
+                        <Skeleton className={`h-4 ${c === 0 ? 'w-48' : c === 5 ? 'w-16 ml-auto' : 'w-28'}`} />
+                      </td>
+                    ))}
+                  </tr>
+                ))
               ) : items.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="text-center py-12">
@@ -516,21 +522,25 @@ function UnidadesSaudePage() {
                       </td>
                       <td>
                         <div className="flex items-center gap-1">
-                          <button
-                            className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
-                            title="Editar"
-                            onClick={(e) => { e.stopPropagation(); handleOpenEdit(uni as Record<string, unknown>); }}
-                          >
-                            <Pencil size={15} />
-                          </button>
-                          <button
-                            className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
-                            title="Excluir"
-                            style={{ color: '#DC2626' }}
-                            onClick={(e) => { e.stopPropagation(); handleOpenDeactivate(uni as Record<string, unknown>); }}
-                          >
-                            <Trash2 size={15} />
-                          </button>
+                          <Can action="unidades_saude.editar">
+                            <button
+                              className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                              title="Editar"
+                              onClick={(e) => { e.stopPropagation(); handleOpenEdit(uni as Record<string, unknown>); }}
+                            >
+                              <Pencil size={15} />
+                            </button>
+                          </Can>
+                          <Can action="unidades_saude.excluir">
+                            <button
+                              className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                              title="Excluir"
+                              style={{ color: '#DC2626' }}
+                              onClick={(e) => { e.stopPropagation(); handleOpenDeactivate(uni as Record<string, unknown>); }}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </Can>
                         </div>
                       </td>
                     </tr>

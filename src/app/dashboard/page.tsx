@@ -1,1119 +1,1103 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useMemo } from 'react';
 import Link from 'next/link';
 import {
-  FileText,
-  Clock,
-  CheckCircle2,
-  ArrowUpRight,
-  Plane,
-  DollarSign,
-  Map,
-  CalendarRange,
-  Loader2,
-  TrendingUp,
-  GitCompareArrows,
   AlertTriangle,
-  Skull,
-  Timer,
+  ArrowUpRight,
+  CalendarClock,
+  ClipboardCheck,
+  ClipboardList,
+  Stethoscope,
   Wallet,
 } from 'lucide-react';
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  LabelList,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
-import StatusTag from '@/shared/components/status-tag/StatusTag';
-import { listarSolicitacoes, contarPorStatus } from '@/services/solicitacoes.service';
-import { listarViagens } from '@/services/viagens.service';
-import { listarEncerramentos } from '@/services/encerramentos.service';
-import { listarAjudasCusto } from '@/services/ajuda-custo.service';
-import { formatDate, formatCurrency } from '@/shared/pipes/formatters';
-import type { StatusSolicitacao } from '@/core/models';
+import { FluxoV2Provider, useFluxoV2State } from '@/app/fluxo-v2/_state/FluxoV2Provider';
+import {
+  contarPorStatus,
+  contarEncerradasNoMes,
+  taxaAprovacao,
+  contarAguardandoParecer,
+  contarAguardandoAgendamento,
+  contarPorCarimbo,
+  contarPareceres,
+  contarViagensAguardandoEmissao,
+  contarViagensProximas7Dias,
+  contarAdicionaisPendentes,
+  contarAjudasPendentes,
+  totalEmitidoNoMes,
+  totalDiariasNoMes,
+  formatBRL,
+} from '@/app/fluxo-v2/_utils/stats';
+import { Skeleton } from '@/components/ui/skeleton';
+import type { SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
 
-/* ── Period filter presets ──────────────────────────── */
-/* DA1 — Filtros de período pré-definidos: 7d, mês, trimestre, semestre, ano. */
+/* ── Paleta dos charts ───────────────────────────────── */
 
-type PresetKey = '7d' | 'mes' | 'trimestre' | 'semestre' | 'ano' | 'all';
+const COLORS = {
+  blue: '#146BFA',
+  indigo: '#6366F1',
+  amber: '#F59E0B',
+  green: '#10B981',
+  slate: '#94A3B8',
+  red: '#EF4444',
+  border: '#E2E8F0',
+  text: '#0F172A',
+  muted: '#64748B',
+};
 
-const PRESETS: { key: PresetKey; label: string }[] = [
-  { key: '7d', label: '7 dias' },
-  { key: 'mes', label: 'Mês' },
-  { key: 'trimestre', label: 'Trimestre' },
-  { key: 'semestre', label: 'Semestre' },
-  { key: 'ano', label: 'Anual' },
-  { key: 'all', label: 'Todo período' },
-];
+/* ── Mapa município → regional de saúde (MA) ─────────── */
+/**
+ * Cobertura das regionais mais comuns no seed atual. Casos não mapeados caem em
+ * "Regional indefinida" para evitar barras vazias no chart.
+ */
+const REGIONAL_POR_MUNICIPIO: Record<string, string> = {
+  'sao luis':              'Regional de São Luís',
+  'imperatriz':            'Regional de Imperatriz',
+  'caxias':                'Regional de Caxias',
+  'pinheiro':              'Regional de Pinheiro',
+  'presidente dutra':      'Regional de Presidente Dutra',
+  'bacabal':               'Regional de Bacabal',
+  'acailandia':            'Regional de Açailândia',
+  'balsas':                'Regional de Balsas',
+  'barra do corda':        'Regional de Barra do Corda',
+  'chapadinha':            'Regional de Chapadinha',
+  'codo':                  'Regional de Codó',
+  'coroata':               'Regional de Coroatá',
+  'itapecuru-mirim':       'Regional de Itapecuru-Mirim',
+  'pedreiras':             'Regional de Pedreiras',
+  'rosario':               'Regional de Rosário',
+  'santa ines':            'Regional de Santa Inês',
+  'sao joao dos patos':    'Regional de São João dos Patos',
+  'timon':                 'Regional de Timon',
+  'viana':                 'Regional de Viana',
+  'ze doca':               'Regional de Zé Doca',
+};
 
-function getPresetRange(key: PresetKey): { from: string; to: string } {
-  const to = new Date();
-  const toStr = to.toISOString().split('T')[0];
-
-  if (key === 'all') return { from: '', to: '' };
-
-  const from = new Date();
-  if (key === '7d') from.setDate(from.getDate() - 7);
-  else if (key === 'mes') from.setMonth(from.getMonth() - 1);
-  else if (key === 'trimestre') from.setMonth(from.getMonth() - 3);
-  else if (key === 'semestre') from.setMonth(from.getMonth() - 6);
-  else if (key === 'ano') from.setFullYear(from.getFullYear() - 1);
-
-  return { from: from.toISOString().split('T')[0], to: toStr };
+function derivarRegional(municipio: string | undefined): string {
+  if (!municipio) return 'Regional indefinida';
+  // Strip UF suffix ("São Luís - MA" → "São Luís") + normalize acentos.
+  const cidade = municipio.split(' - ')[0].trim();
+  const key = cidade
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+  return REGIONAL_POR_MUNICIPIO[key] ?? 'Regional indefinida';
 }
 
-/* ── DA2 — Controle de tempo por setor ─────────────────── */
-/**
- * Calcula dias entre `created_at` e hoje (se não concluído) ou `updated_at`.
- * Fallback quando não temos histórico granular de movimentação entre setores.
- * Referência: 5 dias num único setor já é considerado "absurdo".
- */
-function diasNoSetor(sol: any): number {
-  const start = new Date(sol.updated_at ?? sol.created_at);
-  const end = new Date();
-  const ms = end.getTime() - start.getTime();
+/* ── Alertas ─────────────────────────────────────────── */
+
+function diasNoSetor(s: SolicitacaoMock): number {
+  const ultimoEvento =
+    s.observacoes.length > 0
+      ? s.observacoes[s.observacoes.length - 1].data
+      : s.dataCriacao;
+  const ms = Date.now() - new Date(ultimoEvento).getTime();
   return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
 }
 
-function alertaTempoSetor(dias: number): 'ok' | 'atencao' | 'critico' {
-  if (dias >= 5) return 'critico';
-  if (dias >= 3) return 'atencao';
-  return 'ok';
+function setorLabel(status: SolicitacaoMock['status']): string {
+  switch (status) {
+    case 'em_dados_basicos': return 'Dados básicos';
+    case 'em_regulacao':     return 'Regulação';
+    case 'em_financeiro':    return 'Financeiro';
+    case 'encerrada':        return 'Encerrada';
+  }
 }
 
-/* ── DA3 — Alerta de prazo de viagem curto ─────────────── */
-/**
- * Retorna o nível de urgência com base em quantos dias faltam até a data
- * prevista de viagem. Amarelo a partir de 20 dias, vermelho a partir de 15.
- */
-function alertaPrazoViagem(
-  dataPrevista: string | null | undefined,
-): { nivel: 'normal' | 'atencao' | 'urgente'; diasRestantes: number } | null {
-  if (!dataPrevista) return null;
-  const hoje = new Date();
-  const prev = new Date(dataPrevista);
-  const diff = Math.floor(
-    (prev.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24),
-  );
-  if (diff < 0) return null;
-  if (diff <= 15) return { nivel: 'urgente', diasRestantes: diff };
-  if (diff <= 20) return { nivel: 'atencao', diasRestantes: diff };
-  return { nivel: 'normal', diasRestantes: diff };
-}
+/* ── Componente principal ────────────────────────────── */
 
-/* ── Status styling ──────────────────────────────────── */
+function PainelContent() {
+  const { solicitacoes, isLoading } = useFluxoV2State();
 
-const statusLabels: Record<string, { label: string; color: string }> = {
-  NOVO: { label: 'Novo', color: '#475569' },
-  EM_ANALISE: { label: 'Em Análise', color: '#2563EB' },
-  EXIGENCIA: { label: 'Exigência', color: '#F59E0B' },
-  AGUARDANDO_REGULACAO: { label: 'Ag. Regulação', color: '#7C3AED' },
-  AGUARDANDO_AGENDAMENTO: { label: 'Ag. Agendamento', color: '#0891B2' },
-  AGUARDANDO_EMISSAO: { label: 'Ag. Emissão', color: '#4F46E5' },
-  EMITIDA: { label: 'Emitida', color: '#0D9488' },
-  EM_VIAGEM: { label: 'Em Viagem', color: '#0284C7' },
-  EM_PERMANENCIA: { label: 'Em Permanência', color: '#EA580C' },
-  CONCLUIDO: { label: 'Concluído', color: '#10B981' },
-  INDEFERIDO: { label: 'Indeferido', color: '#EF4444' },
-  CANCELADO: { label: 'Cancelado', color: '#64748B' },
-};
+  /* ── Distribuição por setor (donut) ── */
+  const distribuicao = useMemo(() => {
+    const porStatus = contarPorStatus(solicitacoes);
+    const ativas =
+      porStatus.em_dados_basicos + porStatus.em_regulacao + porStatus.em_financeiro;
+    return {
+      ativas,
+      data: [
+        { name: 'Dados básicos', value: porStatus.em_dados_basicos, fill: COLORS.blue },
+        { name: 'Regulação',     value: porStatus.em_regulacao,     fill: COLORS.indigo },
+        { name: 'Financeiro',    value: porStatus.em_financeiro,    fill: COLORS.amber },
+      ],
+      encerradasMes: contarEncerradasNoMes(solicitacoes),
+      aprovacao: taxaAprovacao(solicitacoes),
+    };
+  }, [solicitacoes]);
 
-/* ── Motivo encerramento styling ─────────────────── */
+  /* ── Novas solicitações nos últimos 14 dias ── */
+  const tendenciaNovas = useMemo(() => {
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const days: { dia: string; novas: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(hoje);
+      d.setDate(d.getDate() - i);
+      const dStr = d.toISOString().slice(0, 10);
+      const count = solicitacoes.filter((s) => s.dataCriacao.slice(0, 10) === dStr).length;
+      days.push({
+        dia: d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+        novas: count,
+      });
+    }
+    const total14d = days.reduce((acc, d) => acc + d.novas, 0);
+    return { data: days, total14d };
+  }, [solicitacoes]);
 
-const motivoStyleMap: Record<string, { bg: string; color: string; label: string }> = {
-  ALTA_MEDICA: { bg: '#DCFCE7', color: '#15803D', label: 'Alta Médica' },
-  TRANSFERENCIA: { bg: '#DBEAFE', color: '#1D4ED8', label: 'Transferência' },
-  DESISTENCIA: { bg: '#FEF3C7', color: '#92400E', label: 'Desistência' },
-  ABANDONO: { bg: '#FFEDD5', color: '#C2410C', label: 'Abandono' },
-  OBITO: { bg: '#FEE2E2', color: '#B91C1C', label: 'Óbito' },
-};
+  /* ── Solicitação stats secundárias ── */
+  const solicitacaoStats = useMemo(() => {
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const novasHoje = solicitacoes.filter((s) => {
+      const d = new Date(s.dataCriacao);
+      d.setHours(0, 0, 0, 0);
+      return d.getTime() === hoje.getTime();
+    }).length;
+    const emAnalise = solicitacoes.filter(
+      (s) => s.status === 'em_dados_basicos' && s.pareceres.length === 0,
+    ).length;
+    const emExigencia = solicitacoes.filter((s) => {
+      if (s.status !== 'em_dados_basicos') return false;
+      return (s.devolucoes ?? []).some((d) => !d.resolvida);
+    }).length;
+    return { novasHoje, emAnalise, emExigencia };
+  }, [solicitacoes]);
 
-/* ── Component ───────────────────────────────────── */
+  /* ── Regulação ── */
+  const regulacao = useMemo(() => {
+    const carimbo = contarPorCarimbo(solicitacoes);
+    return {
+      aguardandoParecer: contarAguardandoParecer(solicitacoes),
+      aguardandoAgendamento: contarAguardandoAgendamento(solicitacoes),
+      pareceresMes: contarPareceres(solicitacoes, undefined, true),
+      deferidosMes: contarPareceres(solicitacoes, 'deferido', true),
+      indeferidosMes: contarPareceres(solicitacoes, 'indeferido', true),
+      carimboData: [
+        { name: 'Aprov. direto', value: carimbo.APROVADO_DIRETO, fill: COLORS.green },
+        { name: 'CNRAC',         value: carimbo.CNRAC,           fill: COLORS.blue },
+        { name: 'CET',           value: carimbo.CET,             fill: COLORS.indigo },
+        { name: 'Outros',        value: carimbo.OUTROS,          fill: COLORS.slate },
+      ].filter((d) => d.value > 0),
+    };
+  }, [solicitacoes]);
 
-export default function DashboardPage() {
-  /* ── Period filter state ── */
-  const [activePreset, setActivePreset] = useState<PresetKey>('mes');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  /* ── Financeiro ── */
+  const financeiro = useMemo(() => {
+    const passagens = contarViagensAguardandoEmissao(solicitacoes);
+    const adicionais = contarAdicionaisPendentes(solicitacoes);
+    const ajudas = contarAjudasPendentes(solicitacoes);
+    return {
+      passagens,
+      adicionais,
+      ajudas,
+      viagens7d: contarViagensProximas7Dias(solicitacoes),
+      emitidoMes: totalEmitidoNoMes(solicitacoes),
+      diariasMes: totalDiariasNoMes(solicitacoes),
+      pendenciasData: [
+        { name: 'Passagens', value: passagens, fill: COLORS.blue },
+        { name: 'Adicionais', value: adicionais, fill: COLORS.amber },
+        { name: 'Ajudas', value: ajudas, fill: COLORS.indigo },
+      ],
+    };
+  }, [solicitacoes]);
 
-  /* DA4 — Teto mensal do contrato anual (R$ 14.000.000 / 12) */
-  const tetoMensal = 14_000_000 / 12;
+  /* ── Histórico mensal (últimos 6 meses) ── */
+  const historico = useMemo(() => {
+    const hoje = new Date();
+    const meses: { mes: string; novas: number; encerradas: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const ref = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+      const ano = ref.getFullYear();
+      const mes = ref.getMonth();
+      const label = ref.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
+      const novas = solicitacoes.filter((s) => {
+        const d = new Date(s.dataCriacao);
+        return d.getFullYear() === ano && d.getMonth() === mes;
+      }).length;
+      const encerradas = solicitacoes.filter((s) => {
+        if (!s.encerramento) return false;
+        const d = new Date(s.encerramento.data);
+        return d.getFullYear() === ano && d.getMonth() === mes;
+      }).length;
+      meses.push({ mes: `${label}/${String(ano).slice(2)}`, novas, encerradas });
+    }
+    return meses;
+  }, [solicitacoes]);
 
-  useEffect(() => {
-    const range = getPresetRange('mes');
-    setDateFrom(range.from);
-    setDateTo(range.to);
-  }, []);
+  /* ── Top zonas regionais ── */
+  const topRegioes = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const s of solicitacoes) {
+      const r = s.paciente.zonaRegional || '—';
+      counts.set(r, (counts.get(r) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6);
+  }, [solicitacoes]);
 
-  function handlePreset(key: PresetKey) {
-    setActivePreset(key);
-    const range = getPresetRange(key);
-    setDateFrom(range.from);
-    setDateTo(range.to);
-  }
-
-  function handleDateChange(field: 'from' | 'to', value: string) {
-    setActivePreset('all');
-    if (field === 'from') setDateFrom(value);
-    else setDateTo(value);
-  }
-
-  /* ── Data state ── */
-  const [recentSolicitacoes, setRecentSolicitacoes] = useState<any[]>([]);
-  const [allSolicitacoes, setAllSolicitacoes] = useState<any[]>([]); // DA2/DA3
-  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
-  const [viagensData, setViagensData] = useState<any[]>([]);
-  const [encerramentosData, setEncerramentosData] = useState<any[]>([]);
-  const [ajudasData, setAjudasData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const loadData = useCallback(async () => {
-    setLoading(true);
-
-    const [recentRes, allRes, countsRes, viagensRes, encRes, ajudasRes] = await Promise.all([
-      listarSolicitacoes({ page: 1, pageSize: 6 }),
-      listarSolicitacoes({ page: 1, pageSize: 500 }),
-      contarPorStatus(),
-      listarViagens({ pageSize: 500 }),
-      listarEncerramentos({ pageSize: 500 }),
-      listarAjudasCusto({ pageSize: 500 }),
-    ]);
-
-    if (recentRes.data) setRecentSolicitacoes(recentRes.data);
-    if (allRes.data) setAllSolicitacoes(allRes.data);
-    if (countsRes.data) setStatusCounts(countsRes.data);
-    if (viagensRes.data) setViagensData(viagensRes.data);
-    if (encRes.data) setEncerramentosData(encRes.data);
-    if (ajudasRes.data) setAjudasData(ajudasRes.data);
-
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { loadData(); }, [loadData]);
-
-  /* ── Computed: filter by period ── */
-  function inPeriod(dateStr: string | null | undefined): boolean {
-    if (!dateStr) return true;
-    if (!dateFrom && !dateTo) return true;
-    const d = dateStr.split('T')[0];
-    if (dateFrom && d < dateFrom) return false;
-    if (dateTo && d > dateTo) return false;
-    return true;
-  }
-
-  const filteredViagens = useMemo(
-    () => viagensData.filter((v: any) => inPeriod(v.created_at)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [viagensData, dateFrom, dateTo],
-  );
-
-  const filteredEncerramentos = useMemo(
-    () => encerramentosData.filter((e: any) => inPeriod(e.created_at)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [encerramentosData, dateFrom, dateTo],
-  );
-
-  const filteredAjudas = useMemo(
-    () => ajudasData.filter((a: any) => inPeriod(a.created_at)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ajudasData, dateFrom, dateTo],
-  );
-
-  /* ── Computed: KPIs ── */
-  const totalSolicitacoes = Object.values(statusCounts).reduce((s, v) => s + v, 0);
-
-  const emAndamento = [
-    'EM_ANALISE', 'AGUARDANDO_REGULACAO', 'AGUARDANDO_AGENDAMENTO',
-    'AGUARDANDO_EMISSAO', 'EMITIDA', 'EM_VIAGEM', 'EM_PERMANENCIA',
-  ].reduce((s, k) => s + (statusCounts[k] || 0), 0);
-
-  const concluidos = (statusCounts['CONCLUIDO'] || 0);
-  const indeferidos = (statusCounts['INDEFERIDO'] || 0);
-  const deferidos = totalSolicitacoes - indeferidos - (statusCounts['CANCELADO'] || 0);
-  const taxaAprovacao = totalSolicitacoes > 0
-    ? Math.round((deferidos / (deferidos + indeferidos)) * 100)
-    : 0;
-
-  const passagensEmitidas = filteredViagens.length;
-  const valorPassagens = filteredViagens
-    .filter((v: any) => v.valor != null)
-    .reduce((s: number, v: any) => s + (v.valor ?? 0), 0);
-
-  const totalDiarias = filteredAjudas
-    .filter((a: any) => a.valor_total != null)
-    .reduce((s: number, a: any) => s + (a.valor_total ?? 0), 0);
-
-  const totalEncerramentos = filteredEncerramentos.length;
-
-  /* ── Computed: Status bars ── */
-  const statusBars = useMemo(() => {
-    return Object.entries(statusLabels).map(([status, meta]) => ({
-      status,
-      label: meta.label,
-      count: statusCounts[status] || 0,
-      color: meta.color,
-    }));
-  }, [statusCounts]);
-  const maxStatusCount = Math.max(...statusBars.map((s) => s.count), 1);
-
-  /* ── Computed: Encerramentos por motivo ── */
-  const encerramentoPorMotivo = useMemo(() => {
-    const counts: Record<string, number> = {};
-    filteredEncerramentos.forEach((e: any) => {
-      const m = e.motivo || 'ALTA_MEDICA';
-      counts[m] = (counts[m] || 0) + 1;
-    });
-    return Object.entries(motivoStyleMap).map(([key, style]) => ({
-      motivo: key,
-      ...style,
-      count: counts[key] || 0,
-    }));
-  }, [filteredEncerramentos]);
-  const maxEncCount = Math.max(...encerramentoPorMotivo.map((e) => e.count), 1);
-
-  /* ── Computed: Viagens por situação ── */
-  const viagensPorSituacao = useMemo(() => {
-    const emitidas = filteredViagens.filter((v: any) => v.situacao === 'EMITIDA').length;
-    const confirmadas = filteredViagens.filter((v: any) => v.situacao === 'UTILIZADA').length;
-    const remarcadas = filteredViagens.filter((v: any) => v.situacao === 'REMARCADA').length;
-    const canceladas = filteredViagens.filter((v: any) => v.situacao === 'CANCELADA').length;
-    return { emitidas, confirmadas, remarcadas, canceladas };
-  }, [filteredViagens]);
-
-  /* ── DA2 — Tempo por setor (solicitações em andamento) ── */
-  const tempoSetorAlerts = useMemo(() => {
-    const ativas = allSolicitacoes.filter((s: any) => {
-      const st = s.status;
-      return (
-        st !== 'CONCLUIDO' &&
-        st !== 'INDEFERIDO' &&
-        st !== 'CANCELADO'
-      );
-    });
-    const buckets = { critico: 0, atencao: 0, ok: 0 };
-    const criticas: any[] = [];
-    ativas.forEach((s: any) => {
-      const dias = diasNoSetor(s);
-      const nivel = alertaTempoSetor(dias);
-      buckets[nivel] += 1;
-      if (nivel === 'critico') criticas.push({ ...s, diasNoSetor: dias });
-    });
-    criticas.sort((a, b) => b.diasNoSetor - a.diasNoSetor);
-    return { buckets, criticas: criticas.slice(0, 5), totalAtivas: ativas.length };
-  }, [allSolicitacoes]);
-
-  /* ── DA3 — Alertas de prazo de viagem curto ── */
-  const prazoAlerts = useMemo(() => {
-    const alertas: any[] = [];
-    allSolicitacoes.forEach((s: any) => {
-      const a = alertaPrazoViagem(s.data_prevista_viagem);
-      if (!a || a.nivel === 'normal') return;
-      // Ignora se já houver passagem emitida
-      const temPassagem = viagensData.some(
-        (v: any) =>
-          v.solicitacao_id === s.id &&
-          (v.situacao === 'EMITIDA' || v.situacao === 'UTILIZADA'),
-      );
-      if (temPassagem) return;
-      alertas.push({ ...s, ...a });
-    });
-    alertas.sort((a, b) => a.diasRestantes - b.diasRestantes);
-    return alertas.slice(0, 8);
-  }, [allSolicitacoes, viagensData]);
-
-  /* ── DA4 — Consumo do teto mensal do contrato ── */
-  const consumoContrato = useMemo(() => {
-    const consumido = valorPassagens + totalDiarias;
-    const pct = tetoMensal > 0 ? (consumido / tetoMensal) * 100 : 0;
-    let nivel: 'ok' | 'atencao' | 'critico' = 'ok';
-    if (pct >= 90) nivel = 'critico';
-    else if (pct >= 70) nivel = 'atencao';
-    return { consumido, pct: Math.min(pct, 100), nivel, teto: tetoMensal };
-  }, [valorPassagens, totalDiarias, tetoMensal]);
-
-  /* ── DA5 — Contador de óbitos no período ── */
-  const obitosPeriodo = useMemo(
-    () =>
-      filteredEncerramentos.filter((e: any) => e.motivo === 'OBITO').length,
-    [filteredEncerramentos],
-  );
-
-  /* ── Computed: Top regionais (from solicitações recentes — simplified) ── */
+  /* ── Top regionais de saúde ──
+   * O adapter do Supabase ainda não preenche `paciente.regional` (depende de um
+   * enricher via municipio_residencia_id que não está rodando). Como fallback,
+   * derivamos a regional a partir do município: no Maranhão a maior parte das
+   * regionais leva o nome do município-sede.
+   */
   const topRegionais = useMemo(() => {
-    const counts: Record<string, number> = {};
-    recentSolicitacoes.forEach((sol: any) => {
-      const mun = sol.pacientes?.municipio_pac?.nome || sol.municipios?.nome || '';
-      if (mun) counts[mun] = (counts[mun] || 0) + 1;
-    });
-    return Object.entries(counts)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5)
-      .map(([name, count]) => ({ name, count }));
-  }, [recentSolicitacoes]);
+    const counts = new Map<string, number>();
+    for (const s of solicitacoes) {
+      const r = s.paciente.regional?.trim() || derivarRegional(s.paciente.municipio);
+      counts.set(r, (counts.get(r) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6);
+  }, [solicitacoes]);
 
-  /* ── Render ── */
+  /* ── Top municípios de origem ── */
+  const topMunicipios = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const s of solicitacoes) {
+      const m = s.paciente.municipio || '—';
+      counts.set(m, (counts.get(m) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6);
+  }, [solicitacoes]);
+
+  /* ── Alertas ── */
+  const alertas = useMemo(() => {
+    const paradas = solicitacoes
+      .filter((s) => s.status !== 'encerrada' && diasNoSetor(s) >= 5)
+      .map((s) => ({
+        id: s.id,
+        numero: s.numero,
+        paciente: s.paciente.nome,
+        setor: setorLabel(s.status),
+        dias: diasNoSetor(s),
+      }))
+      .sort((a, b) => b.dias - a.dias)
+      .slice(0, 5);
+    return { paradas, viagens7d: financeiro.viagens7d };
+  }, [solicitacoes, financeiro.viagens7d]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-72 w-full" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Skeleton className="h-72 w-full" />
+          <Skeleton className="h-72 w-full" />
+          <Skeleton className="h-72 w-full" />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <>
-      <PageHeader title="Painel" subtitle="Visão geral do TFD — SES Maranhão" />
-
-      {/* ═══════════════════════════════════════════════
-          FILTRO DE PERÍODO
-          ═══════════════════════════════════════════════ */}
-      <div className="tfd-card mb-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <CalendarRange size={16} style={{ color: 'var(--tfd-text-muted)' }} />
-          <span className="text-xs font-medium" style={{ color: 'var(--tfd-text-secondary)' }}>
-            Período:
-          </span>
-
-          <div className="flex items-center gap-1">
-            {PRESETS.map((p) => (
-              <button
-                key={p.key}
-                onClick={() => handlePreset(p.key)}
-                className="tfd-btn tfd-btn--sm"
+    <div className="flex flex-col gap-6">
+      {/* ─── Hero: Donut Distribuição + KPIs ─── */}
+      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Donut */}
+        <div
+          className="lg:col-span-2 p-5 flex flex-col"
+          style={{
+            background: 'white',
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 12,
+            boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
+          }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h2 className="text-[14px] font-semibold" style={{ color: COLORS.text }}>
+                Distribuição por setor
+              </h2>
+              <p className="text-[12px] mt-0.5" style={{ color: COLORS.muted }}>
+                Solicitações ativas agora
+              </p>
+            </div>
+            <div className="text-right">
+              <div
+                className="font-mono"
                 style={{
-                  backgroundColor: activePreset === p.key ? 'var(--tfd-primary-50)' : 'transparent',
-                  color: activePreset === p.key ? 'var(--tfd-primary-700)' : 'var(--tfd-text-secondary)',
-                  borderColor: activePreset === p.key ? 'var(--tfd-primary-200)' : 'transparent',
-                  fontWeight: activePreset === p.key ? 600 : 400,
+                  color: COLORS.text,
+                  fontSize: 28,
+                  fontWeight: 700,
+                  letterSpacing: '-0.02em',
+                  lineHeight: 1,
+                  fontVariantNumeric: 'tabular-nums',
                 }}
               >
-                {p.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="h-4 w-px mx-1" style={{ background: 'var(--tfd-surface-border)' }} />
-
-          <div className="flex items-center gap-2">
-            <label className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>De</label>
-            <input
-              type="date"
-              className="tfd-input tfd-input--sm"
-              style={{ width: '140px' }}
-              value={dateFrom}
-              onChange={(e) => handleDateChange('from', e.target.value)}
-            />
-            <label className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>até</label>
-            <input
-              type="date"
-              className="tfd-input tfd-input--sm"
-              style={{ width: '140px' }}
-              value={dateTo}
-              onChange={(e) => handleDateChange('to', e.target.value)}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════
-          KPI CARDS — 6 indicadores
-          ═══════════════════════════════════════════════ */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8 tfd-stagger">
-        {/* 1. Total Solicitações */}
-        <div className="tfd-kpi">
-          <div>
-            <p className="tfd-kpi-label">Total Solicitações</p>
-            <p className="tfd-kpi-value tfd-number">{loading ? '—' : totalSolicitacoes}</p>
-            <p className="tfd-kpi-change tfd-kpi-change--up mt-2">
-              <ArrowUpRight size={11} />
-              no período
-            </p>
-          </div>
-          <div className="tfd-kpi-icon tfd-kpi-icon--blue">
-            <FileText size={22} />
-          </div>
-        </div>
-
-        {/* 2. Em Andamento */}
-        <div className="tfd-kpi">
-          <div>
-            <p className="tfd-kpi-label">Em Andamento</p>
-            <p className="tfd-kpi-value tfd-number">{loading ? '—' : emAndamento}</p>
-            <p className="tfd-kpi-sub">processos ativos</p>
-          </div>
-          <div className="tfd-kpi-icon tfd-kpi-icon--amber">
-            <Clock size={22} />
-          </div>
-        </div>
-
-        {/* 3. Concluídos / Encerrados */}
-        <div className="tfd-kpi">
-          <div>
-            <p className="tfd-kpi-label">Concluídos</p>
-            <p className="tfd-kpi-value tfd-number">{loading ? '—' : concluidos + totalEncerramentos}</p>
-            <p className="tfd-kpi-sub">{totalEncerramentos} encerramento{totalEncerramentos !== 1 ? 's' : ''}</p>
-          </div>
-          <div className="tfd-kpi-icon tfd-kpi-icon--green">
-            <CheckCircle2 size={22} />
-          </div>
-        </div>
-
-        {/* 4. Taxa de Aprovação */}
-        <div className="tfd-kpi">
-          <div>
-            <p className="tfd-kpi-label">Taxa de Aprovação</p>
-            <p className="tfd-kpi-value tfd-number">{loading ? '—' : `${taxaAprovacao}%`}</p>
-            <p className="tfd-kpi-sub">{indeferidos} indeferido{indeferidos !== 1 ? 's' : ''}</p>
-          </div>
-          <div className="tfd-kpi-icon tfd-kpi-icon--violet">
-            <GitCompareArrows size={22} />
-          </div>
-        </div>
-
-        {/* 5. Passagens Emitidas */}
-        <div className="tfd-kpi">
-          <div>
-            <p className="tfd-kpi-label">Passagens Emitidas</p>
-            <p className="tfd-kpi-value tfd-number">{loading ? '—' : passagensEmitidas}</p>
-            <p className="tfd-kpi-sub">{loading ? '' : formatCurrency(valorPassagens)}</p>
-          </div>
-          <div className="tfd-kpi-icon tfd-kpi-icon--blue">
-            <Plane size={22} />
-          </div>
-        </div>
-
-        {/* 6. Diárias (R$) */}
-        <div className="tfd-kpi">
-          <div>
-            <p className="tfd-kpi-label">Diárias (Ajuda de Custo)</p>
-            <p className="tfd-kpi-value tfd-number" style={{ fontSize: '1.5rem' }}>
-              {loading ? '—' : formatCurrency(totalDiarias)}
-            </p>
-            <p className="tfd-kpi-sub">{filteredAjudas.length} registro{filteredAjudas.length !== 1 ? 's' : ''}</p>
-          </div>
-          <div className="tfd-kpi-icon tfd-kpi-icon--green">
-            <DollarSign size={22} />
-          </div>
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════
-          DA2 / DA3 / DA4 / DA5 — Indicadores de gestão (Ata 07)
-          ═══════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4 mb-6 tfd-stagger">
-        {/* DA2 — Tempo por setor */}
-        <div className="tfd-card">
-          <div className="flex items-center gap-2 mb-3">
-            <Timer size={16} style={{ color: 'var(--tfd-primary-500)' }} />
-            <h3
-              className="text-sm font-semibold"
-              style={{ color: 'var(--tfd-text-primary)' }}
-            >
-              Tempo no setor
-            </h3>
-          </div>
-          <p
-            className="text-[11px] mb-3"
-            style={{ color: 'var(--tfd-text-muted)' }}
-          >
-            Solicitações ativas por tempo parado
-          </p>
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span
-                className="inline-block w-2 h-2 rounded-full"
-                style={{ background: '#DC2626' }}
-              />
-              <span
-                className="text-xs flex-1"
-                style={{ color: 'var(--tfd-text-secondary)' }}
+                {distribuicao.ativas}
+              </div>
+              <div
+                className="text-[11px] uppercase font-semibold mt-1"
+                style={{ color: COLORS.muted, letterSpacing: '0.06em' }}
               >
-                Crítico (≥ 5 dias)
-              </span>
-              <span
-                className="text-sm font-bold tfd-number"
-                style={{ color: '#DC2626' }}
-              >
-                {loading ? '—' : tempoSetorAlerts.buckets.critico}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span
-                className="inline-block w-2 h-2 rounded-full"
-                style={{ background: '#D97706' }}
-              />
-              <span
-                className="text-xs flex-1"
-                style={{ color: 'var(--tfd-text-secondary)' }}
-              >
-                Atenção (3-4 dias)
-              </span>
-              <span
-                className="text-sm font-bold tfd-number"
-                style={{ color: '#D97706' }}
-              >
-                {loading ? '—' : tempoSetorAlerts.buckets.atencao}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span
-                className="inline-block w-2 h-2 rounded-full"
-                style={{ background: '#16A34A' }}
-              />
-              <span
-                className="text-xs flex-1"
-                style={{ color: 'var(--tfd-text-secondary)' }}
-              >
-                No prazo (&lt; 3 dias)
-              </span>
-              <span
-                className="text-sm font-bold tfd-number"
-                style={{ color: '#16A34A' }}
-              >
-                {loading ? '—' : tempoSetorAlerts.buckets.ok}
-              </span>
+                Total ativas
+              </div>
             </div>
           </div>
-          {tempoSetorAlerts.criticas.length > 0 && (
-            <div
-              className="mt-3 pt-3"
-              style={{ borderTop: '1px solid var(--tfd-surface-border)' }}
-            >
-              <p
-                className="text-[10px] uppercase tracking-wider font-semibold mb-1.5"
-                style={{ color: 'var(--tfd-text-muted)' }}
-              >
-                Mais atrasados
-              </p>
-              <ul className="space-y-1">
-                {tempoSetorAlerts.criticas.map((s: any) => (
-                  <li
-                    key={s.id}
-                    className="flex items-center justify-between gap-2"
-                  >
-                    <Link
-                      href={`/solicitacoes/${s.id}?from=dashboard`}
-                      className="text-[11px] font-medium truncate hover:underline"
-                      style={{ color: 'var(--tfd-primary-500)' }}
-                    >
-                      {s.numero_processo}
-                    </Link>
-                    <span
-                      className="text-[11px] font-semibold shrink-0"
-                      style={{ color: '#DC2626' }}
-                    >
-                      {s.diasNoSetor}d
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-
-        {/* DA3 — Alertas de prazo curto */}
-        <div className="tfd-card">
-          <div className="flex items-center gap-2 mb-3">
-            <AlertTriangle size={16} style={{ color: '#D97706' }} />
-            <h3
-              className="text-sm font-semibold"
-              style={{ color: 'var(--tfd-text-primary)' }}
-            >
-              Prazo de viagem
-            </h3>
-          </div>
-          <p
-            className="text-[11px] mb-3"
-            style={{ color: 'var(--tfd-text-muted)' }}
-          >
-            Sem passagem emitida — urgente a partir de 15 dias
-          </p>
-          {loading ? (
-            <div className="flex items-center justify-center py-4">
-              <Loader2
-                size={16}
-                className="animate-spin"
-                style={{ color: 'var(--tfd-primary-500)' }}
-              />
-            </div>
-          ) : prazoAlerts.length === 0 ? (
-            <p
-              className="text-xs text-center py-3"
-              style={{ color: 'var(--tfd-text-muted)' }}
-            >
-              Nenhum alerta de prazo no momento.
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {prazoAlerts.map((s: any) => (
-                <li
-                  key={s.id}
-                  className="flex items-center justify-between gap-2"
+          <div style={{ width: '100%', height: 220 }}>
+            <ResponsiveContainer>
+              <PieChart>
+                <Pie
+                  data={distribuicao.data}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={60}
+                  outerRadius={90}
+                  paddingAngle={2}
+                  strokeWidth={0}
                 >
-                  <Link
-                    href={`/solicitacoes/${s.id}?from=dashboard`}
-                    className="text-[11px] font-medium truncate hover:underline flex items-center gap-1"
-                    style={{ color: 'var(--tfd-primary-500)' }}
-                  >
-                    <span
-                      className="w-1.5 h-1.5 rounded-full shrink-0"
-                      style={{
-                        background:
-                          s.nivel === 'urgente' ? '#DC2626' : '#D97706',
-                      }}
-                    />
-                    {s.numero_processo}
-                  </Link>
-                  <span
-                    className="text-[11px] font-semibold tfd-number shrink-0"
-                    style={{
-                      color: s.nivel === 'urgente' ? '#DC2626' : '#D97706',
-                    }}
-                  >
-                    {s.diasRestantes}d
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* DA4 — Consumo do contrato mensal */}
-        <div className="tfd-card">
-          <div className="flex items-center gap-2 mb-3">
-            <Wallet
-              size={16}
-              style={{
-                color:
-                  consumoContrato.nivel === 'critico'
-                    ? '#DC2626'
-                    : consumoContrato.nivel === 'atencao'
-                      ? '#D97706'
-                      : '#16A34A',
-              }}
-            />
-            <h3
-              className="text-sm font-semibold"
-              style={{ color: 'var(--tfd-text-primary)' }}
-            >
-              Teto mensal do contrato
-            </h3>
-          </div>
-          <p
-            className="text-[11px] mb-2"
-            style={{ color: 'var(--tfd-text-muted)' }}
-          >
-            Passagens + ajuda de custo vs. contrato anual ÷ 12
-          </p>
-          <div className="flex items-baseline gap-1 mb-2">
-            <span
-              className="text-xl font-bold tfd-number"
-              style={{
-                color:
-                  consumoContrato.nivel === 'critico'
-                    ? '#DC2626'
-                    : consumoContrato.nivel === 'atencao'
-                      ? '#D97706'
-                      : '#15803D',
-                letterSpacing: '-0.02em',
-              }}
-            >
-              {loading ? '—' : `${consumoContrato.pct.toFixed(1)}%`}
-            </span>
-            <span
-              className="text-[11px]"
-              style={{ color: 'var(--tfd-text-muted)' }}
-            >
-              consumido
-            </span>
-          </div>
-          <div
-            className="h-2 rounded-full overflow-hidden mb-2"
-            style={{ background: 'var(--tfd-surface-100)' }}
-          >
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: `${consumoContrato.pct}%`,
-                background:
-                  consumoContrato.nivel === 'critico'
-                    ? '#DC2626'
-                    : consumoContrato.nivel === 'atencao'
-                      ? '#D97706'
-                      : '#16A34A',
-                transition: 'width 800ms var(--tfd-ease)',
-              }}
-            />
-          </div>
-          <div
-            className="flex items-center justify-between text-[11px]"
-            style={{ color: 'var(--tfd-text-muted)' }}
-          >
-            <span>{formatCurrency(consumoContrato.consumido)}</span>
-            <span>Teto: {formatCurrency(consumoContrato.teto)}</span>
+                  {distribuicao.data.map((entry, idx) => (
+                    <Cell key={idx} fill={entry.fill} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    background: 'white',
+                    border: `1px solid ${COLORS.border}`,
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
+                />
+                <Legend
+                  verticalAlign="bottom"
+                  iconType="circle"
+                  iconSize={8}
+                  wrapperStyle={{ fontSize: 12, color: COLORS.text }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
           </div>
         </div>
 
-        {/* DA5 — Óbitos no período */}
-        <div className="tfd-card">
+        {/* KPIs laterais */}
+        <div className="flex flex-col gap-4">
+          <KpiTile
+            label="Encerradas no mês"
+            value={distribuicao.encerradasMes}
+            tone="green"
+          />
+          <KpiTile
+            label="Taxa de aprovação"
+            value={`${distribuicao.aprovacao}%`}
+            tone="blue"
+            progress={distribuicao.aprovacao}
+          />
+        </div>
+      </section>
+
+      {/* ─── Alertas ─── */}
+      {(alertas.paradas.length > 0 || alertas.viagens7d > 0) && (
+        <section
+          className="p-4"
+          style={{
+            background: '#FFFBEB',
+            border: '1px solid #FCD34D',
+            borderRadius: 10,
+          }}
+        >
           <div className="flex items-center gap-2 mb-3">
-            <Skull size={16} style={{ color: '#B91C1C' }} />
+            <AlertTriangle size={16} style={{ color: '#B45309' }} />
             <h3
-              className="text-sm font-semibold"
-              style={{ color: 'var(--tfd-text-primary)' }}
+              className="text-[13px] font-semibold uppercase tracking-wider"
+              style={{ color: '#92400E', letterSpacing: '0.06em' }}
             >
-              Óbitos no período
+              Atenção
             </h3>
           </div>
-          <p
-            className="text-[11px] mb-3"
-            style={{ color: 'var(--tfd-text-muted)' }}
-          >
-            Meta: zero óbitos durante o tratamento
-          </p>
-          <div className="flex items-baseline gap-2">
-            <span
-              className="text-4xl font-bold tfd-number"
-              style={{
-                color: obitosPeriodo === 0 ? '#15803D' : '#B91C1C',
-                letterSpacing: '-0.03em',
-              }}
-            >
-              {loading ? '—' : obitosPeriodo}
-            </span>
-            <span
-              className="text-xs"
-              style={{ color: 'var(--tfd-text-muted)' }}
-            >
-              {obitosPeriodo === 1 ? 'óbito' : 'óbitos'}
-            </span>
-          </div>
-          <div
-            className="mt-3 pt-3 flex items-center gap-1.5 text-[11px]"
-            style={{
-              borderTop: '1px solid var(--tfd-surface-border)',
-              color:
-                obitosPeriodo === 0
-                  ? 'var(--tfd-status-success)'
-                  : 'var(--tfd-text-muted)',
-            }}
-          >
-            {obitosPeriodo === 0 ? (
-              <>
-                <CheckCircle2 size={12} />
-                Meta sendo cumprida
-              </>
-            ) : (
-              <>
-                <AlertTriangle size={12} />
-                Revisar contratos funerários
-              </>
+          <div className="flex flex-col gap-2">
+            {alertas.viagens7d > 0 && (
+              <Link
+                href="/fluxo-v2/financeiro"
+                className="flex items-center justify-between px-3 py-2 text-[12.5px] hover:bg-white/60 transition-colors"
+                style={{
+                  background: 'white',
+                  border: '1px solid #FDE68A',
+                  borderRadius: 8,
+                  color: '#78350F',
+                }}
+              >
+                <span>
+                  <strong>{alertas.viagens7d}</strong>{' '}
+                  {alertas.viagens7d === 1 ? 'viagem marcada' : 'viagens marcadas'} para os próximos 7 dias
+                </span>
+                <ArrowUpRight size={14} style={{ color: '#92400E' }} />
+              </Link>
+            )}
+            {alertas.paradas.length > 0 && (
+              <div
+                className="px-3 py-2.5"
+                style={{
+                  background: 'white',
+                  border: '1px solid #FDE68A',
+                  borderRadius: 8,
+                }}
+              >
+                <p
+                  className="text-[12px] font-semibold mb-2"
+                  style={{ color: '#92400E' }}
+                >
+                  {alertas.paradas.length}{' '}
+                  {alertas.paradas.length === 1
+                    ? 'solicitação parada'
+                    : 'solicitações paradas'}{' '}
+                  há 5 dias ou mais no mesmo setor
+                </p>
+                <ul className="flex flex-col gap-1">
+                  {alertas.paradas.map((p) => (
+                    <li key={p.id}>
+                      <Link
+                        href={`/fluxo-v2/solicitacoes/${p.id}`}
+                        className="flex items-center justify-between px-2 py-1 text-[12px] rounded hover:bg-[#FFFBEB] transition-colors"
+                        style={{ color: '#78350F' }}
+                      >
+                        <span className="flex items-center gap-2 min-w-0">
+                          <span className="font-mono shrink-0" style={{ color: '#92400E' }}>
+                            {p.numero}
+                          </span>
+                          <span className="truncate">{p.paciente}</span>
+                          <span
+                            className="text-[11px] shrink-0"
+                            style={{ color: '#B45309' }}
+                          >
+                            · {p.setor}
+                          </span>
+                        </span>
+                        <span
+                          className="font-mono text-[11px] shrink-0 ml-3"
+                          style={{ color: '#B91C1C' }}
+                        >
+                          {p.dias} dias
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </div>
-        </div>
-      </div>
+        </section>
+      )}
 
-      {/* ═══════════════════════════════════════════════
-          LINHA 2: Solicitações Recentes + Por Status
-          ═══════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6 tfd-stagger">
-        {/* Solicitações Recentes */}
-        <div className="tfd-card lg:col-span-3">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-[15px] font-semibold" style={{ color: 'var(--tfd-text-primary)', letterSpacing: '-0.02em' }}>
-              Solicitações Recentes
-            </h2>
-            <Link
-              href="/solicitacoes"
-              className="text-[12px] font-medium hover:opacity-80 transition-opacity duration-150"
-              style={{ color: 'var(--tfd-primary-500)' }}
-            >
-              Ver todas →
-            </Link>
-          </div>
-
-          <div className="overflow-x-auto -mx-6">
-            <table className="tfd-table" style={{ paddingLeft: '1.5rem', paddingRight: '1.5rem' }}>
-              <thead>
-                <tr>
-                  <th style={{ paddingLeft: '1.5rem' }}>Nº</th>
-                  <th>Paciente</th>
-                  <th>Status</th>
-                  <th className="hidden md:table-cell">Data</th>
-                  <th className="hidden lg:table-cell" style={{ paddingRight: '1.5rem' }}>Município</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={5} className="text-center py-10">
-                      <Loader2 size={24} className="animate-spin mx-auto" style={{ color: 'var(--tfd-primary-500)' }} />
-                    </td>
-                  </tr>
-                ) : recentSolicitacoes.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="text-center py-10" style={{ color: 'var(--tfd-text-muted)' }}>
-                      Nenhuma solicitação encontrada.
-                    </td>
-                  </tr>
-                ) : (
-                  recentSolicitacoes.map((sol) => (
-                    <tr key={sol.id}>
-                      <td style={{ paddingLeft: '1.5rem' }}>
-                        <Link
-                          href={`/solicitacoes/${sol.id}?from=dashboard`}
-                          className="font-medium hover:opacity-80 transition-opacity duration-150"
-                          style={{ color: 'var(--tfd-primary-500)' }}
-                        >
-                          {sol.numero_processo}
-                        </Link>
-                      </td>
-                      <td className="max-w-[160px] truncate">
-                        {sol.pacientes?.nome_completo ?? '—'}
-                      </td>
-                      <td>
-                        <StatusTag status={sol.status as StatusSolicitacao} />
-                      </td>
-                      <td className="hidden md:table-cell whitespace-nowrap" style={{ color: 'var(--tfd-text-muted)' }}>
-                        {sol.created_at ? formatDate(sol.created_at) : '—'}
-                      </td>
-                      <td className="hidden lg:table-cell" style={{ color: 'var(--tfd-text-muted)', paddingRight: '1.5rem' }}>
-                        {sol.pacientes?.municipio_pac?.nome || sol.municipios?.nome || '—'}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Distribuição por Status */}
-        <div className="tfd-card lg:col-span-2">
-          <h2 className="text-[15px] font-semibold mb-5" style={{ color: 'var(--tfd-text-primary)', letterSpacing: '-0.02em' }}>
-            Distribuição por Status
-          </h2>
-
-          <div className="space-y-3">
-            {statusBars.map((item) => (
-              <div key={item.status} className="flex items-center gap-2.5">
-                <span
-                  className="w-[6px] h-[6px] rounded-full shrink-0"
-                  style={{ background: item.color }}
+      {/* ─── 3 setores ─── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Solicitação — Tendência */}
+        <SetorCard
+          titulo="Solicitação"
+          icone={<ClipboardList size={16} />}
+          href="/fluxo-v2/solicitacoes"
+        >
+          <p className="text-[11.5px]" style={{ color: COLORS.muted }}>
+            Novas solicitações — últimos 14 dias
+          </p>
+          <div style={{ width: '100%', height: 120 }}>
+            <ResponsiveContainer>
+              <AreaChart data={tendenciaNovas.data} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="grad-novas" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%"   stopColor={COLORS.blue} stopOpacity={0.35} />
+                    <stop offset="100%" stopColor={COLORS.blue} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis
+                  dataKey="dia"
+                  tick={{ fontSize: 10, fill: COLORS.muted }}
+                  axisLine={false}
+                  tickLine={false}
+                  interval={2}
                 />
-                <span className="text-[11px] w-24 shrink-0 truncate" style={{ color: 'var(--tfd-text-muted)' }}>
-                  {item.label}
-                </span>
-                <div className="flex-1 h-[3px] rounded-full overflow-hidden" style={{ background: 'var(--tfd-surface-100)' }}>
-                  <div
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${(item.count / maxStatusCount) * 100}%`,
-                      background: item.color,
-                      transition: 'width 800ms var(--tfd-ease)',
+                <YAxis hide />
+                <Tooltip
+                  contentStyle={{
+                    background: 'white',
+                    border: `1px solid ${COLORS.border}`,
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
+                  formatter={(v) => [v as number, 'Novas']}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="novas"
+                  stroke={COLORS.blue}
+                  strokeWidth={2}
+                  fill="url(#grad-novas)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          <InlineStats
+            stats={[
+              { label: 'Hoje',        value: solicitacaoStats.novasHoje },
+              { label: '14 dias',     value: tendenciaNovas.total14d },
+              { label: 'Em análise',  value: solicitacaoStats.emAnalise },
+              { label: 'Exigência',   value: solicitacaoStats.emExigencia, tone: solicitacaoStats.emExigencia > 0 ? 'amber' : undefined },
+            ]}
+          />
+        </SetorCard>
+
+        {/* Regulação — Donut Carimbo */}
+        <SetorCard
+          titulo="Regulação"
+          icone={<Stethoscope size={16} />}
+          href="/fluxo-v2/regulacao"
+        >
+          <p className="text-[11.5px]" style={{ color: COLORS.muted }}>
+            Distribuição por carimbo
+          </p>
+          {regulacao.carimboData.length > 0 ? (
+            <div style={{ width: '100%', height: 130 }}>
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie
+                    data={regulacao.carimboData}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={36}
+                    outerRadius={56}
+                    paddingAngle={2}
+                    strokeWidth={0}
+                  >
+                    {regulacao.carimboData.map((entry, idx) => (
+                      <Cell key={idx} fill={entry.fill} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      background: 'white',
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: 8,
+                      fontSize: 12,
                     }}
                   />
-                </div>
-                <span className="text-[11px] font-semibold w-5 text-right" style={{ color: 'var(--tfd-text-primary)' }}>
-                  {item.count}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════
-          LINHA 3: Municípios de Origem + Encerramentos
-          ═══════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6 tfd-stagger">
-        {/* Municípios de Origem (Top 5) */}
-        <div className="tfd-card lg:col-span-3">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-[15px] font-semibold" style={{ color: 'var(--tfd-text-primary)', letterSpacing: '-0.02em' }}>
-              <Map size={16} className="inline mr-1.5 -mt-0.5" style={{ color: 'var(--tfd-primary-500)' }} />
-              Municípios de Origem
-            </h2>
-            <Link
-              href="/relatorios"
-              className="text-[12px] font-medium hover:opacity-80 transition-opacity duration-150"
-              style={{ color: 'var(--tfd-primary-500)' }}
-            >
-              Relatório completo →
-            </Link>
-          </div>
-
-          {loading ? (
-            <div className="flex items-center justify-center py-10">
-              <Loader2 size={24} className="animate-spin" style={{ color: 'var(--tfd-primary-500)' }} />
+                  <Legend
+                    verticalAlign="middle"
+                    align="right"
+                    layout="vertical"
+                    iconType="circle"
+                    iconSize={8}
+                    wrapperStyle={{ fontSize: 11, color: COLORS.text }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
-          ) : topRegionais.length === 0 ? (
-            <p className="text-sm py-6 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
-              Sem dados de município no período.
-            </p>
           ) : (
-            <div className="space-y-3">
-              {topRegionais.map((item, idx) => {
-                const maxRegCount = topRegionais[0]?.count || 1;
-                const pct = (item.count / maxRegCount) * 100;
-                return (
-                  <div key={item.name} className="flex items-center gap-3">
-                    <span
-                      className="text-[11px] font-bold w-5 h-5 rounded flex items-center justify-center shrink-0"
-                      style={{
-                        background: idx === 0 ? 'var(--tfd-primary-50)' : 'var(--tfd-surface-100)',
-                        color: idx === 0 ? 'var(--tfd-primary-600)' : 'var(--tfd-text-muted)',
-                      }}
-                    >
-                      {idx + 1}
-                    </span>
-                    <span className="text-[13px] w-36 shrink-0 truncate" style={{ color: 'var(--tfd-text-secondary)' }}>
-                      {item.name}
-                    </span>
-                    <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'var(--tfd-surface-100)' }}>
-                      <div
-                        className="h-full rounded-full"
-                        style={{
-                          width: `${pct}%`,
-                          background: idx === 0 ? 'var(--tfd-primary-500)' : 'var(--tfd-primary-300)',
-                          transition: 'width 800ms var(--tfd-ease)',
-                        }}
-                      />
-                    </div>
-                    <span className="text-[13px] font-semibold w-8 text-right" style={{ color: 'var(--tfd-text-primary)' }}>
-                      {item.count}
-                    </span>
-                  </div>
-                );
-              })}
+            <div
+              className="flex items-center justify-center text-[12px]"
+              style={{ color: COLORS.muted, height: 130 }}
+            >
+              Sem solicitações em regulação
             </div>
           )}
-        </div>
+          <InlineStats
+            stats={[
+              {
+                label: 'Ag. parecer',
+                value: regulacao.aguardandoParecer,
+                icon: <ClipboardCheck size={11} />,
+                tone: regulacao.aguardandoParecer > 0 ? 'blue' : undefined,
+              },
+              {
+                label: 'Ag. agenda',
+                value: regulacao.aguardandoAgendamento,
+                icon: <CalendarClock size={11} />,
+                tone: regulacao.aguardandoAgendamento > 0 ? 'indigo' : undefined,
+              },
+              {
+                label: 'Deferidos',
+                value: regulacao.deferidosMes,
+                tone: 'green',
+              },
+              {
+                label: 'Indef.',
+                value: regulacao.indeferidosMes,
+                tone: regulacao.indeferidosMes > 0 ? 'red' : undefined,
+              },
+            ]}
+          />
+        </SetorCard>
 
-        {/* Encerramentos por Motivo */}
-        <div className="tfd-card lg:col-span-2">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-[15px] font-semibold" style={{ color: 'var(--tfd-text-primary)', letterSpacing: '-0.02em' }}>
-              Encerramentos
-            </h2>
-            <span
-              className="text-xs px-2 py-0.5 rounded-full font-semibold"
-              style={{ background: 'var(--tfd-surface-100)', color: 'var(--tfd-text-muted)' }}
-            >
-              {totalEncerramentos}
-            </span>
-          </div>
-
-          <div className="space-y-2.5">
-            {encerramentoPorMotivo.map((item) => (
-              <div key={item.motivo} className="flex items-center gap-2.5">
-                <span
-                  className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 w-24 text-center truncate"
-                  style={{ background: item.bg, color: item.color }}
-                >
-                  {item.label}
-                </span>
-                <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'var(--tfd-surface-100)' }}>
-                  <div
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${maxEncCount > 0 ? (item.count / maxEncCount) * 100 : 0}%`,
-                      background: item.color,
-                      opacity: 0.7,
-                      transition: 'width 800ms var(--tfd-ease)',
-                    }}
-                  />
-                </div>
-                <span className="text-[13px] font-semibold w-5 text-right" style={{ color: 'var(--tfd-text-primary)' }}>
-                  {item.count}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════
-          LINHA 4: Viagens + Resumo Financeiro
-          ═══════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 tfd-stagger">
-        {/* Viagens */}
-        <div className="tfd-card lg:col-span-3">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-[15px] font-semibold" style={{ color: 'var(--tfd-text-primary)', letterSpacing: '-0.02em' }}>
-              <Plane size={16} className="inline mr-1.5 -mt-0.5" style={{ color: 'var(--tfd-primary-500)' }} />
-              Viagens no Período
-            </h2>
-            <Link
-              href="/viagens"
-              className="text-[12px] font-medium hover:opacity-80 transition-opacity duration-150"
-              style={{ color: 'var(--tfd-primary-500)' }}
-            >
-              Ver viagens →
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-            {[
-              { label: 'Emitidas', value: viagensPorSituacao.emitidas, color: '#2563EB', bg: '#EFF6FF' },
-              { label: 'Confirmadas', value: viagensPorSituacao.confirmadas, color: '#16A34A', bg: '#F0FDF4' },
-              { label: 'Remarcadas', value: viagensPorSituacao.remarcadas, color: '#D97706', bg: '#FFFBEB' },
-              { label: 'Canceladas', value: viagensPorSituacao.canceladas, color: '#DC2626', bg: '#FEF2F2' },
-            ].map((stat) => (
-              <div
-                key={stat.label}
-                className="rounded-lg p-3 text-center"
-                style={{ background: stat.bg }}
+        {/* Financeiro — Barras pendências */}
+        <SetorCard
+          titulo="Financeiro"
+          icone={<Wallet size={16} />}
+          href="/fluxo-v2/financeiro"
+        >
+          <p className="text-[11.5px]" style={{ color: COLORS.muted }}>
+            Pendências por tipo
+          </p>
+          <div style={{ width: '100%', height: 130 }}>
+            <ResponsiveContainer>
+              <BarChart
+                data={financeiro.pendenciasData}
+                layout="vertical"
+                margin={{ top: 4, right: 16, left: 0, bottom: 0 }}
               >
-                <p className="text-2xl font-bold tfd-number" style={{ color: stat.color, letterSpacing: '-0.02em' }}>
-                  {loading ? '—' : stat.value}
-                </p>
-                <p className="text-[11px] font-medium mt-0.5" style={{ color: stat.color, opacity: 0.8 }}>
-                  {stat.label}
-                </p>
-              </div>
-            ))}
+                <XAxis type="number" hide />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  tick={{ fontSize: 11, fill: COLORS.text }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={75}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: 'white',
+                    border: `1px solid ${COLORS.border}`,
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
+                  cursor={{ fill: '#F8FAFC' }}
+                />
+                <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={18}>
+                  {financeiro.pendenciasData.map((entry, idx) => (
+                    <Cell key={idx} fill={entry.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
-
-          <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: '#EFF6FF' }}>
-            <span className="text-[13px] font-medium" style={{ color: '#1E40AF' }}>Valor total em passagens</span>
-            <span className="text-[17px] font-bold tfd-number" style={{ color: '#1E40AF', letterSpacing: '-0.03em' }}>
-              {loading ? '—' : formatCurrency(valorPassagens)}
-            </span>
-          </div>
-        </div>
-
-        {/* Resumo Financeiro */}
-        <div className="tfd-card lg:col-span-2">
-          <h2 className="text-[15px] font-semibold mb-5" style={{ color: 'var(--tfd-text-primary)', letterSpacing: '-0.02em' }}>
-            <DollarSign size={16} className="inline mr-1.5 -mt-0.5" style={{ color: '#16A34A' }} />
-            Resumo Financeiro
-          </h2>
-
-          <div className="space-y-0">
-            {[
-              { label: 'Passagens emitidas', value: formatCurrency(valorPassagens), icon: <Plane size={15} />, color: '#2563EB' },
-              { label: 'Ajudas de custo', value: formatCurrency(totalDiarias), icon: <DollarSign size={15} />, color: '#16A34A' },
-            ].map((item) => (
+          <div
+            className="px-3 py-2.5 flex items-center justify-between"
+            style={{
+              background: '#F8FAFC',
+              border: `1px solid ${COLORS.border}`,
+              borderRadius: 8,
+            }}
+          >
+            <div>
               <div
-                key={item.label}
-                className="flex items-center justify-between py-3"
-                style={{ borderBottom: '1px solid var(--tfd-surface-100)' }}
+                className="text-[10.5px] font-semibold uppercase"
+                style={{ color: COLORS.muted, letterSpacing: '0.06em' }}
               >
-                <div className="flex items-center gap-2.5">
-                  <span style={{ color: item.color }}>{item.icon}</span>
-                  <span className="text-[13px]" style={{ color: 'var(--tfd-text-secondary)' }}>{item.label}</span>
-                </div>
-                <span className="text-[13px] font-semibold tfd-number" style={{ color: 'var(--tfd-text-primary)' }}>
-                  {loading ? '—' : item.value}
-                </span>
+                Movimentação do mês
               </div>
-            ))}
-          </div>
-
-          <div className="mt-4 p-4 rounded-xl" style={{ background: '#F0FDF4' }}>
-            <p className="text-[11px] font-medium mb-1" style={{ color: '#15803D', opacity: 0.8 }}>Custo total no período</p>
-            <p className="text-2xl font-bold tfd-number" style={{ color: '#15803D', letterSpacing: '-0.03em' }}>
-              {loading ? '—' : formatCurrency(valorPassagens + totalDiarias)}
-            </p>
-            <div className="flex items-center gap-1 mt-1">
-              <TrendingUp size={12} style={{ color: '#16A34A' }} />
-              <span className="text-[11px] font-medium" style={{ color: '#16A34A' }}>
-                Passagens + Ajudas de Custo
-              </span>
+              <div
+                className="font-mono mt-0.5"
+                style={{ color: COLORS.text, fontSize: 16, fontWeight: 600 }}
+              >
+                {formatBRL(financeiro.emitidoMes + financeiro.diariasMes)}
+              </div>
+            </div>
+            <div className="text-right text-[11px]" style={{ color: COLORS.muted }}>
+              <div>Passagens: {formatBRL(financeiro.emitidoMes)}</div>
+              <div>Diárias: {formatBRL(financeiro.diariasMes)}</div>
             </div>
           </div>
-        </div>
+          {financeiro.viagens7d > 0 && (
+            <div
+              className="px-3 py-2 text-[11.5px] flex items-center gap-2"
+              style={{
+                background: '#FFFBEB',
+                border: '1px solid #FCD34D',
+                borderRadius: 8,
+                color: '#92400E',
+              }}
+            >
+              <CalendarClock size={13} />
+              <span>
+                <strong>{financeiro.viagens7d}</strong>{' '}
+                {financeiro.viagens7d === 1 ? 'viagem nos próximos 7 dias' : 'viagens nos próximos 7 dias'}
+              </span>
+            </div>
+          )}
+        </SetorCard>
       </div>
-    </>
+
+      {/* ─── Histórico mensal (6 meses) — full width ─── */}
+      <section
+        className="p-5"
+        style={{
+          background: 'white',
+          border: `1px solid ${COLORS.border}`,
+          borderRadius: 12,
+          boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
+        }}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-[14px] font-semibold" style={{ color: COLORS.text }}>
+              Tendência últimos 6 meses
+            </h2>
+            <p className="text-[12px] mt-0.5" style={{ color: COLORS.muted }}>
+              Comparativo entre novas solicitações e encerramentos
+            </p>
+          </div>
+          <div className="flex items-center gap-3 text-[11.5px]" style={{ color: COLORS.muted }}>
+            <LegendDot color={COLORS.blue} label="Novas" />
+            <LegendDot color={COLORS.green} label="Encerradas" />
+          </div>
+        </div>
+        <div style={{ width: '100%', height: 240 }}>
+          <ResponsiveContainer>
+            <BarChart data={historico} margin={{ top: 8, right: 12, left: -16, bottom: 0 }}>
+              <CartesianGrid stroke="#F1F5F9" vertical={false} />
+              <XAxis
+                dataKey="mes"
+                tick={{ fontSize: 11, fill: COLORS.muted }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                tick={{ fontSize: 11, fill: COLORS.muted }}
+                axisLine={false}
+                tickLine={false}
+                allowDecimals={false}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: 'white',
+                  border: `1px solid ${COLORS.border}`,
+                  borderRadius: 8,
+                  fontSize: 12,
+                }}
+                cursor={{ fill: '#F8FAFC' }}
+              />
+              <Bar dataKey="novas" name="Novas" fill={COLORS.blue} radius={[6, 6, 0, 0]} maxBarSize={36} />
+              <Bar dataKey="encerradas" name="Encerradas" fill={COLORS.green} radius={[6, 6, 0, 0]} maxBarSize={36} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
+
+      {/* ─── 3 colunas: Top Regiões + Top Regionais + Top Municípios ─── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <ChartCard titulo="Top regiões" subtitulo="Zona regional do paciente">
+          <TopBarChart data={topRegioes} color={COLORS.indigo} width={90} />
+        </ChartCard>
+
+        <ChartCard titulo="Top regionais" subtitulo="Regional de saúde">
+          <TopBarChart data={topRegionais} color={COLORS.amber} width={150} />
+        </ChartCard>
+
+        <ChartCard titulo="Top municípios" subtitulo="Origem dos pacientes">
+          <TopBarChart data={topMunicipios} color={COLORS.blue} width={110} />
+        </ChartCard>
+      </div>
+    </div>
+  );
+}
+
+/* ── Helpers de UI ───────────────────────────────────── */
+
+function KpiTile({
+  label,
+  value,
+  tone,
+  progress,
+}: {
+  label: string;
+  value: string | number;
+  tone: 'blue' | 'green' | 'amber';
+  progress?: number;
+}) {
+  const accent =
+    tone === 'green' ? COLORS.green : tone === 'amber' ? COLORS.amber : COLORS.blue;
+  return (
+    <div
+      className="p-5 flex-1 flex flex-col"
+      style={{
+        background: 'white',
+        border: `1px solid ${COLORS.border}`,
+        borderRadius: 12,
+        boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
+      }}
+    >
+      <div
+        className="text-[11.5px] font-semibold uppercase"
+        style={{ color: COLORS.muted, letterSpacing: '0.06em' }}
+      >
+        {label}
+      </div>
+      <div
+        className="font-mono mt-2"
+        style={{
+          color: COLORS.text,
+          fontSize: 32,
+          fontWeight: 700,
+          letterSpacing: '-0.02em',
+          lineHeight: 1,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {value}
+      </div>
+      {progress !== undefined && (
+        <div className="mt-4">
+          <div
+            style={{
+              height: 6,
+              borderRadius: 3,
+              background: '#F1F5F9',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                width: `${Math.min(100, Math.max(0, progress))}%`,
+                height: '100%',
+                background: accent,
+                transition: 'width 240ms ease',
+              }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChartCard({
+  titulo,
+  subtitulo,
+  children,
+}: {
+  titulo: string;
+  subtitulo?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      className="p-5 flex flex-col gap-3"
+      style={{
+        background: 'white',
+        border: `1px solid ${COLORS.border}`,
+        borderRadius: 12,
+        boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
+      }}
+    >
+      <div>
+        <h2 className="text-[14px] font-semibold" style={{ color: COLORS.text }}>
+          {titulo}
+        </h2>
+        {subtitulo && (
+          <p className="text-[12px] mt-0.5" style={{ color: COLORS.muted }}>
+            {subtitulo}
+          </p>
+        )}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function TopBarChart({
+  data,
+  color,
+  width,
+}: {
+  data: { name: string; value: number }[];
+  color: string;
+  width: number;
+}) {
+  if (data.length === 0) {
+    return <EmptyChart>Sem dados</EmptyChart>;
+  }
+  return (
+    <div style={{ width: '100%', height: 240 }}>
+      <ResponsiveContainer>
+        <BarChart
+          data={data}
+          layout="vertical"
+          margin={{ top: 4, right: 24, left: 0, bottom: 0 }}
+        >
+          <XAxis type="number" hide />
+          <YAxis
+            type="category"
+            dataKey="name"
+            tick={{ fontSize: 11, fill: COLORS.text }}
+            axisLine={false}
+            tickLine={false}
+            width={width}
+          />
+          <Tooltip
+            contentStyle={{
+              background: 'white',
+              border: `1px solid ${COLORS.border}`,
+              borderRadius: 8,
+              fontSize: 12,
+            }}
+            cursor={{ fill: '#F8FAFC' }}
+          />
+          <Bar dataKey="value" fill={color} radius={[0, 6, 6, 0]} barSize={14}>
+            <LabelList
+              dataKey="value"
+              position="right"
+              style={{ fontSize: 11, fill: COLORS.muted, fontWeight: 600 }}
+            />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function EmptyChart({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="flex items-center justify-center text-[12px]"
+      style={{ color: COLORS.muted, height: 220 }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function LegendDot({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: 999,
+          background: color,
+          display: 'inline-block',
+        }}
+      />
+      {label}
+    </span>
+  );
+}
+
+function SetorCard({
+  titulo,
+  icone,
+  href,
+  children,
+}: {
+  titulo: string;
+  icone: React.ReactNode;
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      className="p-4 flex flex-col gap-3"
+      style={{
+        background: 'white',
+        border: `1px solid ${COLORS.border}`,
+        borderRadius: 12,
+        boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
+      }}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              background: '#F8FAFC',
+              border: `1px solid ${COLORS.border}`,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: COLORS.blue,
+            }}
+          >
+            {icone}
+          </span>
+          <h2 className="text-[14px] font-semibold" style={{ color: COLORS.text }}>
+            {titulo}
+          </h2>
+        </div>
+        <Link
+          href={href}
+          className="text-[11.5px] inline-flex items-center gap-1 hover:underline"
+          style={{ color: COLORS.blue }}
+        >
+          Ver setor
+          <ArrowUpRight size={11} />
+        </Link>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+type InlineStatTone = 'blue' | 'green' | 'amber' | 'red' | 'indigo';
+
+function InlineStats({
+  stats,
+}: {
+  stats: { label: string; value: string | number; tone?: InlineStatTone; icon?: React.ReactNode }[];
+}) {
+  return (
+    <div
+      className="grid grid-cols-2 gap-2"
+      style={{ borderTop: `1px solid ${COLORS.border}`, paddingTop: 12, marginTop: 4 }}
+    >
+      {stats.map((s, idx) => {
+        const accent =
+          s.tone === 'green'  ? COLORS.green :
+          s.tone === 'amber'  ? COLORS.amber :
+          s.tone === 'red'    ? COLORS.red   :
+          s.tone === 'blue'   ? COLORS.blue  :
+          s.tone === 'indigo' ? COLORS.indigo :
+          COLORS.text;
+        return (
+          <div key={idx} className="flex items-center justify-between">
+            <div
+              className="flex items-center gap-1.5 text-[11px] font-semibold uppercase"
+              style={{ color: COLORS.muted, letterSpacing: '0.04em' }}
+            >
+              {s.icon}
+              {s.label}
+            </div>
+            <div
+              className="font-mono"
+              style={{
+                color: accent,
+                fontSize: 14,
+                fontWeight: 600,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {s.value}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── Page wrapper ─────────────────────────────────────── */
+
+export default function DashboardPage() {
+  return (
+    <FluxoV2Provider>
+      <PageHeader title="Painel" subtitle="Visão por setor do TFD" />
+      <PainelContent />
+    </FluxoV2Provider>
   );
 }

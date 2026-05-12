@@ -20,7 +20,6 @@ const ROUTE_MAP: Record<string, { label: string; href: string }> = {
   permanencia: { label: 'Permanência', href: '/permanencia' },
   'alta-encerramento': { label: 'Alta / Encerramento', href: '/alta-encerramento' },
   pacientes: { label: 'Pacientes', href: '/pacientes' },
-  medicos: { label: 'Médicos', href: '/medicos' },
   'unidades-saude': { label: 'Unidades de Saúde', href: '/unidades-saude' },
   'regionais-saude': { label: 'Regionais', href: '/regionais-saude' },
   relatorios: { label: 'Relatórios', href: '/relatorios' },

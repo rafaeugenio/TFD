@@ -21,7 +21,6 @@ interface PageHeaderProps {
 const routeLabels: Record<string, string> = {
   dashboard: 'Painel',
   pacientes: 'Pacientes',
-  medicos: 'Médicos',
   'unidades-saude': 'Unidades de Saúde',
   'regionais-saude': 'Regionais',
   relatorios: 'Relatórios',

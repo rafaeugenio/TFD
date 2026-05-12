@@ -10,14 +10,13 @@ import {
   Mail,
   Building2,
   Users,
-  CheckCircle2,
   Search,
-  Loader2,
   XCircle,
   Pencil,
-  Info,
   Compass,
 } from 'lucide-react';
+import { DetailPageSkeleton } from '@/shared/components/skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 
 import Pagination from '@/shared/components/pagination/Pagination';
 import { formatDate, formatCPF, maskPhone } from '@/shared/pipes/formatters';
@@ -32,14 +31,15 @@ import { createClient } from '@/lib/supabase/client';
 /*  Tabs & sort                                        */
 /* -------------------------------------------------- */
 
-type TabKey = 'identificacao' | 'endereco' | 'municipios' | 'pacientes';
+type TabKey = 'endereco' | 'municipios' | 'pacientes';
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'identificacao', label: 'Identificação' },
   { key: 'endereco',      label: 'Endereço' },
   { key: 'municipios',    label: 'Municípios' },
   { key: 'pacientes',     label: 'Pacientes' },
 ];
+
+const DEFAULT_TAB: TabKey = 'endereco';
 
 const DEFAULT_PAGE_SIZE = 25;
 type SortField = 'nome_completo' | 'cpf' | 'municipio' | 'created_at';
@@ -63,11 +63,11 @@ function RegionalSaudeDetalheInner({ id }: { id: string }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const tabParam = searchParams.get('tab');
-  const activeTab: TabKey = tabParam && TABS.some((t) => t.key === tabParam) ? (tabParam as TabKey) : 'identificacao';
+  const activeTab: TabKey = tabParam && TABS.some((t) => t.key === tabParam) ? (tabParam as TabKey) : DEFAULT_TAB;
 
   const setTab = (next: TabKey) => {
     const params = new URLSearchParams(searchParams.toString());
-    if (next === 'identificacao') params.delete('tab');
+    if (next === DEFAULT_TAB) params.delete('tab');
     else params.set('tab', next);
     const qs = params.toString();
     router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
@@ -157,12 +157,7 @@ function RegionalSaudeDetalheInner({ id }: { id: string }) {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <Loader2 size={24} className="animate-spin" style={{ color: 'var(--tfd-primary-500)' }} />
-        <span className="ml-2 text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Carregando...</span>
-      </div>
-    );
+    return <DetailPageSkeleton tabs={TABS.length} />;
   }
 
   if (!regional) {
@@ -280,7 +275,16 @@ function RegionalSaudeDetalheInner({ id }: { id: string }) {
                 </a>
               </>
             )}
-            {!telefone && !telefone2 && !email && (
+            {email2 && (
+              <>
+                {(telefone || telefone2 || email) && <Sep />}
+                <a href={`mailto:${email2}`} className="inline-flex items-center gap-1.5 transition-colors hover:text-[#146BFA] truncate max-w-[260px]" title={email2}>
+                  <Mail size={12} strokeWidth={2.2} style={{ color: '#94A3B8' }} />
+                  <span className="truncate">{email2}</span>
+                </a>
+              </>
+            )}
+            {!telefone && !telefone2 && !email && !email2 && (
               <span style={{ color: '#94A3B8' }}>Sem contatos cadastrados</span>
             )}
           </div>
@@ -299,11 +303,13 @@ function RegionalSaudeDetalheInner({ id }: { id: string }) {
       </div>
 
       {/* ============ KPIs ============ */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-        <KpiTile icon={<Building2 size={18} />} label="Municípios" value={loadingMun ? '...' : String(municipios.length)} tone="primary" />
-        <KpiTile icon={<Users size={18} />} label="Pacientes Cadastrados" value={loadingPac ? '...' : String(pacientes.length)} tone="warning" />
-        <KpiTile icon={<CheckCircle2 size={18} />} label="Municípios com Pacientes" value={loadingPac ? '...' : String(municipiosComPacientes)} tone="success" />
-      </div>
+      <KpiBar
+        items={[
+          { label: 'Municípios',                value: loadingMun ? '...' : String(municipios.length) },
+          { label: 'Pacientes Cadastrados',     value: loadingPac ? '...' : String(pacientes.length) },
+          { label: 'Municípios com Pacientes',  value: loadingPac ? '...' : String(municipiosComPacientes) },
+        ]}
+      />
 
       {/* ============ Tabs ============ */}
       <div className="flex items-center gap-1 mb-6" style={{ borderBottom: '1px solid #E2E8F0' }}>
@@ -326,21 +332,6 @@ function RegionalSaudeDetalheInner({ id }: { id: string }) {
 
       {/* ============ Tab content ============ */}
       <div className="animate-fade-in">
-        {activeTab === 'identificacao' && (
-          <Section title="Identificação" icon={<Info size={18} />}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <InfoRow label="Nome" value={nome} />
-              <InfoRow label="Código" value={codigo} mono />
-              {municipioSede && <InfoRow label="Município sede" value={municipioSede} />}
-              {regiaoNome && <InfoRow label="Região" value={regiaoNome} />}
-              {telefone && <InfoRow label="Telefone 1" value={maskPhone(telefone)} />}
-              {telefone2 && <InfoRow label="Telefone 2" value={maskPhone(telefone2)} />}
-              {email && <InfoRow label="E-mail institucional" value={email} />}
-              {email2 && <InfoRow label="E-mail secundário" value={email2} />}
-            </div>
-          </Section>
-        )}
-
         {activeTab === 'endereco' && (
           <Section title="Endereço do Escritório" icon={<MapPin size={18} />}>
             {enderecoCompleto ? (
@@ -370,9 +361,10 @@ function RegionalSaudeDetalheInner({ id }: { id: string }) {
             }
           >
             {loadingMun ? (
-              <div className="flex items-center gap-2 py-4">
-                <Loader2 size={16} className="animate-spin" style={{ color: 'var(--tfd-primary-500)' }} />
-                <span className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Carregando...</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <Skeleton key={i} className="h-7 w-full" />
+                ))}
               </div>
             ) : municipios.length === 0 ? (
               <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
@@ -478,14 +470,15 @@ function RegionalSaudeDetalheInner({ id }: { id: string }) {
                   </thead>
                   <tbody>
                     {loadingPac ? (
-                      <tr>
-                        <td colSpan={4} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
-                          <div className="inline-flex items-center gap-2">
-                            <Loader2 size={16} className="animate-spin" />
-                            Carregando pacientes...
-                          </div>
-                        </td>
-                      </tr>
+                      Array.from({ length: 5 }).map((_, i) => (
+                        <tr key={`sk-${i}`} style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
+                          {Array.from({ length: 4 }).map((__, c) => (
+                            <td key={c} className="px-4 py-3.5">
+                              <Skeleton className={`h-4 ${c === 0 ? 'w-48' : 'w-28'}`} />
+                            </td>
+                          ))}
+                        </tr>
+                      ))
                     ) : paginated.length === 0 ? (
                       <tr>
                         <td colSpan={4} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
@@ -594,25 +587,32 @@ function InfoRow({ label, value, mono }: { label: string; value: React.ReactNode
   );
 }
 
-const KPI_TONES: Record<string, { bg: string; fg: string; iconBg: string }> = {
-  primary: { bg: 'var(--tfd-primary-50)', fg: 'var(--tfd-primary-500)', iconBg: 'var(--tfd-primary-100)' },
-  warning: { bg: '#FFFBEB', fg: '#D97706', iconBg: '#FEF3C7' },
-  success: { bg: '#ECFDF5', fg: '#059669', iconBg: '#D1FAE5' },
-};
-
-function KpiTile({
-  icon, label, value, tone,
-}: { icon: React.ReactNode; label: string; value: string; tone: 'primary' | 'warning' | 'success'; }) {
-  const c = KPI_TONES[tone];
+function KpiBar({ items }: { items: { label: string; value: string; sub?: string }[] }) {
   return (
-    <div className="rounded-lg p-3 flex items-center gap-3" style={{ backgroundColor: c.bg, border: '1px solid var(--tfd-surface-border)' }}>
-      <div className="flex items-center justify-center w-9 h-9 rounded-lg shrink-0" style={{ backgroundColor: c.iconBg, color: c.fg }}>
-        {icon}
+    <div
+      className="mb-6 overflow-hidden"
+      style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 10, boxShadow: '0 1px 0 rgba(15,23,42,0.02)' }}
+    >
+      <div className="grid grid-cols-1 sm:grid-cols-3 kpi-bar">
+        {items.map((it, i) => (
+          <div key={i} className="px-5 py-4 kpi-cell">
+            <p className="text-[11px] font-medium uppercase" style={{ color: '#94A3B8', letterSpacing: '0.08em' }}>
+              {it.label}
+            </p>
+            <p className="text-[22px] font-semibold leading-tight mt-1" style={{ color: '#0F172A' }}>
+              {it.value}
+            </p>
+            {it.sub && (
+              <p className="text-[12px] mt-1" style={{ color: '#94A3B8' }}>{it.sub}</p>
+            )}
+          </div>
+        ))}
       </div>
-      <div className="min-w-0">
-        <p className="text-xl font-bold leading-tight" style={{ color: c.fg }}>{value}</p>
-        <p className="text-xs" style={{ color: c.fg, opacity: 0.8 }}>{label}</p>
-      </div>
+      <style jsx>{`
+        @media (min-width: 640px) {
+          .kpi-cell + .kpi-cell { border-left: 1px solid #F1F5F9; }
+        }
+      `}</style>
     </div>
   );
 }

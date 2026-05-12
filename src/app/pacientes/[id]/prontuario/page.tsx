@@ -19,12 +19,12 @@ import {
   CalendarClock,
   CheckCircle2,
   XCircle,
-  Loader2,
   CreditCard,
   Heart,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import { DetailHeaderSkeleton, SectionSkeleton } from '@/shared/components/skeleton';
 import StatusTag from '@/shared/components/status-tag/StatusTag';
 import { buscarPaciente, historicoProcessosCompleto } from '@/services/pacientes.service';
 import { formatCPF, formatCNS, formatDate } from '@/shared/pipes/formatters';
@@ -69,13 +69,8 @@ export default function ProntuarioPacientePage({
     return (
       <>
         <PageHeader title="Prontuário do paciente" />
-        <div className="tfd-card flex items-center justify-center py-16">
-          <Loader2
-            size={24}
-            className="animate-spin"
-            style={{ color: 'var(--tfd-primary-500)' }}
-          />
-        </div>
+        <DetailHeaderSkeleton />
+        <SectionSkeleton rows={6} />
       </>
     );
   }

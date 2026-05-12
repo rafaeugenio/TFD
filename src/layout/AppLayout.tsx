@@ -1,14 +1,17 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from '@/layout/sidebar/Sidebar';
 import { Menu } from 'lucide-react';
+import { usePermissions } from '@/shared/auth/PermissionsProvider';
+import { telaForPathname } from '@/shared/auth/routeMap';
+import { DetailPageSkeleton } from '@/shared/components/skeleton';
 
 const BP_MD = 768;
 const BP_XL = 1280;
 
-const AUTH_ROUTES = ['/login', '/criar-conta', '/recuperar-senha', '/consulta'];
+const AUTH_ROUTES = ['/login', '/recuperar-senha', '/redefinir-senha', '/consulta'];
 const STANDALONE_ROUTES = ['/design-system', '/fluxo-v2/parecer-print'];
 
 interface AppLayoutProps {
@@ -17,8 +20,29 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children }: AppLayoutProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { can, isLoading: permsLoading, user } = usePermissions();
   const isAuthPage = AUTH_ROUTES.some((r) => pathname.startsWith(r));
   const isStandalonePage = STANDALONE_ROUTES.some((r) => pathname.startsWith(r));
+
+  // Gate centralizado de rota: se a página atual mapeia para uma tela do
+  // RBAC e o usuário não tem `<tela>.visualizar`, redireciona pro dashboard.
+  // Páginas públicas (login etc), standalone e /meu-perfil ficam fora.
+  const requiredTela = telaForPathname(pathname);
+  const isMeuPerfil = pathname.startsWith('/meu-perfil');
+  const needsGate = !isAuthPage && !isStandalonePage && !isMeuPerfil && requiredTela !== null;
+  const gateAllowed = needsGate
+    ? !permsLoading && user !== null && can(`${requiredTela}.visualizar`)
+    : true;
+
+  useEffect(() => {
+    if (!needsGate) return;
+    if (permsLoading) return;
+    if (!user) return; // middleware já redireciona
+    if (!gateAllowed && pathname !== '/dashboard') {
+      router.replace('/dashboard');
+    }
+  }, [needsGate, permsLoading, user, gateAllowed, pathname, router]);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -107,7 +131,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
             minHeight: '100vh',
           }}
         >
-          {children}
+          {needsGate && (permsLoading || !gateAllowed)
+            ? <DetailPageSkeleton tabs={0} withKpis={false} />
+            : children}
         </main>
       </div>
     </div>

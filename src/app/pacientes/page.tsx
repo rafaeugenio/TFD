@@ -27,6 +27,8 @@ import ConfirmDialog, { buildDiff, type DiffField } from '@/shared/components/co
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import SortableHeader from '@/shared/components/table/SortableHeader';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Can } from '@/shared/auth/Can';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import { useTableControls } from '@/shared/hooks/useTableControls';
@@ -39,6 +41,11 @@ import IdadeBadge from '@/shared/components/idade-badge';
 
 import { listarPacientes, buscarPaciente, criarPaciente, atualizarPaciente } from '@/services/pacientes.service';
 import { buscarRegionalPorMunicipio, listarRegionaisSaude } from '@/services/regionais-saude.service';
+import {
+  buscarPorPaciente as buscarDadosBancariosPorPaciente,
+  upsertPorPaciente as upsertDadosBancariosPorPaciente,
+  removerDadosBancarios,
+} from '@/services/dados-bancarios.service';
 import { listarPorPaciente, criarAcompanhante, atualizarAcompanhante, excluirAcompanhante } from '@/services/acompanhantes.service';
 import { uploadDocumento, listarDocumentosPaciente, excluirDocumento } from '@/services/documentos.service';
 import type { TipoDocumento, VinculoAcompanhante } from '@/lib/supabase/database.types';
@@ -202,6 +209,15 @@ function PacientesPage() {
   const [regionaisOptions, setRegionaisOptions] = useState<{ id: string; codigo: string; nome: string; regiao_nome: string | null }[]>([]);
   const [regionaisLoading, setRegionaisLoading] = useState(true);
 
+  /* ---- Form state: Dados Bancários (opcional) ---- */
+  const [bancoNome, setBancoNome] = useState('');
+  const [bancoAgencia, setBancoAgencia] = useState('');
+  const [bancoConta, setBancoConta] = useState('');
+  const [bancoTipoConta, setBancoTipoConta] = useState<'CORRENTE' | 'POUPANCA' | ''>('');
+  const [bancoTitular, setBancoTitular] = useState('');
+  const [bancoCpfTitular, setBancoCpfTitular] = useState('');
+  const [bancoRegistroId, setBancoRegistroId] = useState<string | null>(null);
+
   /* ---- Form state: Documentos (pending uploads) ---- */
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [existingDocs, setExistingDocs] = useState<Record<string, unknown>[]>([]);
@@ -329,6 +345,14 @@ function PacientesPage() {
     setAcompanhantes([]);
     setPendingAcomps([]);
     resetAcompForm();
+    // Dados bancários
+    setBancoNome('');
+    setBancoAgencia('');
+    setBancoConta('');
+    setBancoTipoConta('');
+    setBancoTitular('');
+    setBancoCpfTitular('');
+    setBancoRegistroId(null);
   }
 
   function resetAcompForm() {
@@ -393,6 +417,26 @@ function PacientesPage() {
     // Fetch companions
     const { data: acomps } = await listarPorPaciente(id);
     setAcompanhantes((acomps ?? []) as Record<string, unknown>[]);
+
+    // Fetch dados bancários (opcionais)
+    const { data: db } = await buscarDadosBancariosPorPaciente(id);
+    if (db) {
+      setBancoRegistroId(db.id);
+      setBancoNome(db.banco ?? '');
+      setBancoAgencia(db.agencia ?? '');
+      setBancoConta(db.conta ?? '');
+      setBancoTipoConta((db.tipo_conta as 'CORRENTE' | 'POUPANCA') ?? '');
+      setBancoTitular(db.nome_titular ?? '');
+      setBancoCpfTitular(maskCPF(db.cpf_titular ?? ''));
+    } else {
+      setBancoRegistroId(null);
+      setBancoNome('');
+      setBancoAgencia('');
+      setBancoConta('');
+      setBancoTipoConta('');
+      setBancoTitular('');
+      setBancoCpfTitular('');
+    }
 
     resetAcompForm();
     setDrawerOpen(true);
@@ -610,6 +654,57 @@ function PacientesPage() {
         }
       }
 
+      // Dados bancários (opcionais) — só persiste quando há ALGUM campo
+      // preenchido. Se o operador apagou todos os campos durante a edição e
+      // existia um registro, removemos.
+      const algumCampoBanco =
+        bancoNome.trim() ||
+        bancoAgencia.trim() ||
+        bancoConta.trim() ||
+        bancoTipoConta ||
+        bancoTitular.trim() ||
+        bancoCpfTitular.trim();
+
+      if (algumCampoBanco) {
+        // Validação leve: se preencheu alguma coisa, exige o conjunto mínimo
+        if (
+          !bancoNome.trim() ||
+          !bancoAgencia.trim() ||
+          !bancoConta.trim() ||
+          !bancoTipoConta ||
+          !bancoTitular.trim() ||
+          !bancoCpfTitular.trim()
+        ) {
+          toast.error(
+            'Dados bancários incompletos',
+            'Preencha banco, agência, conta, tipo, titular e CPF do titular — ou deixe todos em branco.',
+          );
+          return;
+        }
+        const cpfTitularLimpo = bancoCpfTitular.replace(/\D/g, '');
+        if (!validarCpfModulo11(bancoCpfTitular)) {
+          toast.error('CPF do titular inválido', 'Verifique o CPF informado.');
+          return;
+        }
+        const { error: dbErr } = await upsertDadosBancariosPorPaciente(pacienteId, {
+          banco: bancoNome.trim(),
+          agencia: bancoAgencia.trim(),
+          conta: bancoConta.trim(),
+          tipo_conta: bancoTipoConta,
+          nome_titular: bancoTitular.trim(),
+          cpf_titular: cpfTitularLimpo,
+        });
+        if (dbErr) {
+          toast.warning(
+            'Paciente salvo, dados bancários falharam',
+            (dbErr as { message?: string }).message ?? 'Erro desconhecido',
+          );
+        }
+      } else if (bancoRegistroId) {
+        // Tinha registro e o operador limpou tudo → remove
+        await removerDadosBancarios(bancoRegistroId);
+      }
+
       // Upload pending files
       if (pendingFiles.length > 0) {
         setUploading(true);
@@ -803,10 +898,12 @@ function PacientesPage() {
         title="Pacientes"
         subtitle="Gerenciamento de pacientes TFD"
         actions={
-          <button className="tfd-btn tfd-btn-primary" onClick={() => { setEditingId(null); resetForm(); setDrawerOpen(true); }}>
-            <Plus size={16} />
-            Novo Paciente
-          </button>
+          <Can action="pacientes.criar">
+            <button className="tfd-btn tfd-btn-primary" onClick={() => { setEditingId(null); resetForm(); setDrawerOpen(true); }}>
+              <Plus size={16} />
+              Novo Paciente
+            </button>
+          </Can>
         }
       />
 
@@ -888,13 +985,15 @@ function PacientesPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td colSpan={7} className="text-center py-12">
-                    <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
-                      Carregando...
-                    </p>
-                  </td>
-                </tr>
+                Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={`sk-${i}`}>
+                    {Array.from({ length: 7 }).map((__, c) => (
+                      <td key={c} className="px-4 py-3.5">
+                        <Skeleton className={`h-4 ${c === 0 ? 'w-48' : c === 6 ? 'w-16 ml-auto' : 'w-28'}`} />
+                      </td>
+                    ))}
+                  </tr>
+                ))
               ) : (table.paginated as unknown as Record<string, unknown>[]).length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-center py-12">
@@ -932,21 +1031,25 @@ function PacientesPage() {
                     </td>
                     <td>
                       <div className="flex items-center gap-1">
-                        <button
-                          className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
-                          title="Editar"
-                          onClick={(e) => { e.stopPropagation(); handleOpenEdit(pac); }}
-                        >
-                          <Pencil size={15} />
-                        </button>
-                        <button
-                          className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
-                          title="Excluir"
-                          style={{ color: '#DC2626' }}
-                          onClick={(e) => { e.stopPropagation(); handleOpenDelete(pac); }}
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                        <Can action="pacientes.editar">
+                          <button
+                            className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                            title="Editar"
+                            onClick={(e) => { e.stopPropagation(); handleOpenEdit(pac); }}
+                          >
+                            <Pencil size={15} />
+                          </button>
+                        </Can>
+                        <Can action="pacientes.excluir">
+                          <button
+                            className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                            title="Excluir"
+                            style={{ color: '#DC2626' }}
+                            onClick={(e) => { e.stopPropagation(); handleOpenDelete(pac); }}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </Can>
                       </div>
                     </td>
                   </tr>
@@ -1390,6 +1493,110 @@ function PacientesPage() {
             </span>
           </div>
         )}
+
+        {/* ── Section: Dados Bancários (opcional) ── */}
+        <hr className="tfd-divider" />
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+            Dados Bancários
+          </h3>
+          <span
+            className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full"
+            style={{
+              background: 'var(--tfd-surface-50, #F8FAFC)',
+              color: 'var(--tfd-text-muted)',
+              letterSpacing: '0.06em',
+            }}
+          >
+            Opcional
+          </span>
+        </div>
+        <p className="text-xs mb-3" style={{ color: 'var(--tfd-text-muted)' }}>
+          Usado para repasse de ajuda de custo e ressarcimentos. Preencha apenas se o
+          paciente tiver conta para recebimento.
+        </p>
+
+        <FormField label="Banco">
+          <input
+            type="text"
+            className="tfd-input"
+            placeholder="Ex.: Banco do Brasil — 001"
+            value={bancoNome}
+            onChange={(e) => setBancoNome(e.target.value)}
+          />
+        </FormField>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <FormField label="Agência">
+            <input
+              type="text"
+              className="tfd-input"
+              placeholder="0000"
+              value={bancoAgencia}
+              onChange={(e) => setBancoAgencia(e.target.value)}
+              style={{ fontFamily: 'var(--tfd-font-mono)' }}
+            />
+          </FormField>
+          <FormField label="Conta (com dígito)">
+            <input
+              type="text"
+              className="tfd-input"
+              placeholder="00000-0"
+              value={bancoConta}
+              onChange={(e) => setBancoConta(e.target.value)}
+              style={{ fontFamily: 'var(--tfd-font-mono)' }}
+            />
+          </FormField>
+          <FormField label="Tipo de conta">
+            <select
+              className="tfd-input"
+              value={bancoTipoConta}
+              onChange={(e) => setBancoTipoConta(e.target.value as 'CORRENTE' | 'POUPANCA' | '')}
+            >
+              <option value="">Selecione...</option>
+              <option value="CORRENTE">Conta corrente</option>
+              <option value="POUPANCA">Poupança</option>
+            </select>
+          </FormField>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <FormField label="Nome do titular">
+            <input
+              type="text"
+              className="tfd-input"
+              placeholder="Nome do titular da conta"
+              value={bancoTitular}
+              onChange={(e) => setBancoTitular(e.target.value)}
+            />
+          </FormField>
+          <FormField label="CPF do titular">
+            <input
+              type="text"
+              className="tfd-input"
+              placeholder="000.000.000-00"
+              value={bancoCpfTitular}
+              onChange={(e) => setBancoCpfTitular(maskCPF(e.target.value))}
+              style={{ fontFamily: 'var(--tfd-font-mono)' }}
+            />
+          </FormField>
+        </div>
+
+        {bancoTitular.trim() &&
+          bancoCpfTitular.replace(/\D/g, '') !== cpf.replace(/\D/g, '') &&
+          bancoCpfTitular.replace(/\D/g, '').length === 11 && (
+            <p
+              className="text-xs mb-3 px-3 py-2 rounded"
+              style={{
+                background: '#FFFBEB',
+                border: '1px solid #FDE68A',
+                color: '#92400E',
+              }}
+            >
+              CPF do titular difere do CPF do paciente — confira se a conta é de terceiro
+              autorizado.
+            </p>
+          )}
 
         {/* ── Section: Acompanhantes ── */}
         <hr className="tfd-divider" />

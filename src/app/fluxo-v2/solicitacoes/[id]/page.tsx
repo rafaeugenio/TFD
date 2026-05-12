@@ -19,6 +19,7 @@ import {
   type MotivoEncerramento,
 } from '@/core/mocks/fluxo-v2-v3-seed';
 import { isLocked, tooltipLocked } from '../../_utils/lock';
+import { DetailPageSkeleton } from '@/shared/components/skeleton';
 
 type TabKey = 'timeline' | 'regulacao' | 'financeiro' | 'observacoes';
 
@@ -46,7 +47,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { getById, encerrar } = useFluxoV2State();
+  const { getById, encerrar, isLoading } = useFluxoV2State();
   const s = getById(id);
 
   const tabParam = searchParams.get('tab');
@@ -83,6 +84,9 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
   }, [s]);
 
   if (!s) {
+    if (isLoading) {
+      return <DetailPageSkeleton tabs={TABS.length} />;
+    }
     return (
       <div className="text-center py-20">
         <p className="text-[14px]" style={{ color: '#6B7280' }}>Solicitação não encontrada.</p>

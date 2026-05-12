@@ -30,6 +30,8 @@ import {
 } from '../_utils/stats';
 import NewSolicitacaoDrawer from './_NewSolicitacaoDrawer';
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Can } from '@/shared/auth/Can';
 import SortTh, { compareValues, nextSort, type SortDir } from '@/shared/components/sort-th/SortTh';
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -44,7 +46,7 @@ const STATUS_OPTIONS: (StatusGlobalV2 | 'all')[] = [
 
 export default function SolicitacoesV2ListPage() {
   const router = useRouter();
-  const { solicitacoes, encerrar } = useFluxoV2State();
+  const { solicitacoes, encerrar, isLoading } = useFluxoV2State();
   const [statusFilter, setStatusFilter] = useState<StatusGlobalV2 | 'all'>('all');
   const [busca, setBusca] = useState('');
   const [page, setPage] = useState(1);
@@ -136,13 +138,15 @@ export default function SolicitacoesV2ListPage() {
         title="Solicitações"
         subtitle="Visão geral de todas as solicitações com seu estado consolidado."
         actions={
-          <button
-            type="button"
-            onClick={() => setDrawerOpen(true)}
-            className="tfd-btn tfd-btn-primary"
-          >
-            <Plus size={16} /> Nova solicitação
-          </button>
+          <Can action="solicitacoes.criar">
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(true)}
+              className="tfd-btn tfd-btn-primary"
+            >
+              <Plus size={16} /> Nova solicitação
+            </button>
+          </Can>
         }
       />
 
@@ -241,14 +245,25 @@ export default function SolicitacoesV2ListPage() {
             </tr>
           </thead>
           <tbody>
-            {filtradas.length === 0 && (
+            {isLoading && (
+              Array.from({ length: 6 }).map((_, i) => (
+                <tr key={`sk-${i}`} style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
+                  {Array.from({ length: 6 }).map((__, c) => (
+                    <td key={c} className="px-4 py-3.5">
+                      <Skeleton className={`h-4 ${c === 0 ? 'w-24' : c === 1 ? 'w-48' : c === 5 ? 'w-20 ml-auto' : 'w-32'}`} />
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+            {!isLoading && filtradas.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
                   Nenhuma solicitação encontrada.
                 </td>
               </tr>
             )}
-            {paginadas.map((s) => {
+            {!isLoading && paginadas.map((s) => {
               const eventos = derivarEventos(s);
               const ultimaAtualizacao = eventos[0];
               return (
@@ -319,11 +334,13 @@ export default function SolicitacoesV2ListPage() {
                         ]}
                       />
                       {setorAtual(s) === 'dados_basicos' && (
-                        <BotaoEnvio
-                          icon={Send}
-                          label="Enviar para outro setor"
-                          onClick={() => setEnviar(s)}
-                        />
+                        <Can action="tramitacao.tramitar">
+                          <BotaoEnvio
+                            icon={Send}
+                            label="Enviar para outro setor"
+                            onClick={() => setEnviar(s)}
+                          />
+                        </Can>
                       )}
                     </div>
                   </td>

@@ -12,7 +12,6 @@ import {
   Search,
   Users as UsersIcon,
   Package,
-  AlertTriangle,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -20,11 +19,12 @@ import EmptyState from '@/shared/components/empty-state/EmptyState';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import Pagination from '@/shared/components/pagination/Pagination';
+import ConfirmDialog, { buildDiff, type DiffField } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import SortTh, { type SortDir, nextSort, compareValues } from '@/shared/components/sort-th/SortTh';
 import { useToast } from '@/shared/components/toast/Toast';
 import {
   listarPapeis,
-  listarTelas,
+  listarTelasComAcoes,
   contarUsuariosPorPapel,
   listarTelasDoPapel,
   criarPapel,
@@ -33,6 +33,8 @@ import {
   salvarTelasDoPapel,
 } from '@/services/papeis.service';
 import type { Papel, TelaSistema } from '@/services/papeis.service';
+import { TableRowsSkeleton } from '@/shared/components/skeleton';
+import { Can } from '@/shared/auth/Can';
 
 /* -------------------------------------------------- */
 /*  Constants                                          */
@@ -42,22 +44,6 @@ const DEFAULT_COLORS = [
   '#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B',
   '#10B981', '#EF4444', '#06B6D4', '#F97316',
 ];
-
-const ACAO_LABELS: Record<string, string> = {
-  visualizar: 'Visualizar',
-  criar: 'Criar',
-  editar: 'Editar',
-  excluir: 'Excluir',
-  encaminhar: 'Encaminhar',
-  encaminhar_setor_anterior: 'Setor Anterior',
-  aprovar: 'Aprovar',
-  reprovar: 'Reprovar',
-  analisar: 'Analisar',
-  emitir: 'Emitir',
-  gerenciar: 'Gerenciar',
-  adicionar_ajuda_custo: 'Aj. de Custo',
-  encerrar: 'Encerrar',
-};
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -156,6 +142,7 @@ export default function PapeisPage() {
 
   /* ---- Delete confirmation ---- */
   const [deleteTarget, setDeleteTarget] = useState<Papel | null>(null);
+  const [saveConfirm, setSaveConfirm] = useState<{ tone: 'create' | 'edit'; diff: DiffField[] } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   /* ---- Form state ---- */
@@ -183,12 +170,12 @@ export default function PapeisPage() {
     try {
       const [papeisRes, telasRes, usersRes] = await Promise.all([
         listarPapeis(),
-        listarTelas(),
+        listarTelasComAcoes(),
         contarUsuariosPorPapel(),
       ]);
 
       const papeisData = (papeisRes.data as unknown as Papel[]) ?? [];
-      const telasData = (telasRes.data as unknown as TelaSistema[]) ?? [];
+      const telasData = telasRes.data ?? [];
       const usersData = (usersRes.data as unknown as { papel_id: string }[]) ?? [];
 
       setPapeis(papeisData);
@@ -316,7 +303,7 @@ export default function PapeisPage() {
         const { [tela.id]: _, ...rest } = prev;
         return rest;
       }
-      return { ...prev, [tela.id]: [...tela.acoes_disponiveis] };
+      return { ...prev, [tela.id]: tela.acoes.map((a) => a.acao) };
     });
   }
 
@@ -329,7 +316,7 @@ export default function PapeisPage() {
       if (allSelected) {
         for (const t of moduleTelas) delete next[t.id];
       } else {
-        for (const t of moduleTelas) next[t.id] = [...t.acoes_disponiveis];
+        for (const t of moduleTelas) next[t.id] = t.acoes.map((a) => a.acao);
       }
       return next;
     });
@@ -337,12 +324,51 @@ export default function PapeisPage() {
 
   function selectAllTelas() {
     const all: Record<string, string[]> = {};
-    for (const tela of telas) all[tela.id] = [...tela.acoes_disponiveis];
+    for (const tela of telas) all[tela.id] = tela.acoes.map((a) => a.acao);
     setFormTelas(all);
   }
 
   function selectNoneTelas() {
     setFormTelas({});
+  }
+
+  /** Valida e abre o modal de confirmação. */
+  function handleRequestSave() {
+    if (!formNome.trim()) { toast.error('Campo obrigatório', 'Informe o nome do papel.'); return; }
+
+    const novoTelaCount = Object.values(formTelas).filter((a) => a.length > 0).length;
+
+    if (editingPapel) {
+      // Carrega contagem atual de telas a partir do editingPapel.id no telaCountsByPapel... mas o estado pode estar desatualizado.
+      // Para simplificar, mostra apenas o número novo + ações editáveis básicas.
+      const before = {
+        nome: editingPapel.nome,
+        descricao: editingPapel.descricao ?? '',
+        cor: editingPapel.cor,
+      };
+      const after = {
+        nome: formNome.trim(),
+        descricao: formDescricao.trim(),
+        cor: formCor,
+      };
+      const diff = buildDiff(before, after, [
+        { key: 'nome', label: 'Nome' },
+        { key: 'descricao', label: 'Descrição' },
+        { key: 'cor', label: 'Cor' },
+      ]);
+      // Permissões serão sempre re-salvas — adiciona como info informativa.
+      diff.push({ label: 'Telas com permissão', before: '', after: `${novoTelaCount} de ${telas.length}` });
+      setSaveConfirm({ tone: 'edit', diff });
+    } else {
+      setSaveConfirm({
+        tone: 'create',
+        diff: [
+          { label: 'Nome', after: formNome.trim() },
+          { label: 'Descrição', after: formDescricao.trim() },
+          { label: 'Telas com permissão', after: `${novoTelaCount} de ${telas.length}` },
+        ],
+      });
+    }
   }
 
   /* ---- Save ---- */
@@ -413,10 +439,12 @@ export default function PapeisPage() {
         title="Permissões"
         subtitle="Crie e configure permissões de acesso por tela e ação"
         actions={
-          <button className="tfd-btn tfd-btn-primary" onClick={handleOpenCreate}>
-            <Plus size={16} />
-            Novo Papel
-          </button>
+          <Can action="sys_papeis.criar">
+            <button className="tfd-btn tfd-btn-primary" onClick={handleOpenCreate}>
+              <Plus size={16} />
+              Novo Papel
+            </button>
+          </Can>
         }
       />
 
@@ -480,14 +508,7 @@ export default function PapeisPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
-                      <div className="inline-flex items-center gap-2">
-                        <Loader2 size={16} className="animate-spin" />
-                        Carregando...
-                      </div>
-                    </td>
-                  </tr>
+                  <TableRowsSkeleton rows={6} columns={5} />
                 ) : filtered.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-4 py-16 text-center" style={{ color: '#9CA3AF' }}>
@@ -551,20 +572,24 @@ export default function PapeisPage() {
                         </td>
                         <td className="px-4 py-3.5 text-right">
                           <div className="inline-flex items-center gap-1">
-                            <button
-                              className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
-                              title="Editar"
-                              onClick={() => handleOpenEdit(papel)}
-                            >
-                              <Pencil size={15} />
-                            </button>
-                            <button
-                              className="tfd-btn tfd-btn-danger tfd-btn--icon-only"
-                              title="Excluir"
-                              onClick={() => setDeleteTarget(papel)}
-                            >
-                              <Trash2 size={15} />
-                            </button>
+                            <Can anyOf={['sys_papeis.editar','sys_papeis.permissoes_editar']}>
+                              <button
+                                className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                                title="Editar"
+                                onClick={() => handleOpenEdit(papel)}
+                              >
+                                <Pencil size={15} />
+                              </button>
+                            </Can>
+                            <Can action="sys_papeis.excluir">
+                              <button
+                                className="tfd-btn tfd-btn-danger tfd-btn--icon-only"
+                                title="Excluir"
+                                onClick={() => setDeleteTarget(papel)}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </Can>
                           </div>
                         </td>
                       </tr>
@@ -587,41 +612,34 @@ export default function PapeisPage() {
       )}
 
       {/* Modal: Confirmar exclusão */}
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="tfd-card tfd-card--flat w-full max-w-md" style={{ backgroundColor: 'var(--tfd-surface-card)' }}>
-            <div className="flex items-start gap-3 mb-4">
-              <div className="flex items-center justify-center w-10 h-10 rounded-full shrink-0" style={{ backgroundColor: '#fef2f2' }}>
-                <AlertTriangle size={18} style={{ color: '#dc2626' }} />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold mb-1" style={{ color: 'var(--tfd-text-primary)' }}>
-                  Excluir papel "{deleteTarget.nome}"?
-                </h3>
-                <p className="text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
-                  {(userCounts[deleteTarget.id] ?? 0) > 0 ? (
-                    <>
-                      Este papel tem{' '}
-                      <strong>{userCounts[deleteTarget.id]} usuário{userCounts[deleteTarget.id] !== 1 ? 's' : ''} vinculado{userCounts[deleteTarget.id] !== 1 ? 's' : ''}</strong>.
-                      Eles ficarão sem papel até serem realocados. Esta ação não pode ser desfeita.
-                    </>
-                  ) : (
-                    <>O papel e todas as suas permissões serão removidos. Esta ação não pode ser desfeita.</>
-                  )}
-                </p>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button className="tfd-btn tfd-btn-secondary" onClick={() => setDeleteTarget(null)} disabled={deleting}>
-                Cancelar
-              </button>
-              <button className="tfd-btn tfd-btn-danger" onClick={confirmDelete} disabled={deleting}>
-                {deleting ? <><Loader2 size={14} className="animate-spin" /> Excluindo...</> : <><Trash2 size={14} /> Excluir</>}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        tone="delete"
+        title={deleteTarget ? `Excluir papel "${deleteTarget.nome}"?` : 'Excluir papel?'}
+        description={
+          deleteTarget && (userCounts[deleteTarget.id] ?? 0) > 0
+            ? `Este papel tem ${userCounts[deleteTarget.id]} usuário${userCounts[deleteTarget.id] !== 1 ? 's' : ''} vinculado${userCounts[deleteTarget.id] !== 1 ? 's' : ''}. Eles ficarão sem papel até serem realocados. Esta ação não pode ser desfeita.`
+            : 'O papel e todas as suas permissões serão removidos. Esta ação não pode ser desfeita.'
+        }
+        busy={deleting}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+      />
+
+      {/* Modal: Confirmar criação / edição */}
+      <ConfirmDialog
+        open={!!saveConfirm}
+        tone={saveConfirm?.tone ?? 'create'}
+        title={editingPapel ? 'Confirmar alterações no papel?' : 'Confirmar cadastro de papel?'}
+        subject={formNome.trim() || undefined}
+        diff={saveConfirm?.diff}
+        busy={saving}
+        onClose={() => setSaveConfirm(null)}
+        onConfirm={async () => {
+          await handleSave();
+          setSaveConfirm(null);
+        }}
+      />
 
       {/* ========== Drawer: Create / Edit ========== */}
       <Drawer
@@ -645,7 +663,7 @@ export default function PapeisPage() {
             </button>
             <button
               className="tfd-btn tfd-btn-primary"
-              onClick={handleSave}
+              onClick={handleRequestSave}
               disabled={saving || !formNome.trim()}
             >
               {saving && <Loader2 size={16} className="animate-spin" />}
@@ -792,13 +810,13 @@ export default function PapeisPage() {
 
                       {/* Action pills */}
                       <div className="flex flex-wrap gap-1">
-                        {(tela.acoes_disponiveis ?? []).map((acao) => {
-                          const isSelected = selectedAcoes.includes(acao);
-                          const otherActionsActive = selectedAcoes.filter((a) => a !== 'visualizar').length > 0;
-                          const isLocked = acao === 'visualizar' && isSelected && otherActionsActive;
+                        {tela.acoes.map((a) => {
+                          const isSelected = selectedAcoes.includes(a.acao);
+                          const otherActionsActive = selectedAcoes.filter((x) => x !== 'visualizar').length > 0;
+                          const isLocked = a.acao === 'visualizar' && isSelected && otherActionsActive;
                           return (
                             <button
-                              key={acao}
+                              key={a.acao}
                               type="button"
                               className="text-[11px] px-2 py-0.5 rounded-full border transition-colors"
                               style={{
@@ -810,10 +828,10 @@ export default function PapeisPage() {
                                 opacity: isLocked ? 0.7 : 1,
                                 cursor: isLocked ? 'not-allowed' : 'pointer',
                               }}
-                              onClick={() => toggleAcao(tela.id, acao)}
-                              title={isLocked ? 'Visualizar é obrigatório quando outras ações estão ativas' : undefined}
+                              onClick={() => toggleAcao(tela.id, a.acao)}
+                              title={isLocked ? 'Visualizar é obrigatório quando outras ações estão ativas' : (a.descricao ?? undefined)}
                             >
-                              {ACAO_LABELS[acao] ?? acao}
+                              {a.nome_humano}
                             </button>
                           );
                         })}

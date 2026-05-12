@@ -14,13 +14,21 @@ export interface Papel {
   usuario_count?: number;
 }
 
+export interface AcaoCatalogo {
+  acao: string;
+  nome_humano: string;
+  descricao: string | null;
+  ordem: number;
+}
+
 export interface TelaSistema {
   id: string;
   nome: string;
   modulo: string;
   rota: string;
   ordem: number;
-  acoes_disponiveis: string[];
+  /** Ações disponíveis para essa tela, vindas de acoes_catalogo. */
+  acoes: AcaoCatalogo[];
 }
 
 export async function listarPapeis() {
@@ -65,6 +73,51 @@ export async function listarTelas() {
     .select('*')
     .order('modulo')
     .order('ordem');
+}
+
+/**
+ * Carrega todas as telas com suas ações disponíveis populadas a partir de
+ * acoes_catalogo. Esta é a função que a tela /sistema/papeis deve usar.
+ */
+export async function listarTelasComAcoes(): Promise<{ data: TelaSistema[]; error: unknown }> {
+  const supabase = getSupabase();
+  const [telasRes, acoesRes] = await Promise.all([
+    supabase.from('telas_sistema').select('*').order('modulo').order('ordem'),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).from('acoes_catalogo').select('tela_id, acao, nome_humano, descricao, ordem').order('ordem'),
+  ]);
+
+  if (telasRes.error) return { data: [], error: telasRes.error };
+
+  const acoesByTela: Record<string, AcaoCatalogo[]> = {};
+  const acoesRows =
+    (acoesRes.data as unknown as Array<{
+      tela_id: string;
+      acao: string;
+      nome_humano: string;
+      descricao: string | null;
+      ordem: number;
+    }>) ?? [];
+  for (const a of acoesRows) {
+    if (!acoesByTela[a.tela_id]) acoesByTela[a.tela_id] = [];
+    acoesByTela[a.tela_id].push({
+      acao: a.acao,
+      nome_humano: a.nome_humano,
+      descricao: a.descricao,
+      ordem: a.ordem,
+    });
+  }
+
+  const telas =
+    ((telasRes.data as unknown as Array<{
+      id: string;
+      nome: string;
+      modulo: string;
+      rota: string;
+      ordem: number;
+    }>) ?? []).map((t) => ({ ...t, acoes: acoesByTela[t.id] ?? [] }));
+
+  return { data: telas, error: null };
 }
 
 /** Retorna todas as linhas (tela_id, acao) atribuídas a um papel. */

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import { DetailHeaderSkeleton, SectionSkeleton } from '@/shared/components/skeleton';
 import FormField from '@/shared/components/drawer/FormField';
 import { useToast } from '@/shared/components/toast/Toast';
 import { createClient } from '@/lib/supabase/client';
@@ -300,9 +301,8 @@ export default function MeuPerfilPage() {
     return (
       <>
         <PageHeader title="Meu Perfil" subtitle="Informacoes pessoais e configuracoes" />
-        <div className="flex items-center justify-center py-20">
-          <Loader2 size={32} className="animate-spin" style={{ color: 'var(--tfd-primary-500)' }} />
-        </div>
+        <DetailHeaderSkeleton />
+        <SectionSkeleton rows={6} />
       </>
     );
   }

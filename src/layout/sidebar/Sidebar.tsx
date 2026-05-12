@@ -22,6 +22,7 @@ import {
   Building2,
   type LucideIcon,
 } from 'lucide-react';
+import { usePermissions } from '@/shared/auth/PermissionsProvider';
 
 
 
@@ -31,6 +32,8 @@ interface NavItem {
   icon: LucideIcon;
   label: string;
   href: string;
+  /** ID em telas_sistema. Item só aparece se user tem `<tela>.visualizar`. */
+  tela?: string;
   badge?: number;
 }
 
@@ -42,33 +45,33 @@ interface NavSection {
 const navSections: NavSection[] = [
   {
     items: [
-      { icon: LayoutDashboard, label: 'Painel', href: '/dashboard' },
+      { icon: LayoutDashboard, label: 'Painel', href: '/dashboard', tela: 'painel' },
     ],
   },
   {
     title: 'FLUXO DO PROCESSO',
     items: [
-      { icon: FileText, label: 'Solicitações', href: '/fluxo-v2/solicitacoes' },
-      { icon: Stethoscope, label: 'Regulação', href: '/fluxo-v2/regulacao' },
-      { icon: Wallet, label: 'Financeiro', href: '/fluxo-v2/financeiro' },
+      { icon: FileText,     label: 'Solicitações', href: '/fluxo-v2/solicitacoes', tela: 'solicitacoes' },
+      { icon: Stethoscope,  label: 'Regulação',    href: '/fluxo-v2/regulacao',    tela: 'regulacao' },
+      { icon: Wallet,       label: 'Financeiro',   href: '/fluxo-v2/financeiro',   tela: 'financeiro' },
     ],
   },
   {
     title: 'CADASTROS',
     items: [
-      { icon: Contact, label: 'Pacientes', href: '/pacientes' },
-      { icon: Building2, label: 'Unidades de Saúde', href: '/unidades-saude' },
-      { icon: MapPin, label: 'Regionais', href: '/regionais-saude' },
+      { icon: Contact,   label: 'Pacientes',          href: '/pacientes',        tela: 'pacientes' },
+      { icon: Building2, label: 'Unidades de Saúde', href: '/unidades-saude',   tela: 'unidades_saude' },
+      { icon: MapPin,    label: 'Regionais',         href: '/regionais-saude', tela: 'regionais_saude' },
     ],
   },
   {
     title: 'GESTÃO',
     items: [
-      { icon: BarChart3, label: 'Relatórios', href: '/relatorios' },
-      { icon: Settings, label: 'Configurações', href: '/sistema/configuracoes' },
-      { icon: Shield, label: 'Permissões', href: '/sistema/papeis' },
-      { icon: Users, label: 'Usuários', href: '/sistema/usuarios' },
-      { icon: ScrollText, label: 'Logs', href: '/sistema/logs' },
+      { icon: BarChart3,  label: 'Relatórios',    href: '/relatorios',              tela: 'relatorios' },
+      { icon: Settings,   label: 'Configurações', href: '/sistema/configuracoes',   tela: 'sys_configuracoes' },
+      { icon: Shield,     label: 'Permissões',    href: '/sistema/papeis',          tela: 'sys_papeis' },
+      { icon: Users,      label: 'Usuários',      href: '/sistema/usuarios',        tela: 'sys_usuarios' },
+      { icon: ScrollText, label: 'Logs',          href: '/sistema/logs',            tela: 'sys_logs' },
     ],
   },
 ];
@@ -92,8 +95,22 @@ export default function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { can, isLoading } = usePermissions();
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + '/');
+
+  // Filtra cada seção pelos itens que o usuário pode acessar.
+  // Enquanto carrega, esconde tudo (evita pisca-pisca de itens que somem).
+  const visibleSections = navSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        if (isLoading) return false;
+        if (!item.tela) return true;
+        return can(`${item.tela}.visualizar`);
+      }),
+    }))
+    .filter((section) => section.items.length > 0);
 
   const content = (
     <div className="flex flex-col h-full select-none">
@@ -131,7 +148,7 @@ export default function Sidebar({
 
       {/* ── Nav ─────────────────────────────────── */}
       <nav className="flex-1 overflow-y-auto pt-4 pb-2 px-3">
-        {navSections.map((section, si) => (
+        {visibleSections.map((section, si) => (
           <div key={si} className={si > 0 ? 'mt-6' : ''}>
             {section.title && !collapsed && (
               <p className="px-3 mb-2 text-[10px] font-semibold tracking-[0.12em] uppercase" style={{ color: '#9CA3AF' }}>

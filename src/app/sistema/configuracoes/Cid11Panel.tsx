@@ -24,6 +24,7 @@ import {
 } from '@/services/cid11.service';
 import type { Cid11 } from '@/core/models/cid11.model';
 import { invalidateCache } from '@/shared/hooks/useLookup';
+import { TableRowsSkeleton } from '@/shared/components/skeleton';
 
 const DEFAULT_PAGE_SIZE = 50;
 
@@ -222,14 +223,7 @@ export default function Cid11Panel() {
           </thead>
           <tbody>
             {loading ? (
-              <tr>
-                <td colSpan={3} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
-                  <div className="inline-flex items-center gap-2">
-                    <Loader2 size={16} className="animate-spin" />
-                    Carregando...
-                  </div>
-                </td>
-              </tr>
+              <TableRowsSkeleton rows={6} columns={3} />
             ) : items.length === 0 ? (
               <tr>
                 <td colSpan={3} className="px-4 py-16 text-center" style={{ color: '#9CA3AF' }}>

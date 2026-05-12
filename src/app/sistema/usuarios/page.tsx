@@ -19,13 +19,13 @@ import {
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import Pagination from '@/shared/components/pagination/Pagination';
+import ConfirmDialog, { type DiffField } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import SortTh, { type SortDir, nextSort, compareValues } from '@/shared/components/sort-th/SortTh';
 import { maskCPF } from '@/shared/pipes/formatters';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import EmptyState from '@/shared/components/empty-state/EmptyState';
 import { useToast } from '@/shared/components/toast/Toast';
-import { MOCK_USUARIOS } from '@/core/mocks/usuarios.mock';
 import {
   listarUsuarios,
   atualizarUsuario,
@@ -38,6 +38,8 @@ import {
   type Papel,
   type TelaSistema,
 } from '@/services/papeis.service';
+import { TableRowsSkeleton } from '@/shared/components/skeleton';
+import { Can } from '@/shared/auth/Can';
 
 /* -------------------------------------------------- */
 /*  Types                                              */
@@ -77,19 +79,6 @@ function getAvatarColor(name: string): string {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
   return colors[Math.abs(hash) % colors.length];
-}
-
-function mockToRow(mock: (typeof MOCK_USUARIOS)[number]): UsuarioRow {
-  return {
-    id: mock.id,
-    nome_completo: mock.nome,
-    cpf: '',
-    email: mock.email,
-    perfil: mock.perfil,
-    ativo: mock.ativo,
-    papel_id: null,
-    is_admin: mock.perfil === 'ADMIN',
-  };
 }
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -138,6 +127,8 @@ export default function UsuariosPage() {
   /* ---- Delete confirmation ---- */
   const [deleteTarget, setDeleteTarget] = useState<UsuarioRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  /* ---- Create confirmation ---- */
+  const [createConfirm, setCreateConfirm] = useState<{ diff: DiffField[] } | null>(null);
 
   /* ---- Debounce search (300ms) ---- */
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -161,10 +152,11 @@ export default function UsuariosPage() {
         listarTelas() as Promise<{ data: unknown; error: unknown }>,
       ]);
 
-      if (usersRes.error || !usersRes.data || (usersRes.data as unknown[]).length === 0) {
-        setUsuarios(MOCK_USUARIOS.map(mockToRow));
+      if (usersRes.error) {
+        setErrorMsg('Não foi possível carregar a lista de usuários.');
+        setUsuarios([]);
       } else {
-        setUsuarios(usersRes.data as unknown as UsuarioRow[]);
+        setUsuarios((usersRes.data ?? []) as unknown as UsuarioRow[]);
       }
 
       if (!papeisRes.error && papeisRes.data) {
@@ -174,7 +166,8 @@ export default function UsuariosPage() {
         setTelas(telasRes.data as TelaSistema[]);
       }
     } catch {
-      setUsuarios(MOCK_USUARIOS.map(mockToRow));
+      setErrorMsg('Não foi possível carregar a lista de usuários.');
+      setUsuarios([]);
     } finally {
       setLoading(false);
     }
@@ -318,7 +311,8 @@ export default function UsuariosPage() {
 
   function handleCloseCreateDrawer() { setCreateDrawerOpen(false); }
 
-  async function handleCreateUser() {
+  /** Valida e abre modal de confirmação antes de criar. */
+  function handleRequestCreate() {
     if (!createNome.trim()) {
       toast.warning('Campo obrigatório', 'Informe o nome do usuário.');
       return;
@@ -331,7 +325,17 @@ export default function UsuariosPage() {
       toast.warning('Campo obrigatório', 'Informe um e-mail válido.');
       return;
     }
+    const papelNome = createPapelId ? (papeis.find((p) => p.id === createPapelId)?.nome ?? '') : '';
+    const diff: DiffField[] = [
+      { label: 'Nome', after: createNome.trim() },
+      { label: 'CPF', after: createCpf },
+      { label: 'E-mail', after: createEmail.trim() },
+      { label: 'Papel', after: papelNome || '(sem papel)' },
+    ];
+    setCreateConfirm({ diff });
+  }
 
+  async function handleCreateUser() {
     setCreateSaving(true);
     setErrorMsg(null);
 
@@ -427,14 +431,18 @@ export default function UsuariosPage() {
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <Link href="/sistema/papeis" className="tfd-btn tfd-btn-secondary">
-              <Shield size={16} />
-              Gerenciar Permissões
-            </Link>
-            <button className="tfd-btn tfd-btn-primary" onClick={handleOpenCreateDrawer}>
-              <Plus size={16} />
-              Adicionar Usuário
-            </button>
+            <Can action="sys_papeis.visualizar">
+              <Link href="/sistema/papeis" className="tfd-btn tfd-btn-secondary">
+                <Shield size={16} />
+                Gerenciar Permissões
+              </Link>
+            </Can>
+            <Can action="sys_usuarios.criar">
+              <button className="tfd-btn tfd-btn-primary" onClick={handleOpenCreateDrawer}>
+                <Plus size={16} />
+                Adicionar Usuário
+              </button>
+            </Can>
           </div>
         }
       />
@@ -527,14 +535,7 @@ export default function UsuariosPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
-                      <div className="inline-flex items-center gap-2">
-                        <Loader2 size={16} className="animate-spin" />
-                        Carregando usuários...
-                      </div>
-                    </td>
-                  </tr>
+                  <TableRowsSkeleton rows={6} columns={5} />
                 ) : filtered.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-4 py-16 text-center" style={{ color: '#9CA3AF' }}>
@@ -744,7 +745,7 @@ export default function UsuariosPage() {
             <button className="tfd-btn tfd-btn-secondary" onClick={handleCloseCreateDrawer} disabled={createSaving}>
               Cancelar
             </button>
-            <button className="tfd-btn tfd-btn-primary" onClick={handleCreateUser} disabled={createSaving}>
+            <button className="tfd-btn tfd-btn-primary" onClick={handleRequestCreate} disabled={createSaving}>
               {createSaving ? (
                 <><Loader2 size={14} className="animate-spin" /> Cadastrando...</>
               ) : (
@@ -809,6 +810,21 @@ export default function UsuariosPage() {
           </select>
         </FormField>
       </Drawer>
+
+      {/* Confirmação de cadastro de usuário */}
+      <ConfirmDialog
+        open={!!createConfirm}
+        tone="create"
+        title="Confirmar cadastro de usuário?"
+        subject={createNome.trim() || undefined}
+        diff={createConfirm?.diff}
+        busy={createSaving}
+        onClose={() => setCreateConfirm(null)}
+        onConfirm={async () => {
+          await handleCreateUser();
+          setCreateConfirm(null);
+        }}
+      />
 
       {/* Modal: Confirmar redefinição de senha */}
       {resetTarget && (

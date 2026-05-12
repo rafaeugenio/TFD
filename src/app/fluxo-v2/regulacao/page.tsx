@@ -22,6 +22,8 @@ import Pagination from '@/shared/components/pagination/Pagination';
 import StatsRow from '@/shared/components/stats-row/StatsRow';
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import SortTh, { compareValues, nextSort, type SortDir } from '@/shared/components/sort-th/SortTh';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Can } from '@/shared/auth/Can';
 import {
   contarAguardandoParecer,
   contarAguardandoAgendamento,
@@ -47,7 +49,7 @@ const CARIMBO_OPTIONS: { value: CarimboFiltro; label: string }[] = [
 
 export default function RegulacaoListPage() {
   const router = useRouter();
-  const { solicitacoes, setCarimbo } = useFluxoV2State();
+  const { solicitacoes, setCarimbo, isLoading } = useFluxoV2State();
 
   const [drawer, setDrawer] = useState<{ kind: DrawerKind; sol: SolicitacaoMock | null }>({
     kind: null, sol: null,
@@ -230,14 +232,25 @@ export default function RegulacaoListPage() {
             </tr>
           </thead>
           <tbody>
-            {fila.length === 0 && (
+            {isLoading && (
+              Array.from({ length: 6 }).map((_, i) => (
+                <tr key={`sk-${i}`} style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
+                  {Array.from({ length: 7 }).map((__, c) => (
+                    <td key={c} className="px-4 py-3.5">
+                      <Skeleton className={`h-4 ${c === 0 ? 'w-24' : c === 1 ? 'w-44' : c === 6 ? 'w-16 ml-auto' : 'w-28'}`} />
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+            {!isLoading && fila.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
                   Nenhuma solicitação na fila de regulação.
                 </td>
               </tr>
             )}
-            {paginadas.map((s) => {
+            {!isLoading && paginadas.map((s) => {
               const carimboExigeAg = s.carimboRegulacao === 'CNRAC' || s.carimboRegulacao === 'CET';
               const podeAgendar = carimboExigeAg && !temAgendamentoConfirmado(s);
               const locked = isLocked(s, 'regulacao');
@@ -355,11 +368,13 @@ export default function RegulacaoListPage() {
                         ]}
                       />
                       {setorAtual(s) === 'regulacao' && (
-                        <BotaoEnvio
-                          icon={Send}
-                          label="Enviar para outro setor"
-                          onClick={() => setEnviar(s)}
-                        />
+                        <Can action="tramitacao.tramitar">
+                          <BotaoEnvio
+                            icon={Send}
+                            label="Enviar para outro setor"
+                            onClick={() => setEnviar(s)}
+                          />
+                        </Can>
                       )}
                     </div>
                   </td>

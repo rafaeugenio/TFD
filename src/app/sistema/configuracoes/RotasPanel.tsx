@@ -28,6 +28,7 @@ import {
   calcularProcedimentos,
 } from '@/services/rotas-deslocamento.service';
 import type { RotaDeslocamento } from '@/core/models';
+import { TableRowsSkeleton } from '@/shared/components/skeleton';
 
 const MODAL_LABELS = {
   aereo: 'Aéreo',
@@ -359,14 +360,7 @@ export default function RotasPanel() {
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
-                    <div className="inline-flex items-center gap-2">
-                      <Loader2 size={16} className="animate-spin" />
-                      Carregando...
-                    </div>
-                  </td>
-                </tr>
+                <TableRowsSkeleton rows={6} columns={6} />
               ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-16 text-center" style={{ color: '#9CA3AF' }}>

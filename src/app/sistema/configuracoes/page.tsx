@@ -55,6 +55,7 @@ import {
 import type { Regiao } from '@/core/models/regiao.model';
 import { invalidateCache } from '@/shared/hooks/useLookup';
 import { maskCNPJ } from '@/shared/pipes/formatters';
+import { Skeleton } from '@/components/ui/skeleton';
 
 /* -------------------------------------------------- */
 /*  Tab config                                         */
@@ -374,9 +375,10 @@ function CadastrosPanel() {
   const renderItemList = () => {
     if (loading) {
       return (
-        <div className="flex items-center justify-center py-16 gap-2" style={{ color: 'var(--tfd-text-muted)' }}>
-          <Loader2 size={18} className="animate-spin" />
-          <span className="text-sm">Carregando...</span>
+        <div className="py-2 space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
         </div>
       );
     }

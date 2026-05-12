@@ -41,6 +41,8 @@ import {
 } from '@/services/regionais-saude.service';
 import { listarRegioes } from '@/services/regioes.service';
 import type { Regiao } from '@/core/models/regiao.model';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Can } from '@/shared/auth/Can';
 
 /* -------------------------------------------------- */
 /*  Constants                                          */
@@ -391,13 +393,15 @@ function RegionaisSaudePage() {
         title="Regionais"
         subtitle="Unidades Regionais de Saúde (URS) do estado do Maranhão"
         actions={
-          <button
-            className="tfd-btn tfd-btn-primary"
-            onClick={() => { setEditingId(null); resetForm(); setDrawerOpen(true); }}
-          >
-            <Plus size={16} />
-            Nova Regional
-          </button>
+          <Can action="regionais_saude.criar">
+            <button
+              className="tfd-btn tfd-btn-primary"
+              onClick={() => { setEditingId(null); resetForm(); setDrawerOpen(true); }}
+            >
+              <Plus size={16} />
+              Nova Regional
+            </button>
+          </Can>
         }
       />
 
@@ -484,11 +488,15 @@ function RegionaisSaudePage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td colSpan={7} className="text-center py-12">
-                    <p className="text-sm" style={{ color: 'var(--tfd-text-muted)' }}>Carregando...</p>
-                  </td>
-                </tr>
+                Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={`sk-${i}`}>
+                    {Array.from({ length: 7 }).map((__, c) => (
+                      <td key={c} className="px-4 py-3.5">
+                        <Skeleton className={`h-4 ${c === 0 ? 'w-16' : c === 6 ? 'w-16 ml-auto' : 'w-32'}`} />
+                      </td>
+                    ))}
+                  </tr>
+                ))
               ) : items.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-center py-12">
@@ -540,21 +548,25 @@ function RegionaisSaudePage() {
                     </td>
                     <td>
                       <div className="flex items-center gap-1">
-                        <button
-                          className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
-                          title="Editar"
-                          onClick={(e) => { e.stopPropagation(); handleOpenEdit(reg as Record<string, unknown>); }}
-                        >
-                          <Pencil size={15} />
-                        </button>
-                        <button
-                          className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
-                          title="Excluir"
-                          style={{ color: '#DC2626' }}
-                          onClick={(e) => { e.stopPropagation(); handleOpenDeactivate(reg as Record<string, unknown>); }}
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                        <Can action="regionais_saude.editar">
+                          <button
+                            className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                            title="Editar"
+                            onClick={(e) => { e.stopPropagation(); handleOpenEdit(reg as Record<string, unknown>); }}
+                          >
+                            <Pencil size={15} />
+                          </button>
+                        </Can>
+                        <Can action="regionais_saude.excluir">
+                          <button
+                            className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
+                            title="Excluir"
+                            style={{ color: '#DC2626' }}
+                            onClick={(e) => { e.stopPropagation(); handleOpenDeactivate(reg as Record<string, unknown>); }}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </Can>
                       </div>
                     </td>
                   </tr>
@@ -577,36 +589,35 @@ function RegionaisSaudePage() {
       </div>
 
       {/* ========== Delete Confirmation Modal ========== */}
-      {deactivateConfirmId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="tfd-card p-6 max-w-md w-full mx-4" style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-                style={{ backgroundColor: 'var(--tfd-status-error-bg)', color: 'var(--tfd-status-error)' }}
-              >
-                <Trash2 size={20} />
-              </div>
-              <h3 className="text-lg font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-                Confirmar exclusão
-              </h3>
-            </div>
-            <p className="text-sm mb-6" style={{ color: 'var(--tfd-text-secondary)' }}>
-              Tem certeza que deseja excluir a regional{' '}
-              <strong style={{ color: 'var(--tfd-text-primary)' }}>{deactivateConfirmName}</strong>?
-              Esta ação não pode ser desfeita.
-            </p>
-            <div className="flex items-center justify-end gap-2">
-              <button className="tfd-btn tfd-btn-secondary" onClick={() => { setDeactivateConfirmId(null); setDeactivateConfirmName(''); }}>
-                Cancelar
-              </button>
-              <button className="tfd-btn tfd-btn-danger" onClick={handleConfirmDeactivate}>
-                Excluir
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!deactivateConfirmId}
+        tone="delete"
+        title="Excluir regional?"
+        subject={deactivateConfirmName}
+        description="Esta ação não pode ser desfeita."
+        onClose={() => { setDeactivateConfirmId(null); setDeactivateConfirmName(''); }}
+        onConfirm={handleConfirmDeactivate}
+      />
+
+      {/* ========== Save Confirmation Modal ========== */}
+      <ConfirmDialog
+        open={!!saveConfirm}
+        tone={saveConfirm?.tone ?? 'create'}
+        title={editingId ? 'Confirmar alterações na regional?' : 'Confirmar cadastro de regional?'}
+        subject={nome.trim() ? `${codigo.toUpperCase()} — ${nome.trim()}` : undefined}
+        diff={saveConfirm?.diff}
+        busy={savingRegional}
+        onClose={() => setSaveConfirm(null)}
+        onConfirm={async () => {
+          setSavingRegional(true);
+          try {
+            await handleSubmit();
+            setSaveConfirm(null);
+          } finally {
+            setSavingRegional(false);
+          }
+        }}
+      />
 
       {/* ========== Drawer ========== */}
       <Drawer
@@ -618,7 +629,7 @@ function RegionaisSaudePage() {
         footer={
           <>
             <button className="tfd-btn tfd-btn-secondary" onClick={handleCloseDrawer}>Cancelar</button>
-            <button className="tfd-btn tfd-btn-primary" onClick={handleSubmit}>
+            <button className="tfd-btn tfd-btn-primary" onClick={handleRequestSubmit} disabled={savingRegional}>
               {editingId ? 'Salvar Alterações' : 'Cadastrar Regional'}
             </button>
           </>

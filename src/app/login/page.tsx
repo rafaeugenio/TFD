@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, LogIn, Eye, EyeOff } from 'lucide-react';
+import { Loader2, LogIn, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 
 function formatCPF(value: string): string {
   const digits = value.replace(/\D/g, '').slice(0, 11);
@@ -20,14 +21,52 @@ export default function LoginPage() {
   const [senha, setSenha] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setError(null);
+
+    const cpfLimpo = cpf.replace(/\D/g, '');
+    if (cpfLimpo.length !== 11) {
+      setError('Informe um CPF válido.');
+      return;
+    }
+    if (!senha) {
+      setError('Informe sua senha.');
+      return;
+    }
+
     setLoading(true);
-    // Mock: skip authentication, go straight to dashboard
-    await new Promise((r) => setTimeout(r, 400));
-    router.push('/dashboard');
-    router.refresh();
+    const supabase = createClient();
+
+    try {
+      // RPC ainda não está no types gerados; cast pontual aqui.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: email, error: rpcError } = await (supabase as any).rpc('get_email_by_cpf', { p_cpf: cpfLimpo });
+      if (rpcError) {
+        setError('Erro ao buscar usuário. Tente novamente.');
+        return;
+      }
+      if (!email) {
+        setError('CPF não encontrado ou usuário inativo.');
+        return;
+      }
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email as string,
+        password: senha,
+      });
+      if (signInError) {
+        setError('Senha incorreta.');
+        return;
+      }
+
+      router.push('/dashboard');
+      router.refresh();
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -61,6 +100,16 @@ export default function LoginPage() {
         {/* Form Card */}
         <div className="tfd-card">
           <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <div
+                className="flex items-start gap-2 px-3 py-2 rounded-md text-[13px]"
+                style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' }}
+              >
+                <AlertCircle size={14} className="mt-[2px] shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
             <div>
               <label className="tfd-label" htmlFor="cpf">
                 CPF

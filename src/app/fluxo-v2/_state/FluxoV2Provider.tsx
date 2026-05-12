@@ -11,7 +11,6 @@ import {
 } from 'react';
 import {
   cloneSolicitacao,
-  seedFluxoV2,
   type SolicitacaoMock,
   type StatusGlobalV2,
   type ParecerMock,
@@ -39,6 +38,8 @@ import { statusGlobalToSetor } from '../_adapters/statusMapping';
 
 interface FluxoV2ContextValue {
   solicitacoes: SolicitacaoMock[];
+  /** True enquanto o fetch inicial do Supabase ainda não terminou. */
+  isLoading: boolean;
   getById: (id: string) => SolicitacaoMock | undefined;
 
   createSolicitacao: (input: NewSolicitacaoInput) => string; // returns id
@@ -166,18 +167,25 @@ interface FluxoV2ContextValue {
     solicitacaoId: string,
     novoPacienteId: string,
     novosAcompanhantesIds: string[],
-    novosAnexos: { nome: string; tipo: string }[],
+    novosAnexos: { nome: string; tipo: string; tipoDocumento?: string }[],
+    /** Snapshots quando os dados vêm do banco (não estão em pacientesPool / acompanhantesPool). */
+    snapshots?: {
+      paciente?: import('@/core/mocks/fluxo-v2-v3-seed').PacienteMock;
+      acompanhantes?: import('@/core/mocks/fluxo-v2-v3-seed').AcompanhanteMock[];
+    },
   ) => void;
 }
 
 export interface EditarSolicitacaoPatch {
   acompanhanteIds?: string[];
   dataLaudo?: string | undefined;
-  anexos?: { id?: string; nome: string; tipo: string }[];
+  anexos?: { id?: string; nome: string; tipo: string; tipoDocumento?: string }[];
   /** T2.AG — Número do processo SEI (formato XXXXX.XXXXXX/AAAA-DD). */
   numeroSEI?: string | undefined;
   /** T2.AG — URL completa do processo no SEI. */
   seiUrl?: string | undefined;
+  /** Snapshot dos acompanhantes quando vêm do banco (não estão em acompanhantesPool). */
+  acompanhantesSnapshot?: import('@/core/mocks/fluxo-v2-v3-seed').AcompanhanteMock[];
 }
 
 export interface NewSolicitacaoInput {
@@ -206,15 +214,11 @@ const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2,
 const nowIso = () => new Date().toISOString();
 
 export function FluxoV2Provider({ children }: { children: ReactNode }) {
-  // Inicializa com mock para SSR/render imediato; substitui no useEffect abaixo
-  // pelos dados reais do Supabase. Se o fetch falhar, o mock permanece.
-  const [solicitacoes, setSolicitacoes] = useState<SolicitacaoMock[]>(() =>
-    seedFluxoV2.map(cloneSolicitacao),
-  );
+  // Inicia vazio. As telas consumidoras devem checar `isLoading` e renderizar
+  // skeleton enquanto o fetch do Supabase não conclui.
+  const [solicitacoes, setSolicitacoes] = useState<SolicitacaoMock[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch inicial: substitui o mock pelas solicitações reais do banco.
-  // Mutators continuam atualizando local-state (otimista) — alguns também
-  // persistem no Supabase (setStatus, enviarParaSetor).
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -224,14 +228,17 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
           .from('solicitacoes')
           .select(SOLICITACAO_V2_SELECT)
           .order('created_at', { ascending: false });
-        if (cancelled || error || !data) {
-          if (error) console.warn('[FluxoV2] fallback para mock:', error.message);
+        if (cancelled) return;
+        if (error || !data) {
+          if (error) console.warn('[FluxoV2] erro ao carregar Supabase:', error.message);
           return;
         }
         const real = solicitacoesFromSupabase(data as unknown as Record<string, unknown>[]);
-        if (real.length > 0) setSolicitacoes(real);
+        setSolicitacoes(real);
       } catch (err) {
-        console.warn('[FluxoV2] erro ao carregar Supabase, mantendo mock:', err);
+        console.warn('[FluxoV2] erro ao carregar Supabase:', err);
+      } finally {
+        if (!cancelled) setIsLoading(false);
       }
     })();
     return () => {
@@ -753,7 +760,8 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
   const editarSolicitacao = useCallback<FluxoV2ContextValue['editarSolicitacao']>((id, patch) => {
     mutate(id, (s) => {
       if (patch.acompanhanteIds !== undefined) {
-        s.acompanhantes = acompanhantesPool.filter((a) => patch.acompanhanteIds!.includes(a.id));
+        const fonte = patch.acompanhantesSnapshot ?? acompanhantesPool;
+        s.acompanhantes = fonte.filter((a) => patch.acompanhanteIds!.includes(a.id));
       }
       if (patch.dataLaudo !== undefined) {
         s.dataLaudo = patch.dataLaudo || undefined;
@@ -763,6 +771,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
           id: a.id ?? uid('an'),
           nome: a.nome,
           tipo: a.tipo,
+          tipoDocumento: a.tipoDocumento,
         }));
       }
       if (patch.numeroSEI !== undefined) {
@@ -776,22 +785,25 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
   }, [mutate]);
 
   const trocarPaciente = useCallback<FluxoV2ContextValue['trocarPaciente']>(
-    (solicitacaoId, novoPacienteId, novosAcompanhantesIds, novosAnexos) => {
+    (solicitacaoId, novoPacienteId, novosAcompanhantesIds, novosAnexos, snapshots) => {
       mutate(solicitacaoId, (s) => {
-        const novoPaciente = pacientesPool.find((p) => p.id === novoPacienteId);
+        const novoPaciente =
+          snapshots?.paciente ?? pacientesPool.find((p) => p.id === novoPacienteId);
         if (!novoPaciente) return s;
         // Reset deliberado: paciente novo => acompanhantes e anexos do paciente
         // anterior não fazem mais sentido, então o operador precisa reescolher.
         // Pareceres, status, agendamento, viagens, ajudas e adicionais são
         // preservados — quem decide o que fazer com isso é o fluxo posterior.
         s.paciente = novoPaciente;
-        s.acompanhantes = acompanhantesPool.filter((a) =>
+        const fonteAcomp = snapshots?.acompanhantes ?? acompanhantesPool;
+        s.acompanhantes = fonteAcomp.filter((a) =>
           novosAcompanhantesIds.includes(a.id),
         );
         s.anexos = novosAnexos.map((a) => ({
           id: uid('an'),
           nome: a.nome,
           tipo: a.tipo,
+          tipoDocumento: a.tipoDocumento,
         }));
         return s;
       });
@@ -801,6 +813,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
 
   const value = useMemo<FluxoV2ContextValue>(() => ({
     solicitacoes,
+    isLoading,
     getById,
     createSolicitacao,
     updateSolicitacao,
@@ -836,7 +849,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     editarSolicitacao,
     trocarPaciente,
   }), [
-    solicitacoes, getById, createSolicitacao, updateSolicitacao, setStatus,
+    solicitacoes, isLoading, getById, createSolicitacao, updateSolicitacao, setStatus,
     addParecer, editarParecer, removerParecer,
     setCarimbo,
     addTentativa, editarTentativa, removerTentativa, setAgendamento, registrarSegundoDeferimento,
