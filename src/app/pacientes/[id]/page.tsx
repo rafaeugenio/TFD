@@ -59,6 +59,13 @@ const VINCULO_LABELS: Record<string, string> = {
   OUTRO: 'Outro',
 };
 
+const SETOR_LABELS: Record<string, string> = {
+  dados_basicos: 'Dados Básicos',
+  regulacao: 'Regulação',
+  financeiro: 'Financeiro',
+  encerrada: 'Encerrada',
+};
+
 /* -------------------------------------------------- */
 /*  Component                                          */
 /* -------------------------------------------------- */
@@ -409,9 +416,9 @@ function PacienteDetalheInner({ id }: { id: string }) {
                   const status = sol.status as StatusSolicitacao;
                   const numProcesso = sol.numero_processo as string;
                   const dataCriacao = sol.created_at as string;
-                  const cid = sol.cid10_principal as string;
-                  const especialidade = sol.especialidade as string;
-                  const modalidade = sol.modalidade as string;
+                  const setorAtual = sol.setor_atual as string | null;
+                  const dataLaudo = sol.data_laudo as string | null;
+                  const numeroProtocolo = sol.numero_protocolo as string | null;
                   const ciclo = solicitacoes.length - idx;
 
                   return (
@@ -434,17 +441,25 @@ function PacienteDetalheInner({ id }: { id: string }) {
                             </span>
                           </div>
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5">
-                            {cid && <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>CID: {cid}</span>}
-                            {especialidade && <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>{especialidade}</span>}
-                            {modalidade && (
-                              <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-                                {modalidade === 'INTERESTADUAL' ? 'Interestadual' : 'Intraestadual'}
-                              </span>
-                            )}
                             <span className="text-xs flex items-center gap-1" style={{ color: 'var(--tfd-text-muted)' }}>
                               <Clock size={11} />
-                              {formatDate(dataCriacao)}
+                              Criada em {formatDate(dataCriacao)}
                             </span>
+                            {setorAtual && (
+                              <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>
+                                Setor: <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{SETOR_LABELS[setorAtual] ?? setorAtual}</span>
+                              </span>
+                            )}
+                            {dataLaudo && (
+                              <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+                                Laudo: {formatDate(dataLaudo)}
+                              </span>
+                            )}
+                            {numeroProtocolo && (
+                              <span className="text-xs font-mono" style={{ color: 'var(--tfd-text-muted)' }}>
+                                SEI: {numeroProtocolo}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
