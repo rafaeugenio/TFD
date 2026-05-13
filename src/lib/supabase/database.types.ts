@@ -1067,6 +1067,8 @@ export type Database = {
           tipo_conta: TipoConta;
           nome_titular: string;
           cpf_titular: string;
+          pix_tipo: 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA' | null;
+          pix_chave: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -1079,6 +1081,8 @@ export type Database = {
           tipo_conta: TipoConta;
           nome_titular: string;
           cpf_titular: string;
+          pix_tipo?: 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA' | null;
+          pix_chave?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1091,6 +1095,8 @@ export type Database = {
           tipo_conta?: TipoConta;
           nome_titular?: string;
           cpf_titular?: string;
+          pix_tipo?: 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA' | null;
+          pix_chave?: string | null;
           created_at?: string;
           updated_at?: string;
         };

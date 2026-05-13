@@ -216,6 +216,8 @@ function PacientesPage() {
   const [bancoTipoConta, setBancoTipoConta] = useState<'CORRENTE' | 'POUPANCA' | ''>('');
   const [bancoTitular, setBancoTitular] = useState('');
   const [bancoCpfTitular, setBancoCpfTitular] = useState('');
+  const [bancoPixTipo, setBancoPixTipo] = useState<'' | 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA'>('');
+  const [bancoPixChave, setBancoPixChave] = useState('');
   const [bancoRegistroId, setBancoRegistroId] = useState<string | null>(null);
 
   /* ---- Form state: Documentos (pending uploads) ---- */
@@ -352,6 +354,8 @@ function PacientesPage() {
     setBancoTipoConta('');
     setBancoTitular('');
     setBancoCpfTitular('');
+    setBancoPixTipo('');
+    setBancoPixChave('');
     setBancoRegistroId(null);
   }
 
@@ -428,6 +432,8 @@ function PacientesPage() {
       setBancoTipoConta((db.tipo_conta as 'CORRENTE' | 'POUPANCA') ?? '');
       setBancoTitular(db.nome_titular ?? '');
       setBancoCpfTitular(maskCPF(db.cpf_titular ?? ''));
+      setBancoPixTipo(((db as Record<string, unknown>).pix_tipo as 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA' | null) ?? '');
+      setBancoPixChave(((db as Record<string, unknown>).pix_chave as string) ?? '');
     } else {
       setBancoRegistroId(null);
       setBancoNome('');
@@ -436,6 +442,8 @@ function PacientesPage() {
       setBancoTipoConta('');
       setBancoTitular('');
       setBancoCpfTitular('');
+      setBancoPixTipo('');
+      setBancoPixChave('');
     }
 
     resetAcompForm();
@@ -663,7 +671,8 @@ function PacientesPage() {
         bancoConta.trim() ||
         bancoTipoConta ||
         bancoTitular.trim() ||
-        bancoCpfTitular.trim();
+        bancoCpfTitular.trim() ||
+        bancoPixChave.trim();
 
       if (algumCampoBanco) {
         // Validação leve: se preencheu alguma coisa, exige o conjunto mínimo
@@ -686,6 +695,13 @@ function PacientesPage() {
           toast.error('CPF do titular inválido', 'Verifique o CPF informado.');
           return;
         }
+        // PIX é opcional, mas se preenchido um dos dois (tipo ou chave) exige o outro
+        if ((bancoPixTipo && !bancoPixChave.trim()) || (!bancoPixTipo && bancoPixChave.trim())) {
+          toast.error('PIX incompleto', 'Informe tipo e chave PIX — ou deixe ambos em branco.');
+          return;
+        }
+        const pixTipoFinal = bancoPixTipo || null;
+        const pixChaveFinal = bancoPixChave.trim() || null;
         const { error: dbErr } = await upsertDadosBancariosPorPaciente(pacienteId, {
           banco: bancoNome.trim(),
           agencia: bancoAgencia.trim(),
@@ -693,6 +709,8 @@ function PacientesPage() {
           tipo_conta: bancoTipoConta,
           nome_titular: bancoTitular.trim(),
           cpf_titular: cpfTitularLimpo,
+          pix_tipo: pixTipoFinal,
+          pix_chave: pixChaveFinal,
         });
         if (dbErr) {
           toast.warning(
@@ -1597,6 +1615,50 @@ function PacientesPage() {
               autorizado.
             </p>
           )}
+
+        {/* PIX (opcional) — TFD hoje só transfere por conta corrente, mas o
+            campo fica disponível pra uso futuro. */}
+        <div className="grid grid-cols-2 gap-4 mt-2">
+          <FormField label="Tipo de chave PIX" hint="opcional">
+            <select
+              className="tfd-input"
+              value={bancoPixTipo}
+              onChange={(e) => setBancoPixTipo(e.target.value as typeof bancoPixTipo)}
+            >
+              <option value="">— Sem PIX cadastrado —</option>
+              <option value="CPF">CPF</option>
+              <option value="CNPJ">CNPJ</option>
+              <option value="EMAIL">E-mail</option>
+              <option value="TELEFONE">Telefone</option>
+              <option value="ALEATORIA">Chave aleatória</option>
+            </select>
+          </FormField>
+          <FormField label="Chave PIX" hint={bancoPixTipo ? 'obrigatório se houver tipo' : 'opcional'}>
+            <input
+              type="text"
+              className="tfd-input"
+              placeholder={
+                bancoPixTipo === 'CPF' ? '000.000.000-00'
+                : bancoPixTipo === 'CNPJ' ? '00.000.000/0000-00'
+                : bancoPixTipo === 'EMAIL' ? 'email@exemplo.com'
+                : bancoPixTipo === 'TELEFONE' ? '(99) 99999-9999'
+                : bancoPixTipo === 'ALEATORIA' ? 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+                : 'Selecione o tipo primeiro'
+              }
+              value={bancoPixChave}
+              onChange={(e) => setBancoPixChave(e.target.value)}
+              disabled={!bancoPixTipo}
+              style={
+                ['CPF', 'CNPJ', 'TELEFONE', 'ALEATORIA'].includes(bancoPixTipo)
+                  ? { fontFamily: 'var(--tfd-font-mono)' }
+                  : undefined
+              }
+            />
+          </FormField>
+        </div>
+        <p className="text-[11px] mt-1 mb-3" style={{ color: 'var(--tfd-text-muted)' }}>
+          Atualmente o TFD não realiza transferências por PIX — o campo fica disponível para futuro uso.
+        </p>
 
         {/* ── Section: Acompanhantes ── */}
         <hr className="tfd-divider" />
