@@ -12,6 +12,7 @@ import NewAdicionalDrawer from './drawers/NewAdicionalDrawer';
 import { isLocked, tooltipLocked } from '../_utils/lock';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { useToast } from '@/shared/components/toast/Toast';
+import { fmtDataBR } from '@/shared/utils/fmtData';
 import {
   STATUS_AJUDA_LABEL,
   STATUS_VIAGEM_LABEL,
@@ -50,6 +51,7 @@ export default function FinanceiroTab({ s }: Props) {
 
   const locked = isLocked(s, 'financeiro');
   const lockedTip = tooltipLocked(s, 'financeiro');
+  const isAjudaCusto = s.tipoSolicitacao === 'ajuda_custo';
 
   function abrirNovaPassagem() { setPassagemEditar(undefined); setPassagemOpen(true); }
   function abrirEditarPassagem(v: ViagemMock) { setPassagemEditar(v); setPassagemOpen(true); }
@@ -115,46 +117,62 @@ export default function FinanceiroTab({ s }: Props) {
           boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
         }}
       >
-        <FinStat
-          label="Passagens"
-          value={fmtBRL(totalPassagens)}
-          hint={
-            passagensAcomp > 0
-              ? `${s.viagens.length} trecho(s) · ${passagensPaciente} paciente · ${passagensAcomp} acomp.`
-              : `${s.viagens.length} trecho(s)`
-          }
-        />
-        <StatDivider />
+        {!isAjudaCusto && (
+          <>
+            <FinStat
+              label="Viagens"
+              value={fmtBRL(totalPassagens + totalAdicionais)}
+              hint={
+                `${s.viagens.length} trecho(s)${
+                  passagensAcomp > 0 ? ` · ${passagensPaciente} pac. · ${passagensAcomp} acomp.` : ''
+                }${s.adicionais.length > 0 ? ` · ${s.adicionais.length} adic.` : ''}`
+              }
+            />
+            <StatDivider />
+          </>
+        )}
         <FinStat
           label="Ajuda de custo"
           value={fmtBRL(totalAjuda)}
           hint={
             ajudasAcomp > 0
-              ? `${s.ajudasCusto.length} período(s) · ${ajudasPaciente} paciente · ${ajudasAcomp} acomp.`
+              ? `${s.ajudasCusto.length} período(s) · ${ajudasPaciente} pac. · ${ajudasAcomp} acomp.`
               : `${s.ajudasCusto.length} período(s)`
           }
         />
         <StatDivider />
-        <FinStat label="Adicionais" value={fmtBRL(totalAdicionais)} hint={`${s.adicionais.length} item(ns)`} />
-        <StatDivider />
         <FinStat label="Total geral" value={fmtBRL(totalGeral)} emphasis />
       </div>
 
-      {/* Passagens */}
+      {/* Viagens (passagens + adicionais — mesmo setor) */}
+      {!isAjudaCusto && (
       <Section
         icon={Plane}
-        title="Passagens"
-        subtitle={`${s.viagens.length} trecho(s) · ida, volta ou transfer.`}
+        title="Viagens"
+        subtitle={`${s.viagens.length} trecho(s) · ida, volta ou transfer.${
+          s.adicionais.length > 0 ? ` ${s.adicionais.length} adicional(is) vinculado(s).` : ''
+        }`}
         action={
-          <button
-            type="button"
-            className="tfd-btn tfd-btn-primary tfd-btn--sm"
-            onClick={abrirNovaPassagem}
-            disabled={locked}
-            title={locked ? lockedTip : undefined}
-          >
-            <Plus size={14} /> Adicionar passagem
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="tfd-btn tfd-btn-secondary tfd-btn--sm"
+              onClick={abrirNovoAdicional}
+              disabled={locked}
+              title={locked ? lockedTip : 'Adicional vinculado à viagem (bagagem extra, oxigênio, assento, etc.)'}
+            >
+              <Plus size={14} /> Adicional
+            </button>
+            <button
+              type="button"
+              className="tfd-btn tfd-btn-primary tfd-btn--sm"
+              onClick={abrirNovaPassagem}
+              disabled={locked}
+              title={locked ? lockedTip : undefined}
+            >
+              <Plus size={14} /> Passagem
+            </button>
+          </div>
         }
       >
         {s.viagens.length > 0 ? (
@@ -190,7 +208,7 @@ export default function FinanceiroTab({ s }: Props) {
                           />
                         </div>
                       </td>
-                      <td className="px-3 py-2" style={{ color: '#475569' }}>{v.data}</td>
+                      <td className="px-3 py-2" style={{ color: '#475569' }}>{fmtDataBR(v.data)}</td>
                       <td className="px-3 py-2 capitalize" style={{ color: '#475569' }}>{v.modal}</td>
                       <td className="px-3 py-2" style={{ color: v.companhia ? '#1A1D2B' : '#9CA3AF' }}>
                         {v.companhia ?? '—'}
@@ -215,7 +233,62 @@ export default function FinanceiroTab({ s }: Props) {
         ) : (
           <p className="text-[12px]" style={{ color: '#9CA3AF' }}>Nenhuma passagem registrada ainda.</p>
         )}
+
+        {/* ── Sub-bloco: Adicionais vinculados à viagem ── */}
+        {s.adicionais.length > 0 && (
+          <div className="mt-5 pt-4" style={{ borderTop: '1px dashed var(--tfd-surface-border)' }}>
+            <div className="flex items-baseline justify-between mb-2">
+              <h4 className="text-[13px] font-semibold" style={{ color: '#0F172A' }}>
+                Adicionais
+              </h4>
+              <span className="text-[11px]" style={{ color: '#94A3B8' }}>
+                Bagagem, oxigênio, assento, transfer — conforme contrato.
+              </span>
+            </div>
+            <ul className="flex flex-col gap-1.5">
+              {s.adicionais.map((a, idx) => {
+                const anexoNome = a.documentoUrl?.replace(/^mock:\/\//, '');
+                const acomp = a.beneficiarioTipo === 'acompanhante' && a.beneficiarioId
+                  ? s.acompanhantes.find((ac) => ac.id === a.beneficiarioId)
+                  : null;
+                return (
+                  <li key={a.id} className="flex items-start gap-3 px-3 py-2.5" style={{ background: '#F8FAFC', borderRadius: 8 }}>
+                    <div className="pt-0.5"><OrdinalBadge n={idx + 1} /></div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-[13px] font-semibold" style={{ color: '#1A1D2B' }}>
+                          {a.descricao}
+                        </p>
+                        <BeneficiarioBadge tipo={a.beneficiarioTipo ?? 'paciente'} nomeAcomp={acomp?.nome} />
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 text-[11px]" style={{ color: '#6B7280' }}>
+                        <span>{fmtDataBR(a.data)}</span>
+                        <span style={{ color: '#CBD5E1' }}>·</span>
+                        <span className="font-mono" style={{ color: '#1A1D2B' }}>{fmtBRL(a.valor)}</span>
+                        <AdicionalStatusBadge status={a.status} />
+                        {anexoNome && (
+                          <span className="inline-flex items-center gap-1" title={anexoNome} style={{ color: '#475569' }}>
+                            <Paperclip size={11} />
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="pt-0.5">
+                      <ItemRowActions
+                        onEditar={() => abrirEditarAdicional(a)}
+                        onExcluir={() => setAdicionalExcluir(a)}
+                        disabled={locked}
+                        tooltipDisabled={lockedTip}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
       </Section>
+      )}
 
       {/* Ajuda de Custo */}
       <Section
@@ -257,7 +330,7 @@ export default function FinanceiroTab({ s }: Props) {
                   <div className="flex items-center gap-2">
                     <OrdinalBadge n={idx + 1} />
                     <span className="flex-1 min-w-0 flex items-center gap-2 flex-wrap" style={{ color: '#1A1D2B' }}>
-                      <span>{a.dataInicio} → {a.dataFim}</span>
+                      <span>{fmtDataBR(a.dataInicio)} → {fmtDataBR(a.dataFim)}</span>
                       <BeneficiarioBadge tipo={a.beneficiarioTipo} nomeAcomp={acomp?.nome} />
                     </span>
                     <span style={{ color: '#475569' }}>{calc.dias} dia(s)</span>
@@ -294,67 +367,6 @@ export default function FinanceiroTab({ s }: Props) {
         )}
       </Section>
 
-      {/* Adicionais */}
-      <Section
-        icon={Plus}
-        title="Adicionais"
-        subtitle="Passagem extra, ajuda extra, bagagem, transfer, outros."
-        action={
-          <button
-            type="button"
-            className="tfd-btn tfd-btn-primary tfd-btn--sm"
-            onClick={abrirNovoAdicional}
-            disabled={locked}
-            title={locked ? lockedTip : undefined}
-          >
-            <Plus size={14} /> Adicionar adicional
-          </button>
-        }
-      >
-        {s.adicionais.length > 0 ? (
-          <ul className="flex flex-col gap-1.5">
-            {s.adicionais.map((a, idx) => {
-              const anexoNome = a.documentoUrl?.replace(/^mock:\/\//, '');
-              return (
-                <li key={a.id} className="flex items-start gap-3 px-3 py-2.5" style={{ background: '#F8FAFC', borderRadius: 8 }}>
-                  <div className="pt-0.5"><OrdinalBadge n={idx + 1} /></div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-semibold truncate" style={{ color: '#1A1D2B' }}>
-                      {a.descricao}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1 text-[11px]" style={{ color: '#6B7280' }}>
-                      <span>{a.data}</span>
-                      <span style={{ color: '#CBD5E1' }}>·</span>
-                      <span className="font-mono" style={{ color: '#1A1D2B' }}>{fmtBRL(a.valor)}</span>
-                      <AdicionalStatusBadge status={a.status} />
-                      {anexoNome && (
-                        <span
-                          className="inline-flex items-center gap-1"
-                          title={anexoNome}
-                          style={{ color: '#475569' }}
-                        >
-                          <Paperclip size={11} />
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="pt-0.5">
-                    <ItemRowActions
-                      onEditar={() => abrirEditarAdicional(a)}
-                      onExcluir={() => setAdicionalExcluir(a)}
-                      disabled={locked}
-                      tooltipDisabled={lockedTip}
-                    />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p className="text-[12px]" style={{ color: '#9CA3AF' }}>Nenhum adicional registrado.</p>
-        )}
-      </Section>
-
       {/* Drawers */}
       <NewPassagemDrawer
         open={passagemOpen}
@@ -382,7 +394,7 @@ export default function FinanceiroTab({ s }: Props) {
         tipo="passagem"
         snapshot={
           passagemExcluir
-            ? `${passagemExcluir.origem} → ${passagemExcluir.destino} — ${passagemExcluir.tipo} — ${passagemExcluir.data} — ${fmtBRL(passagemExcluir.valor)}`
+            ? `${passagemExcluir.origem} → ${passagemExcluir.destino} — ${passagemExcluir.tipo} — ${fmtDataBR(passagemExcluir.data)} — ${fmtBRL(passagemExcluir.valor)}`
             : ''
         }
         onConfirmar={() => {
@@ -398,13 +410,13 @@ export default function FinanceiroTab({ s }: Props) {
         tipo="período de ajuda"
         snapshot={
           ajudaExcluir
-            ? `${ajudaExcluir.dataInicio} → ${ajudaExcluir.dataFim} — ${STATUS_AJUDA_LABEL[ajudaExcluir.status]}`
+            ? `${fmtDataBR(ajudaExcluir.dataInicio)} → ${fmtDataBR(ajudaExcluir.dataFim)} — ${STATUS_AJUDA_LABEL[ajudaExcluir.status]}`
             : ''
         }
         onConfirmar={() => {
           if (ajudaExcluir) {
             removerAjudaCusto(s.id, ajudaExcluir.id);
-            toast.success('Ajuda removida', `${ajudaExcluir.dataInicio} → ${ajudaExcluir.dataFim}`);
+            toast.success('Ajuda removida', `${fmtDataBR(ajudaExcluir.dataInicio)} → ${fmtDataBR(ajudaExcluir.dataFim)}`);
           }
         }}
       />
@@ -414,7 +426,7 @@ export default function FinanceiroTab({ s }: Props) {
         tipo="adicional"
         snapshot={
           adicionalExcluir
-            ? `${adicionalExcluir.descricao} — ${adicionalExcluir.data} — ${fmtBRL(adicionalExcluir.valor)}`
+            ? `${adicionalExcluir.descricao} — ${fmtDataBR(adicionalExcluir.data)} — ${fmtBRL(adicionalExcluir.valor)}`
             : ''
         }
         onConfirmar={() => {
