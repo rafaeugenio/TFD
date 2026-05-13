@@ -117,32 +117,31 @@ export default function Sidebar({
       {/* ── Logo ────────────────────────────────── */}
       <div
         className={clsx(
-          'flex items-center shrink-0 px-5',
-          collapsed ? 'justify-center' : 'gap-3',
+          'flex items-center shrink-0',
+          collapsed ? 'justify-center px-3' : 'justify-start px-4',
         )}
         style={{ height: 'var(--tfd-header-h)' }}
       >
-        <span
-          className="flex items-center justify-center shrink-0 text-white font-bold text-[11px] tracking-[0.08em] uppercase"
-          style={{
-            width: 36,
-            height: 36,
-            background: 'var(--tfd-blue)',
-            borderRadius: 'var(--tfd-radius-md)',
-          }}
-        >
-          TFD
-        </span>
-
-        {!collapsed && (
-          <div className="overflow-hidden">
-            <p className="text-[13px] font-semibold leading-tight tracking-tight truncate" style={{ color: '#1A1D2B' }}>
-              SES Maranhão
-            </p>
-            <p className="text-[11px] leading-tight truncate" style={{ color: '#9CA3AF' }}>
-              Tratamento Fora do Domicílio
-            </p>
-          </div>
+        {collapsed ? (
+          <span
+            className="flex items-center justify-center shrink-0 text-white font-bold text-[11px] tracking-[0.08em] uppercase"
+            style={{
+              width: 36,
+              height: 36,
+              background: 'var(--tfd-blue)',
+              borderRadius: 'var(--tfd-radius-md)',
+            }}
+            aria-label="SES Maranhão — TFD"
+          >
+            SES
+          </span>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src="/brand/ses-ma-horizontal.png"
+            alt="Governo do Maranhão — Secretaria de Estado da Saúde"
+            style={{ height: 40, width: 'auto', objectFit: 'contain', maxWidth: '100%' }}
+          />
         )}
       </div>
 
