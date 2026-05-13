@@ -276,18 +276,19 @@ export interface AdicionalMock {
   prorrogacaoDias?: number; // for ajuda_extra (prorrogação)
   /** Código do tipo de despesa vindo da tabela auxiliar `tipo_despesa`. */
   tipoDespesa?: string;
+  /** Beneficiário do adicional (paciente ou acompanhante específico). */
+  beneficiarioTipo?: 'paciente' | 'acompanhante';
+  beneficiarioId?: string;
 }
 
-export type MotivoEncerramento =
-  | 'alta_medica'
-  | 'transferencia'
-  | 'obito'
-  | 'abandono'
-  | 'desistencia';
+/** @deprecated Mantido pra compat com dados antigos. Use o código (string)
+ *  vindo da tabela auxiliar `motivo_encerramento`. */
+export type MotivoEncerramento = string;
 
 export interface EncerramentoMock {
   data: string;
-  motivo: MotivoEncerramento;
+  /** Código vindo da tabela auxiliar `motivo_encerramento` (ex: 'ALTA_MEDICA'). */
+  motivo: string;
   observacao?: string;
 }
 

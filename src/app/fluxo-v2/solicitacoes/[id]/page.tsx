@@ -14,10 +14,7 @@ import RegulacaoTab from '../../_components/RegulacaoTab';
 import FinanceiroTab from '../../_components/FinanceiroTab';
 import EnviarParaSetorDrawer from '../../_components/drawers/EnviarParaSetorDrawer';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
-import {
-  MOTIVO_ENCERRAMENTO_LABEL,
-  type MotivoEncerramento,
-} from '@/core/mocks/fluxo-v2-v3-seed';
+import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import { isLocked, tooltipLocked, setorAtual } from '../../_utils/lock';
 import { DetailPageSkeleton } from '@/shared/components/skeleton';
 import { Can } from '@/shared/auth/Can';
@@ -68,7 +65,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
 
   const [encerrarOpen, setEncerrarOpen] = useState(false);
   const [enviarOpen, setEnviarOpen] = useState(false);
-  const [motivo, setMotivo] = useState<MotivoEncerramento>('alta_medica');
+  const [motivo, setMotivo] = useState<string>('');
   const [dataEnc, setDataEnc] = useState(new Date().toISOString().slice(0, 10));
   const [obs, setObs] = useState('');
 
@@ -96,7 +93,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
 
   function handleEncerrar() {
     encerrar(s!.id, { data: dataEnc, motivo, observacao: obs.trim() || undefined });
-    toast.success('Solicitação encerrada', MOTIVO_ENCERRAMENTO_LABEL[motivo]);
+    toast.success('Solicitação encerrada', motivo);
     setEncerrarOpen(false);
     router.refresh();
   }
@@ -289,7 +286,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <EncerramentoField label="Motivo" value={MOTIVO_ENCERRAMENTO_LABEL[s.encerramento.motivo]} />
+            <EncerramentoField label="Motivo" value={s.encerramento.motivo} />
             <EncerramentoField label="Data" value={new Date(s.encerramento.data).toLocaleDateString('pt-BR')} />
             <EncerramentoField label="Observação" value={s.encerramento.observacao || '—'} />
           </div>
@@ -345,16 +342,15 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
           <div onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: 12, width: 'min(480px, 92vw)', padding: 24 }}>
             <h3 className="text-[18px] font-semibold mb-1" style={{ color: '#1A1D2B' }}>Encerrar solicitação</h3>
             <p className="text-[13px] mb-4" style={{ color: '#6B7280' }}>{s.numero} — {s.paciente.nome}</p>
-            <label className="block text-[12px] font-medium mb-1" style={{ color: '#475569' }}>Motivo</label>
-            <select
-              value={motivo} onChange={(e) => setMotivo(e.target.value as MotivoEncerramento)}
-              className="w-full px-3 py-2 text-[13px] mb-3"
-              style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
-            >
-              {(Object.keys(MOTIVO_ENCERRAMENTO_LABEL) as MotivoEncerramento[]).map((m) => (
-                <option key={m} value={m}>{MOTIVO_ENCERRAMENTO_LABEL[m]}</option>
-              ))}
-            </select>
+            <div className="mb-3">
+              <LookupSelect
+                categoria="motivo_encerramento"
+                label="Motivo"
+                value={motivo}
+                onChange={setMotivo}
+                required
+              />
+            </div>
             <label className="block text-[12px] font-medium mb-1" style={{ color: '#475569' }}>Data</label>
             <input
               type="date" value={dataEnc} onChange={(e) => setDataEnc(e.target.value)}

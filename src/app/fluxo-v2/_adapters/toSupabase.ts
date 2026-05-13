@@ -335,6 +335,8 @@ export interface AdicionalDb {
   data_ocorrencia: string;
   valor: number;
   status: string;
+  beneficiario_tipo: 'PACIENTE' | 'ACOMPANHANTE';
+  beneficiario_id?: string;
 }
 
 export function buildAdicional(
@@ -348,6 +350,8 @@ export function buildAdicional(
     data_ocorrencia: a.data,
     valor: a.valor,
     status: STATUS_ADICIONAL_TO_DB[a.status] ?? 'PENDENTE_APROVACAO',
+    beneficiario_tipo: a.beneficiarioTipo === 'acompanhante' ? 'ACOMPANHANTE' : 'PACIENTE',
+    beneficiario_id: a.beneficiarioId,
   };
 }
 

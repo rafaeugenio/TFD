@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Paperclip, X } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import { useToast } from '@/shared/components/toast/Toast';
@@ -8,6 +8,7 @@ import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import type { AdicionalMock } from '@/core/mocks/fluxo-v2-v3-seed';
 import AuxSelectInline from '@/shared/components/aux-select-inline/AuxSelectInline';
+import { calcularIdade } from '@/shared/utils/idade';
 
 const inputStyle: React.CSSProperties = {
   background: 'white',
@@ -25,16 +26,20 @@ interface Props {
 }
 
 export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar }: Props) {
-  const { addAdicional, editarAdicional } = useFluxoV2State();
+  const { addAdicional, editarAdicional, getById } = useFluxoV2State();
   const toast = useToast();
   const isEdicao = !!editar;
-  const firstInputRef = useRef<HTMLTextAreaElement>(null);
+  const firstInputRef = useRef<HTMLSelectElement>(null);
+
+  const solicitacao = getById(solicitacaoId);
 
   const [descricao, setDescricao] = useState('');
   const [data, setData] = useState('');
   const [valor, setValor] = useState('');
   const [anexoNome, setAnexoNome] = useState<string | null>(null);
   const [tipoDespesa, setTipoDespesa] = useState('');
+  /** Beneficiário. "p" = paciente; "a:<id>" = acompanhante específico. */
+  const [beneficiario, setBeneficiario] = useState<string>('p');
 
   useEffect(() => {
     if (open) {
@@ -44,16 +49,30 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
         setValor(String(editar.valor));
         setAnexoNome(editar.documentoUrl?.replace(/^mock:\/\//, '') ?? null);
         setTipoDespesa(editar.tipoDespesa ?? '');
+        setBeneficiario(
+          editar.beneficiarioTipo === 'acompanhante'
+            ? `a:${editar.beneficiarioId ?? ''}`
+            : 'p',
+        );
       } else {
         setDescricao('');
         setData('');
         setValor('');
         setAnexoNome(null);
         setTipoDespesa('');
+        setBeneficiario('p');
       }
       setTimeout(() => firstInputRef.current?.focus(), 100);
     }
   }, [open, editar]);
+
+  const beneficiarioPayload = useMemo(() => {
+    if (beneficiario === 'p') {
+      return { beneficiarioTipo: 'paciente' as const, beneficiarioId: undefined };
+    }
+    const id = beneficiario.startsWith('a:') ? beneficiario.slice(2) : beneficiario;
+    return { beneficiarioTipo: 'acompanhante' as const, beneficiarioId: id };
+  }, [beneficiario]);
 
   const valid = descricao.trim().length > 0 && data.length > 0 && Number(valor) > 0;
 
@@ -72,6 +91,7 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
         valor: Number(valor),
         documentoUrl: anexoNome ? `mock://${anexoNome}` : undefined,
         tipoDespesa: tipoDespesa || undefined,
+        ...beneficiarioPayload,
       });
     } else {
       addAdicional(solicitacaoId, {
@@ -82,6 +102,7 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
         status: 'pendente_aprovacao',
         documentoUrl: anexoNome ? `mock://${anexoNome}` : undefined,
         tipoDespesa: tipoDespesa || undefined,
+        ...beneficiarioPayload,
       });
     }
     toast.success(isEdicao ? 'Adicional atualizado' : 'Adicional registrado', descricao.trim());
@@ -112,11 +133,34 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
       }
     >
       {snapshotPaciente && <SnapshotPaciente data={snapshotPaciente} />}
+
+      {/* Beneficiário — mesmo padrão de NewPassagemDrawer / NewAjudaCustoDrawer */}
+      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+        Beneficiário
+      </label>
+      <select
+        ref={firstInputRef}
+        value={beneficiario}
+        onChange={(e) => setBeneficiario(e.target.value)}
+        className="w-full px-3 py-2 text-[13px] mb-4"
+        style={inputStyle}
+      >
+        {solicitacao && (
+          <option value="p">
+            Paciente — {solicitacao.paciente.nome} ({calcularIdade(solicitacao.paciente.dataNascimento)} anos)
+          </option>
+        )}
+        {solicitacao?.acompanhantes.map((a) => (
+          <option key={a.id} value={`a:${a.id}`}>
+            Acompanhante — {a.nome} ({calcularIdade(a.dataNascimento)} anos) — {a.vinculo}
+          </option>
+        ))}
+      </select>
+
       <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
         Descrição
       </label>
       <textarea
-        ref={firstInputRef}
         value={descricao}
         onChange={(e) => setDescricao(e.target.value)}
         rows={3}
