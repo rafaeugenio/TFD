@@ -147,7 +147,7 @@ export default function ReembolsoModal({
             style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}
           >
             <span className="text-[11px] uppercase tracking-wider" style={{ color: '#15803D' }}>
-              Valor efetivo nos KPIs
+              Valor final
             </span>
             <span className="font-mono font-semibold text-[14px]" style={{ color: '#15803D' }}>
               {fmtBRL(valorEfetivo)}
