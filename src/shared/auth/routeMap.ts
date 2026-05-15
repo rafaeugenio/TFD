@@ -17,6 +17,7 @@ const RULES: RouteRule[] = [
   { prefix: '/fluxo-v2/solicitacoes',  tela: 'solicitacoes' },
   { prefix: '/fluxo-v2/regulacao',     tela: 'regulacao' },
   { prefix: '/fluxo-v2/financeiro',    tela: 'financeiro' },
+  { prefix: '/fluxo-v2/acompanhamento', tela: 'acompanhamento' },
   { prefix: '/pacientes',              tela: 'pacientes' },
   { prefix: '/unidades-saude',         tela: 'unidades_saude' },
   { prefix: '/regionais-saude',        tela: 'regionais_saude' },

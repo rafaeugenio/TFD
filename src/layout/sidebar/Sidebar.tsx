@@ -8,6 +8,7 @@ import {
   FileText,
   MapPin,
   Wallet,
+  ClipboardCheck,
   LogOut,
   BarChart3,
   Settings,
@@ -51,7 +52,8 @@ const navSections: NavSection[] = [
     items: [
       { icon: FileText,     label: 'Solicitações', href: '/fluxo-v2/solicitacoes', tela: 'solicitacoes' },
       { icon: Stethoscope,  label: 'Regulação',    href: '/fluxo-v2/regulacao',    tela: 'regulacao' },
-      { icon: Wallet,       label: 'Financeiro',   href: '/fluxo-v2/financeiro',   tela: 'financeiro' },
+      { icon: Wallet,         label: 'Financeiro',     href: '/fluxo-v2/financeiro',     tela: 'financeiro' },
+      { icon: ClipboardCheck, label: 'Acompanhamento', href: '/fluxo-v2/acompanhamento', tela: 'acompanhamento' },
     ],
   },
   {

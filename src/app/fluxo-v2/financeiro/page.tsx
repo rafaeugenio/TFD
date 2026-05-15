@@ -110,15 +110,25 @@ export default function FinanceiroListPage() {
     () => solicitacoes.filter((s) => {
       if (s.status !== 'em_financeiro') return false;
 
+      // Critério "tem algo pendente de emissão" — após resolver tudo, sai
+      // do Financeiro e passa a viver em /fluxo-v2/acompanhamento.
+      const semViagem = s.viagens.filter(
+        (v) => !['cancelada', 'reembolso'].includes(v.status),
+      ).length === 0;
+      const ajudaPendente = s.ajudasCusto.some((a) => a.status === 'em_analise');
+      const adicionalPendente = s.adicionais.some((a) => a.status === 'pendente_aprovacao');
+      // Solicitação tipo AJUDA_CUSTO não tem viagem por design; "semViagem" não
+      // sinaliza pendência nesse caso. Só pendência de ajuda/adicional importa.
+      const tipoAjudaCusto = (s as unknown as { tipoSolicitacao?: string }).tipoSolicitacao === 'AJUDA_CUSTO';
+      const temPendenciaEmissao = (!tipoAjudaCusto && semViagem) || ajudaPendente || adicionalPendente;
+      if (!temPendenciaEmissao) return false;
+
       if (filtro === 'passagens_pendentes') {
-        if (!s.viagens.some((v) => v.status === 'agendada')) return false;
+        if (!s.viagens.some((v) => v.status === 'agendada') && !semViagem) return false;
       } else if (filtro === 'sem_viagem') {
-        const ativas = s.viagens.filter(
-          (v) => !['cancelada', 'reembolso'].includes(v.status),
-        );
-        if (ativas.length > 0) return false;
+        if (!semViagem) return false;
       } else if (filtro === 'adicional_pendente') {
-        if (!s.adicionais.some((a) => a.status === 'pendente_aprovacao')) return false;
+        if (!adicionalPendente) return false;
       }
 
       if (busca.trim()) {
