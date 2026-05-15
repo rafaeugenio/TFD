@@ -257,7 +257,6 @@ export default function RelatorioFaturamento() {
         numero={periodo.numero}
         titulo="Relatório de Faturamento — Passagens"
         periodoLabel={periodo.label}
-        situacao={{ label: 'Rascunho', tone: 'draft' }}
         rightSlot={
           <div className="text-right">
             <p className="text-[10px] uppercase tracking-widest opacity-80">Total a pagar</p>
