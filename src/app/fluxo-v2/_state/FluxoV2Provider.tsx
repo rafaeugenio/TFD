@@ -338,7 +338,11 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       ? input.acompanhantesSnapshot.filter((a) => input.acompanhanteIds.includes(a.id))
       : acompanhantesPool.filter((a) => input.acompanhanteIds.includes(a.id));
 
-    const proximoNumero = `2025/${String(130 + solicitacoes.length).padStart(6, '0')}`;
+    // Formato: TFD-{N|AC}-{ano}/{seq6}
+    // Prefixo identifica imediatamente o tipo na listagem e em relatórios.
+    const ano = new Date().getFullYear();
+    const tipoPrefix = input.tipoSolicitacao === 'ajuda_custo' ? 'AC' : 'N';
+    const proximoNumero = `TFD-${tipoPrefix}-${ano}/${String(130 + solicitacoes.length).padStart(6, '0')}`;
 
     // 1) Persiste no Supabase para receber o id real ANTES de inserir no estado.
     //    Filhos (parecer, viagem, etc.) precisam de FK válida.
