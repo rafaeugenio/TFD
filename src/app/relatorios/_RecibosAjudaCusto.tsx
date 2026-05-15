@@ -1,12 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Calendar, Search, Loader2, Printer, Wallet, Users, CheckCircle2, X } from 'lucide-react';
+import { User, FileText, Loader2, Printer, Wallet, Users, CheckCircle2, X, Inbox } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
   ReportToolbar,
   FilterField,
-  PillButton,
   ReportHero,
   StatsRow,
   TableCard,
@@ -14,14 +13,23 @@ import {
 } from './_shared/ReportShell';
 import { ReportTable, TipoBeneficiarioBadge, type ReportColumn } from './_shared/ReportTable';
 import {
-  MES_LABEL,
-  MES_LABEL_SHORT,
   fmtBRL,
   fmtDataBR,
-  anosDisponiveis,
   valorPorExtenso,
 } from './_shared/format';
 import { formatCPF } from '@/shared/pipes/formatters';
+
+interface PacienteOption {
+  id: string;
+  nome: string;
+  cpf: string;
+}
+
+interface SolicitacaoOption {
+  id: string;
+  numero_processo: string;
+  created_at: string;
+}
 
 interface ReciboRow {
   id: string;
@@ -40,28 +48,83 @@ interface ReciboRow {
 }
 
 export default function RecibosAjudaCusto() {
-  const hoje = new Date();
-  const [ano, setAno] = useState<number>(hoje.getFullYear());
-  const [mes, setMes] = useState<number>(hoje.getMonth() + 1);
-  const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [pacienteId, setPacienteId] = useState<string>('');
+  const [solicitacaoId, setSolicitacaoId] = useState<string>('');
+  const [pacientes, setPacientes] = useState<PacienteOption[]>([]);
+  const [solicitacoes, setSolicitacoes] = useState<SolicitacaoOption[]>([]);
+  const [loadingPacientes, setLoadingPacientes] = useState(true);
+  const [loadingSolicitacoes, setLoadingSolicitacoes] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<ReciboRow[]>([]);
   const [reciboSelecionado, setReciboSelecionado] = useState<ReciboRow | null>(null);
 
-  const periodo = useMemo(() => {
-    if (mes === 0) {
-      return { inicio: `${ano}-01-01`, fim: `${ano}-12-31`, label: `Ano de ${ano}` };
-    }
-    const lastDay = new Date(ano, mes, 0).getDate();
-    const mm = String(mes).padStart(2, '0');
-    return {
-      inicio: `${ano}-${mm}-01`,
-      fim: `${ano}-${mm}-${String(lastDay).padStart(2, '0')}`,
-      label: `${MES_LABEL[mes - 1]} de ${ano}`,
-    };
-  }, [ano, mes]);
-
+  // 1) Carrega pacientes ativos
   useEffect(() => {
+    let cancel = false;
+    setLoadingPacientes(true);
+    (async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('pacientes')
+        .select('id, nome_completo, cpf')
+        .eq('ativo', true)
+        .order('nome_completo', { ascending: true });
+      if (cancel) return;
+      if (error || !data) {
+        setPacientes([]);
+      } else {
+        setPacientes(
+          (data as unknown as Array<{ id: string; nome_completo: string; cpf: string }>).map(
+            (p) => ({ id: p.id, nome: p.nome_completo, cpf: p.cpf }),
+          ),
+        );
+      }
+      setLoadingPacientes(false);
+    })();
+    return () => { cancel = true; };
+  }, []);
+
+  // 2) Quando muda paciente, recarrega solicitações dele
+  useEffect(() => {
+    setSolicitacaoId('');
+    setSolicitacoes([]);
+    setRows([]);
+    if (!pacienteId) return;
+    let cancel = false;
+    setLoadingSolicitacoes(true);
+    (async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('solicitacoes')
+        .select('id, numero_processo, created_at')
+        .eq('paciente_id', pacienteId)
+        .order('created_at', { ascending: false });
+      if (cancel) return;
+      if (error || !data) {
+        setSolicitacoes([]);
+      } else {
+        setSolicitacoes(data as unknown as SolicitacaoOption[]);
+      }
+      setLoadingSolicitacoes(false);
+    })();
+    return () => { cancel = true; };
+  }, [pacienteId]);
+
+  const pacienteAtual = useMemo(
+    () => pacientes.find((p) => p.id === pacienteId),
+    [pacientes, pacienteId],
+  );
+  const solicitacaoAtual = useMemo(
+    () => solicitacoes.find((s) => s.id === solicitacaoId),
+    [solicitacoes, solicitacaoId],
+  );
+
+  // 3) Quando muda solicitação, carrega as ajudas daquela solicitação
+  useEffect(() => {
+    if (!solicitacaoId) {
+      setRows([]);
+      return;
+    }
     let cancel = false;
     setLoading(true);
     (async () => {
@@ -74,8 +137,7 @@ export default function RecibosAjudaCusto() {
           'solicitacoes!inner(numero_processo, pacientes(nome_completo, cpf)), ' +
           'acompanhantes:beneficiario_id(nome_completo)'
         )
-        .gte('data_inicio', periodo.inicio)
-        .lte('data_inicio', periodo.fim)
+        .eq('solicitacao_id', solicitacaoId)
         .order('data_inicio', { ascending: false });
 
       if (cancel) return;
@@ -114,22 +176,12 @@ export default function RecibosAjudaCusto() {
       setLoading(false);
     })();
     return () => { cancel = true; };
-  }, [periodo]);
+  }, [solicitacaoId]);
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return rows;
-    const q = search.toLowerCase();
-    return rows.filter((r) =>
-      r.paciente_nome.toLowerCase().includes(q) ||
-      r.beneficiario_nome.toLowerCase().includes(q) ||
-      r.numero_processo.toLowerCase().includes(q) ||
-      r.paciente_cpf.includes(q.replace(/\D/g, '')),
-    );
-  }, [rows, search]);
-
-  const totalPago = useMemo(() => filtered.reduce((s, r) => s + r.valor_pago, 0), [filtered]);
-  const totalAprovado = useMemo(() => filtered.reduce((s, r) => s + r.valor_calculado, 0), [filtered]);
-  const qtdPagas = filtered.filter((r) => r.valor_pago > 0).length;
+  const totalPago = useMemo(() => rows.reduce((s, r) => s + r.valor_pago, 0), [rows]);
+  const totalAprovado = useMemo(() => rows.reduce((s, r) => s + r.valor_calculado, 0), [rows]);
+  const qtdPagas = rows.filter((r) => r.valor_pago > 0).length;
+  const filtroPronto = !!pacienteId && !!solicitacaoId;
 
   const columns: ReportColumn<ReciboRow>[] = [
     {
@@ -236,94 +288,133 @@ export default function RecibosAjudaCusto() {
       <ReportToolbar
         filters={
           <>
-            <FilterField label="Ano" icon={<Calendar size={11} />}>
+            <FilterField label="Paciente" icon={<User size={11} />}>
               <select
                 className="tfd-input"
-                style={{ minWidth: 100 }}
-                value={ano}
-                onChange={(e) => setAno(parseInt(e.target.value, 10))}
+                style={{ minWidth: 280 }}
+                value={pacienteId}
+                onChange={(e) => setPacienteId(e.target.value)}
+                disabled={loadingPacientes}
               >
-                {anosDisponiveis().map((a) => (
-                  <option key={a} value={a}>{a}</option>
+                <option value="">
+                  {loadingPacientes ? 'Carregando…' : 'Selecione o paciente...'}
+                </option>
+                {pacientes.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nome} {p.cpf ? `— ${formatCPF(p.cpf)}` : ''}
+                  </option>
                 ))}
               </select>
             </FilterField>
 
-            <FilterField label="Mês">
-              <div className="flex items-center gap-1 flex-wrap">
-                <PillButton active={mes === 0} onClick={() => setMes(0)}>Ano</PillButton>
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                  <PillButton key={m} active={mes === m} onClick={() => setMes(m)}>
-                    {MES_LABEL_SHORT[m - 1]}
-                  </PillButton>
-                ))}
-              </div>
-            </FilterField>
-
-            <FilterField label="Busca" icon={<Search size={11} />}>
-              <input
-                type="text"
+            <FilterField label="Solicitação / Ciclo" icon={<FileText size={11} />}>
+              <select
                 className="tfd-input"
-                placeholder="Paciente, CPF ou processo..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
                 style={{ minWidth: 240 }}
-              />
+                value={solicitacaoId}
+                onChange={(e) => setSolicitacaoId(e.target.value)}
+                disabled={!pacienteId || loadingSolicitacoes}
+              >
+                <option value="">
+                  {!pacienteId
+                    ? 'Selecione o paciente primeiro'
+                    : loadingSolicitacoes
+                      ? 'Carregando…'
+                      : solicitacoes.length === 0
+                        ? 'Sem solicitações para este paciente'
+                        : 'Selecione a solicitação...'}
+                </option>
+                {solicitacoes.map((s, idx) => {
+                  const ciclo = solicitacoes.length - idx;
+                  return (
+                    <option key={s.id} value={s.id}>
+                      Ciclo {ciclo} · {s.numero_processo}
+                    </option>
+                  );
+                })}
+              </select>
             </FilterField>
           </>
         }
       />
 
-      <ReportHero
-        titulo="Recibos de Ajuda de Custo"
-        periodoLabel={periodo.label}
-        rightSlot={
-          <div className="text-right">
-            <p className="text-[10px] uppercase tracking-widest opacity-80">Total pago</p>
-            <p className="text-[20px] font-bold font-mono">{fmtBRL(totalPago)}</p>
-            <p className="text-[10.5px] opacity-80 mt-0.5">{qtdPagas} de {filtered.length} pagas</p>
-          </div>
-        }
-      />
+      {!filtroPronto ? (
+        /* Estado vazio — pediu paciente + solicitação */
+        <div
+          className="flex flex-col items-center justify-center py-16"
+          style={{
+            background: 'white',
+            border: '1px dashed var(--tfd-surface-border)',
+            borderRadius: 12,
+            color: 'var(--tfd-text-muted)',
+          }}
+        >
+          <Inbox size={36} className="mb-3" style={{ color: '#CBD5E1' }} />
+          <p className="text-[14px] font-medium" style={{ color: 'var(--tfd-text-secondary)' }}>
+            Selecione um paciente e uma solicitação
+          </p>
+          <p className="text-[12px] mt-1">
+            O relatório aparece quando ambos estão preenchidos.
+          </p>
+        </div>
+      ) : (
+        <>
+          <ReportHero
+            titulo="Recibos de Ajuda de Custo"
+            periodoLabel={
+              solicitacaoAtual
+                ? `${pacienteAtual?.nome ?? 'Paciente'} · ${solicitacaoAtual.numero_processo}`
+                : 'Recibos da solicitação'
+            }
+            rightSlot={
+              <div className="text-right">
+                <p className="text-[10px] uppercase tracking-widest opacity-80">Total pago</p>
+                <p className="text-[20px] font-bold font-mono">{fmtBRL(totalPago)}</p>
+                <p className="text-[10.5px] opacity-80 mt-0.5">{qtdPagas} de {rows.length} pagas</p>
+              </div>
+            }
+          />
 
-      <StatsRow
-        items={[
-          {
-            label: 'Recibos no período',
-            value: String(filtered.length),
-            hint: search ? 'Após filtro de busca' : 'Total bruto',
-            icon: <Users size={11} />,
-          },
-          {
-            label: 'Valor aprovado',
-            value: fmtBRL(totalAprovado),
-            hint: 'Soma do valor calculado',
-            tone: 'info',
-            icon: <Wallet size={11} />,
-          },
-          {
-            label: 'Valor pago',
-            value: fmtBRL(totalPago),
-            hint: `${qtdPagas} ajuda(s) finalizada(s)`,
-            tone: 'success',
-            icon: <CheckCircle2 size={11} />,
-          },
-        ]}
-      />
+          <StatsRow
+            items={[
+              {
+                label: 'Recibos da solicitação',
+                value: String(rows.length),
+                hint: 'Ajudas vinculadas',
+                icon: <Users size={11} />,
+              },
+              {
+                label: 'Valor aprovado',
+                value: fmtBRL(totalAprovado),
+                hint: 'Soma do valor calculado',
+                tone: 'info',
+                icon: <Wallet size={11} />,
+              },
+              {
+                label: 'Valor pago',
+                value: fmtBRL(totalPago),
+                hint: `${qtdPagas} ajuda(s) finalizada(s)`,
+                tone: 'success',
+                icon: <CheckCircle2 size={11} />,
+              },
+            ]}
+          />
 
-      <TableCard
-        title="Recibos emitidos"
-        subtitle={loading ? 'Carregando...' : undefined}
-        count={filtered.length}
-      >
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 size={20} className="animate-spin" style={{ color: 'var(--tfd-primary-500)' }} />
-          </div>
-        ) : (
-          <ReportTable columns={columns} rows={filtered} />
-        )}
-      </TableCard>
+          <TableCard
+            title="Recibos emitidos"
+            subtitle={loading ? 'Carregando...' : undefined}
+            count={rows.length}
+          >
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 size={20} className="animate-spin" style={{ color: 'var(--tfd-primary-500)' }} />
+              </div>
+            ) : (
+              <ReportTable columns={columns} rows={rows} />
+            )}
+          </TableCard>
+        </>
+      )}
 
       {/* Modal de impressão do recibo individual */}
       {reciboSelecionado && (
