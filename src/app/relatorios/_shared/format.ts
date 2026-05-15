@@ -87,18 +87,3 @@ function numeroPorExtenso(n: number): string {
 function capitalize(s: string): string {
   return s.length === 0 ? s : s[0].toUpperCase() + s.slice(1);
 }
-
-/**
- * Calcula a numeração sequencial híbrida do relatório.
- * `offsetDone` é o último número emitido no sistema antigo Done;
- * relatórios novos começam a partir desse valor + sequência mensal.
- */
-export function numeroRelatorioMensal(ano: number, mes: number, offsetDone = 143): string {
-  // Sequencial: meses contados a partir de jan/2026 (primeiro do sistema novo).
-  // Ex: abril/2026 → 4º mês → offset(143) + 4 = #147
-  const ANO_BASE = 2026;
-  const MES_BASE = 1; // janeiro
-  const sequencia = (ano - ANO_BASE) * 12 + (mes - MES_BASE) + 1;
-  if (sequencia <= 0) return `${offsetDone}-legado`;
-  return String(offsetDone + sequencia);
-}

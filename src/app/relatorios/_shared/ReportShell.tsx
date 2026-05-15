@@ -92,12 +92,10 @@ export function PrintButton({ label = 'Imprimir' }: { label?: string }) {
 /* ====================================================== */
 
 export function ReportHero({
-  numero,
   titulo,
   periodoLabel,
   rightSlot,
 }: {
-  numero?: string | number;
   titulo: string;
   periodoLabel: string;
   rightSlot?: ReactNode;
@@ -121,17 +119,7 @@ export function ReportHero({
             Governo do Maranhão · Secretaria de Saúde
           </p>
           <h2 className="text-[17px] font-bold leading-tight mt-1">{titulo}</h2>
-          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-            {numero != null && (
-              <span
-                className="inline-flex items-center gap-1 text-[12px] font-mono px-2 py-0.5 rounded"
-                style={{ background: 'rgba(255,255,255,0.15)' }}
-              >
-                #{numero}
-              </span>
-            )}
-            <span className="text-[12.5px] opacity-90">{periodoLabel}</span>
-          </div>
+          <span className="text-[12.5px] opacity-90 block mt-1.5">{periodoLabel}</span>
         </div>
         {rightSlot && <div className="shrink-0">{rightSlot}</div>}
       </div>

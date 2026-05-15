@@ -21,7 +21,6 @@ import {
   fmtDataBR,
   anosDisponiveis,
   valorPorExtenso,
-  numeroRelatorioMensal,
 } from './_shared/format';
 
 interface ViagemRow {
@@ -52,7 +51,6 @@ export default function RelatorioFaturamento() {
         inicio: `${ano}-01-01`,
         fim: `${ano}-12-31`,
         label: `Ano de ${ano}`,
-        numero: `ANO-${ano}`,
       };
     }
     const lastDay = new Date(ano, mes, 0).getDate();
@@ -61,7 +59,6 @@ export default function RelatorioFaturamento() {
       inicio: `${ano}-${mm}-01`,
       fim: `${ano}-${mm}-${String(lastDay).padStart(2, '0')}`,
       label: `${MES_LABEL[mes - 1]} de ${ano}`,
-      numero: numeroRelatorioMensal(ano, mes),
     };
   }, [ano, mes]);
 
@@ -254,7 +251,6 @@ export default function RelatorioFaturamento() {
 
       {/* Hero */}
       <ReportHero
-        numero={periodo.numero}
         titulo="Relatório de Faturamento — Passagens"
         periodoLabel={periodo.label}
         rightSlot={

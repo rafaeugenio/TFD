@@ -1353,8 +1353,6 @@ export type Database = {
           aprovado_por: string | null;
           aprovado_em: string | null;
           justificativa_decisao: string | null;
-          incluido_faturamento_em: string | null;
-          numero_relatorio: string | null;
           criado_por: string | null;
           created_at: string;
           updated_at: string;
@@ -1372,8 +1370,6 @@ export type Database = {
           aprovado_por?: string | null;
           aprovado_em?: string | null;
           justificativa_decisao?: string | null;
-          incluido_faturamento_em?: string | null;
-          numero_relatorio?: string | null;
           criado_por?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -1391,8 +1387,6 @@ export type Database = {
           aprovado_por?: string | null;
           aprovado_em?: string | null;
           justificativa_decisao?: string | null;
-          incluido_faturamento_em?: string | null;
-          numero_relatorio?: string | null;
           criado_por?: string | null;
           created_at?: string;
           updated_at?: string;

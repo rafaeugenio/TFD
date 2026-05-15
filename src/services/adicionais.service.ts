@@ -208,43 +208,6 @@ export async function indeferirAdicional(
   return { data, error };
 }
 
-export async function marcarAdicionalPago(
-  id: string,
-  numeroRelatorio: string,
-  usuarioId: string,
-  perfilUsuario: string,
-) {
-  const supabase = getSupabase();
-  const hoje = new Date().toISOString().slice(0, 10);
-  const { data, error } = await supabase
-    .from('adicionais')
-    .update({
-      status: 'PAGO' as StatusAdicional,
-      incluido_faturamento_em: hoje,
-      numero_relatorio: numeroRelatorio,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (!error && data) {
-    await supabase.from('log_auditoria').insert({
-      solicitacao_id: (data as any).solicitacao_id,
-      usuario_id: usuarioId,
-      perfil_usuario: perfilUsuario,
-      acao: 'DIARIA_PAGA',
-      entidade_alterada: 'adicionais',
-      entidade_id: id,
-      campo_alterado: 'status',
-      valor_anterior: 'APROVADO',
-      valor_novo: `PAGO (${numeroRelatorio})`,
-    } as never);
-  }
-
-  return { data, error };
-}
-
 export async function excluirAdicional(id: string) {
   const supabase = getSupabase();
   return supabase.from('adicionais').delete().eq('id', id);
