@@ -16,12 +16,11 @@ import { derivarEventos, tempoRelativo } from '../_utils/derivarLinhaDoTempo';
 import { isLocked, setorAtual, tooltipLocked } from '../_utils/lock';
 import {
   STATUS_LABEL,
-  MOTIVO_ENCERRAMENTO_LABEL,
   type SolicitacaoMock,
   type StatusGlobalV2,
-  type MotivoEncerramento,
 } from '@/core/mocks/fluxo-v2-v3-seed';
 import Pagination from '@/shared/components/pagination/Pagination';
+import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import StatsRow from '@/shared/components/stats-row/StatsRow';
 import {
   contarPorStatus,
@@ -56,7 +55,7 @@ export default function SolicitacoesV2ListPage() {
   const [editar, setEditar] = useState<SolicitacaoMock | null>(null);
   const [encerrarTarget, setEncerrarTarget] = useState<SolicitacaoMock | null>(null);
   const [enviar, setEnviar] = useState<SolicitacaoMock | null>(null);
-  const [motivo, setMotivo] = useState<MotivoEncerramento>('alta_medica');
+  const [motivo, setMotivo] = useState<string>('');
   const [dataEnc, setDataEnc] = useState(new Date().toISOString().slice(0, 10));
   const [obsEnc, setObsEnc] = useState('');
 
@@ -121,7 +120,7 @@ export default function SolicitacoesV2ListPage() {
 
   function abrirEncerrar(s: SolicitacaoMock) {
     setEncerrarTarget(s);
-    setMotivo('alta_medica');
+    setMotivo('');
     setDataEnc(new Date().toISOString().slice(0, 10));
     setObsEnc('');
   }
@@ -386,16 +385,15 @@ export default function SolicitacoesV2ListPage() {
           <div onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: 12, width: 'min(480px, 92vw)', padding: 24 }}>
             <h3 className="text-[18px] font-semibold mb-1" style={{ color: '#1A1D2B' }}>Encerrar solicitação</h3>
             <p className="text-[13px] mb-4" style={{ color: '#6B7280' }}>{encerrarTarget.numero} — {encerrarTarget.paciente.nome}</p>
-            <label className="block text-[12px] font-medium mb-1" style={{ color: '#475569' }}>Motivo</label>
-            <select
-              value={motivo} onChange={(e) => setMotivo(e.target.value as MotivoEncerramento)}
-              className="w-full px-3 py-2 text-[13px] mb-3"
-              style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
-            >
-              {(Object.keys(MOTIVO_ENCERRAMENTO_LABEL) as MotivoEncerramento[]).map((m) => (
-                <option key={m} value={m}>{MOTIVO_ENCERRAMENTO_LABEL[m]}</option>
-              ))}
-            </select>
+            <div className="mb-3">
+              <LookupSelect
+                categoria="motivo_encerramento"
+                label="Motivo"
+                value={motivo}
+                onChange={setMotivo}
+                required
+              />
+            </div>
             <label className="block text-[12px] font-medium mb-1" style={{ color: '#475569' }}>Data</label>
             <input
               type="date" value={dataEnc} onChange={(e) => setDataEnc(e.target.value)}

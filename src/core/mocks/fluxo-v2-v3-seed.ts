@@ -293,16 +293,14 @@ export interface AdicionalMock {
  *  só recebe diárias — sem viagens nem adicionais. */
 export type TipoSolicitacao = 'normal' | 'ajuda_custo';
 
-export type MotivoEncerramento =
-  | 'alta_medica'
-  | 'transferencia'
-  | 'obito'
-  | 'abandono'
-  | 'desistencia';
+/** @deprecated Mantido pra compat com dados antigos. Use o código (string)
+ *  vindo da tabela auxiliar `motivo_encerramento`. */
+export type MotivoEncerramento = string;
 
 export interface EncerramentoMock {
   data: string;
-  motivo: MotivoEncerramento;
+  /** Código vindo da tabela auxiliar `motivo_encerramento` (ex: 'ALTA_MEDICA'). */
+  motivo: string;
   observacao?: string;
 }
 

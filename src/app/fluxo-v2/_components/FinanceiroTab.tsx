@@ -9,6 +9,7 @@ import ConfirmarExclusaoModal from './ConfirmarExclusaoModal';
 import NewPassagemDrawer from './drawers/NewPassagemDrawer';
 import NewAjudaCustoDrawer from './drawers/NewAjudaCustoDrawer';
 import NewAdicionalDrawer from './drawers/NewAdicionalDrawer';
+import GerarDespachoButton from './GerarDespachoButton';
 import { isLocked, tooltipLocked } from '../_utils/lock';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { useToast } from '@/shared/components/toast/Toast';
@@ -106,6 +107,15 @@ export default function FinanceiroTab({ s }: Props) {
           </div>
         </div>
       )}
+
+      {/* Ações financeiras (despacho, etc.) */}
+      <div className="flex items-center justify-end gap-2 mb-3">
+        <GerarDespachoButton
+          solicitacaoId={s.id}
+          numeroSEI={s.numeroSEI ?? null}
+          disabled={locked}
+        />
+      </div>
 
       {/* Linha tipográfica horizontal — 4 stats neutros com divisor vertical */}
       <div

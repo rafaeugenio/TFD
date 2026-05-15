@@ -1,0 +1,196 @@
+@page { size: A4 portrait; margin: 18mm; }
+
+@media print {
+  body { background: white !important; }
+  .no-print { display: none !important; }
+  .print-page { box-shadow: none !important; border: none !important; padding: 0 !important; margin: 0 !important; max-width: 100% !important; }
+}
+
+.print-root {
+  background: #F1F5F9;
+  min-height: 100vh;
+  padding: 32px 16px 64px;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: #1A1D2B;
+}
+
+.print-page {
+  background: white;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 56px 64px;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
+}
+
+.print-page h1 {
+  font-family: 'Georgia', serif;
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  text-align: center;
+  margin: 0 0 4px;
+}
+
+.print-page h2 {
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  font-size: 13px;
+  text-align: center;
+  color: #475569;
+  margin: 0 0 24px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.print-page hr {
+  border: none;
+  border-top: 1px solid #CBD5E1;
+  margin: 20px 0;
+}
+
+.print-row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.print-row .lbl {
+  color: #475569;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding-top: 2px;
+}
+
+.print-row .val {
+  color: #1A1D2B;
+}
+
+.print-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #6B7280;
+  font-weight: 700;
+  margin: 16px 0 8px;
+}
+
+.print-decisao {
+  display: inline-block;
+  padding: 8px 18px;
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 0.12em;
+  border: 2px solid;
+  border-radius: 4px;
+}
+
+.print-obs {
+  background: #F8FAFC;
+  border-left: 3px solid #1A1D2B;
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  color: #1A1D2B;
+}
+
+.print-stamp {
+  font-size: 10px;
+  color: #6B7280;
+  font-style: italic;
+  text-align: center;
+  margin-top: 24px;
+}
+
+.print-toolbar {
+  max-width: 760px;
+  margin: 0 auto 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.print-toolbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.print-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #1A1D2B;
+  color: white;
+  border: none;
+  cursor: pointer;
+  transition: transform 100ms ease, box-shadow 100ms ease;
+}
+
+.print-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+}
+
+.print-btn-secondary {
+  background: white;
+  color: #1A1D2B;
+  border: 1px solid #CBD5E1;
+}
+
+.print-btn-secondary:hover {
+  background: #F8FAFC;
+}
+
+.print-back {
+  color: #475569;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+}
+
+.print-back:hover {
+  color: #1A1D2B;
+}
+
+/* ── Despacho-specific ─────────────────────────── */
+.print-corpo {
+  background: #F8FAFC;
+  border-left: 3px solid #1A1D2B;
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  color: #1A1D2B;
+}
+
+.print-corpo-vazio {
+  color: #94A3B8;
+  font-style: italic;
+  border-left-color: #CBD5E1;
+}
+
+.template-warning {
+  max-width: 760px;
+  margin: 0 auto 12px;
+  padding: 10px 14px;
+  background: #FFFBEB;
+  border: 1px solid #FCD34D;
+  border-radius: 8px;
+  color: #92400E;
+  font-size: 12px;
+  font-weight: 500;
+}

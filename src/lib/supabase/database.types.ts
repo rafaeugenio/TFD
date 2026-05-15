@@ -1303,6 +1303,41 @@ export type Database = {
         Relationships: [];
       };
 
+      // ── Despachos Financeiros (00045) ─────────────────────
+      despachos_financeiros: {
+        Row: {
+          id: string;
+          solicitacao_id: string;
+          gerado_por: string | null;
+          numero_sei: string | null;
+          texto_despacho: string | null;
+          observacoes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          solicitacao_id: string;
+          gerado_por?: string | null;
+          numero_sei?: string | null;
+          texto_despacho?: string | null;
+          observacoes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          solicitacao_id?: string;
+          gerado_por?: string | null;
+          numero_sei?: string | null;
+          texto_despacho?: string | null;
+          observacoes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
       // ── Adicionais (Task #5 — PA1–PA4) ────────────────────
       adicionais: {
         Row: {
