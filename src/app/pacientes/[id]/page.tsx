@@ -2,7 +2,7 @@
 
 import { use, useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   MapPin,
@@ -14,28 +14,17 @@ import {
   Users,
   Phone,
   Mail,
+  Landmark,
+  Key,
 } from 'lucide-react';
 
 import StatusTag from '@/shared/components/status-tag/StatusTag';
 import { DetailPageSkeleton, CardListSkeleton } from '@/shared/components/skeleton';
 import { buscarPaciente, historicoProcessos } from '@/services/pacientes.service';
 import { listarPorPaciente } from '@/services/acompanhantes.service';
+import { buscarPorPaciente as buscarDadosBancariosPorPaciente } from '@/services/dados-bancarios.service';
 import { formatCPF, formatCNS, formatDate } from '@/shared/pipes/formatters';
 import type { StatusSolicitacao } from '@/core/models';
-
-/* -------------------------------------------------- */
-/*  Tabs                                              */
-/* -------------------------------------------------- */
-
-type TabKey = 'endereco' | 'acompanhantes' | 'historico';
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'endereco',      label: 'Endereço' },
-  { key: 'acompanhantes', label: 'Acompanhantes' },
-  { key: 'historico',     label: 'Histórico de Solicitações' },
-];
-
-const DEFAULT_TAB: TabKey = 'endereco';
 
 /* -------------------------------------------------- */
 /*  Helpers                                           */
@@ -66,6 +55,39 @@ const SETOR_LABELS: Record<string, string> = {
   encerrada: 'Encerrada',
 };
 
+const TIPO_CONTA_LABELS: Record<string, string> = {
+  CORRENTE: 'Conta corrente',
+  POUPANCA: 'Poupança',
+};
+
+const PIX_TIPO_LABELS: Record<string, string> = {
+  CPF: 'CPF',
+  CNPJ: 'CNPJ',
+  EMAIL: 'E-mail',
+  TELEFONE: 'Telefone',
+  ALEATORIA: 'Chave aleatória',
+};
+
+/** Formata a chave PIX conforme o tipo (CPF/CNPJ/Telefone vão como mono). */
+function formatarChavePix(tipo: string | null | undefined, chave: string | null | undefined): string {
+  if (!chave) return '';
+  const digits = chave.replace(/\D/g, '');
+  switch (tipo) {
+    case 'CPF':
+      if (digits.length === 11) return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+      return chave;
+    case 'CNPJ':
+      if (digits.length === 14) return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+      return chave;
+    case 'TELEFONE':
+      if (digits.length === 11) return digits.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+      if (digits.length === 10) return digits.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+      return chave;
+    default:
+      return chave;
+  }
+}
+
 /* -------------------------------------------------- */
 /*  Component                                          */
 /* -------------------------------------------------- */
@@ -81,22 +103,11 @@ export default function PacienteDetalhePage({ params }: { params: Promise<{ id: 
 
 function PacienteDetalheInner({ id }: { id: string }) {
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const tabParam = searchParams.get('tab');
-  const activeTab: TabKey = tabParam && TABS.some((t) => t.key === tabParam) ? (tabParam as TabKey) : DEFAULT_TAB;
-
-  const setTab = (next: TabKey) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (next === DEFAULT_TAB) params.delete('tab');
-    else params.set('tab', next);
-    const qs = params.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  };
 
   const [paciente, setPaciente] = useState<Record<string, unknown> | null>(null);
   const [solicitacoes, setSolicitacoes] = useState<Record<string, unknown>[]>([]);
   const [acompanhantes, setAcompanhantes] = useState<Record<string, unknown>[]>([]);
+  const [dadosBancarios, setDadosBancarios] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingSol, setLoadingSol] = useState(true);
 
@@ -108,19 +119,21 @@ function PacienteDetalheInner({ id }: { id: string }) {
       setLoading(false);
 
       setLoadingSol(true);
-      const [solResult, acompResult] = await Promise.all([
+      const [solResult, acompResult, bancRes] = await Promise.all([
         historicoProcessos(id),
         listarPorPaciente(id),
+        buscarDadosBancariosPorPaciente(id),
       ]);
       if (solResult.data) setSolicitacoes(solResult.data as Record<string, unknown>[]);
       if (acompResult.data) setAcompanhantes(acompResult.data as Record<string, unknown>[]);
+      if (bancRes.data) setDadosBancarios(bancRes.data as Record<string, unknown>);
       setLoadingSol(false);
     }
     load();
   }, [id]);
 
   if (loading) {
-    return <DetailPageSkeleton tabs={TABS.length} />;
+    return <DetailPageSkeleton tabs={0} />;
   }
 
   if (!paciente) {
@@ -301,187 +314,231 @@ function PacienteDetalheInner({ id }: { id: string }) {
         ]}
       />
 
-      {/* ============ Tabs ============ */}
-      <div className="flex items-center gap-1 mb-6" style={{ borderBottom: '1px solid #E2E8F0' }}>
-        {TABS.map((t) => {
-          const active = activeTab === t.key;
-          return (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className="relative px-4 py-3 text-[14px] font-medium transition-colors"
-              style={{ color: active ? '#146BFA' : '#64748B', background: 'transparent' }}
-            >
-              {t.label}
-              {active && <span className="absolute left-2 right-2 -bottom-px h-[2px]" style={{ background: '#146BFA' }} />}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ============ Tab content ============ */}
-      <div className="animate-fade-in">
-        {activeTab === 'endereco' && (
-          <Section title="Endereço" icon={<MapPin size={18} />}>
-            {(logradouro || municipio) ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {enderecoLinha && <InfoRow label="Logradouro" value={enderecoLinha} />}
-                {cidadeFull && <InfoRow label="Município / UF" value={cidadeFull} />}
-                {cep && <InfoRow label="CEP" value={cep} mono />}
-              </div>
-            ) : (
-              <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
-                Endereço não cadastrado.
-              </p>
-            )}
-          </Section>
-        )}
-
-        {activeTab === 'acompanhantes' && (
-          <Section
-            title="Acompanhantes"
-            icon={<Users size={18} />}
-            badge={
+      {/* ============ Conteúdo linear (sem abas) ============ */}
+      <div className="space-y-4">
+        {/* Histórico de Solicitações — em destaque no topo */}
+        <Section
+          title="Histórico de Solicitações"
+          icon={<FileText size={18} />}
+          badge={
+            !loadingSol ? (
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}>
-                {acompanhantes.length}
+                {solicitacoes.length} ciclo{solicitacoes.length !== 1 ? 's' : ''}
               </span>
-            }
-          >
-            {acompanhantes.length === 0 ? (
-              <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
-                Nenhum acompanhante cadastrado.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {acompanhantes.map((ac) => (
-                  <div
-                    key={ac.id as string}
-                    className="p-3 rounded-lg"
-                    style={{ backgroundColor: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}
+            ) : undefined
+          }
+        >
+          {loadingSol ? (
+            <CardListSkeleton rows={3} />
+          ) : solicitacoes.length === 0 ? (
+            <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
+              Nenhuma solicitação registrada para este paciente.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {solicitacoes.map((sol, idx) => {
+                const status = sol.status as StatusSolicitacao;
+                const numProcesso = sol.numero_processo as string;
+                const dataCriacao = sol.created_at as string;
+                const setorAtual = sol.setor_atual as string | null;
+                const dataLaudo = sol.data_laudo as string | null;
+                const numeroProtocolo = sol.numero_protocolo as string | null;
+                const ciclo = solicitacoes.length - idx;
+
+                return (
+                  <Link
+                    key={sol.id as string}
+                    href={`/solicitacoes/${sol.id}?from=pacientes`}
+                    className="block rounded-lg p-3 transition-colors duration-150 group"
+                    style={{ border: '1px solid var(--tfd-surface-border)', backgroundColor: 'var(--tfd-surface-card)' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-primary-50)'; e.currentTarget.style.borderColor = 'var(--tfd-primary-200)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-card)'; e.currentTarget.style.borderColor = 'var(--tfd-surface-border)'; }}
                   >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                        {ac.nome_completo as string}
-                      </p>
-                      {(ac.vinculo as string | null) && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#EDE9FE', color: '#6D28D9' }}>
-                          {VINCULO_LABELS[(ac.vinculo as string)] || (ac.vinculo as string).replace(/_/g, ' ')}
-                        </span>
-                      )}
-                      {(ac.necessidade_especial as boolean) && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
-                          Necessidade especial
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
-                      <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-                        CPF: {formatCPF((ac.cpf as string) || '')}
-                      </span>
-                      {(ac.telefone as string | null) && (
-                        <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-                          Tel: {ac.telefone as string}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Section>
-        )}
-
-        {activeTab === 'historico' && (
-          <Section
-            title="Histórico de Solicitações"
-            icon={<FileText size={18} />}
-            badge={
-              !loadingSol ? (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}>
-                  {solicitacoes.length} ciclo{solicitacoes.length !== 1 ? 's' : ''}
-                </span>
-              ) : undefined
-            }
-          >
-            {loadingSol ? (
-              <CardListSkeleton rows={3} />
-            ) : solicitacoes.length === 0 ? (
-              <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
-                Nenhuma solicitação registrada para este paciente.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {solicitacoes.map((sol, idx) => {
-                  const status = sol.status as StatusSolicitacao;
-                  const numProcesso = sol.numero_processo as string;
-                  const dataCriacao = sol.created_at as string;
-                  const setorAtual = sol.setor_atual as string | null;
-                  const dataLaudo = sol.data_laudo as string | null;
-                  const numeroProtocolo = sol.numero_protocolo as string | null;
-                  const ciclo = solicitacoes.length - idx;
-
-                  return (
-                    <Link
-                      key={sol.id as string}
-                      href={`/solicitacoes/${sol.id}?from=pacientes`}
-                      className="block rounded-lg p-3 transition-colors duration-150 group"
-                      style={{ border: '1px solid var(--tfd-surface-border)', backgroundColor: 'var(--tfd-surface-card)' }}
-                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-primary-50)'; e.currentTarget.style.borderColor = 'var(--tfd-primary-200)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-card)'; e.currentTarget.style.borderColor = 'var(--tfd-surface-border)'; }}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--tfd-surface-100)', color: 'var(--tfd-text-secondary)' }}>
-                              Ciclo {ciclo}
-                            </span>
-                            <span className="text-sm font-semibold" style={{ color: 'var(--tfd-primary-500)' }}>
-                              {numProcesso}
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5">
-                            <span className="text-xs flex items-center gap-1" style={{ color: 'var(--tfd-text-muted)' }}>
-                              <Clock size={11} />
-                              Criada em {formatDate(dataCriacao)}
-                            </span>
-                            {setorAtual && (
-                              <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>
-                                Setor: <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{SETOR_LABELS[setorAtual] ?? setorAtual}</span>
-                              </span>
-                            )}
-                            {dataLaudo && (
-                              <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-                                Laudo: {formatDate(dataLaudo)}
-                              </span>
-                            )}
-                            {numeroProtocolo && (
-                              <span className="text-xs font-mono" style={{ color: 'var(--tfd-text-muted)' }}>
-                                SEI: {numeroProtocolo}
-                              </span>
-                            )}
-                          </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--tfd-surface-100)', color: 'var(--tfd-text-secondary)' }}>
+                            Ciclo {ciclo}
+                          </span>
+                          <span className="text-sm font-semibold" style={{ color: 'var(--tfd-primary-500)' }}>
+                            {numProcesso}
+                          </span>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <StatusTag status={status} />
-                          <ExternalLink size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--tfd-primary-500)' }} />
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5">
+                          <span className="text-xs flex items-center gap-1" style={{ color: 'var(--tfd-text-muted)' }}>
+                            <Clock size={11} />
+                            Criada em {formatDate(dataCriacao)}
+                          </span>
+                          {setorAtual && (
+                            <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>
+                              Setor: <span className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>{SETOR_LABELS[setorAtual] ?? setorAtual}</span>
+                            </span>
+                          )}
+                          {dataLaudo && (
+                            <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+                              Laudo: {formatDate(dataLaudo)}
+                            </span>
+                          )}
+                          {numeroProtocolo && (
+                            <span className="text-xs font-mono" style={{ color: 'var(--tfd-text-muted)' }}>
+                              SEI: {numeroProtocolo}
+                            </span>
+                          )}
                         </div>
                       </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </Section>
-        )}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <StatusTag status={status} />
+                        <ExternalLink size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--tfd-primary-500)' }} />
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </Section>
+
+        {/* Endereço */}
+        <Section title="Endereço" icon={<MapPin size={18} />}>
+          {(logradouro || municipio) ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {enderecoLinha && <InfoRow label="Logradouro" value={enderecoLinha} />}
+              {cidadeFull && <InfoRow label="Município / UF" value={cidadeFull} />}
+              {cep && <InfoRow label="CEP" value={cep} mono />}
+            </div>
+          ) : (
+            <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
+              Endereço não cadastrado.
+            </p>
+          )}
+        </Section>
+
+        {/* Dados Bancários (com PIX) */}
+        <Section title="Dados Bancários" icon={<Landmark size={18} />}>
+          {dadosBancarios ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {(dadosBancarios.banco as string) && (
+                <InfoRow label="Banco" value={dadosBancarios.banco as string} />
+              )}
+              {(dadosBancarios.agencia as string) && (
+                <InfoRow label="Agência" value={dadosBancarios.agencia as string} mono />
+              )}
+              {(dadosBancarios.conta as string) && (
+                <InfoRow
+                  label="Conta"
+                  value={
+                    <span>
+                      <span className="font-mono">{dadosBancarios.conta as string}</span>
+                      {(dadosBancarios.tipo_conta as string) && (
+                        <span
+                          className="ml-2 text-[11px] px-1.5 py-0.5 rounded"
+                          style={{ backgroundColor: '#EFF6FF', color: '#1E40AF' }}
+                        >
+                          {TIPO_CONTA_LABELS[dadosBancarios.tipo_conta as string] ?? (dadosBancarios.tipo_conta as string)}
+                        </span>
+                      )}
+                    </span>
+                  }
+                />
+              )}
+              {(dadosBancarios.nome_titular as string) && (
+                <InfoRow label="Titular" value={dadosBancarios.nome_titular as string} />
+              )}
+              {(dadosBancarios.cpf_titular as string) && (
+                <InfoRow label="CPF do titular" value={formatCPF(dadosBancarios.cpf_titular as string)} mono />
+              )}
+              {(dadosBancarios.pix_tipo as string) && (
+                <InfoRow
+                  label={
+                    <span className="inline-flex items-center gap-1.5">
+                      <Key size={12} style={{ color: '#0EA5E9' }} />
+                      <span>PIX</span>
+                    </span>
+                  }
+                  value={
+                    <span>
+                      <span className="text-[11px] px-1.5 py-0.5 rounded mr-2" style={{ backgroundColor: '#ECFEFF', color: '#0E7490' }}>
+                        {PIX_TIPO_LABELS[dadosBancarios.pix_tipo as string] ?? (dadosBancarios.pix_tipo as string)}
+                      </span>
+                      <span className={['CPF', 'CNPJ', 'TELEFONE', 'ALEATORIA'].includes(dadosBancarios.pix_tipo as string) ? 'font-mono' : ''}>
+                        {formatarChavePix(dadosBancarios.pix_tipo as string, dadosBancarios.pix_chave as string)}
+                      </span>
+                    </span>
+                  }
+                />
+              )}
+            </div>
+          ) : (
+            <div className="py-4 text-center">
+              <p className="text-sm mb-3" style={{ color: 'var(--tfd-text-muted)' }}>
+                Nenhum dado bancário cadastrado.
+              </p>
+              <button
+                type="button"
+                onClick={() => router.push(`/pacientes?editar=${id}`)}
+                className="tfd-btn tfd-btn-secondary tfd-btn--sm"
+              >
+                <Pencil size={12} /> Cadastrar conta
+              </button>
+            </div>
+          )}
+        </Section>
+
+        {/* Acompanhantes */}
+        <Section
+          title="Acompanhantes"
+          icon={<Users size={18} />}
+          badge={
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}>
+              {acompanhantes.length}
+            </span>
+          }
+        >
+          {acompanhantes.length === 0 ? (
+            <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
+              Nenhum acompanhante cadastrado.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {acompanhantes.map((ac) => (
+                <div
+                  key={ac.id as string}
+                  className="p-3 rounded-lg"
+                  style={{ backgroundColor: 'var(--tfd-surface-50)', border: '1px solid var(--tfd-surface-border)' }}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                      {ac.nome_completo as string}
+                    </p>
+                    {(ac.vinculo as string | null) && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#EDE9FE', color: '#6D28D9' }}>
+                        {VINCULO_LABELS[(ac.vinculo as string)] || (ac.vinculo as string).replace(/_/g, ' ')}
+                      </span>
+                    )}
+                    {(ac.necessidade_especial as boolean) && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+                        Necessidade especial
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
+                    <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+                      CPF: {formatCPF((ac.cpf as string) || '')}
+                    </span>
+                    {(ac.telefone as string | null) && (
+                      <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+                        Tel: {ac.telefone as string}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
       </div>
 
       <style jsx>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(2px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in { animation: fadeIn 180ms ease-out; }
         .header-groups { display: flex; flex-direction: column; gap: 6px; }
         .header-groups-divider { display: none; }
         @media (min-width: 1100px) {
@@ -524,7 +581,7 @@ function Section({
   );
 }
 
-function InfoRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
+function InfoRow({ label, value, mono }: { label: React.ReactNode; value: React.ReactNode; mono?: boolean }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-baseline gap-0.5 sm:gap-3">
       <span className="text-sm font-medium shrink-0 w-40" style={{ color: 'var(--tfd-text-secondary)' }}>{label}</span>
