@@ -40,7 +40,7 @@ function temAcompanhamento(s: SolicitacaoMock): boolean {
   return false;
 }
 
-function proximaViagem(s: SolicitacaoMock): { data: string; trecho: string; status: ViagemMock['status'] } | null {
+function proximaViagem(s: SolicitacaoMock): { viagem: ViagemMock; trecho: string } | null {
   const validas = s.viagens.filter((v) => !['cancelada', 'reembolso'].includes(v.status));
   if (validas.length === 0) return null;
   const hoje = new Date().toISOString().slice(0, 10);
@@ -49,21 +49,26 @@ function proximaViagem(s: SolicitacaoMock): { data: string; trecho: string; stat
     ? futuras[0]
     : [...validas].sort((a, b) => b.data.localeCompare(a.data))[0];
   return {
-    data: escolhida.data,
+    viagem: escolhida,
     trecho: `${escolhida.origem.split(' - ')[0]} → ${escolhida.destino.split(' - ')[0]}`,
-    status: escolhida.status,
   };
 }
 
-function totalPrevisto(s: SolicitacaoMock): number {
-  const p = s.viagens
-    .filter((v) => v.status !== 'reembolso' && v.status !== 'cancelada')
-    .reduce((a, v) => a + v.valor, 0);
+/** Valor efetivamente desembolsado, descontando reembolsos parciais.
+ *  (Viagem cancelada/reembolso integral entra com 0; reembolso parcial
+ *  desconta o valorReembolso do valor cheio.) */
+function totalEfetivo(s: SolicitacaoMock): number {
+  type Viagem = ViagemMock & { valorReembolso?: number };
+  const p = s.viagens.reduce((a, v) => {
+    if (['cancelada', 'reembolso'].includes(v.status)) return a;
+    const reembolso = (v as Viagem).valorReembolso ?? 0;
+    return a + Math.max(0, v.valor - reembolso);
+  }, 0);
   const ac = s.ajudasCusto.reduce(
     (a, x) => a + calcularValorAjuda(x.dataInicio, x.dataFim, x.pernoiteRetorno).valor,
     0,
   );
-  const ad = s.adicionais.reduce((a, x) => a + x.valor, 0);
+  const ad = s.adicionais.filter((x) => x.status === 'aprovado' || x.status === 'pago').reduce((a, x) => a + x.valor, 0);
   return p + ac + ad;
 }
 
@@ -137,12 +142,15 @@ export default function AcompanhamentoListPage() {
     if (!sort.field || !sort.dir) return fila;
     const getValue = (s: SolicitacaoMock): unknown => {
       switch (sort.field) {
-        case 'numero':    return s.numero;
-        case 'paciente':  return s.paciente.nome;
-        case 'municipio': return s.paciente.municipio;
-        case 'proxima':   return proximaViagem(s)?.data ?? '9999-99-99';
-        case 'total':     return totalPrevisto(s);
-        default:          return '';
+        case 'numero':   return s.numero;
+        case 'paciente': return s.paciente.nome;
+        case 'destino': {
+          const px = proximaViagem(s);
+          return px ? px.viagem.destino : '';
+        }
+        case 'proxima':  return proximaViagem(s)?.viagem.data ?? '9999-99-99';
+        case 'total':    return totalEfetivo(s);
+        default:         return '';
       }
     };
     const sorted = [...fila].sort((a, b) => compareValues(getValue(a), getValue(b)));
@@ -229,26 +237,27 @@ export default function AcompanhamentoListPage() {
         <table className="w-full text-[13px]">
           <thead>
             <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--tfd-surface-border)' }}>
-              <SortTh label="Nº" field="numero" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Número" field="numero" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Paciente" field="paciente" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
-              <SortTh label="Município" field="municipio" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
-              <SortTh label="Próxima viagem" field="proxima" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Destino" field="destino" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Próximo embarque" field="proxima" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <th className="px-4 py-3 font-semibold text-left" style={{ color: '#64748B', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Status</th>
-              <SortTh label="Total" field="total" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} align="right" />
+              <th className="px-4 py-3 font-semibold text-left" style={{ color: '#64748B', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Bilhete / Cia</th>
+              <SortTh label="Total efetivo" field="total" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} align="right" />
               <th className="px-4 py-3 font-semibold text-right" style={{ color: '#64748B', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Ações</th>
             </tr>
           </thead>
           <tbody>
             {isLoading && Array.from({ length: 6 }).map((_, i) => (
               <tr key={`sk-${i}`} style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
-                {Array.from({ length: 7 }).map((__, j) => (
+                {Array.from({ length: 8 }).map((__, j) => (
                   <td key={j} className="px-4 py-3.5"><Skeleton className="h-4 w-24" /></td>
                 ))}
               </tr>
             ))}
             {!isLoading && fila.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-16 text-center" style={{ color: '#9CA3AF' }}>
+                <td colSpan={8} className="px-4 py-16 text-center" style={{ color: '#9CA3AF' }}>
                   <p className="text-sm">
                     {aba === 'ativas' ? 'Nada para acompanhar no momento.' : 'Nenhuma solicitação encerrada ainda.'}
                   </p>
@@ -257,7 +266,9 @@ export default function AcompanhamentoListPage() {
             )}
             {!isLoading && paginadas.map((s) => {
               const proxima = proximaViagem(s);
-              const total = totalPrevisto(s);
+              const total = totalEfetivo(s);
+              const v = proxima?.viagem;
+              const destinoText = v ? v.destino : '—';
               return (
                 <tr
                   key={s.id}
@@ -281,36 +292,53 @@ export default function AcompanhamentoListPage() {
                     <div className="text-[12px] font-mono mt-0.5" style={{ color: '#94A3B8' }}>{s.paciente.cpf}</div>
                   </td>
                   <td className="px-4 py-3.5">
-                    <div className="leading-tight">
-                      <div style={{ color: '#1E293B', fontSize: 13, fontWeight: 500 }}>{s.paciente.municipio?.split(' - ')[0]}</div>
-                      <div style={{ color: '#94A3B8', fontSize: 12 }}>{s.paciente.regional}</div>
-                    </div>
+                    {v ? (
+                      <div className="leading-tight">
+                        <div style={{ color: '#1E293B', fontSize: 13, fontWeight: 500 }}>{destinoText}</div>
+                        <div style={{ color: '#94A3B8', fontSize: 11 }} title={proxima?.trecho}>
+                          {v.tipo === 'ida' ? 'Ida' : v.tipo === 'volta' ? 'Volta' : v.tipo === 'transfer' ? 'Transfer' : '—'}
+                          {v.modal ? ` · ${v.modal.charAt(0).toUpperCase() + v.modal.slice(1)}` : ''}
+                        </div>
+                      </div>
+                    ) : (
+                      <span style={{ color: '#CBD5E1' }}>—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3.5" style={{ color: '#1E293B', fontSize: 13, fontWeight: 500 }}>
-                    {proxima ? (
-                      <span title={proxima.trecho}>{fmtDataBR(proxima.data)}</span>
+                    {v ? (
+                      <span title={proxima?.trecho}>{fmtDataBR(v.data)}</span>
                     ) : (
                       <span style={{ color: '#CBD5E1' }}>—</span>
                     )}
                   </td>
                   <td className="px-4 py-3.5">
-                    {proxima ? (
+                    {v ? (
                       <span
                         className="inline-flex items-center px-2 py-[3px] text-[11px] font-semibold uppercase"
                         style={{
                           background: '#F1F5F9',
-                          color: STATUS_LABEL[proxima.status].color,
+                          color: STATUS_LABEL[v.status].color,
                           border: '1px solid #E2E8F0',
                           borderRadius: 6,
                           letterSpacing: '0.05em',
                         }}
                       >
-                        {STATUS_LABEL[proxima.status].label}
+                        {STATUS_LABEL[v.status].label}
                       </span>
                     ) : s.status === 'encerrada' ? (
                       <span className="inline-flex items-center gap-1 text-[12px]" style={{ color: '#6B7280' }}>
                         <Archive size={12} /> Encerrada
                       </span>
+                    ) : (
+                      <span style={{ color: '#CBD5E1', fontSize: 13 }}>—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    {v && (v.companhia || v.bilheteUrl) ? (
+                      <div className="leading-tight">
+                        {v.companhia && <div style={{ color: '#1E293B', fontSize: 12, fontWeight: 500 }}>{v.companhia}</div>}
+                        {v.bilheteUrl && <div className="font-mono" style={{ color: '#94A3B8', fontSize: 11 }}>{v.bilheteUrl}</div>}
+                      </div>
                     ) : (
                       <span style={{ color: '#CBD5E1', fontSize: 13 }}>—</span>
                     )}
@@ -330,13 +358,13 @@ export default function AcompanhamentoListPage() {
                         {
                           key: 'editar-viagem',
                           icon: Plane,
-                          label: proxima ? 'Editar próxima viagem' : 'Sem viagem ativa',
-                          disabled: !proxima,
+                          label: v ? 'Editar próxima viagem' : 'Sem viagem ativa',
+                          disabled: !v,
                           onClick: () => {
-                            const v = s.viagens
+                            const next = s.viagens
                               .filter((vv) => !['cancelada', 'reembolso'].includes(vv.status))
                               .sort((a, b) => a.data.localeCompare(b.data))[0];
-                            if (v) setEditarViagem({ solicitacao: s, viagem: v });
+                            if (next) setEditarViagem({ solicitacao: s, viagem: next });
                           },
                         },
                       ]}

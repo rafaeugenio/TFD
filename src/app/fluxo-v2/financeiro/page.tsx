@@ -95,7 +95,7 @@ export default function FinanceiroListPage() {
   const [filtro, setFiltro] = useState<FinanceiroFiltro>('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'proxima', dir: 'asc' });
+  const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'tempo', dir: 'desc' });
 
   const stats = useMemo(() => ({
     aguardandoEmissao: contarViagensAguardandoEmissao(solicitacoes),
@@ -278,11 +278,10 @@ export default function FinanceiroListPage() {
             <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--tfd-surface-border)' }}>
               <SortTh label="Número" field="numero" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Paciente" field="paciente" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
-              <SortTh label="Município" field="municipio" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
-              <SortTh label="Próx. viagem" field="proxima" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Origem" field="municipio" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <Th>O que falta fazer</Th>
               <SortTh label="Total previsto" field="total" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} align="right" />
-              <SortTh label="Carimbo" field="carimbo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
-              <SortTh label="Tempo" field="tempo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Aguardando há" field="tempo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <Th align="right">Ações</Th>
             </tr>
           </thead>
@@ -290,9 +289,9 @@ export default function FinanceiroListPage() {
             {isLoading && (
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={`sk-${i}`} style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
-                  {Array.from({ length: 8 }).map((__, c) => (
+                  {Array.from({ length: 7 }).map((__, c) => (
                     <td key={c} className="px-4 py-3.5">
-                      <Skeleton className={`h-4 ${c === 0 ? 'w-24' : c === 1 ? 'w-44' : c === 7 ? 'w-16 ml-auto' : 'w-28'}`} />
+                      <Skeleton className={`h-4 ${c === 0 ? 'w-24' : c === 1 ? 'w-44' : c === 6 ? 'w-16 ml-auto' : 'w-28'}`} />
                     </td>
                   ))}
                 </tr>
@@ -300,8 +299,8 @@ export default function FinanceiroListPage() {
             )}
             {!isLoading && fila.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
-                  Nenhuma solicitação no financeiro.
+                <td colSpan={7} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
+                  Nenhuma solicitação aguardando ação no Financeiro.
                 </td>
               </tr>
             )}
@@ -316,7 +315,6 @@ export default function FinanceiroListPage() {
               const totalAdicionais = s.adicionais.reduce((acc, a) => acc + a.valor, 0);
               const total = totalPassagens + totalAjuda + totalAdicionais;
 
-              const proxima = proximaViagem(s);
               const tram = s.ultimaTramitacao;
               const destaque =
                 tram &&
@@ -369,38 +367,11 @@ export default function FinanceiroListPage() {
                       <div style={{ color: '#94A3B8', fontSize: 12 }}>{s.paciente.regional}</div>
                     </div>
                   </td>
-                  <td className="px-4 py-3.5" style={{ color: '#1E293B', fontSize: 13, fontWeight: 500 }}>
-                    {proxima ? (
-                      <span title={proxima.trecho}>{fmtDataBR(proxima.data)}</span>
-                    ) : (
-                      <span style={{ color: '#CBD5E1' }}>—</span>
-                    )}
+                  <td className="px-4 py-3.5">
+                    <PendenciasChips s={s} />
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono" style={{ color: '#0F172A', fontWeight: 600, fontSize: 14 }}>
                     {fmtBRL(total)}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    {s.carimboRegulacao ? (
-                      <span
-                        className="inline-flex items-center px-2 py-[3px] text-[11px] font-semibold uppercase"
-                        style={{
-                          background: '#F1F5F9',
-                          color: '#475569',
-                          border: '1px solid #E2E8F0',
-                          borderRadius: 6,
-                          letterSpacing: '0.05em',
-                        }}
-                        title={
-                          s.carimboRegulacao === 'OUTROS' && s.carimboOutrosInfo
-                            ? `Outros — ${s.carimboOutrosInfo.unidadeOrgao} (${s.carimboOutrosInfo.formaContato})`
-                            : undefined
-                        }
-                      >
-                        {s.carimboRegulacao === 'APROVADO_DIRETO' ? 'APR' : s.carimboRegulacao}
-                      </span>
-                    ) : (
-                      <span style={{ color: '#CBD5E1', fontSize: 13 }}>—</span>
-                    )}
                   </td>
                   <td className="px-4 py-3.5" style={{ color: '#64748B', fontSize: 13 }}>
                     {tempoNoSetor(s.dataCriacao)}d
@@ -507,5 +478,57 @@ function Th({ children, align = 'left' }: { children: React.ReactNode; align?: '
     >
       {children}
     </th>
+  );
+}
+
+/** Chips de pendências da solicitação dentro do Financeiro. Cada chip
+ *  representa uma ação que o operador precisa tomar. */
+function PendenciasChips({ s }: { s: SolicitacaoMock }) {
+  const viagensAtivas = s.viagens.filter((v) => !['cancelada', 'reembolso'].includes(v.status));
+  const tipoAjudaCusto = (s as unknown as { tipoSolicitacao?: string }).tipoSolicitacao === 'AJUDA_CUSTO';
+  const semViagem = viagensAtivas.length === 0;
+  const ajudasPendentes = s.ajudasCusto.filter((a) => a.status === 'em_analise').length;
+  const adicionaisPendentes = s.adicionais.filter((a) => a.status === 'pendente_aprovacao').length;
+
+  const chips: { label: string; tone: 'blue' | 'amber' | 'violet' }[] = [];
+  if (!tipoAjudaCusto && semViagem) {
+    chips.push({ label: 'Emitir passagem', tone: 'blue' });
+  }
+  if (ajudasPendentes > 0) {
+    chips.push({
+      label: ajudasPendentes === 1 ? 'Aprovar ajuda' : `Aprovar ${ajudasPendentes} ajudas`,
+      tone: 'amber',
+    });
+  }
+  if (adicionaisPendentes > 0) {
+    chips.push({
+      label: adicionaisPendentes === 1 ? 'Decidir adicional' : `Decidir ${adicionaisPendentes} adicionais`,
+      tone: 'violet',
+    });
+  }
+  if (chips.length === 0) {
+    return <span style={{ color: '#CBD5E1', fontSize: 12 }}>—</span>;
+  }
+
+  const tones: Record<'blue' | 'amber' | 'violet', { bg: string; fg: string; bd: string }> = {
+    blue:   { bg: '#EFF6FF', fg: '#1D4ED8', bd: '#BFDBFE' },
+    amber:  { bg: '#FFFBEB', fg: '#92400E', bd: '#FDE68A' },
+    violet: { bg: '#F5F3FF', fg: '#5B21B6', bd: '#DDD6FE' },
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {chips.map((c, i) => {
+        const t = tones[c.tone];
+        return (
+          <span
+            key={i}
+            className="inline-flex items-center px-2 py-[3px] text-[11px] font-semibold"
+            style={{ background: t.bg, color: t.fg, border: `1px solid ${t.bd}`, borderRadius: 999 }}
+          >
+            {c.label}
+          </span>
+        );
+      })}
+    </div>
   );
 }
