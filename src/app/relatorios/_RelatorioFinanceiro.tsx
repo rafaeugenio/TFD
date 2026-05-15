@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2, Printer, Pencil, Check, X } from 'lucide-react';
+import { Loader2, Pencil, Check, X, Calendar, Target, TrendingUp } from 'lucide-react';
 import {
   obterRelatorioFinanceiro,
   salvarMetaAnual,
@@ -10,35 +10,17 @@ import {
   type QuadriDados,
 } from '@/services/relatorio-financeiro.service';
 import { useToast } from '@/shared/components/toast/Toast';
+import { ReportToolbar, FilterField, PillButton, PrintButton, ReportHero, ReportPrintStyles } from './_shared/ReportShell';
+import { fmtBRL, fmtInt, anosDisponiveis } from './_shared/format';
 
 const MESES = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'] as const;
-const QUADRIS_LABEL = ['1º Q', '2º Q', '3º Q'] as const;
+const QUADRIS_LABEL = ['1º Quadrimestre', '2º Quadrimestre', '3º Quadrimestre'] as const;
+const QUADRIS_SHORT = ['1º Q', '2º Q', '3º Q'] as const;
 
-function fmtBRL(v: number | null | undefined): string {
-  const n = typeof v === 'number' ? v : 0;
-  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-function fmtInt(v: number | null | undefined): string {
-  const n = typeof v === 'number' ? v : 0;
-  return n.toLocaleString('pt-BR');
-}
-
-function anosDisponiveis(): number[] {
-  const atual = new Date().getFullYear();
-  return [atual + 1, atual, atual - 1, atual - 2, atual - 3];
-}
-
-function mesesDoQuadri(quadri: 1 | 2 | 3): number[] {
-  if (quadri === 1) return [1, 2, 3, 4];
-  if (quadri === 2) return [5, 6, 7, 8];
-  return [9, 10, 11, 12];
-}
-
-export default function RelatorioFinanceiroPanel() {
+export default function RelatorioFinanceiro() {
   const toast = useToast();
   const [ano, setAno] = useState<number>(new Date().getFullYear());
-  const [quadriFiltro, setQuadriFiltro] = useState<0 | 1 | 2 | 3>(0); // 0 = todos
+  const [quadriFiltro, setQuadriFiltro] = useState<0 | 1 | 2 | 3>(0);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<RelatorioFinanceiro | null>(null);
   const [editandoMeta, setEditandoMeta] = useState(false);
@@ -93,7 +75,7 @@ export default function RelatorioFinanceiroPanel() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
+      <div className="tfd-card flex items-center justify-center py-20">
         <Loader2 size={28} className="animate-spin" style={{ color: 'var(--tfd-primary-500)' }} />
       </div>
     );
@@ -101,142 +83,133 @@ export default function RelatorioFinanceiroPanel() {
 
   if (!data) {
     return (
-      <div className="text-center py-12 text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
+      <div className="tfd-card text-center py-12 text-sm" style={{ color: 'var(--tfd-text-muted)' }}>
         Nenhum dado disponível.
       </div>
     );
   }
 
+  const percentualMeta = data.avaliacao_meta.percentual;
+
   return (
-    <div className="rel-fin">
-      {/* ========== Filtros + Imprimir (escondidos no print) ========== */}
-      <div className="rel-fin__toolbar flex items-center justify-between gap-3 mb-6 flex-wrap no-print">
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>
-              Ano
-            </label>
-            <select
-              className="tfd-input"
-              style={{ width: 'auto', minWidth: 100 }}
-              value={ano}
-              onChange={(e) => setAno(parseInt(e.target.value, 10))}
-            >
-              {anosDisponiveis().map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
-          </div>
+    <div className="rel-fin space-y-4">
+      <ReportPrintStyles />
 
-          <div className="flex items-center gap-1">
-            {([0, 1, 2, 3] as const).map((q) => (
-              <button
-                key={q}
-                type="button"
-                onClick={() => setQuadriFiltro(q)}
-                className="px-3 py-1.5 text-xs font-semibold rounded-md transition-colors"
-                style={{
-                  backgroundColor: quadriFiltro === q ? 'var(--tfd-primary-500)' : 'var(--tfd-surface-100)',
-                  color: quadriFiltro === q ? 'white' : 'var(--tfd-text-secondary)',
-                }}
+      {/* ========== Toolbar (padrão unificado) ========== */}
+      <ReportToolbar
+        filters={
+          <>
+            <FilterField label="Ano" icon={<Calendar size={11} />}>
+              <select
+                className="tfd-input"
+                style={{ minWidth: 110 }}
+                value={ano}
+                onChange={(e) => setAno(parseInt(e.target.value, 10))}
               >
-                {q === 0 ? 'Todos' : QUADRIS_LABEL[q - 1]}
-              </button>
-            ))}
-          </div>
-        </div>
+                {anosDisponiveis().map((a) => (
+                  <option key={a} value={a}>{a}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label="Quadrimestre">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {([0, 1, 2, 3] as const).map((q) => (
+                  <PillButton key={q} active={quadriFiltro === q} onClick={() => setQuadriFiltro(q)}>
+                    {q === 0 ? 'Todos' : QUADRIS_SHORT[q - 1]}
+                  </PillButton>
+                ))}
+              </div>
+            </FilterField>
+          </>
+        }
+        actions={<PrintButton />}
+      />
 
-        <button className="tfd-btn tfd-btn-primary" onClick={() => window.print()}>
-          <Printer size={14} /> Imprimir
-        </button>
-      </div>
-
-      {/* ========== Cabeçalho do relatório ========== */}
-      <div className="rel-fin__header mb-4">
-        <h2 className="text-base font-bold uppercase" style={{ color: 'var(--tfd-text-primary)' }}>
-          Secretaria de Estado da Saúde
-        </h2>
-        <h3 className="text-sm font-bold uppercase" style={{ color: 'var(--tfd-text-primary)' }}>
-          Tratamento Fora do Domicílio — TFD
-        </h3>
-        <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
-          Acompanhamento Quadrimestral — {data.ano}
-        </p>
-
-        <div className="flex items-center gap-6 mt-3 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold" style={{ color: 'var(--tfd-text-muted)' }}>
-              META:
-            </span>
-            {editandoMeta ? (
-              <>
-                <input
-                  type="text"
-                  className="tfd-input"
-                  style={{ width: 100, padding: '2px 6px' }}
-                  value={novaMeta}
-                  onChange={(e) => setNovaMeta(e.target.value)}
-                  autoFocus
-                />
-                <button onClick={handleSalvarMeta} className="p-1 rounded" title="Salvar" style={{ color: 'var(--tfd-status-success)' }}>
-                  <Check size={14} />
-                </button>
-                <button
-                  onClick={() => setEditandoMeta(false)}
-                  className="p-1 rounded"
-                  title="Cancelar"
-                  style={{ color: 'var(--tfd-status-danger)' }}
-                >
-                  <X size={14} />
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="font-bold" style={{ color: 'var(--tfd-text-primary)' }}>
-                  {fmtInt(data.meta_anual)} procedimentos
-                </span>
-                <button
-                  onClick={() => {
-                    setNovaMeta(String(data.meta_anual));
-                    setEditandoMeta(true);
-                  }}
-                  className="p-1 rounded no-print"
-                  title="Editar meta"
-                  style={{ color: 'var(--tfd-primary-500)' }}
-                >
-                  <Pencil size={12} />
-                </button>
-              </>
-            )}
+      {/* ========== Hero (padrão unificado, com SES + período) ========== */}
+      <ReportHero
+        titulo="Relatório Financeiro Quadrimestral"
+        periodoLabel={`Ano de ${data.ano}${quadriFiltro > 0 ? ' · ' + QUADRIS_LABEL[quadriFiltro - 1] : ''}`}
+        rightSlot={
+          <div className="flex items-stretch gap-3 flex-wrap">
+            <MetaBox
+              label="Meta Anual"
+              icon={<Target size={14} />}
+              value={
+                editandoMeta ? (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="text"
+                      className="tfd-input"
+                      style={{ width: 110, padding: '4px 8px' }}
+                      value={novaMeta}
+                      onChange={(e) => setNovaMeta(e.target.value)}
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleSalvarMeta}
+                      className="p-1 rounded"
+                      title="Salvar"
+                      style={{ color: '#86EFAC' }}
+                    >
+                      <Check size={14} />
+                    </button>
+                    <button
+                      onClick={() => setEditandoMeta(false)}
+                      className="p-1 rounded"
+                      title="Cancelar"
+                      style={{ color: '#FCA5A5' }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <span className="flex items-center gap-1.5">
+                    <span>{fmtInt(data.meta_anual)} proc.</span>
+                    <button
+                      onClick={() => {
+                        setNovaMeta(String(data.meta_anual));
+                        setEditandoMeta(true);
+                      }}
+                      className="p-1 rounded no-print"
+                      title="Editar meta"
+                      style={{ color: 'rgba(255,255,255,0.85)' }}
+                    >
+                      <Pencil size={12} />
+                    </button>
+                  </span>
+                )
+              }
+            />
+            <MetaBox
+              label="Executada"
+              icon={<TrendingUp size={14} />}
+              value={`${fmtInt(data.alcancada)} proc.`}
+            />
+            <MetaBox
+              label="% da Meta"
+              icon={<TrendingUp size={14} />}
+              accent={percentualMeta >= 80 ? 'success' : percentualMeta >= 50 ? 'warning' : 'danger'}
+              value={`${percentualMeta}%`}
+            />
           </div>
-          <div className="flex items-center gap-2">
-            <span className="font-semibold" style={{ color: 'var(--tfd-text-muted)' }}>
-              ALCANÇADA:
-            </span>
-            <span className="font-bold" style={{ color: 'var(--tfd-text-primary)' }}>
-              {fmtInt(data.alcancada)}
-            </span>
-          </div>
-        </div>
-      </div>
+        }
+      />
 
       {/* ========== Bloco 1: Acompanhamento Quantitativo ========== */}
       <Bloco titulo="Acompanhamento Quantitativo">
-        <table className="rel-fin__table">
+        <ReportTable>
           <thead>
             <tr>
               <th>{data.ano}</th>
-              <th>AJ. CUSTO LANÇADA</th>
-              <th>AJ. CUSTO APROVADA</th>
-              <th>QTD. DIÁRIAS</th>
-              <th>TOTAL/QUADR.</th>
-              <th>DESLOC. LANÇADO</th>
-              <th>DESLOC. APROVADO</th>
-              <th>QTD. DESLOC./QUADR.</th>
-              <th>QTD. MENSAL DE PROC.</th>
-              <th>QTD. PROC./QUADRIMESTRE</th>
+              <th>AJ. Custo Lançada</th>
+              <th>AJ. Custo Aprovada</th>
+              <th>Qtd. Diárias</th>
+              <th>Total/Quadr.</th>
+              <th>Desloc. Lançado</th>
+              <th>Desloc. Aprovado</th>
+              <th>Qtd. Desloc./Quadr.</th>
+              <th>Qtd. Mensal Proc.</th>
+              <th>Qtd. Proc./Quadr.</th>
             </tr>
           </thead>
           <tbody>
@@ -271,23 +244,23 @@ export default function RelatorioFinanceiroPanel() {
               <td></td>
             </tr>
           </tbody>
-        </table>
+        </ReportTable>
       </Bloco>
 
       {/* ========== Bloco 2: Acompanhamento Financeiro ========== */}
       <Bloco titulo="Acompanhamento Financeiro de Procedimentos">
-        <table className="rel-fin__table">
+        <ReportTable>
           <thead>
             <tr>
               <th>{data.ano}</th>
-              <th>AJ. CUSTO LANÇADA</th>
-              <th>AJ. CUSTO APROVADA</th>
-              <th>VALOR AC/QUADR.</th>
-              <th>DESLOC. LANÇADO</th>
-              <th>DESLOC. APROVADO</th>
-              <th>VALOR DESLOC./QUADR.</th>
-              <th>VALOR MENSAL</th>
-              <th>VALOR/QUADR.</th>
+              <th>AJ. Custo Lançada</th>
+              <th>AJ. Custo Aprovada</th>
+              <th>Valor AC/Quadr.</th>
+              <th>Desloc. Lançado</th>
+              <th>Desloc. Aprovado</th>
+              <th>Valor Desloc./Quadr.</th>
+              <th>Valor Mensal</th>
+              <th>Valor/Quadr.</th>
             </tr>
           </thead>
           <tbody>
@@ -322,18 +295,18 @@ export default function RelatorioFinanceiroPanel() {
               <td></td>
             </tr>
           </tbody>
-        </table>
+        </ReportTable>
       </Bloco>
 
-      {/* ========== Bloco 3: Processos Formalizados ========== */}
-      <div className="rel-fin__grid-2">
+      {/* ========== Bloco 3 + 4: lado a lado ========== */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Bloco titulo="Quantidade de Processos Formalizados">
-          <table className="rel-fin__table">
+          <ReportTable>
             <thead>
               <tr>
                 <th>{data.ano}</th>
-                <th>QTD. PROCESSOS</th>
-                <th>TOTAL/QUADR.</th>
+                <th>Qtd. Processos</th>
+                <th>Total/Quadr.</th>
               </tr>
             </thead>
             <tbody>
@@ -354,19 +327,18 @@ export default function RelatorioFinanceiroPanel() {
                 <td></td>
               </tr>
             </tbody>
-          </table>
+          </ReportTable>
         </Bloco>
 
-        {/* ========== Bloco 4: Assistência Funerária ========== */}
         <Bloco titulo="Assistência Funerária">
-          <table className="rel-fin__table">
+          <ReportTable>
             <thead>
               <tr>
                 <th>{data.ano}</th>
-                <th>QTD. ÓBITO</th>
-                <th>TOTAL/QUADR.</th>
-                <th>VALOR/MÊS</th>
-                <th>VALOR/QUADR.</th>
+                <th>Qtd. Óbito</th>
+                <th>Total/Quadr.</th>
+                <th>Valor/Mês</th>
+                <th>Valor/Quadr.</th>
               </tr>
             </thead>
             <tbody>
@@ -391,23 +363,23 @@ export default function RelatorioFinanceiroPanel() {
                 <td></td>
               </tr>
             </tbody>
-          </table>
+          </ReportTable>
         </Bloco>
       </div>
 
       {/* ========== Bloco 5: Bilhetes Emitidos ========== */}
       <Bloco titulo="Quantidade de Bilhetes Emitidos">
-        <table className="rel-fin__table">
+        <ReportTable>
           <thead>
             <tr>
               <th>{data.ano}</th>
-              <th>QTD. BILHETES</th>
-              <th>TOTAL/QUADR.</th>
-              <th>VALOR/PERÍODO</th>
-              <th>VALOR/QUADR.</th>
-              <th>FATURA/MÊS (PAGO)</th>
-              <th>VALOR FATURA/QUADR.</th>
-              <th>DESLOC. APROVADO BPA</th>
+              <th>Qtd. Bilhetes</th>
+              <th>Total/Quadr.</th>
+              <th>Valor/Período</th>
+              <th>Valor/Quadr.</th>
+              <th>Fatura/Mês (Pago)</th>
+              <th>Valor Fatura/Quadr.</th>
+              <th>Desloc. Aprov. BPA</th>
             </tr>
           </thead>
           <tbody>
@@ -438,18 +410,18 @@ export default function RelatorioFinanceiroPanel() {
               <td>{fmtBRL(quadrisVisiveis.reduce((s, q) => s + q.vi_bpa, 0))}</td>
             </tr>
           </tbody>
-        </table>
+        </ReportTable>
       </Bloco>
 
       {/* ========== Bloco 6: Ajuda Custo FES ========== */}
       <Bloco titulo="Solicitações de Ajuda de Custo Pagas pelo FES">
-        <table className="rel-fin__table">
+        <ReportTable>
           <thead>
             <tr>
               <th>{data.ano}</th>
-              <th>AJ. CUSTO PAG. (DONE)</th>
-              <th>VALOR AC PAG./QUADR.</th>
-              <th>AC APROVADA BPA</th>
+              <th>AJ. Custo Pag. (Done)</th>
+              <th>Valor AC Pag./Quadr.</th>
+              <th>AC Aprovada BPA</th>
             </tr>
           </thead>
           <tbody>
@@ -472,17 +444,17 @@ export default function RelatorioFinanceiroPanel() {
               <td>{fmtBRL(quadrisVisiveis.reduce((s, q) => s + q.ac_valor_aprov, 0))}</td>
             </tr>
           </tbody>
-        </table>
+        </ReportTable>
       </Bloco>
 
       {/* ========== Bloco 7: Demanda TFD ========== */}
       <Bloco titulo="Quantidade de Demanda TFD">
-        <table className="rel-fin__table">
+        <ReportTable>
           <thead>
             <tr>
               <th>{data.ano}</th>
-              <th>QTD. PACIENTE S/REPETIÇÕES</th>
-              <th>QTD. ACOMP. S/REPETIÇÕES</th>
+              <th>Qtd. Paciente s/ Repetições</th>
+              <th>Qtd. Acomp. s/ Repetições</th>
             </tr>
           </thead>
           <tbody>
@@ -499,103 +471,110 @@ export default function RelatorioFinanceiroPanel() {
                 );
               })}
           </tbody>
-        </table>
+        </ReportTable>
       </Bloco>
 
       {/* ========== Bloco 8 e 9: Avaliação Meta ========== */}
-      <div className="rel-fin__grid-2">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Bloco titulo="Avaliação de Meta Anual">
-          <table className="rel-fin__table">
+          <ReportTable>
             <thead>
               <tr>
-                <th>META-{data.ano}</th>
-                <th>PREVISTA</th>
-                <th>EXECUTADA</th>
-                <th>DIFERENÇA</th>
+                <th>Meta {data.ano}</th>
+                <th>Prevista</th>
+                <th>Executada</th>
+                <th>Diferença</th>
                 <th>%</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td className="rel-fin__row-label">ANUAL</td>
+                <td className="rel-fin__row-label">Anual</td>
                 <td>{fmtInt(data.avaliacao_meta.prevista_anual)}</td>
                 <td>{fmtInt(data.avaliacao_meta.executada_anual)}</td>
                 <td>{fmtInt(data.avaliacao_meta.diferenca)}</td>
                 <td>{data.avaliacao_meta.percentual}%</td>
               </tr>
             </tbody>
-          </table>
+          </ReportTable>
         </Bloco>
 
         <Bloco titulo="Avaliação de Meta Quadrimestral">
-          <table className="rel-fin__table">
+          <ReportTable>
             <thead>
               <tr>
-                <th>META-{data.ano}</th>
-                <th>PREVISTA</th>
-                <th>1º Q EXEC.</th>
-                <th>2º Q EXEC.</th>
-                <th>3º Q EXEC.</th>
+                <th>Meta {data.ano}</th>
+                <th>Prevista</th>
+                <th>1º Q Exec.</th>
+                <th>2º Q Exec.</th>
+                <th>3º Q Exec.</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td className="rel-fin__row-label">QUADRIMESTRAL</td>
+                <td className="rel-fin__row-label">Quadrimestral</td>
                 <td>{fmtInt(data.avaliacao_meta.prevista_quadri)}</td>
                 <td>{fmtInt(data.quadrimestres.find((q) => q.quadri === 1)?.qtd_proc ?? 0)}</td>
                 <td>{fmtInt(data.quadrimestres.find((q) => q.quadri === 2)?.qtd_proc ?? 0)}</td>
                 <td>{fmtInt(data.quadrimestres.find((q) => q.quadri === 3)?.qtd_proc ?? 0)}</td>
               </tr>
             </tbody>
-          </table>
+          </ReportTable>
         </Bloco>
       </div>
 
-      {/* ========== Styles ========== */}
+      {/* ========== Estilos do bloco/tabela ========== */}
       <style jsx>{`
-        .rel-fin {
-          font-size: 12px;
-        }
-        .rel-fin__grid-2 {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 16px;
-          margin-bottom: 16px;
-        }
-        .rel-fin__table {
+        :global(.rel-fin__table) {
           width: 100%;
           border-collapse: collapse;
-          font-size: 11px;
+          font-size: 12px;
+          background: var(--tfd-white);
         }
-        .rel-fin__table th,
-        .rel-fin__table td {
-          border: 1px solid #d1d5db;
-          padding: 4px 6px;
-          text-align: right;
+        :global(.rel-fin__table thead tr) {
+          background: var(--tfd-surface-50, #F8FAFC);
         }
-        .rel-fin__table th {
-          background-color: var(--tfd-surface-100);
-          font-weight: 600;
+        :global(.rel-fin__table thead th) {
+          padding: 8px 10px;
           font-size: 10px;
+          font-weight: 700;
           text-transform: uppercase;
+          letter-spacing: 0.04em;
           color: var(--tfd-text-secondary);
-          text-align: center;
+          text-align: right;
+          white-space: nowrap;
+          border-bottom: 1px solid var(--tfd-surface-border);
         }
-        .rel-fin__row-label {
+        :global(.rel-fin__table thead th:first-child) {
+          text-align: left;
+        }
+        :global(.rel-fin__table tbody td) {
+          padding: 7px 10px;
+          color: var(--tfd-text-primary);
+          border-bottom: 1px solid var(--tfd-surface-border, #E2E8F0);
+          text-align: right;
+          font-variant-numeric: tabular-nums;
+          white-space: nowrap;
+        }
+        :global(.rel-fin__table tbody tr:hover) {
+          background: var(--tfd-surface-50, #F8FAFC);
+        }
+        :global(.rel-fin__row-label) {
           font-weight: 600;
           text-align: left !important;
-          background-color: var(--tfd-surface-50);
-        }
-        .rel-fin__total {
-          background-color: var(--tfd-primary-50);
-          font-weight: 600;
-          color: var(--tfd-primary-700);
-        }
-        .rel-fin__footer-row td {
-          font-weight: 700;
-          background-color: var(--tfd-surface-100);
           color: var(--tfd-text-primary);
-          border-top: 2px solid var(--tfd-text-primary);
+          background: var(--tfd-surface-50, #F8FAFC);
+        }
+        :global(.rel-fin__total) {
+          background: var(--tfd-primary-50, #EBF0FF);
+          font-weight: 600;
+          color: var(--tfd-primary-700, #0D4FBD);
+        }
+        :global(.rel-fin__footer-row td) {
+          font-weight: 700;
+          background: var(--tfd-surface-100, #F1F5F9);
+          color: var(--tfd-text-primary);
+          border-top: 2px solid var(--tfd-surface-border);
         }
 
         @media print {
@@ -613,16 +592,21 @@ export default function RelatorioFinanceiroPanel() {
             font-size: 10px;
             color: black !important;
           }
-          .rel-fin__table th,
-          .rel-fin__table td {
-            border: 1px solid #000;
-            padding: 2px 4px;
-            font-size: 9px;
+          :global(.tfd-card) {
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
           }
-          .rel-fin__total,
-          .rel-fin__footer-row td,
-          .rel-fin__row-label,
-          .rel-fin__table th {
+          :global(.rel-fin__table th),
+          :global(.rel-fin__table td) {
+            border: 1px solid #000 !important;
+            padding: 2px 4px !important;
+            font-size: 9px !important;
+          }
+          :global(.rel-fin__total),
+          :global(.rel-fin__footer-row td),
+          :global(.rel-fin__row-label),
+          :global(.rel-fin__table th) {
             background-color: transparent !important;
             color: black !important;
           }
@@ -636,16 +620,78 @@ export default function RelatorioFinanceiroPanel() {
   );
 }
 
+/* -------------------------------------------------- */
+/*  Componentes auxiliares                             */
+/* -------------------------------------------------- */
+
 function Bloco({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 20 }}>
-      <h4
-        className="text-[11px] font-bold uppercase tracking-wider mb-2"
-        style={{ color: 'var(--tfd-text-primary)' }}
+    <section className="tfd-card" style={{ padding: 0, overflow: 'hidden' }}>
+      <header
+        className="px-4 py-3"
+        style={{
+          borderBottom: '1px solid var(--tfd-surface-border)',
+          background: 'var(--tfd-white)',
+        }}
       >
-        ({titulo})
-      </h4>
-      {children}
+        <h4
+          className="text-sm font-semibold"
+          style={{ color: 'var(--tfd-text-primary)' }}
+        >
+          {titulo}
+        </h4>
+      </header>
+      <div className="overflow-x-auto">{children}</div>
+    </section>
+  );
+}
+
+function ReportTable({ children }: { children: React.ReactNode }) {
+  return <table className="rel-fin__table">{children}</table>;
+}
+
+/**
+ * Caixa de KPI usada dentro do hero do relatório financeiro.
+ * O hero tem gradient azul escuro como fundo — então a paleta interna é
+ * invertida: fundo translúcido claro, texto branco, accents em tons que
+ * contrastam bem com azul (verde-lima para sucesso, amarelo para aviso,
+ * laranja-rosado para perigo). NÃO usa cores escuras nem vermelho.
+ */
+function MetaBox({
+  label,
+  value,
+  icon,
+  accent,
+}: {
+  label: string;
+  value: React.ReactNode;
+  icon?: React.ReactNode;
+  accent?: 'success' | 'warning' | 'danger';
+}) {
+  const accentColor =
+    accent === 'success' ? '#86EFAC'   // green-300 — lime sobre azul
+    : accent === 'warning' ? '#FDE68A' // amber-200
+    : accent === 'danger' ? '#FCA5A5'  // red-300, suave o suficiente
+    : '#FFFFFF';
+  return (
+    <div
+      className="px-3 py-2 rounded-lg flex flex-col gap-0.5 min-w-[140px]"
+      style={{
+        background: 'rgba(255,255,255,0.14)',
+        border: '1px solid rgba(255,255,255,0.28)',
+        backdropFilter: 'blur(4px)',
+      }}
+    >
+      <span
+        className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"
+        style={{ color: 'rgba(255,255,255,0.85)', letterSpacing: '0.08em' }}
+      >
+        {icon}
+        {label}
+      </span>
+      <span className="text-[15px] font-bold" style={{ color: accentColor, lineHeight: 1.2 }}>
+        {value}
+      </span>
     </div>
   );
 }

@@ -9,6 +9,10 @@ interface CurrentUser {
   perfil: string;
   iniciais: string;
   email: string;
+  /** Campos profissionais usados quando o usuário emite parecer médico. */
+  crm?: string;
+  crmUf?: string;
+  especialidadeMedica?: string;
 }
 
 /**
@@ -31,26 +35,30 @@ export function useCurrentUser() {
         return;
       }
 
-      // Fetch the corresponding usuarios record
+      // Fetch the corresponding usuarios record (inclui dados profissionais para parecer)
       const { data } = await supabase
         .from('usuarios')
-        .select('id, nome_completo, perfil, email')
+        .select('id, nome_completo, perfil, email, crm, crm_uf, especialidade_medica')
         .eq('id', authUser.id)
         .single();
 
       if (data) {
-        const nome = data.nome_completo ?? 'Usuário';
+        const row = data as Record<string, unknown>;
+        const nome = (row.nome_completo as string) ?? 'Usuário';
         const partes = nome.split(' ');
         const iniciais = partes.length >= 2
           ? (partes[0][0] + partes[partes.length - 1][0]).toUpperCase()
           : nome.slice(0, 2).toUpperCase();
 
         setUser({
-          id: data.id,
+          id: row.id as string,
           nome,
-          perfil: data.perfil ?? 'ATENDENTE_MUNICIPAL',
+          perfil: (row.perfil as string) ?? 'ATENDENTE_MUNICIPAL',
           iniciais,
-          email: data.email ?? authUser.email ?? '',
+          email: (row.email as string) ?? authUser.email ?? '',
+          crm: (row.crm as string | null) ?? undefined,
+          crmUf: (row.crm_uf as string | null) ?? undefined,
+          especialidadeMedica: (row.especialidade_medica as string | null) ?? undefined,
         });
       }
 

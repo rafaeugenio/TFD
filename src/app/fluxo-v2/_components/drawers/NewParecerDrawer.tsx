@@ -1,7 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { Sparkles } from 'lucide-react';
+import { AlertTriangle, Sparkles, Stethoscope, UserCircle2 } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import Autocomplete, { type AutocompleteOption } from '@/shared/components/autocomplete/Autocomplete';
 import { useToast } from '@/shared/components/toast/Toast';
@@ -10,6 +11,8 @@ import { templatesParecer, aplicarPlaceholders } from '../../_data/templates-par
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import { buscarCid10 } from '@/services/cid10.service';
 import { buscarCid11 } from '@/services/cid11.service';
+import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
+import { usePermissions } from '@/shared/auth/PermissionsProvider';
 import type { DecisaoParecer, ParecerMock, TipoParecer } from '@/core/mocks/fluxo-v2-v3-seed';
 import { TIPO_PARECER_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
 
@@ -34,6 +37,8 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
   const toast = useToast();
   const solicitacao = getById(solicitacaoId);
   const isEdicao = !!editar;
+  const { user: currentUser, loading: loadingUser } = useCurrentUser();
+  const { isAdmin } = usePermissions();
 
   const [decisao, setDecisao] = useState<DecisaoParecer>('deferido');
   const [tipo, setTipo] = useState<TipoParecer>('tfd_completo');
@@ -41,7 +46,21 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
   const [cidSecundario, setCidSecundario] = useState('');
   const [versaoCID, setVersaoCID] = useState<'10' | '11'>('10');
   const [obs, setObs] = useState('');
-  const [medico, setMedico] = useState('Dr. Ricardo Mello');
+
+  // Dados do médico — em modo CRIAÇÃO vêm do usuário logado (snapshot do perfil).
+  // Em modo EDIÇÃO mantemos o que foi gravado no parecer original (não sobrescreve).
+  const medicoNome = isEdicao && editar ? editar.medico : (currentUser?.nome ?? '');
+  const medicoCrm = isEdicao && editar ? (editar.medicoCrm ?? '') : (currentUser?.crm ?? '');
+  const medicoCrmUf = isEdicao && editar ? (editar.medicoCrmUf ?? '') : (currentUser?.crmUf ?? '');
+  const medicoEspecialidade =
+    isEdicao && editar
+      ? (editar.medicoEspecialidade ?? '')
+      : (currentUser?.especialidadeMedica ?? '');
+
+  // Admin master pode emitir parecer mesmo sem CRM (atua como suporte/coordenação).
+  // Demais perfis com permissão de parecer continuam obrigados a ter CRM/UF no perfil.
+  const perfilSnapshotIncompleto =
+    !isEdicao && !loadingUser && !isAdmin && (!medicoCrm.trim() || !medicoCrmUf.trim());
 
   useEffect(() => {
     if (open) {
@@ -52,7 +71,6 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
         setCidSecundario(editar.cidSecundario ?? '');
         setVersaoCID(editar.versaoCID ?? '10');
         setObs(editar.observacao ?? '');
-        setMedico(editar.medico);
       } else {
         setDecisao('deferido');
         setTipo('tfd_completo');
@@ -75,9 +93,15 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
 
   function aplicarModelo() {
     if (!templateAtual) return;
+    const medicoCtx = {
+      nome: medicoNome,
+      crm: medicoCrm,
+      crmUf: medicoCrmUf,
+      especialidade: medicoEspecialidade,
+    };
     const textoFinal = solicitacao
-      ? aplicarPlaceholders(templateAtual.texto, solicitacao, templateAtual.tipo)
-      : templateAtual.texto;
+      ? aplicarPlaceholders(templateAtual.texto, solicitacao, templateAtual.tipo, medicoCtx)
+      : aplicarPlaceholders(templateAtual.texto, undefined, templateAtual.tipo, medicoCtx);
     setObs(textoFinal);
   }
 
@@ -116,7 +140,10 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
       cidSecundario: cidSecundario || undefined,
       versaoCID,
       observacao: obs || undefined,
-      medico,
+      medico: medicoNome,
+      medicoCrm: medicoCrm || undefined,
+      medicoCrmUf: medicoCrmUf || undefined,
+      medicoEspecialidade: medicoEspecialidade || undefined,
     };
     if (isEdicao && editar) {
       editarParecer(solicitacaoId, editar.id, payload);
@@ -150,7 +177,12 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
             type="button"
             className="tfd-btn tfd-btn-primary"
             onClick={handleSalvar}
-            disabled={!medico.trim()}
+            disabled={!medicoNome.trim() || perfilSnapshotIncompleto}
+            title={
+              perfilSnapshotIncompleto
+                ? 'Informe seu CRM em Meu Perfil antes de emitir parecer.'
+                : undefined
+            }
           >
             {isEdicao ? 'Salvar alterações' : 'Salvar parecer'}
           </button>
@@ -302,17 +334,75 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
         style={inputStyle}
       />
 
-      {/* Médico */}
+      {/* Médico — preenchido automaticamente a partir do usuário logado */}
       <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
         Médico responsável
       </label>
-      <input
-        value={medico}
-        onChange={(e) => setMedico(e.target.value)}
-        placeholder="Nome do médico"
-        className="w-full px-3 py-2 text-[13px]"
-        style={inputStyle}
-      />
+      <div
+        className="flex items-start gap-3 p-3 mb-2"
+        style={{
+          background: '#F8FAFC',
+          border: '1px solid var(--tfd-surface-border)',
+          borderRadius: 8,
+        }}
+      >
+        <div
+          className="flex items-center justify-center shrink-0"
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: '50%',
+            background: 'var(--tfd-primary-50, #EBF0FF)',
+            color: 'var(--tfd-primary-500)',
+          }}
+        >
+          <UserCircle2 size={18} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-semibold" style={{ color: '#1A1D2B' }}>
+            {medicoNome || (loadingUser ? 'Carregando...' : '—')}
+          </p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5 text-[11px]" style={{ color: '#64748B' }}>
+            {medicoCrm && medicoCrmUf && (
+              <span className="inline-flex items-center gap-1">
+                <Stethoscope size={11} style={{ color: '#94A3B8' }} />
+                <span className="font-mono">CRM {medicoCrm}/{medicoCrmUf}</span>
+              </span>
+            )}
+            {medicoEspecialidade && <span>{medicoEspecialidade}</span>}
+            {!isEdicao && currentUser?.email && (
+              <span style={{ color: '#94A3B8' }}>{currentUser.email}</span>
+            )}
+          </div>
+        </div>
+        {!isEdicao && (
+          <Link
+            href="/meu-perfil"
+            className="text-[11px] font-medium hover:underline shrink-0"
+            style={{ color: 'var(--tfd-primary-500)' }}
+          >
+            Editar perfil
+          </Link>
+        )}
+      </div>
+      {perfilSnapshotIncompleto && (
+        <div
+          className="flex items-start gap-2 p-2.5 text-[12px]"
+          style={{
+            background: '#FFFBEB',
+            border: '1px solid #FCD34D',
+            borderRadius: 8,
+            color: '#92400E',
+          }}
+        >
+          <AlertTriangle size={14} className="shrink-0 mt-px" />
+          <span>
+            Você precisa informar seu <strong>CRM</strong> e <strong>UF</strong> em{' '}
+            <Link href="/meu-perfil" className="underline font-semibold">Meu Perfil</Link>{' '}
+            antes de emitir um parecer. Esses dados aparecem no template e no PDF do parecer.
+          </span>
+        </div>
+      )}
     </Drawer>
   );
 }

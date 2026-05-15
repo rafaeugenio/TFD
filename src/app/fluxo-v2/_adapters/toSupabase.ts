@@ -39,6 +39,7 @@ export interface NewSolicitacaoSupabase {
   data_laudo?: string;
   status: StatusDb;
   setor_atual: SetorDb;
+  tipo_solicitacao: 'NORMAL' | 'AJUDA_CUSTO';
 }
 
 export function buildNewSolicitacao(input: {
@@ -47,6 +48,7 @@ export function buildNewSolicitacao(input: {
   numeroSEI?: string;
   seiUrl?: string;
   dataLaudo?: string;
+  tipoSolicitacao?: 'normal' | 'ajuda_custo';
 }): NewSolicitacaoSupabase {
   return {
     paciente_id: input.pacienteId,
@@ -56,6 +58,7 @@ export function buildNewSolicitacao(input: {
     data_laudo: input.dataLaudo,
     status: 'NOVO',
     setor_atual: 'dados_basicos',
+    tipo_solicitacao: input.tipoSolicitacao === 'ajuda_custo' ? 'AJUDA_CUSTO' : 'NORMAL',
   };
 }
 
@@ -335,12 +338,15 @@ export interface AdicionalDb {
   data_ocorrencia: string;
   valor: number;
   status: string;
+  beneficiario_tipo: 'PACIENTE' | 'ACOMPANHANTE';
+  beneficiario_id: string | null;
 }
 
 export function buildAdicional(
   solicitacaoId: string,
   a: Omit<AdicionalMock, 'id'>,
 ): AdicionalDb {
+  const bTipo = a.beneficiarioTipo === 'acompanhante' ? 'ACOMPANHANTE' : 'PACIENTE';
   return {
     solicitacao_id: solicitacaoId,
     categoria: CAT_ADICIONAL_TO_DB[a.categoria] ?? 'OUTRO',
@@ -348,6 +354,8 @@ export function buildAdicional(
     data_ocorrencia: a.data,
     valor: a.valor,
     status: STATUS_ADICIONAL_TO_DB[a.status] ?? 'PENDENTE_APROVACAO',
+    beneficiario_tipo: bTipo,
+    beneficiario_id: bTipo === 'ACOMPANHANTE' ? (a.beneficiarioId ?? null) : null,
   };
 }
 

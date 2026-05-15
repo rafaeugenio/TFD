@@ -2,7 +2,7 @@
 
 import { use, useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   Phone,
@@ -19,21 +19,9 @@ import { DetailPageSkeleton, CardListSkeleton } from '@/shared/components/skelet
 
 import StatusTag from '@/shared/components/status-tag/StatusTag';
 import { buscarUnidadeSaude, listarSolicitacoesPorUnidade } from '@/services/unidades-saude.service';
+import UnidadeDrawer from '../_UnidadeDrawer';
 import { formatDate } from '@/shared/pipes/formatters';
 import type { StatusSolicitacao } from '@/core/models';
-
-/* -------------------------------------------------- */
-/*  Tabs                                              */
-/* -------------------------------------------------- */
-
-type TabKey = 'endereco' | 'solicitacoes';
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'endereco',      label: 'Endereço' },
-  { key: 'solicitacoes',  label: 'Solicitações' },
-];
-
-const DEFAULT_TAB: TabKey = 'endereco';
 
 /* -------------------------------------------------- */
 /*  Component                                          */
@@ -50,23 +38,13 @@ export default function UnidadeSaudeDetalhePage({ params }: { params: Promise<{ 
 
 function UnidadeSaudeDetalheInner({ id }: { id: string }) {
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const tabParam = searchParams.get('tab');
-  const activeTab: TabKey = tabParam && TABS.some((t) => t.key === tabParam) ? (tabParam as TabKey) : DEFAULT_TAB;
-
-  const setTab = (next: TabKey) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (next === DEFAULT_TAB) params.delete('tab');
-    else params.set('tab', next);
-    const qs = params.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  };
 
   const [unidade, setUnidade] = useState<Record<string, unknown> | null>(null);
   const [solicitacoes, setSolicitacoes] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingSol, setLoadingSol] = useState(true);
+  const [editOpen, setEditOpen] = useState(false);
+  const [reloadFlag, setReloadFlag] = useState(0);
 
   useEffect(() => {
     async function load() {
@@ -92,10 +70,10 @@ function UnidadeSaudeDetalheInner({ id }: { id: string }) {
       setLoadingSol(false);
     }
     load();
-  }, [id]);
+  }, [id, reloadFlag]);
 
   if (loading) {
-    return <DetailPageSkeleton tabs={TABS.length} />;
+    return <DetailPageSkeleton tabs={0} />;
   }
 
   if (!unidade) {
@@ -179,7 +157,7 @@ function UnidadeSaudeDetalheInner({ id }: { id: string }) {
           </div>
           <button
             className="tfd-btn tfd-btn-primary shrink-0"
-            onClick={() => router.push(`/unidades-saude?editar=${id}`)}
+            onClick={() => setEditOpen(true)}
           >
             <Pencil size={14} /> Editar
           </button>
@@ -243,6 +221,12 @@ function UnidadeSaudeDetalheInner({ id }: { id: string }) {
                 <span className="truncate max-w-[360px]">{enderecoLinha}</span>
               </>
             )}
+            {cep && (
+              <>
+                {(cidadeFull || enderecoLinha) && <Sep />}
+                <span className="font-mono"><span style={{ color: '#94A3B8' }}>CEP </span>{cep}</span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -256,119 +240,77 @@ function UnidadeSaudeDetalheInner({ id }: { id: string }) {
         ]}
       />
 
-      {/* ============ Tabs ============ */}
-      <div className="flex items-center gap-1 mb-6" style={{ borderBottom: '1px solid #E2E8F0' }}>
-        {TABS.map((t) => {
-          const active = activeTab === t.key;
-          return (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className="relative px-4 py-3 text-[14px] font-medium transition-colors"
-              style={{ color: active ? '#146BFA' : '#64748B', background: 'transparent' }}
-            >
-              {t.label}
-              {active && <span className="absolute left-2 right-2 -bottom-px h-[2px]" style={{ background: '#146BFA' }} />}
-            </button>
-          );
-        })}
-      </div>
+      {/* ============ Solicitações vinculadas ============ */}
+      <div className="space-y-4">
+        <Section
+          title="Solicitações Vinculadas"
+          icon={<FileText size={18} />}
+          badge={
+            !loadingSol ? (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}>
+                {solicitacoes.length}
+              </span>
+            ) : undefined
+          }
+        >
+          {loadingSol ? (
+            <CardListSkeleton rows={3} />
+          ) : solicitacoes.length === 0 ? (
+            <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
+              Nenhuma solicitação vinculada a esta unidade.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {solicitacoes.map((sol) => {
+                const status = sol.status as StatusSolicitacao;
+                const numProcesso = sol.numero_processo as string;
+                const dataCriacao = sol.created_at as string;
+                const cid = sol.cid10_principal as string;
+                const paciente = sol.pacientes as Record<string, unknown> | null;
+                const nomePaciente = paciente?.nome_completo as string | undefined;
 
-      {/* ============ Tab content ============ */}
-      <div className="animate-fade-in">
-        {activeTab === 'endereco' && (
-          <Section title="Endereço" icon={<MapPin size={18} />}>
-            {(logradouro || municipio) ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {enderecoLinha && <InfoRow label="Logradouro" value={enderecoLinha} />}
-                {cidadeFull && <InfoRow label="Município / UF" value={cidadeFull} />}
-                {cep && <InfoRow label="CEP" value={cep} mono />}
-              </div>
-            ) : (
-              <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
-                Endereço não cadastrado.
-              </p>
-            )}
-          </Section>
-        )}
-
-        {activeTab === 'solicitacoes' && (
-          <Section
-            title="Solicitações Vinculadas"
-            icon={<FileText size={18} />}
-            badge={
-              !loadingSol ? (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}>
-                  {solicitacoes.length}
-                </span>
-              ) : undefined
-            }
-          >
-            {loadingSol ? (
-              <CardListSkeleton rows={3} />
-            ) : solicitacoes.length === 0 ? (
-              <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
-                Nenhuma solicitação vinculada a esta unidade.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {solicitacoes.map((sol) => {
-                  const status = sol.status as StatusSolicitacao;
-                  const numProcesso = sol.numero_processo as string;
-                  const dataCriacao = sol.created_at as string;
-                  const cid = sol.cid10_principal as string;
-                  const paciente = sol.pacientes as Record<string, unknown> | null;
-                  const nomePaciente = paciente?.nome_completo as string | undefined;
-
-                  return (
-                    <Link
-                      key={sol.id as string}
-                      href={`/solicitacoes/${sol.id}?from=unidades-saude`}
-                      className="block rounded-lg p-3 transition-colors duration-150 group"
-                      style={{ border: '1px solid var(--tfd-surface-border)', backgroundColor: 'var(--tfd-surface-card)' }}
-                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-primary-50)'; e.currentTarget.style.borderColor = 'var(--tfd-primary-200)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-card)'; e.currentTarget.style.borderColor = 'var(--tfd-surface-border)'; }}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <span className="text-sm font-semibold" style={{ color: 'var(--tfd-primary-500)' }}>
-                            {numProcesso}
-                          </span>
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5">
-                            {nomePaciente && (
-                              <span className="text-xs flex items-center gap-1" style={{ color: 'var(--tfd-text-secondary)' }}>
-                                <User size={11} />
-                                {nomePaciente}
-                              </span>
-                            )}
-                            {cid && <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>CID: {cid}</span>}
-                            <span className="text-xs flex items-center gap-1" style={{ color: 'var(--tfd-text-muted)' }}>
-                              <Clock size={11} />
-                              {formatDate(dataCriacao)}
+                return (
+                  <Link
+                    key={sol.id as string}
+                    href={`/fluxo-v2/solicitacoes/${sol.id}?from=unidades-saude`}
+                    className="block rounded-lg p-3 transition-colors duration-150 group"
+                    style={{ border: '1px solid var(--tfd-surface-border)', backgroundColor: 'var(--tfd-surface-card)' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-primary-50)'; e.currentTarget.style.borderColor = 'var(--tfd-primary-200)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--tfd-surface-card)'; e.currentTarget.style.borderColor = 'var(--tfd-surface-border)'; }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-semibold" style={{ color: 'var(--tfd-primary-500)' }}>
+                          {numProcesso}
+                        </span>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5">
+                          {nomePaciente && (
+                            <span className="text-xs flex items-center gap-1" style={{ color: 'var(--tfd-text-secondary)' }}>
+                              <User size={11} />
+                              {nomePaciente}
                             </span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <StatusTag status={status} />
-                          <ExternalLink size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--tfd-primary-500)' }} />
+                          )}
+                          {cid && <span className="text-xs" style={{ color: 'var(--tfd-text-secondary)' }}>CID: {cid}</span>}
+                          <span className="text-xs flex items-center gap-1" style={{ color: 'var(--tfd-text-muted)' }}>
+                            <Clock size={11} />
+                            {formatDate(dataCriacao)}
+                          </span>
                         </div>
                       </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </Section>
-        )}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <StatusTag status={status} />
+                        <ExternalLink size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--tfd-primary-500)' }} />
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </Section>
       </div>
 
       <style jsx>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(2px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in { animation: fadeIn 180ms ease-out; }
         .header-groups { display: flex; flex-direction: column; gap: 6px; }
         .header-groups-divider { display: none; }
         @media (min-width: 1100px) {
@@ -376,6 +318,14 @@ function UnidadeSaudeDetalheInner({ id }: { id: string }) {
           .header-groups-divider { display: inline-block; width: 1px; height: 16px; background: #E2E8F0; flex-shrink: 0; }
         }
       `}</style>
+
+      <UnidadeDrawer
+        open={editOpen}
+        editandoId={editOpen ? id : null}
+        editandoData={editOpen ? unidade : null}
+        onClose={() => setEditOpen(false)}
+        onSaved={() => setReloadFlag((n) => n + 1)}
+      />
     </div>
   );
 }
@@ -399,17 +349,6 @@ function Section({
         {badge}
       </div>
       {children}
-    </div>
-  );
-}
-
-function InfoRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
-  return (
-    <div className="flex flex-col sm:flex-row sm:items-baseline gap-0.5 sm:gap-3">
-      <span className="text-sm font-medium shrink-0 w-40" style={{ color: 'var(--tfd-text-secondary)' }}>{label}</span>
-      <span className="text-sm" style={{ color: 'var(--tfd-text-primary)', fontFamily: mono ? 'var(--tfd-font-mono)' : undefined }}>
-        {value}
-      </span>
     </div>
   );
 }

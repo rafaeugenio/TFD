@@ -60,6 +60,7 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
   const toast = useToast();
   const router = useRouter();
 
+  const [tipoSolicitacao, setTipoSolicitacao] = useState<'normal' | 'ajuda_custo'>('normal');
   const [pacienteId, setPacienteId] = useState('');
   const [acompanhanteIds, setAcompanhanteIds] = useState<string[]>([]);
   const [semAgendamento, setSemAgendamento] = useState(false);
@@ -195,9 +196,10 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
     !!paciente &&
     !validacaoMenor &&
     !seiUrlInvalido &&
-    (semAgendamento || (unidadeId && data && hora));
+    (tipoSolicitacao === 'ajuda_custo' || semAgendamento || (unidadeId && data && hora));
 
   function reset() {
+    setTipoSolicitacao('normal');
     setPacienteId('');
     setAcompanhanteIds([]);
     setSemAgendamento(false);
@@ -289,6 +291,7 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
     const id = await createSolicitacao({
       pacienteId: paciente.id,
       acompanhanteIds,
+      tipoSolicitacao,
       agendamento: !semAgendamento ? { unidade: unidadeNome, data, hora } : undefined,
       dataLaudo: dataLaudo || undefined,
       numeroSEI: numeroSEI.trim() || undefined,
@@ -332,6 +335,30 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
       }
     >
       <div className="flex flex-col gap-6">
+        {/* Tipo de solicitação */}
+        <section>
+          <h3 className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+            Tipo da solicitação
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <TipoCard
+              active={tipoSolicitacao === 'normal'}
+              title="Normal"
+              description="Fluxo completo: viagens, adicionais e ajuda de custo."
+              onClick={() => setTipoSolicitacao('normal')}
+            />
+            <TipoCard
+              active={tipoSolicitacao === 'ajuda_custo'}
+              title="Ajuda de custo"
+              description="Paciente já está no destino. Só recebe diárias — sem viagens e sem adicionais."
+              onClick={() => {
+                setTipoSolicitacao('ajuda_custo');
+                setSemAgendamento(true);
+              }}
+            />
+          </div>
+        </section>
+
         {/* Paciente */}
         <section>
           <div className="flex items-center justify-between mb-2">
@@ -607,7 +634,8 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
           )}
         </section>
 
-        {/* Agendamento — exibido por padrão (caso normal) */}
+        {/* Agendamento — apenas no fluxo normal (ajuda de custo não usa) */}
+        {tipoSolicitacao !== 'ajuda_custo' && (
         <section>
           <h3 className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
             Agendamento
@@ -679,6 +707,7 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
             </div>
           )}
         </section>
+        )}
 
         {/* Data laudo */}
         <section>
@@ -822,5 +851,51 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
         </section>
       </div>
     </Drawer>
+  );
+}
+
+function TipoCard({
+  active,
+  title,
+  description,
+  onClick,
+}: {
+  active: boolean;
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-left p-3 transition-all"
+      style={{
+        background: active ? 'var(--tfd-primary-50)' : 'white',
+        border: active ? '1px solid var(--tfd-primary-500)' : '1px solid var(--tfd-surface-border)',
+        borderRadius: 8,
+        boxShadow: active ? '0 0 0 3px rgba(20,107,250,0.08)' : 'none',
+      }}
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <span
+          className="inline-flex items-center justify-center"
+          style={{
+            width: 14,
+            height: 14,
+            borderRadius: '50%',
+            border: active ? '4px solid var(--tfd-primary-500)' : '2px solid #CBD5E1',
+            background: 'white',
+          }}
+          aria-hidden
+        />
+        <span className="text-[13px] font-semibold" style={{ color: active ? 'var(--tfd-primary-700, #0D4FBD)' : '#1A1D2B' }}>
+          {title}
+        </span>
+      </div>
+      <p className="text-[12px]" style={{ color: '#64748B', paddingLeft: 22 }}>
+        {description}
+      </p>
+    </button>
   );
 }

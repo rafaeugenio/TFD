@@ -158,7 +158,14 @@ interface FluxoV2ContextValue {
   removerAdicional: (id: string, adicionalId: string) => void;
 
   encerrar: (id: string, e: EncerramentoMock) => void;
+  /** @deprecated use reabrirSolicitacao */
   reabrirParaParecer: (id: string) => void;
+  /** Reabre uma solicitação encerrada, colocando-a no setor escolhido. */
+  reabrirSolicitacao: (
+    id: string,
+    setor: 'dados_basicos' | 'regulacao' | 'financeiro',
+    motivo?: string,
+  ) => void;
 
   addObservacao: (id: string, texto: string) => void;
 
@@ -213,6 +220,8 @@ export interface EditarSolicitacaoPatch {
 export interface NewSolicitacaoInput {
   pacienteId: string;
   acompanhanteIds: string[];
+  /** 'normal' (com viagens) ou 'ajuda_custo' (paciente já no destino — só diárias). */
+  tipoSolicitacao?: 'normal' | 'ajuda_custo';
   agendamento?: { unidade: string; data: string; hora: string };
   dataLaudo?: string;
   anexos: { nome: string; tipo: string }[];
@@ -329,6 +338,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       numeroSEI: input.numeroSEI?.trim() || undefined,
       seiUrl: input.seiUrl?.trim() || undefined,
       dataLaudo: input.dataLaudo,
+      tipoSolicitacao: input.tipoSolicitacao,
     });
     const realId = await persistInsert('solicitacoes', novaSolicitacaoPayload);
     const id = realId ?? uid('s');
@@ -355,6 +365,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       id,
       numero: proximoNumero,
       status: 'em_dados_basicos',
+      tipoSolicitacao: input.tipoSolicitacao ?? 'normal',
       dataCriacao: nowIso(),
       dataLaudo: input.dataLaudo,
       numeroSEI: input.numeroSEI?.trim() || undefined,
@@ -381,13 +392,17 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       s.pareceres = [...s.pareceres, parecer];
       return s;
     });
-    void persistInsert('pareceres', buildParecer(id, p, null)).then((realId) => {
+    // Pega o usuário autenticado para gravar a FK medico_auditor_id.
+    void (async () => {
+      const { createClient } = await import('@/lib/supabase/client');
+      const { data: { user: authUser } } = await createClient().auth.getUser();
+      const realId = await persistInsert('pareceres', buildParecer(id, p, authUser?.id ?? null));
       if (!realId) return;
       mutate(id, (s) => {
         s.pareceres = s.pareceres.map((pa) => (pa.id === tempId ? { ...pa, id: realId } : pa));
         return s;
       });
-    });
+    })();
   }, [mutate]);
 
   const editarParecer = useCallback<FluxoV2ContextValue['editarParecer']>(
@@ -811,6 +826,12 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         };
         dbPatch.status = m[patch.status] ?? 'PENDENTE_APROVACAO';
       }
+      if (patch.beneficiarioTipo !== undefined) {
+        dbPatch.beneficiario_tipo = patch.beneficiarioTipo === 'acompanhante' ? 'ACOMPANHANTE' : 'PACIENTE';
+        dbPatch.beneficiario_id = patch.beneficiarioTipo === 'acompanhante' ? (patch.beneficiarioId ?? null) : null;
+      } else if (patch.beneficiarioId !== undefined) {
+        dbPatch.beneficiario_id = patch.beneficiarioId ?? null;
+      }
       if (Object.keys(dbPatch).length) persistUpdate('adicionais', adicionalId, dbPatch);
     },
     [mutate],
@@ -850,6 +871,28 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       return s;
     });
   }, [mutate]);
+
+  const reabrirSolicitacao = useCallback<FluxoV2ContextValue['reabrirSolicitacao']>(
+    (id, setor) => {
+      const statusByDestino: Record<typeof setor, SolicitacaoMock['status']> = {
+        dados_basicos: 'em_dados_basicos',
+        regulacao: 'em_regulacao',
+        financeiro: 'em_financeiro',
+      };
+      mutate(id, (s) => {
+        s.status = statusByDestino[setor];
+        s.encerramento = undefined;
+        return s;
+      });
+      persistUpdate('solicitacoes', id, {
+        setor_atual: setor,
+        status: 'EM_ANALISE',
+        data_encerramento: null,
+        motivo_encerramento: null,
+      });
+    },
+    [mutate],
+  );
 
   const addObservacao = useCallback<FluxoV2ContextValue['addObservacao']>((id, texto) => {
     const tempId = `obs-${Date.now()}`;
@@ -1086,6 +1129,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     removerAdicional,
     encerrar,
     reabrirParaParecer,
+    reabrirSolicitacao,
     addObservacao,
     enviarParaSetor,
     encaminharParaFinanceiro,
@@ -1101,7 +1145,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     addViagem, addViagensIdaEVolta, updateViagem, editarViagem, removerViagem,
     addAjudaCusto, updateAjudaCusto, editarAjudaCusto, removerAjudaCusto,
     addAdicional, editarAdicional, removerAdicional,
-    encerrar, reabrirParaParecer,
+    encerrar, reabrirParaParecer, reabrirSolicitacao,
     addObservacao,
     enviarParaSetor, encaminharParaFinanceiro, devolverParaRegulacao, marcarDevolucaoResolvida, editarSolicitacao,
     trocarPaciente,

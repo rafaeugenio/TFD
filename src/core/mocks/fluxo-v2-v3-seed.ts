@@ -95,6 +95,12 @@ export interface ParecerMock {
   versaoCID?: '10' | '11';
   observacao?: string;
   medico: string;
+  /** Snapshot do CRM do médico no momento da emissão (vem do perfil). */
+  medicoCrm?: string;
+  /** UF do CRM. */
+  medicoCrmUf?: string;
+  /** Especialidade médica do auditor (vem do perfil). */
+  medicoEspecialidade?: string;
 }
 
 export type CarimboRegulacao = 'APROVADO_DIRETO' | 'CNRAC' | 'CET' | 'OUTROS';
@@ -276,7 +282,16 @@ export interface AdicionalMock {
   prorrogacaoDias?: number; // for ajuda_extra (prorrogação)
   /** Código do tipo de despesa vindo da tabela auxiliar `tipo_despesa`. */
   tipoDespesa?: string;
+  /** Beneficiário do adicional (alinhado com viagens/ajudas). Default 'paciente'. */
+  beneficiarioTipo?: 'paciente' | 'acompanhante';
+  /** Quando ACOMPANHANTE, aponta para o id do acompanhante. */
+  beneficiarioId?: string;
 }
+
+/** Tipo da solicitação. NORMAL cobre o fluxo completo (viagens + adicionais + ajuda).
+ *  AJUDA_CUSTO é para quando o paciente já está no destino do procedimento e
+ *  só recebe diárias — sem viagens nem adicionais. */
+export type TipoSolicitacao = 'normal' | 'ajuda_custo';
 
 export type MotivoEncerramento =
   | 'alta_medica'
@@ -344,6 +359,8 @@ export interface SolicitacaoMock {
   id: string;
   numero: string;
   status: StatusGlobalV2;
+  /** Tipo do fluxo: 'normal' (com viagens) ou 'ajuda_custo' (só diárias). Default 'normal'. */
+  tipoSolicitacao?: TipoSolicitacao;
   dataCriacao: string; // ISO datetime
   dataLaudo?: string;
   paciente: PacienteMock;

@@ -2,7 +2,7 @@
 
 import { use, useState, useEffect, useMemo, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   MapPin,
@@ -26,20 +26,11 @@ import {
   listarMunicipiosPorRegional,
 } from '@/services/regionais-saude.service';
 import { createClient } from '@/lib/supabase/client';
+import RegionalDrawer from '../_RegionalDrawer';
 
 /* -------------------------------------------------- */
-/*  Tabs & sort                                        */
+/*  Sort                                               */
 /* -------------------------------------------------- */
-
-type TabKey = 'endereco' | 'municipios' | 'pacientes';
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'endereco',      label: 'Endereço' },
-  { key: 'municipios',    label: 'Municípios' },
-  { key: 'pacientes',     label: 'Pacientes' },
-];
-
-const DEFAULT_TAB: TabKey = 'endereco';
 
 const DEFAULT_PAGE_SIZE = 25;
 type SortField = 'nome_completo' | 'cpf' | 'municipio' | 'created_at';
@@ -60,18 +51,6 @@ export default function RegionalSaudeDetalhePage({ params }: { params: Promise<{
 
 function RegionalSaudeDetalheInner({ id }: { id: string }) {
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const tabParam = searchParams.get('tab');
-  const activeTab: TabKey = tabParam && TABS.some((t) => t.key === tabParam) ? (tabParam as TabKey) : DEFAULT_TAB;
-
-  const setTab = (next: TabKey) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (next === DEFAULT_TAB) params.delete('tab');
-    else params.set('tab', next);
-    const qs = params.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  };
 
   const [regional, setRegional] = useState<Record<string, unknown> | null>(null);
   const [municipios, setMunicipios] = useState<string[]>([]);
@@ -79,6 +58,8 @@ function RegionalSaudeDetalheInner({ id }: { id: string }) {
   const [loading, setLoading] = useState(true);
   const [loadingMun, setLoadingMun] = useState(true);
   const [loadingPac, setLoadingPac] = useState(true);
+  const [editOpen, setEditOpen] = useState(false);
+  const [reloadFlag, setReloadFlag] = useState(0);
 
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState<SortField>('nome_completo');
@@ -117,7 +98,7 @@ function RegionalSaudeDetalheInner({ id }: { id: string }) {
       setLoadingPac(false);
     }
     load();
-  }, [id]);
+  }, [id, reloadFlag]);
 
   const filtered = useMemo(() => {
     let result = pacientes;
@@ -157,7 +138,7 @@ function RegionalSaudeDetalheInner({ id }: { id: string }) {
   }
 
   if (loading) {
-    return <DetailPageSkeleton tabs={TABS.length} />;
+    return <DetailPageSkeleton tabs={0} />;
   }
 
   if (!regional) {
@@ -222,7 +203,7 @@ function RegionalSaudeDetalheInner({ id }: { id: string }) {
               </span>
             </div>
           </div>
-          <button className="tfd-btn tfd-btn-primary shrink-0" onClick={() => router.push(`/regionais-saude?editar=${id}`)}>
+          <button className="tfd-btn tfd-btn-primary shrink-0" onClick={() => setEditOpen(true)}>
             <Pencil size={14} /> Editar
           </button>
         </div>
@@ -311,237 +292,193 @@ function RegionalSaudeDetalheInner({ id }: { id: string }) {
         ]}
       />
 
-      {/* ============ Tabs ============ */}
-      <div className="flex items-center gap-1 mb-6" style={{ borderBottom: '1px solid #E2E8F0' }}>
-        {TABS.map((t) => {
-          const active = activeTab === t.key;
-          return (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className="relative px-4 py-3 text-[14px] font-medium transition-colors"
-              style={{ color: active ? '#146BFA' : '#64748B', background: 'transparent' }}
-            >
-              {t.label}
-              {active && <span className="absolute left-2 right-2 -bottom-px h-[2px]" style={{ background: '#146BFA' }} />}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ============ Tab content ============ */}
-      <div className="animate-fade-in">
-        {activeTab === 'endereco' && (
-          <Section title="Endereço do Escritório" icon={<MapPin size={18} />}>
-            {enderecoCompleto ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {logradouro && <InfoRow label="Logradouro" value={logradouro} />}
-                {bairro && <InfoRow label="Bairro" value={bairro} />}
-                {municipioEscritorio && <InfoRow label="Município" value={municipioEscritorio} />}
-              </div>
-            ) : (
-              <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
-                Endereço do escritório não cadastrado.
-              </p>
-            )}
-          </Section>
-        )}
-
-        {activeTab === 'municipios' && (
-          <Section
-            title="Municípios Vinculados"
-            icon={<Building2 size={18} />}
-            badge={
-              !loadingMun ? (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}>
-                  {municipios.length}
-                </span>
-              ) : undefined
-            }
-          >
-            {loadingMun ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {Array.from({ length: 9 }).map((_, i) => (
-                  <Skeleton key={i} className="h-7 w-full" />
+      {/* ============ Conteúdo ============ */}
+      <div className="space-y-4">
+        <Section
+          title="Municípios Vinculados"
+          icon={<Building2 size={18} />}
+          badge={
+            !loadingMun ? (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}>
+                {municipios.length}
+              </span>
+            ) : undefined
+          }
+        >
+          {loadingMun ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {Array.from({ length: 9 }).map((_, i) => (
+                <Skeleton key={i} className="h-7 w-full" />
+              ))}
+            </div>
+          ) : municipios.length === 0 ? (
+            <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
+              Nenhum município vinculado.
+            </p>
+          ) : (
+            <>
+              <div
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-96 overflow-y-auto rounded-lg p-2"
+                style={{ border: '1px solid var(--tfd-surface-border)' }}
+              >
+                {municipios.map((mun) => (
+                  <div key={mun} className="flex items-center gap-2 px-2 py-1.5 rounded text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
+                    <MapPin size={12} style={{ color: 'var(--tfd-primary-400)', flexShrink: 0 }} />
+                    <span className="truncate">{mun}</span>
+                  </div>
                 ))}
               </div>
-            ) : municipios.length === 0 ? (
-              <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
-                Nenhum município vinculado.
-              </p>
-            ) : (
-              <>
-                <div
-                  className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-96 overflow-y-auto rounded-lg p-2"
-                  style={{ border: '1px solid var(--tfd-surface-border)' }}
-                >
-                  {municipios.map((mun) => (
-                    <div key={mun} className="flex items-center gap-2 px-2 py-1.5 rounded text-sm" style={{ color: 'var(--tfd-text-secondary)' }}>
-                      <MapPin size={12} style={{ color: 'var(--tfd-primary-400)', flexShrink: 0 }} />
-                      <span className="truncate">{mun}</span>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  className="tfd-btn tfd-btn-secondary tfd-btn--sm mt-3"
-                  onClick={() => router.push(`/regionais-saude?editar=${id}`)}
-                >
-                  <Pencil size={13} />
-                  Gerenciar Municípios
-                </button>
-              </>
-            )}
-          </Section>
-        )}
-
-        {activeTab === 'pacientes' && (
-          <Section
-            title="Pacientes Vinculados"
-            icon={<Users size={18} />}
-            badge={
-              !loadingPac ? (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}>
-                  {filtered.length}
-                </span>
-              ) : undefined
-            }
-          >
-            <div className="mb-3">
-              <div
-                className="flex items-center gap-2 px-3"
-                style={{
-                  background: 'white', border: '1px solid var(--tfd-surface-border)',
-                  borderRadius: 8, height: 36, maxWidth: 360,
-                }}
+              <button
+                className="tfd-btn tfd-btn-secondary tfd-btn--sm mt-3"
+                onClick={() => setEditOpen(true)}
               >
-                <Search size={14} style={{ color: '#9CA3AF' }} />
-                <input
-                  type="text"
-                  placeholder="Buscar paciente, CPF ou município..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="flex-1 bg-transparent outline-none text-[13px]"
-                />
-              </div>
-            </div>
+                <Pencil size={13} />
+                Gerenciar Municípios
+              </button>
+            </>
+          )}
+        </Section>
 
+        <Section
+          title="Pacientes Vinculados"
+          icon={<Users size={18} />}
+          badge={
+            !loadingPac ? (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}>
+                {filtered.length}
+              </span>
+            ) : undefined
+          }
+        >
+          <div className="mb-3">
             <div
+              className="flex items-center gap-2 px-3"
               style={{
-                background: 'white',
-                border: '1px solid var(--tfd-surface-border)',
-                borderRadius: 'var(--tfd-radius-lg)',
-                overflow: 'hidden',
+                background: 'white', border: '1px solid var(--tfd-surface-border)',
+                borderRadius: 8, height: 36, maxWidth: 360,
               }}
             >
-              <div className="overflow-x-auto">
-                <table className="w-full text-[13px]">
-                  <thead>
-                    <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--tfd-surface-border)' }}>
-                      <th
-                        className="px-4 py-3 font-semibold text-left cursor-pointer select-none"
-                        style={{ color: '#64748B', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}
-                        onClick={() => toggleSort('nome_completo')}
-                      >
-                        Paciente{sortIndicator('nome_completo')}
-                      </th>
-                      <th
-                        className="px-4 py-3 font-semibold text-left hidden sm:table-cell cursor-pointer select-none"
-                        style={{ color: '#64748B', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}
-                        onClick={() => toggleSort('cpf')}
-                      >
-                        CPF{sortIndicator('cpf')}
-                      </th>
-                      <th
-                        className="px-4 py-3 font-semibold text-left hidden md:table-cell cursor-pointer select-none"
-                        style={{ color: '#64748B', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}
-                        onClick={() => toggleSort('municipio')}
-                      >
-                        Município{sortIndicator('municipio')}
-                      </th>
-                      <th
-                        className="px-4 py-3 font-semibold text-left hidden lg:table-cell cursor-pointer select-none"
-                        style={{ color: '#64748B', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}
-                        onClick={() => toggleSort('created_at')}
-                      >
-                        Cadastro{sortIndicator('created_at')}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loadingPac ? (
-                      Array.from({ length: 5 }).map((_, i) => (
-                        <tr key={`sk-${i}`} style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
-                          {Array.from({ length: 4 }).map((__, c) => (
-                            <td key={c} className="px-4 py-3.5">
-                              <Skeleton className={`h-4 ${c === 0 ? 'w-48' : 'w-28'}`} />
-                            </td>
-                          ))}
-                        </tr>
-                      ))
-                    ) : paginated.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
-                          {search ? 'Nenhum paciente encontrado para esta busca.' : 'Nenhum paciente vinculado.'}
-                        </td>
-                      </tr>
-                    ) : (
-                      paginated.map((pac) => {
-                        const pacId = pac.id as string;
-                        const nomePac = pac.nome_completo as string;
-                        const cpfPac = pac.cpf as string;
-                        const munPac = pac.municipio as string;
-                        const dataCadastro = pac.created_at as string;
-                        return (
-                          <tr
-                            key={pacId}
-                            style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}
-                            className="cursor-pointer hover:bg-[#F8FAFC] transition-colors"
-                            onClick={() => router.push(`/pacientes/${pacId}?from=regionais-saude`)}
-                          >
-                            <td className="px-4 py-3.5">
-                              <span className="font-medium" style={{ color: 'var(--tfd-primary-500)' }}>
-                                {nomePac}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3.5 hidden sm:table-cell font-mono text-[12px]" style={{ color: 'var(--tfd-text-secondary)' }}>
-                              {cpfPac ? formatCPF(cpfPac) : '—'}
-                            </td>
-                            <td className="px-4 py-3.5 hidden md:table-cell" style={{ color: 'var(--tfd-text-secondary)' }}>
-                              {munPac || '—'}
-                            </td>
-                            <td className="px-4 py-3.5 hidden lg:table-cell whitespace-nowrap" style={{ color: 'var(--tfd-text-muted)' }}>
-                              {dataCadastro ? formatDate(dataCadastro) : '—'}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {filtered.length > 0 && (
-                <Pagination
-                  total={filtered.length}
-                  pageSize={pageSize}
-                  page={currentPage}
-                  onPageChange={setCurrentPage}
-                  onPageSizeChange={(s) => { setPageSize(s); setCurrentPage(1); }}
-                  recordLabel="pacientes"
-                />
-              )}
+              <Search size={14} style={{ color: '#9CA3AF' }} />
+              <input
+                type="text"
+                placeholder="Buscar paciente, CPF ou município..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="flex-1 bg-transparent outline-none text-[13px]"
+              />
             </div>
-          </Section>
-        )}
+          </div>
+
+          <div
+            style={{
+              background: 'white',
+              border: '1px solid var(--tfd-surface-border)',
+              borderRadius: 'var(--tfd-radius-lg)',
+              overflow: 'hidden',
+            }}
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--tfd-surface-border)' }}>
+                    <th
+                      className="px-4 py-3 font-semibold text-left cursor-pointer select-none"
+                      style={{ color: '#64748B', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}
+                      onClick={() => toggleSort('nome_completo')}
+                    >
+                      Paciente{sortIndicator('nome_completo')}
+                    </th>
+                    <th
+                      className="px-4 py-3 font-semibold text-left hidden sm:table-cell cursor-pointer select-none"
+                      style={{ color: '#64748B', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}
+                      onClick={() => toggleSort('cpf')}
+                    >
+                      CPF{sortIndicator('cpf')}
+                    </th>
+                    <th
+                      className="px-4 py-3 font-semibold text-left hidden md:table-cell cursor-pointer select-none"
+                      style={{ color: '#64748B', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}
+                      onClick={() => toggleSort('municipio')}
+                    >
+                      Município{sortIndicator('municipio')}
+                    </th>
+                    <th
+                      className="px-4 py-3 font-semibold text-left hidden lg:table-cell cursor-pointer select-none"
+                      style={{ color: '#64748B', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}
+                      onClick={() => toggleSort('created_at')}
+                    >
+                      Cadastro{sortIndicator('created_at')}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loadingPac ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <tr key={`sk-${i}`} style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
+                        {Array.from({ length: 4 }).map((__, c) => (
+                          <td key={c} className="px-4 py-3.5">
+                            <Skeleton className={`h-4 ${c === 0 ? 'w-48' : 'w-28'}`} />
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  ) : paginated.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
+                        {search ? 'Nenhum paciente encontrado para esta busca.' : 'Nenhum paciente vinculado.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    paginated.map((pac) => {
+                      const pacId = pac.id as string;
+                      const nomePac = pac.nome_completo as string;
+                      const cpfPac = pac.cpf as string;
+                      const munPac = pac.municipio as string;
+                      const dataCadastro = pac.created_at as string;
+                      return (
+                        <tr
+                          key={pacId}
+                          style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}
+                          className="cursor-pointer hover:bg-[#F8FAFC] transition-colors"
+                          onClick={() => router.push(`/pacientes/${pacId}?from=regionais-saude`)}
+                        >
+                          <td className="px-4 py-3.5">
+                            <span className="font-medium" style={{ color: 'var(--tfd-primary-500)' }}>
+                              {nomePac}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 hidden sm:table-cell font-mono text-[12px]" style={{ color: 'var(--tfd-text-secondary)' }}>
+                            {cpfPac ? formatCPF(cpfPac) : '—'}
+                          </td>
+                          <td className="px-4 py-3.5 hidden md:table-cell" style={{ color: 'var(--tfd-text-secondary)' }}>
+                            {munPac || '—'}
+                          </td>
+                          <td className="px-4 py-3.5 hidden lg:table-cell whitespace-nowrap" style={{ color: 'var(--tfd-text-muted)' }}>
+                            {dataCadastro ? formatDate(dataCadastro) : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {filtered.length > 0 && (
+              <Pagination
+                total={filtered.length}
+                pageSize={pageSize}
+                page={currentPage}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={(s) => { setPageSize(s); setCurrentPage(1); }}
+                recordLabel="pacientes"
+              />
+            )}
+          </div>
+        </Section>
       </div>
 
       <style jsx>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(2px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in { animation: fadeIn 180ms ease-out; }
         .header-groups { display: flex; flex-direction: column; gap: 6px; }
         .header-groups-divider { display: none; }
         @media (min-width: 1100px) {
@@ -549,6 +486,14 @@ function RegionalSaudeDetalheInner({ id }: { id: string }) {
           .header-groups-divider { display: inline-block; width: 1px; height: 16px; background: #E2E8F0; flex-shrink: 0; }
         }
       `}</style>
+
+      <RegionalDrawer
+        open={editOpen}
+        editandoId={editOpen ? id : null}
+        editandoData={editOpen ? regional : null}
+        onClose={() => setEditOpen(false)}
+        onSaved={() => setReloadFlag((n) => n + 1)}
+      />
     </div>
   );
 }
@@ -572,17 +517,6 @@ function Section({
         {badge}
       </div>
       {children}
-    </div>
-  );
-}
-
-function InfoRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
-  return (
-    <div className="flex flex-col sm:flex-row sm:items-baseline gap-0.5 sm:gap-3">
-      <span className="text-sm font-medium shrink-0 w-40" style={{ color: 'var(--tfd-text-secondary)' }}>{label}</span>
-      <span className="text-sm" style={{ color: 'var(--tfd-text-primary)', fontFamily: mono ? 'var(--tfd-font-mono)' : undefined }}>
-        {value}
-      </span>
     </div>
   );
 }

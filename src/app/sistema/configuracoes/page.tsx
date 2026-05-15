@@ -21,14 +21,13 @@ import {
   Package,
   Megaphone,
   FileCode2,
+  Landmark,
   type LucideIcon,
 } from 'lucide-react';
 import SigtapPanel from './SigtapPanel';
 
 import Cid10Panel from './Cid10Panel';
 import Cid11Panel from './Cid11Panel';
-import RelatorioFinanceiroPanel from './RelatorioFinanceiroPanel';
-
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
@@ -59,14 +58,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 /*  Tab config                                         */
 /* -------------------------------------------------- */
 
-type TabKey = 'tabelas' | 'cid10' | 'cid11' | 'sigtap' | 'financeiro';
+type TabKey = 'tabelas' | 'cid10' | 'cid11' | 'sigtap';
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'tabelas', label: 'Tabelas Auxiliares', icon: <Building2 size={16} /> },
   { key: 'cid10', label: 'CID-10', icon: <FileText size={16} /> },
   { key: 'cid11', label: 'CID-11', icon: <FileText size={16} /> },
   { key: 'sigtap', label: 'Códigos SIGTAP', icon: <FileCode2 size={16} /> },
-  { key: 'financeiro', label: 'Relatório Financeiro', icon: <DollarSign size={16} /> },
 ];
 
 /* -------------------------------------------------- */
@@ -115,6 +113,7 @@ const SECOES: SecaoConfig[] = [
     categorias: [
       { key: 'motivo_encerramento', label: 'Motivos de Encerramento', icon: XCircle, desc: 'Tipos de encerramento do processo' },
       { key: 'tipo_despesa', label: 'Tipos de Despesa', icon: DollarSign, desc: 'Categorias de despesa para adicionais' },
+      { key: 'banco', label: 'Bancos', icon: Landmark, desc: 'Instituições financeiras aceitas no cadastro do paciente' },
     ],
   },
   {
@@ -725,7 +724,6 @@ export default function SistemaConfiguracoesPage() {
       {activeTab === 'cid10' && <Cid10Panel />}
         {activeTab === 'cid11' && <Cid11Panel />}
       {activeTab === 'sigtap' && <SigtapPanel />}
-      {activeTab === 'financeiro' && <RelatorioFinanceiroPanel />}
     </>
   );
 }

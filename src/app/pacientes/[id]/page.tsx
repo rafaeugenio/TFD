@@ -19,6 +19,7 @@ import {
 import StatusTag from '@/shared/components/status-tag/StatusTag';
 import { DetailPageSkeleton, CardListSkeleton } from '@/shared/components/skeleton';
 import { buscarPaciente, historicoProcessos } from '@/services/pacientes.service';
+import PacienteDrawer from '../_PacienteDrawer';
 import { listarPorPaciente } from '@/services/acompanhantes.service';
 import { formatCPF, formatCNS, formatDate } from '@/shared/pipes/formatters';
 import type { StatusSolicitacao } from '@/core/models';
@@ -99,6 +100,8 @@ function PacienteDetalheInner({ id }: { id: string }) {
   const [acompanhantes, setAcompanhantes] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingSol, setLoadingSol] = useState(true);
+  const [editOpen, setEditOpen] = useState(false);
+  const [reloadFlag, setReloadFlag] = useState(0);
 
   useEffect(() => {
     async function load() {
@@ -117,7 +120,7 @@ function PacienteDetalheInner({ id }: { id: string }) {
       setLoadingSol(false);
     }
     load();
-  }, [id]);
+  }, [id, reloadFlag]);
 
   if (loading) {
     return <DetailPageSkeleton tabs={TABS.length} />;
@@ -209,7 +212,7 @@ function PacienteDetalheInner({ id }: { id: string }) {
           </div>
           <button
             className="tfd-btn tfd-btn-primary shrink-0"
-            onClick={() => router.push(`/pacientes?editar=${id}`)}
+            onClick={() => setEditOpen(true)}
           >
             <Pencil size={14} /> Editar
           </button>
@@ -489,6 +492,14 @@ function PacienteDetalheInner({ id }: { id: string }) {
           .header-groups-divider { display: inline-block; width: 1px; height: 16px; background: #E2E8F0; flex-shrink: 0; }
         }
       `}</style>
+
+      <PacienteDrawer
+        open={editOpen}
+        editandoId={editOpen ? id : null}
+        editandoData={editOpen ? paciente : null}
+        onClose={() => setEditOpen(false)}
+        onSaved={() => setReloadFlag((n) => n + 1)}
+      />
     </div>
   );
 }

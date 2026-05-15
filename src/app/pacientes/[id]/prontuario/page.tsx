@@ -255,7 +255,7 @@ export default function ProntuarioPacientePage({
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <Link
-                          href={`/solicitacoes/${proc.id}`}
+                          href={`/fluxo-v2/solicitacoes/${proc.id}`}
                           className="text-sm font-semibold hover:underline"
                           style={{ color: 'var(--tfd-primary-500)' }}
                         >

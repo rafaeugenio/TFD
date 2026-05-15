@@ -46,7 +46,7 @@ export async function buscarSolicitacao(id: string) {
   return supabase
     .from('solicitacoes')
     .select(
-      '*, pacientes(*, municipios:municipio_residencia_id(id, nome, uf)), municipios:municipio_origem_id(id, nome, uf), solicitacao_acompanhantes(*, acompanhantes(*)), documentos(*), pareceres(*, usuarios:medico_auditor_id(id, nome_completo, perfil)), rotas_regulacao(*, cobrancas_externas(*)), agendamentos(*), viagens(*), ajudas_custo(*), permanencias(*, prorrogacoes(*)), encerramentos(*), devolucoes(*)',
+      '*, pacientes(*, municipios:municipio_residencia_id(id, nome, uf)), municipios:municipio_origem_id(id, nome, uf), solicitacao_acompanhantes(*, acompanhantes(*)), documentos(*), pareceres(*, usuarios:medico_auditor_id(id, nome_completo, perfil, crm, crm_uf, especialidade_medica)), rotas_regulacao(*, cobrancas_externas(*)), agendamentos(*), viagens(*), ajudas_custo(*), permanencias(*, prorrogacoes(*)), encerramentos(*), devolucoes(*)',
     )
     .eq('id', id)
     .single();

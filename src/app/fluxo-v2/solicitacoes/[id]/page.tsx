@@ -4,7 +4,7 @@ import { use, useEffect, useMemo, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
-  ArrowLeft, Archive, Send, Phone, Mail, ExternalLink, Paperclip, FileText, FileX,
+  ArrowLeft, Archive, ArchiveRestore, Send, Phone, Mail, ExternalLink, Paperclip, FileText, FileX,
 } from 'lucide-react';
 import StatusV2Badge from '../../_components/StatusV2Badge';
 import { idadeAnos } from '../../_utils/idade';
@@ -49,7 +49,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { getById, encerrar, isLoading } = useFluxoV2State();
+  const { getById, encerrar, reabrirSolicitacao, isLoading } = useFluxoV2State();
   const toast = useToast();
   const s = getById(id);
 
@@ -68,6 +68,9 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
 
   const [encerrarOpen, setEncerrarOpen] = useState(false);
   const [enviarOpen, setEnviarOpen] = useState(false);
+  const [reabrirOpen, setReabrirOpen] = useState(false);
+  const [reabrirSetor, setReabrirSetor] = useState<'dados_basicos' | 'regulacao' | 'financeiro'>('regulacao');
+  const [reabrirMotivo, setReabrirMotivo] = useState('');
   const [motivo, setMotivo] = useState<MotivoEncerramento>('alta_medica');
   const [dataEnc, setDataEnc] = useState(new Date().toISOString().slice(0, 10));
   const [obs, setObs] = useState('');
@@ -98,6 +101,21 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
     encerrar(s!.id, { data: dataEnc, motivo, observacao: obs.trim() || undefined });
     toast.success('Solicitação encerrada', MOTIVO_ENCERRAMENTO_LABEL[motivo]);
     setEncerrarOpen(false);
+    router.refresh();
+  }
+
+  function handleReabrir() {
+    if (!s) return;
+    reabrirSolicitacao(s.id, reabrirSetor, reabrirMotivo.trim() || undefined);
+    const setorLabel = {
+      dados_basicos: 'Dados Básicos',
+      regulacao: 'Regulação',
+      financeiro: 'Financeiro',
+    }[reabrirSetor];
+    toast.success('Solicitação reaberta', `Encaminhada para ${setorLabel}.`);
+    setReabrirOpen(false);
+    setReabrirMotivo('');
+    setReabrirSetor('regulacao');
     router.refresh();
   }
 
@@ -273,20 +291,34 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
             borderRadius: 'var(--tfd-radius-lg)',
           }}
         >
-          <div className="flex items-start gap-3 mb-3">
-            <div
-              style={{
-                width: 32, height: 32, borderRadius: 8,
-                background: '#FEE2E2', color: '#B91C1C',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}
-            >
-              <Archive size={16} />
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="flex items-start gap-3">
+              <div
+                style={{
+                  width: 32, height: 32, borderRadius: 8,
+                  background: '#FEE2E2', color: '#B91C1C',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <Archive size={16} />
+              </div>
+              <div>
+                <h3 className="text-[15px] font-semibold" style={{ color: '#7F1D1D' }}>Solicitação encerrada</h3>
+                <p className="text-[12px]" style={{ color: '#B91C1C' }}>
+                  Nenhuma edição é permitida. Para retomar o fluxo, reabra a solicitação.
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-[15px] font-semibold" style={{ color: '#7F1D1D' }}>Solicitação encerrada</h3>
-              <p className="text-[12px]" style={{ color: '#B91C1C' }}>Encerramento registrado pela equipe.</p>
-            </div>
+            <Can action="solicitacoes.reabrir">
+              <button
+                type="button"
+                onClick={() => setReabrirOpen(true)}
+                className="tfd-btn tfd-btn-primary tfd-btn--sm shrink-0"
+                style={{ background: '#B91C1C', borderColor: '#B91C1C' }}
+              >
+                <ArchiveRestore size={14} /> Reabrir solicitação
+              </button>
+            </Can>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <EncerramentoField label="Motivo" value={MOTIVO_ENCERRAMENTO_LABEL[s.encerramento.motivo]} />
@@ -383,6 +415,117 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
           solicitacaoId={s.id}
           setorAtual={setorAtual(s) as 'dados_basicos' | 'regulacao' | 'financeiro'}
         />
+      )}
+
+      {/* Reabrir modal — exibido apenas quando solicitação está encerrada */}
+      {reabrirOpen && s.status === 'encerrada' && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.4)' }}
+          onClick={() => setReabrirOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: 'white', borderRadius: 12, width: 'min(520px, 92vw)', padding: 24 }}
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div
+                style={{
+                  width: 36, height: 36, borderRadius: 8,
+                  background: 'var(--tfd-primary-50, #EBF0FF)',
+                  color: 'var(--tfd-primary-500)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <ArchiveRestore size={18} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-[17px] font-semibold" style={{ color: '#1A1D2B' }}>Reabrir solicitação</h3>
+                <p className="text-[12.5px] mt-0.5" style={{ color: '#6B7280' }}>
+                  {s.numero} — {s.paciente.nome}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-[12.5px] mb-4 leading-relaxed" style={{ color: '#475569' }}>
+              Ao reabrir, a solicitação volta ao fluxo normal e poderá ser tramitada entre setores
+              como qualquer outra. Escolha o setor inicial para onde ela deve cair:
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+              {(
+                [
+                  { key: 'dados_basicos', titulo: 'Dados Básicos', descricao: 'Reanalisar dados clínicos e do paciente.' },
+                  { key: 'regulacao', titulo: 'Regulação', descricao: 'Retomar regulação, parecer ou agendamento.' },
+                  { key: 'financeiro', titulo: 'Financeiro', descricao: 'Ajustar passagens, ajuda de custo ou adicionais.' },
+                ] as const
+              ).map((opt) => {
+                const ativo = reabrirSetor === opt.key;
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => setReabrirSetor(opt.key)}
+                    className="text-left p-3 transition-all"
+                    style={{
+                      background: ativo ? 'var(--tfd-primary-50)' : 'white',
+                      border: ativo ? '1px solid var(--tfd-primary-500)' : '1px solid var(--tfd-surface-border)',
+                      borderRadius: 8,
+                      boxShadow: ativo ? '0 0 0 3px rgba(20,107,250,0.08)' : 'none',
+                    }}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span
+                        style={{
+                          width: 12, height: 12, borderRadius: '50%',
+                          border: ativo ? '4px solid var(--tfd-primary-500)' : '2px solid #CBD5E1',
+                          background: 'white',
+                        }}
+                        aria-hidden
+                      />
+                      <span
+                        className="text-[12.5px] font-semibold"
+                        style={{ color: ativo ? 'var(--tfd-primary-700, #0D4FBD)' : '#1A1D2B' }}
+                      >
+                        {opt.titulo}
+                      </span>
+                    </div>
+                    <p className="text-[11px]" style={{ color: '#64748B' }}>{opt.descricao}</p>
+                  </button>
+                );
+              })}
+            </div>
+
+            <label className="block text-[12px] font-medium mb-1" style={{ color: '#475569' }}>
+              Motivo da reabertura <span style={{ color: '#94A3B8' }}>(opcional)</span>
+            </label>
+            <textarea
+              value={reabrirMotivo}
+              onChange={(e) => setReabrirMotivo(e.target.value)}
+              rows={2}
+              placeholder="Ex.: nova documentação enviada pelo paciente / glosa identificada no BPA..."
+              className="w-full px-3 py-2 text-[13px] mb-4"
+              style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
+            />
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="tfd-btn tfd-btn-ghost"
+                onClick={() => setReabrirOpen(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="tfd-btn tfd-btn-primary"
+                onClick={handleReabrir}
+              >
+                <ArchiveRestore size={14} /> Reabrir
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <style jsx>{`

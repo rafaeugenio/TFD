@@ -118,7 +118,7 @@ function acompanhantesFromRows(rows: Row[]): AcompanhanteMock[] {
 /* ------------------------------------------------------------------ */
 
 function parecerFromRow(r: Row): ParecerMock {
-  const medicoNome = str(obj(r.usuarios)?.nome_completo);
+  const auditor = obj(r.usuarios);
   return {
     id: str(r.id),
     data: str(r.created_at),
@@ -128,7 +128,10 @@ function parecerFromRow(r: Row): ParecerMock {
     cidSecundario: opt(r.cid_secundario),
     versaoCID: (opt(r.versao_cid) as '10' | '11' | undefined) ?? '10',
     observacao: opt(r.justificativa),
-    medico: medicoNome,
+    medico: str(auditor?.nome_completo),
+    medicoCrm: opt(auditor?.crm),
+    medicoCrmUf: opt(auditor?.crm_uf),
+    medicoEspecialidade: opt(auditor?.especialidade_medica),
   };
 }
 
@@ -325,6 +328,8 @@ function adicionaisFromRows(rows: Row[]): AdicionalMock[] {
     data: str(r.data_ocorrencia) || str(r.created_at),
     valor: num(r.valor),
     status: STATUS_ADICIONAL_FROM_DB[str(r.status)] ?? 'pendente_aprovacao',
+    beneficiarioTipo: str(r.beneficiario_tipo) === 'ACOMPANHANTE' ? 'acompanhante' : 'paciente',
+    beneficiarioId: opt(r.beneficiario_id),
   }));
 }
 
@@ -419,6 +424,7 @@ export function solicitacaoFromSupabase(row: Row): SolicitacaoMock {
     id: str(row.id),
     numero: str(row.numero_processo),
     status: setorToStatusGlobal(setor),
+    tipoSolicitacao: str(row.tipo_solicitacao) === 'AJUDA_CUSTO' ? 'ajuda_custo' : 'normal',
     dataCriacao: str(row.created_at),
     dataLaudo: opt(row.data_laudo),
     paciente,

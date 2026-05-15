@@ -3,40 +3,29 @@
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  Building2,
-  CheckCircle2,
   Plus,
   Search,
   Pencil,
   Trash2,
-  ChevronLeft,
-  ChevronRight,
   XCircle,
-  Loader2,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import StatsRow from '@/shared/components/stats-row/StatsRow';
 import Pagination from '@/shared/components/pagination/Pagination';
-import ConfirmDialog, { buildDiff, type DiffField } from '@/shared/components/confirm-dialog/ConfirmDialog';
-import Drawer from '@/shared/components/drawer/Drawer';
-import FormField from '@/shared/components/drawer/FormField';
+import ConfirmDialog from '@/shared/components/confirm-dialog/ConfirmDialog';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
-import { maskPhone, maskCEP } from '@/shared/pipes/formatters';
-import CepAutofill from '@/shared/components/cep-autofill/CepAutofill';
-import UfCidadeSelect from '@/shared/components/uf-cidade-select/UfCidadeSelect';
-import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
+import { maskPhone } from '@/shared/pipes/formatters';
 import SortableHeader from '@/shared/components/table/SortableHeader';
 import { useTableControls } from '@/shared/hooks/useTableControls';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Can } from '@/shared/auth/Can';
+import UnidadeDrawer from './_UnidadeDrawer';
 
 import {
   listarUnidadesSaude,
   buscarUnidadeSaude,
-  criarUnidadeSaude,
-  atualizarUnidadeSaude,
   desativarUnidadeSaude,
 } from '@/services/unidades-saude.service';
 
@@ -59,34 +48,11 @@ function UnidadesSaudePage() {
   /* ---- Drawer state ---- */
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingSnapshot, setEditingSnapshot] = useState<Record<string, string> | null>(null);
-  const [saveConfirm, setSaveConfirm] = useState<{ tone: 'create' | 'edit'; diff: DiffField[] } | null>(null);
-  const [savingUnidade, setSavingUnidade] = useState(false);
+  const [editingData, setEditingData] = useState<Record<string, unknown> | null>(null);
 
   /* ---- Deactivate confirmation state ---- */
   const [deactivateConfirmId, setDeactivateConfirmId] = useState<string | null>(null);
   const [deactivateConfirmName, setDeactivateConfirmName] = useState('');
-
-  /* ---- Form state: Dados da Unidade ---- */
-  const [nome, setNome] = useState('');
-  const [cnes, setCnes] = useState('');
-  const [tipo, setTipo] = useState('');
-
-  /* ---- Form state: Endereco ---- */
-  const [cep, setCep] = useState('');
-  const [logradouro, setLogradouro] = useState('');
-  const [numero, setNumero] = useState('');
-  const [bairro, setBairro] = useState('');
-  const [municipio, setMunicipio] = useState('');
-  const [uf, setUf] = useState('MA');
-
-  /* ---- Form state: Contato ---- */
-  const [telefone, setTelefone] = useState('');
-  const [email, setEmail] = useState('');
-  const [responsavel, setResponsavel] = useState('');
-
-  /* ---- CNES autofill ---- */
-  const [cnesLoading, setCnesLoading] = useState(false);
 
   /* ---- Data fetching via Supabase ---- */
   const { data: unidades, loading, refresh } = useSupabaseData(
@@ -139,175 +105,23 @@ function UnidadesSaudePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editarParam, loading, unidades]);
 
-  /* -------------------------------------------------- */
-  /*  CNES autofill                                     */
-  /* -------------------------------------------------- */
-
-  async function fetchCnesData(codigo: string) {
-    setCnesLoading(true);
-    try {
-      const res = await fetch(`/api/cnes/${codigo}`);
-      if (!res.ok) throw new Error('not found');
-      const data = await res.json() as Record<string, string>;
-      if (data.nome) setNome(data.nome);
-      if (data.logradouro) setLogradouro(data.logradouro);
-      if (data.numero) setNumero(data.numero);
-      if (data.bairro) setBairro(data.bairro);
-      if (data.cep) setCep(maskCEP(data.cep));
-      if (data.telefone) setTelefone(maskPhone(data.telefone));
-      if (data.email) setEmail(data.email);
-      if (data.responsavel) setResponsavel(data.responsavel);
-      if (data.tipoDescricao) {
-        // Converte a descrição do CNES (UPPERCASE) para Title Case
-        setTipo(toTitleCase(data.tipoDescricao));
-      }
-      // UF primeiro para o UfCidadeSelect carregar os municípios, depois seta o município com delay
-      if (data.uf) setUf(data.uf);
-      if (data.municipio) {
-        const mun = toTitleCase(data.municipio);
-        // Aguarda o fetch de municípios do IBGE antes de setar o valor
-        setTimeout(() => setMunicipio(mun), 800);
-      }
-      toast.success('CNES encontrado', 'Dados importados automaticamente. Revise antes de salvar.');
-    } catch {
-      toast.error('CNES não encontrado', 'Verifique o código ou preencha os dados manualmente.');
-    } finally {
-      setCnesLoading(false);
-    }
+  /* ---- Drawer handlers ---- */
+  function handleOpenCreate() {
+    setEditingId(null);
+    setEditingData(null);
+    setDrawerOpen(true);
   }
 
-  function toTitleCase(str: string): string {
-    return str
-      .toLowerCase()
-      .split(' ')
-      .map((w) => {
-        if (['de', 'da', 'do', 'das', 'dos', 'e'].includes(w)) return w;
-        return w.charAt(0).toUpperCase() + w.slice(1);
-      })
-      .join(' ');
-  }
-
-  function handleCnesChange(value: string) {
-    const clean = value.replace(/\D/g, '').slice(0, 7);
-    setCnes(clean);
-    if (clean.length === 7 && !editingId) {
-      fetchCnesData(clean);
-    }
-  }
-
-  /* -------------------------------------------------- */
-  /*  Form reset & drawer handlers                      */
-  /* -------------------------------------------------- */
-
-  function resetForm() {
-    setNome('');
-    setCnes('');
-    setTipo('');
-    setCep('');
-    setLogradouro('');
-    setNumero('');
-    setBairro('');
-    setMunicipio('');
-    setUf('MA');
-    setTelefone('');
-    setEmail('');
-    setResponsavel('');
-    setCnesLoading(false);
+  function handleOpenEdit(uni: Record<string, unknown>) {
+    setEditingId(uni.id as string);
+    setEditingData(uni);
+    setDrawerOpen(true);
   }
 
   function handleCloseDrawer() {
     setDrawerOpen(false);
     setEditingId(null);
-    resetForm();
-  }
-
-  function handleOpenEdit(uni: Record<string, unknown>) {
-    const id = uni.id as string;
-    setEditingId(id);
-    setEditingSnapshot({
-      nome: (uni.nome as string) ?? '',
-      cnes: (uni.cnes as string) ?? '',
-      tipo: (uni.tipo as string) ?? '',
-      cep: (uni.cep as string) ?? '',
-      logradouro: (uni.logradouro as string) ?? '',
-      numero: (uni.numero as string) ?? '',
-      bairro: (uni.bairro as string) ?? '',
-      municipio: (uni.municipio as string) ?? (uni.cidade as string) ?? '',
-      uf: (uni.uf as string) ?? 'MA',
-      telefone: (uni.telefone as string) ?? '',
-      email: (uni.email as string) ?? '',
-      responsavel: (uni.responsavel as string) ?? '',
-    });
-    setNome((uni.nome as string) ?? '');
-    setCnes((uni.cnes as string) ?? '');
-    setTipo((uni.tipo as string) ?? '');
-    setCep(maskCEP((uni.cep as string) ?? ''));
-    setLogradouro((uni.logradouro as string) ?? '');
-    setNumero((uni.numero as string) ?? '');
-    setBairro((uni.bairro as string) ?? '');
-    setMunicipio((uni.municipio as string) ?? (uni.cidade as string) ?? '');
-    setUf((uni.uf as string) ?? 'MA');
-    setTelefone(maskPhone((uni.telefone as string) ?? ''));
-    setEmail((uni.email as string) ?? '');
-    setResponsavel((uni.responsavel as string) ?? '');
-    setDrawerOpen(true);
-  }
-
-  /** Valida e abre o modal de confirmação. */
-  function handleRequestSubmit() {
-    if (!nome.trim()) { toast.error('Campo obrigatório', 'Informe o nome da unidade.'); return; }
-    if (cnes && cnes.length !== 7) { toast.error('CNES inválido', 'O CNES deve conter exatamente 7 dígitos.'); return; }
-
-    if (editingId && editingSnapshot) {
-      const before = {
-        nome: editingSnapshot.nome,
-        cnes: editingSnapshot.cnes,
-        tipo: editingSnapshot.tipo,
-        endereco: [editingSnapshot.logradouro, editingSnapshot.numero, editingSnapshot.bairro].filter(Boolean).join(', '),
-        municipio: editingSnapshot.municipio ? `${editingSnapshot.municipio}/${editingSnapshot.uf}` : '',
-        cep: editingSnapshot.cep,
-        telefone: editingSnapshot.telefone ? maskPhone(editingSnapshot.telefone) : '',
-        email: editingSnapshot.email,
-        responsavel: editingSnapshot.responsavel,
-      };
-      const after = {
-        nome: nome.trim(),
-        cnes: cnes,
-        tipo: tipo,
-        endereco: [logradouro.trim(), numero.trim(), bairro.trim()].filter(Boolean).join(', '),
-        municipio: municipio ? `${municipio}/${uf}` : '',
-        cep: cep,
-        telefone: telefone,
-        email: email.trim(),
-        responsavel: responsavel.trim(),
-      };
-      const diff = buildDiff(before, after, [
-        { key: 'nome', label: 'Nome' },
-        { key: 'cnes', label: 'CNES' },
-        { key: 'tipo', label: 'Tipo' },
-        { key: 'endereco', label: 'Endereço' },
-        { key: 'municipio', label: 'Município' },
-        { key: 'cep', label: 'CEP' },
-        { key: 'telefone', label: 'Telefone' },
-        { key: 'email', label: 'E-mail' },
-        { key: 'responsavel', label: 'Responsável' },
-      ]);
-      setSaveConfirm({ tone: 'edit', diff });
-    } else {
-      setSaveConfirm({
-        tone: 'create',
-        diff: [
-          { label: 'Nome', after: nome.trim() },
-          { label: 'CNES', after: cnes },
-          { label: 'Tipo', after: tipo },
-          { label: 'Município', after: municipio ? `${municipio}/${uf}` : '' },
-          { label: 'Endereço', after: [logradouro.trim(), numero.trim(), bairro.trim()].filter(Boolean).join(', ') },
-          { label: 'Telefone', after: telefone },
-          { label: 'E-mail', after: email.trim() },
-          { label: 'Responsável', after: responsavel.trim() },
-        ],
-      });
-    }
+    setEditingData(null);
   }
 
   function handleOpenDeactivate(uni: Record<string, unknown>) {
@@ -334,68 +148,6 @@ function UnidadesSaudePage() {
     }
   }
 
-  /* -------------------------------------------------- */
-  /*  Submit unidade                                     */
-  /* -------------------------------------------------- */
-
-  async function handleSubmitUnidade() {
-    try {
-      if (!nome.trim()) {
-        toast.error('Campo obrigatório', 'Informe o nome da unidade.');
-        return;
-      }
-      const cleanCnes = cnes.replace(/\D/g, '');
-      if (!cleanCnes || cleanCnes.length !== 7) {
-        toast.error('CNES inválido', 'O CNES deve conter exatamente 7 dígitos.');
-        return;
-      }
-
-      const cleanPhone = telefone.replace(/\D/g, '');
-      const cleanCep = cep.replace(/\D/g, '');
-
-      const uniData: Record<string, unknown> = {
-        nome: nome.trim(),
-        cnes: cleanCnes,
-        tipo: tipo || null,
-        cep: cleanCep || null,
-        logradouro: logradouro.trim() || null,
-        numero: numero.trim() || null,
-        bairro: bairro.trim() || null,
-        municipio: municipio.trim() || null,
-        uf: uf || 'MA',
-        telefone: cleanPhone || null,
-        email: email.trim() || null,
-        responsavel: responsavel.trim() || null,
-      };
-
-      if (editingId) {
-        const result = await atualizarUnidadeSaude(editingId, uniData as any);
-        if (result.error) {
-          toast.error('Erro ao atualizar', (result.error as { message?: string }).message ?? 'Erro desconhecido');
-          return;
-        }
-      } else {
-        const result = await criarUnidadeSaude(uniData as any);
-        if (result.error) {
-          toast.error('Erro ao cadastrar', (result.error as { message?: string }).message ?? 'Erro desconhecido');
-          return;
-        }
-      }
-
-      toast.success(
-        editingId ? 'Unidade atualizada!' : 'Unidade cadastrada!',
-        editingId
-          ? 'Os dados foram atualizados com sucesso.'
-          : 'A unidade foi cadastrada com sucesso.',
-      );
-      handleCloseDrawer();
-      refresh();
-      refreshCounts();
-    } catch (err: unknown) {
-      const e = err as { message?: string };
-      toast.error('Erro inesperado', e.message ?? 'Tente novamente');
-    }
-  }
 
   /* -------------------------------------------------- */
   /*  Render                                             */
@@ -408,7 +160,7 @@ function UnidadesSaudePage() {
         subtitle="Gerenciamento de unidades de saúde de destino TFD"
         actions={
           <Can action="unidades_saude.criar">
-            <button className="tfd-btn tfd-btn-primary" onClick={() => { setEditingId(null); resetForm(); setDrawerOpen(true); }}>
+            <button className="tfd-btn tfd-btn-primary" onClick={handleOpenCreate}>
               <Plus size={16} />
               Nova Unidade
             </button>
@@ -573,189 +325,14 @@ function UnidadesSaudePage() {
         onConfirm={handleConfirmDeactivate}
       />
 
-      {/* ========== Save Confirmation Modal ========== */}
-      <ConfirmDialog
-        open={!!saveConfirm}
-        tone={saveConfirm?.tone ?? 'create'}
-        title={editingId ? 'Confirmar alterações na unidade?' : 'Confirmar cadastro de unidade?'}
-        subject={nome.trim() || undefined}
-        diff={saveConfirm?.diff}
-        busy={savingUnidade}
-        onClose={() => setSaveConfirm(null)}
-        onConfirm={async () => {
-          setSavingUnidade(true);
-          try {
-            await handleSubmitUnidade();
-            setSaveConfirm(null);
-          } finally {
-            setSavingUnidade(false);
-          }
-        }}
-      />
-
-      {/* ========== Unidade Drawer ========== */}
-      <Drawer
+      {/* ========== Unidade Drawer (extraído) ========== */}
+      <UnidadeDrawer
         open={drawerOpen}
+        editandoId={editingId}
+        editandoData={editingData}
         onClose={handleCloseDrawer}
-        title={editingId ? 'Editar Unidade' : 'Nova Unidade'}
-        subtitle={editingId ? 'Atualize os dados da unidade' : 'Preencha os dados para cadastrar uma nova unidade'}
-        width="640px"
-        footer={
-          <>
-            <button className="tfd-btn tfd-btn-secondary" onClick={handleCloseDrawer}>
-              Cancelar
-            </button>
-            <button className="tfd-btn tfd-btn-primary" onClick={handleRequestSubmit} disabled={savingUnidade}>
-              {editingId ? 'Salvar Alterações' : 'Cadastrar Unidade'}
-            </button>
-          </>
-        }
-      >
-        {/* ── Section: Dados da Unidade ── */}
-        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
-          Dados da Unidade
-        </h3>
-
-        <FormField label="Nome" required>
-          <input
-            type="text"
-            className="tfd-input"
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-          />
-        </FormField>
-
-        <div className="grid grid-cols-2 gap-4">
-          <FormField label="CNES" required>
-            <div className="relative">
-              <input
-                type="text"
-                className="tfd-input"
-                placeholder="0000000"
-                maxLength={7}
-                value={cnes}
-                onChange={(e) => handleCnesChange(e.target.value)}
-                disabled={cnesLoading}
-              />
-              {cnesLoading && (
-                <span
-                  className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin"
-                  style={{ color: 'var(--tfd-primary-500)' }}
-                >
-                  <Loader2 size={16} />
-                </span>
-              )}
-            </div>
-            {!editingId && !cnesLoading && cnes.length < 7 && (
-              <p className="text-xs mt-1" style={{ color: 'var(--tfd-text-muted)' }}>
-                Ao digitar 7 dígitos, os dados serão preenchidos automaticamente.
-              </p>
-            )}
-          </FormField>
-
-          <LookupSelect
-            categoria="tipo_unidade"
-            label="Tipo"
-            value={tipo}
-            onChange={setTipo}
-            valueField="nome"
-            orderBy="ordem"
-          />
-        </div>
-
-        <hr className="tfd-divider" />
-
-        {/* ── Section: Endereco ── */}
-        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
-          Endereco
-        </h3>
-
-        <CepAutofill
-          initialCep={cep}
-          onAddressFound={(address) => {
-            setCep(maskCEP(address.cep));
-            setLogradouro(address.logradouro);
-            setBairro(address.bairro);
-            setUf(address.uf);
-            if (address.cidade) setMunicipio(address.cidade);
-          }}
-        />
-
-        <FormField label="Logradouro">
-          <input
-            type="text"
-            className="tfd-input"
-            value={logradouro}
-            onChange={(e) => setLogradouro(e.target.value)}
-          />
-        </FormField>
-
-        <div className="grid grid-cols-2 gap-4">
-          <FormField label="Bairro">
-            <input
-              type="text"
-              className="tfd-input"
-              value={bairro}
-              onChange={(e) => setBairro(e.target.value)}
-            />
-          </FormField>
-
-          <FormField label="Número">
-            <input
-              type="text"
-              className="tfd-input"
-              value={numero}
-              onChange={(e) => setNumero(e.target.value)}
-            />
-          </FormField>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <UfCidadeSelect
-            ufLabel="UF"
-            cidadeLabel="Município"
-            uf={uf}
-            cidade={municipio}
-            onUfChange={(v) => { setUf(v); setMunicipio(''); }}
-            onCidadeChange={setMunicipio}
-          />
-        </div>
-
-        <hr className="tfd-divider" />
-
-        {/* ── Section: Contato ── */}
-        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
-          Contato
-        </h3>
-
-        <FormField label="Telefone">
-          <input
-            type="tel"
-            className="tfd-input"
-            placeholder="(99) 99999-0000"
-            value={telefone}
-            onChange={(e) => setTelefone(maskPhone(e.target.value))}
-          />
-        </FormField>
-
-        <FormField label="E-mail">
-          <input
-            type="email"
-            className="tfd-input"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </FormField>
-
-        <FormField label="Responsável">
-          <input
-            type="text"
-            className="tfd-input"
-            value={responsavel}
-            onChange={(e) => setResponsavel(e.target.value)}
-          />
-        </FormField>
-      </Drawer>
+        onSaved={() => { refresh(); refreshCounts(); }}
+      />
     </>
   );
 }

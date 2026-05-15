@@ -260,20 +260,37 @@ function sexoExtenso(sexo?: 'M' | 'F'): string {
  * `[LABEL EM CAIXA ALTA]` no template e permanecem como tal para o médico
  * identificar visualmente.
  */
+export interface MedicoContextoTemplate {
+  nome?: string;
+  crm?: string;
+  crmUf?: string;
+  especialidade?: string;
+}
+
 export function aplicarPlaceholders(
   texto: string,
-  s: SolicitacaoMock,
+  s?: SolicitacaoMock,
   tipo?: TipoParecer,
+  medico?: MedicoContextoTemplate,
 ): string {
-  const p = s.paciente;
+  const p = s?.paciente;
+  const crmLinha =
+    medico?.crm && medico?.crmUf
+      ? `CRM ${medico.crm}/${medico.crmUf}`
+      : medico?.crm
+        ? `CRM ${medico.crm}`
+        : '[CRM]';
   const map: Record<string, string> = {
     '{{paciente.nome}}': p?.nome ?? '[NOME DO PACIENTE]',
     '{{paciente.sexo}}': sexoExtenso(p?.sexo),
     '{{paciente.dataNascimento}}': formatarDataBR(p?.dataNascimento),
     '{{paciente.municipio}}': p?.municipio ?? '[MUNICÍPIO]',
-    '{{solicitacao.dataLaudo}}': formatarDataBR(s.dataLaudo),
+    '{{solicitacao.dataLaudo}}': formatarDataBR(s?.dataLaudo),
     '{{solicitacao.diagnostico}}': '[DIAGNÓSTICO]',
     '{{solicitacao.tipoSolicitacao}}': tipo ? TIPO_SOLICITACAO_LABEL[tipo] : '[TIPO DE SOLICITAÇÃO]',
+    '{{medico.nome}}': medico?.nome?.trim() ? medico.nome : '[NOME DO MÉDICO]',
+    '{{medico.crm}}': crmLinha,
+    '{{medico.especialidade}}': medico?.especialidade?.trim() ? medico.especialidade : '[ESPECIALIDADE]',
   };
   return Object.entries(map).reduce(
     (acc, [k, v]) => acc.split(k).join(v),
