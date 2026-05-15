@@ -182,10 +182,11 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
           )}
         </div>
 
-        {/* Linha 2 — estado da solicitação: status + número + datas */}
+        {/* Linha 2 — estado da solicitação: status + tipo + número + datas */}
         <div className="px-6 pb-3 text-[14px]" style={{ color: '#475569' }}>
           <div className="flex items-center gap-x-4 gap-y-2 flex-wrap">
             <StatusV2Badge status={s.status} />
+            <TipoSolicitacaoBadge tipo={s.tipoSolicitacao} />
             <span><span style={{ color: '#94A3B8' }}>Solicitação </span><span className="font-mono" style={{ color: '#1E293B', fontWeight: 500 }}>{s.numero}</span></span>
             <Sep />
             <span><span style={{ color: '#94A3B8' }}>Criada em </span>{new Date(s.dataCriacao).toLocaleDateString('pt-BR')}</span>
@@ -564,6 +565,31 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
 
 function Sep() {
   return <span aria-hidden style={{ color: '#CBD5E1' }}>·</span>;
+}
+
+/** Badge do tipo da solicitação (Normal x Ajuda de Custo) no header. */
+function TipoSolicitacaoBadge({ tipo }: { tipo?: 'normal' | 'ajuda_custo' }) {
+  const ajuda = tipo === 'ajuda_custo';
+  const styles = ajuda
+    ? { bg: '#FFFBEB', fg: '#92400E', bd: '#FDE68A', label: 'Ajuda de custo' }
+    : { bg: '#EFF6FF', fg: '#1D4ED8', bd: '#BFDBFE', label: 'Normal' };
+  return (
+    <span
+      className="inline-flex items-center px-2 py-[3px] text-[11px] font-semibold uppercase"
+      style={{
+        background: styles.bg,
+        color: styles.fg,
+        border: `1px solid ${styles.bd}`,
+        borderRadius: 6,
+        letterSpacing: '0.05em',
+      }}
+      title={ajuda
+        ? 'Paciente já está no destino. Só recebe diárias — sem viagens e sem adicionais.'
+        : 'Fluxo completo: viagens, adicionais e ajuda de custo.'}
+    >
+      {styles.label}
+    </span>
+  );
 }
 
 /**
