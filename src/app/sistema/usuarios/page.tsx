@@ -90,6 +90,10 @@ const isRealUUID = (id: string) =>
 /* -------------------------------------------------- */
 
 export default function UsuariosPage() {
+  return <UsuariosPanel showHeader />;
+}
+
+export function UsuariosPanel({ showHeader = true }: { showHeader?: boolean }) {
   const toast = useToast();
 
   /* ---- State ---- */
@@ -427,30 +431,41 @@ export default function UsuariosPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Usuários"
-        subtitle="Gerencie os usuários do sistema e seus papéis de acesso"
-        breadcrumbs={[
-          { label: 'Sistema', href: '/sistema' },
-          { label: 'Usuários' },
-        ]}
-        actions={
-          <div className="flex items-center gap-2">
-            <Can action="sys_papeis.visualizar">
-              <Link href="/sistema/papeis" className="tfd-btn tfd-btn-secondary">
-                <Shield size={16} />
-                Gerenciar Permissões
-              </Link>
-            </Can>
-            <Can action="sys_usuarios.criar">
-              <button className="tfd-btn tfd-btn-primary" onClick={handleOpenCreateDrawer}>
-                <Plus size={16} />
-                Adicionar Usuário
-              </button>
-            </Can>
-          </div>
-        }
-      />
+      {showHeader ? (
+        <PageHeader
+          title="Usuários"
+          subtitle="Gerencie os usuários do sistema e seus papéis de acesso"
+          breadcrumbs={[
+            { label: 'Sistema', href: '/sistema' },
+            { label: 'Usuários' },
+          ]}
+          actions={
+            <div className="flex items-center gap-2">
+              <Can action="sys_papeis.visualizar">
+                <Link href="/sistema/papeis" className="tfd-btn tfd-btn-secondary">
+                  <Shield size={16} />
+                  Gerenciar Permissões
+                </Link>
+              </Can>
+              <Can action="sys_usuarios.criar">
+                <button className="tfd-btn tfd-btn-primary" onClick={handleOpenCreateDrawer}>
+                  <Plus size={16} />
+                  Adicionar Usuário
+                </button>
+              </Can>
+            </div>
+          }
+        />
+      ) : (
+        <div className="flex items-center justify-end mb-4">
+          <Can action="sys_usuarios.criar">
+            <button className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={handleOpenCreateDrawer}>
+              <Plus size={16} />
+              Adicionar Usuário
+            </button>
+          </Can>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-4">

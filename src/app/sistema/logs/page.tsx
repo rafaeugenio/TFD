@@ -530,6 +530,10 @@ function toLogEntry(row: LogAuditoria): LogEntry {
 }
 
 export default function LogsAuditoriaPage() {
+  return <LogsPanel showHeader />;
+}
+
+export function LogsPanel({ showHeader = true }: { showHeader?: boolean }) {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -615,10 +619,12 @@ export default function LogsAuditoriaPage() {
 
   return (
     <>
-      <PageHeader
-        title="Logs e Auditoria"
-        subtitle="Acompanhe todas as ações realizadas no sistema"
-      />
+      {showHeader && (
+        <PageHeader
+          title="Logs e Auditoria"
+          subtitle="Acompanhe todas as ações realizadas no sistema"
+        />
+      )}
 
       {/* ========== Demo banner ========== */}
       <div

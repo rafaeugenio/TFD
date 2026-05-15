@@ -12,9 +12,7 @@ import {
   BarChart3,
   Settings,
   Shield,
-  Users,
   Contact,
-  ScrollText,
   X,
   Stethoscope,
   ChevronsLeft,
@@ -67,11 +65,9 @@ const navSections: NavSection[] = [
   {
     title: 'GESTÃO',
     items: [
-      { icon: BarChart3,  label: 'Relatórios',    href: '/relatorios',              tela: 'relatorios' },
-      { icon: Settings,   label: 'Configurações', href: '/sistema/configuracoes',   tela: 'sys_configuracoes' },
-      { icon: Shield,     label: 'Permissões',    href: '/sistema/papeis',          tela: 'sys_papeis' },
-      { icon: Users,      label: 'Usuários',      href: '/sistema/usuarios',        tela: 'sys_usuarios' },
-      { icon: ScrollText, label: 'Logs',          href: '/sistema/logs',            tela: 'sys_logs' },
+      { icon: BarChart3,  label: 'Relatórios',     href: '/relatorios',              tela: 'relatorios' },
+      { icon: Settings,   label: 'Configurações',  href: '/sistema/configuracoes',   tela: 'sys_configuracoes' },
+      { icon: Shield,     label: 'Administrativo', href: '/sistema/administrativo',  tela: 'sys_usuarios' },
     ],
   },
 ];

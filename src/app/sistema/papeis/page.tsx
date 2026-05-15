@@ -119,6 +119,10 @@ interface PapelComContagens extends Papel {
 }
 
 export default function PapeisPage() {
+  return <PapeisPanel showHeader />;
+}
+
+export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
   const toast = useToast();
 
   /* ---- Data state ---- */
@@ -435,18 +439,30 @@ export default function PapeisPage() {
 
   return (
     <>
-      <PageHeader
-        title="Permissões"
-        subtitle="Crie e configure permissões de acesso por tela e ação"
-        actions={
+      {showHeader && (
+        <PageHeader
+          title="Permissões"
+          subtitle="Crie e configure permissões de acesso por tela e ação"
+          actions={
+            <Can action="sys_papeis.criar">
+              <button className="tfd-btn tfd-btn-primary" onClick={handleOpenCreate}>
+                <Plus size={16} />
+                Novo Papel
+              </button>
+            </Can>
+          }
+        />
+      )}
+      {!showHeader && (
+        <div className="flex items-center justify-end mb-4">
           <Can action="sys_papeis.criar">
-            <button className="tfd-btn tfd-btn-primary" onClick={handleOpenCreate}>
+            <button className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={handleOpenCreate}>
               <Plus size={16} />
               Novo Papel
             </button>
           </Can>
-        }
-      />
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-4">
