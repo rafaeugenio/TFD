@@ -235,6 +235,11 @@ export interface ViagemDb {
   distancia_unidade?: 'km' | 'milhas' | 'milhas_nauticas';
   valor_ajuda_custo_paciente?: number;
   valor_ajuda_custo_acompanhante?: number;
+  valor_reembolso?: number | null;
+  data_reembolso?: string | null;
+  ativa?: boolean;
+  data_cancelamento?: string | null;
+  motivo_cancelamento_texto?: string | null;
 }
 
 function splitCidadeUf(s: string): { cidade: string; uf: string } {
@@ -271,6 +276,11 @@ export function buildViagem(
     distancia_unidade: v.distanciaUnidade,
     valor_ajuda_custo_paciente: v.valorAjudaCustoPaciente,
     valor_ajuda_custo_acompanhante: v.valorAjudaCustoAcompanhante,
+    valor_reembolso: v.valorReembolso ?? null,
+    data_reembolso: v.dataReembolso ?? null,
+    ativa: v.ativa ?? true,
+    data_cancelamento: v.dataCancelamento ?? null,
+    motivo_cancelamento_texto: v.motivoCancelamentoTexto ?? null,
   };
 }
 
@@ -295,6 +305,11 @@ export interface AjudaDb {
   valor_diaria: number;
   valor_total?: number;
   observacoes?: string;
+  valor_reembolso?: number | null;
+  data_reembolso?: string | null;
+  ativa?: boolean;
+  data_cancelamento?: string | null;
+  motivo_cancelamento_texto?: string | null;
 }
 
 export function buildAjudaCusto(
@@ -309,6 +324,11 @@ export function buildAjudaCusto(
     status: STATUS_AJUDA_TO_DB[a.status] ?? 'EM_ANALISE',
     valor_diaria: 0,
     observacoes: a.observacao,
+    valor_reembolso: a.valorReembolso ?? null,
+    data_reembolso: a.dataReembolso ?? null,
+    ativa: a.ativa ?? true,
+    data_cancelamento: a.dataCancelamento ?? null,
+    motivo_cancelamento_texto: a.motivoCancelamentoTexto ?? null,
   };
 }
 

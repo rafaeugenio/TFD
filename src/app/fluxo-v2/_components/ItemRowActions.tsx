@@ -1,25 +1,35 @@
 'use client';
 
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, RotateCcw } from 'lucide-react';
 
 /**
- * T2.AL — Botões de Editar e Excluir para itens das listas (pareceres,
- * tentativas, passagens, ajudas, adicionais). Padrão visual consistente em
- * todo o Fluxo v2: 24x24, ghost-style, tooltip via title, lock-aware.
+ * T2.AL — Botões de Editar/Reembolso/Cancelar (Excluir) para itens das listas.
+ * `onReembolso` opcional — quando informado, adiciona o botão amarelo entre
+ * Editar e Excluir.
  */
 interface Props {
   onEditar: () => void;
   onExcluir: () => void;
+  onReembolso?: () => void;
+  /** Tooltip do botão de excluir — útil pra dizer "Cancelar passagem". */
+  labelExcluir?: string;
+  /** Tooltip do botão de reembolso. */
+  labelReembolso?: string;
   disabled?: boolean;
-  /** Tooltip mostrado quando disabled (lock). */
   tooltipDisabled?: string;
+  /** Quando true, botão de reembolso fica destacado (amarelo cheio). */
+  reembolsado?: boolean;
 }
 
 export default function ItemRowActions({
   onEditar,
   onExcluir,
+  onReembolso,
+  labelExcluir = 'Excluir',
+  labelReembolso = 'Reembolsar',
   disabled = false,
   tooltipDisabled,
+  reembolsado = false,
 }: Props) {
   return (
     <span className="inline-flex items-center gap-0.5">
@@ -32,9 +42,20 @@ export default function ItemRowActions({
         color="var(--tfd-blue-700, #1D4ED8)"
         hoverBg="#EBF0FF"
       />
+      {onReembolso && (
+        <IconButton
+          icon={RotateCcw}
+          label={reembolsado ? `${labelReembolso} (já registrado)` : labelReembolso}
+          onClick={onReembolso}
+          disabled={disabled}
+          tooltipDisabled={tooltipDisabled}
+          color={reembolsado ? '#B45309' : '#92400E'}
+          hoverBg="#FEF3C7"
+        />
+      )}
       <IconButton
         icon={Trash2}
-        label="Excluir"
+        label={labelExcluir}
         onClick={onExcluir}
         disabled={disabled}
         tooltipDisabled={tooltipDisabled}

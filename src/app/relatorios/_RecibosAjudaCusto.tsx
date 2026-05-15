@@ -133,11 +133,13 @@ export default function RecibosAjudaCusto() {
         .from('ajudas_custo')
         .select(
           'id, beneficiario_tipo, beneficiario_id, data_inicio, data_fim, valor_total, valor_pago, ' +
+          'valor_reembolso, data_reembolso, ativa, ' +
           'status, created_at, ' +
           'solicitacoes!inner(numero_processo, pacientes(nome_completo, cpf)), ' +
           'acompanhantes:beneficiario_id(nome_completo)'
         )
         .eq('solicitacao_id', solicitacaoId)
+        .eq('ativa', true)
         .order('data_inicio', { ascending: false });
 
       if (cancel) return;
@@ -167,7 +169,9 @@ export default function RecibosAjudaCusto() {
               : ((pac?.nome_completo as string) ?? 'Paciente'),
           data_inicio: (r.data_inicio as string) ?? '',
           data_fim: (r.data_fim as string) ?? '',
-          valor_calculado: Number(r.valor_total) || Number(r.valor_pago) || 0,
+          // Efetivo no relatório = total - reembolso (parcial ou total)
+          valor_calculado:
+            (Number(r.valor_total) || Number(r.valor_pago) || 0) - (Number(r.valor_reembolso) || 0),
           valor_pago: Number(r.valor_pago) || 0,
           data_pagamento: (r.created_at as string) ?? null,
         };

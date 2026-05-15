@@ -6,6 +6,7 @@ import StatusDot, { type StatusDotTone } from './StatusDot';
 import OrdinalBadge from './OrdinalBadge';
 import ItemRowActions from './ItemRowActions';
 import ConfirmarExclusaoModal from './ConfirmarExclusaoModal';
+import ReembolsoModal from './ReembolsoModal';
 import NewPassagemDrawer from './drawers/NewPassagemDrawer';
 import NewAjudaCustoDrawer from './drawers/NewAjudaCustoDrawer';
 import NewAdicionalDrawer from './drawers/NewAdicionalDrawer';
@@ -36,7 +37,13 @@ interface Props {
 }
 
 export default function FinanceiroTab({ s }: Props) {
-  const { removerViagem, removerAjudaCusto, removerAdicional } = useFluxoV2State();
+  const {
+    cancelarViagem,
+    cancelarAjudaCusto,
+    reembolsarViagem,
+    reembolsarAjudaCusto,
+    removerAdicional,
+  } = useFluxoV2State();
   const toast = useToast();
 
   const [passagemOpen, setPassagemOpen] = useState(false);
@@ -46,9 +53,15 @@ export default function FinanceiroTab({ s }: Props) {
   const [adicionalOpen, setAdicionalOpen] = useState(false);
   const [adicionalEditar, setAdicionalEditar] = useState<AdicionalMock | undefined>(undefined);
 
-  const [passagemExcluir, setPassagemExcluir] = useState<ViagemMock | null>(null);
-  const [ajudaExcluir, setAjudaExcluir] = useState<AjudaCustoMock | null>(null);
+  /** O "Excluir" da passagem virou Cancelar (inativar) — mantém histórico mas
+   *  sai dos KPIs/relatórios. Modal de confirmação reusa o ConfirmarExclusaoModal. */
+  const [passagemCancelar, setPassagemCancelar] = useState<ViagemMock | null>(null);
+  const [ajudaCancelar, setAjudaCancelar] = useState<AjudaCustoMock | null>(null);
   const [adicionalExcluir, setAdicionalExcluir] = useState<AdicionalMock | null>(null);
+
+  /** Modais de reembolso (passagem + ajuda). */
+  const [passagemReembolso, setPassagemReembolso] = useState<ViagemMock | null>(null);
+  const [ajudaReembolso, setAjudaReembolso] = useState<AjudaCustoMock | null>(null);
 
   const locked = isLocked(s, 'financeiro');
   const lockedTip = tooltipLocked(s, 'financeiro');
@@ -61,15 +74,26 @@ export default function FinanceiroTab({ s }: Props) {
   function abrirNovoAdicional() { setAdicionalEditar(undefined); setAdicionalOpen(true); }
   function abrirEditarAdicional(a: AdicionalMock) { setAdicionalEditar(a); setAdicionalOpen(true); }
 
-  // Reembolsadas e canceladas saem do total — saíram do plano.
+  // KPIs descontam reembolsos e ignoram inativas (canceladas).
+  // valor_efetivo = valor - COALESCE(valor_reembolso, 0) quando ativa = true
   const totalPassagens = useMemo(
     () =>
       s.viagens
-        .filter((v) => v.status !== 'reembolso' && v.status !== 'cancelada')
-        .reduce((acc, v) => acc + v.valor, 0),
+        .filter((v) => v.ativa !== false)
+        .reduce((acc, v) => acc + (v.valor - (v.valorReembolso ?? 0)), 0),
     [s.viagens],
   );
-  const totalAjuda = useMemo(() => s.ajudasCusto.reduce((acc, a) => acc + calcularValorAjuda(a.dataInicio, a.dataFim, a.pernoiteRetorno).valor, 0), [s.ajudasCusto]);
+  const totalAjuda = useMemo(
+    () =>
+      s.ajudasCusto
+        .filter((a) => a.ativa !== false)
+        .reduce(
+          (acc, a) =>
+            acc + (calcularValorAjuda(a.dataInicio, a.dataFim, a.pernoiteRetorno).valor - (a.valorReembolso ?? 0)),
+          0,
+        ),
+    [s.ajudasCusto],
+  );
   const totalAdicionais = useMemo(() => s.adicionais.reduce((acc, a) => acc + a.valor, 0), [s.adicionais]);
   const totalGeral = totalPassagens + totalAjuda + totalAdicionais;
 
@@ -225,11 +249,22 @@ export default function FinanceiroTab({ s }: Props) {
                       </td>
                       <td className="px-3 py-2 capitalize" style={{ color: '#475569' }}>{v.tipo}</td>
                       <td className="px-3 py-2"><ViagemStatusBadge status={v.status} /></td>
-                      <td className="px-3 py-2 text-right font-mono" style={{ color: '#1A1D2B' }}>{fmtBRL(v.valor)}</td>
+                      <td className="px-3 py-2 text-right font-mono" style={{ color: v.ativa === false ? '#94A3B8' : '#1A1D2B', textDecoration: v.ativa === false ? 'line-through' : undefined }}>
+                        {fmtBRL(v.valor)}
+                        {v.valorReembolso != null && v.valorReembolso > 0 && (
+                          <span className="block text-[10px] font-normal" style={{ color: '#B45309' }}>
+                            −{fmtBRL(v.valorReembolso)} reemb.
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-right">
                         <ItemRowActions
                           onEditar={() => abrirEditarPassagem(v)}
-                          onExcluir={() => setPassagemExcluir(v)}
+                          onReembolso={v.ativa === false ? undefined : () => setPassagemReembolso(v)}
+                          onExcluir={() => setPassagemCancelar(v)}
+                          labelExcluir={v.ativa === false ? 'Já cancelada' : 'Cancelar passagem'}
+                          labelReembolso={v.valorReembolso != null ? 'Editar reembolso' : 'Reembolsar'}
+                          reembolsado={v.valorReembolso != null && v.valorReembolso > 0}
                           disabled={locked}
                           tooltipDisabled={lockedTip}
                         />
@@ -351,16 +386,30 @@ export default function FinanceiroTab({ s }: Props) {
                     )}
                     <span
                       className="font-mono"
-                      style={{ color: '#1A1D2B', minWidth: 96, textAlign: 'right' }}
+                      style={{
+                        color: a.ativa === false ? '#94A3B8' : '#1A1D2B',
+                        minWidth: 96,
+                        textAlign: 'right',
+                        textDecoration: a.ativa === false ? 'line-through' : undefined,
+                      }}
                       title={memoria}
                     >
                       {fmtBRL(calc.valor)}
+                      {a.valorReembolso != null && a.valorReembolso > 0 && (
+                        <span className="block text-[10px] font-normal" style={{ color: '#B45309' }}>
+                          −{fmtBRL(a.valorReembolso)} reemb.
+                        </span>
+                      )}
                     </span>
                     <AjudaStatusBadge status={a.status} />
                     <span style={{ color: '#9CA3AF', fontSize: 10 }}>{a.id.slice(-4)}</span>
                     <ItemRowActions
                       onEditar={() => abrirEditarAjuda(a)}
-                      onExcluir={() => setAjudaExcluir(a)}
+                      onReembolso={a.ativa === false ? undefined : () => setAjudaReembolso(a)}
+                      onExcluir={() => setAjudaCancelar(a)}
+                      labelExcluir={a.ativa === false ? 'Já cancelada' : 'Cancelar ajuda'}
+                      labelReembolso={a.valorReembolso != null ? 'Editar reembolso' : 'Reembolsar'}
+                      reembolsado={a.valorReembolso != null && a.valorReembolso > 0}
                       disabled={locked}
                       tooltipDisabled={lockedTip}
                     />
@@ -397,36 +446,36 @@ export default function FinanceiroTab({ s }: Props) {
         editar={adicionalEditar}
       />
 
-      {/* Modais de exclusão */}
+      {/* Modais de cancelamento (substituem o "excluir") + reembolso */}
       <ConfirmarExclusaoModal
-        open={!!passagemExcluir}
-        onClose={() => setPassagemExcluir(null)}
-        tipo="passagem"
+        open={!!passagemCancelar}
+        onClose={() => setPassagemCancelar(null)}
+        tipo="cancelar passagem"
         snapshot={
-          passagemExcluir
-            ? `${passagemExcluir.origem} → ${passagemExcluir.destino} — ${passagemExcluir.tipo} — ${fmtDataBR(passagemExcluir.data)} — ${fmtBRL(passagemExcluir.valor)}`
+          passagemCancelar
+            ? `${passagemCancelar.origem} → ${passagemCancelar.destino} — ${passagemCancelar.tipo} — ${fmtDataBR(passagemCancelar.data)} — ${fmtBRL(passagemCancelar.valor)}`
             : ''
         }
         onConfirmar={() => {
-          if (passagemExcluir) {
-            removerViagem(s.id, passagemExcluir.id);
-            toast.success('Passagem removida', `${passagemExcluir.origem} → ${passagemExcluir.destino}`);
+          if (passagemCancelar) {
+            cancelarViagem(s.id, passagemCancelar.id);
+            toast.success('Passagem cancelada', `${passagemCancelar.origem} → ${passagemCancelar.destino}`);
           }
         }}
       />
       <ConfirmarExclusaoModal
-        open={!!ajudaExcluir}
-        onClose={() => setAjudaExcluir(null)}
-        tipo="período de ajuda"
+        open={!!ajudaCancelar}
+        onClose={() => setAjudaCancelar(null)}
+        tipo="cancelar ajuda"
         snapshot={
-          ajudaExcluir
-            ? `${fmtDataBR(ajudaExcluir.dataInicio)} → ${fmtDataBR(ajudaExcluir.dataFim)} — ${STATUS_AJUDA_LABEL[ajudaExcluir.status]}`
+          ajudaCancelar
+            ? `${fmtDataBR(ajudaCancelar.dataInicio)} → ${fmtDataBR(ajudaCancelar.dataFim)} — ${STATUS_AJUDA_LABEL[ajudaCancelar.status]}`
             : ''
         }
         onConfirmar={() => {
-          if (ajudaExcluir) {
-            removerAjudaCusto(s.id, ajudaExcluir.id);
-            toast.success('Ajuda removida', `${fmtDataBR(ajudaExcluir.dataInicio)} → ${fmtDataBR(ajudaExcluir.dataFim)}`);
+          if (ajudaCancelar) {
+            cancelarAjudaCusto(s.id, ajudaCancelar.id);
+            toast.success('Ajuda cancelada', `${fmtDataBR(ajudaCancelar.dataInicio)} → ${fmtDataBR(ajudaCancelar.dataFim)}`);
           }
         }}
       />
@@ -444,6 +493,52 @@ export default function FinanceiroTab({ s }: Props) {
             removerAdicional(s.id, adicionalExcluir.id);
             toast.success('Adicional removido', adicionalExcluir.descricao);
           }
+        }}
+      />
+
+      {/* Modais de reembolso */}
+      <ReembolsoModal
+        open={!!passagemReembolso}
+        titulo="Reembolsar passagem"
+        subtitulo={
+          passagemReembolso
+            ? `${passagemReembolso.origem} → ${passagemReembolso.destino} · ${fmtDataBR(passagemReembolso.data)}`
+            : undefined
+        }
+        valorTotal={passagemReembolso?.valor ?? 0}
+        valorAtual={passagemReembolso?.valorReembolso}
+        dataAtual={passagemReembolso?.dataReembolso}
+        onClose={() => setPassagemReembolso(null)}
+        onConfirm={(valor, data) => {
+          if (passagemReembolso) {
+            reembolsarViagem(s.id, passagemReembolso.id, valor, data);
+            toast.success('Reembolso registrado', `${fmtBRL(valor)} em ${fmtDataBR(data)}`);
+          }
+          setPassagemReembolso(null);
+        }}
+      />
+      <ReembolsoModal
+        open={!!ajudaReembolso}
+        titulo="Reembolsar ajuda de custo"
+        subtitulo={
+          ajudaReembolso
+            ? `${fmtDataBR(ajudaReembolso.dataInicio)} → ${fmtDataBR(ajudaReembolso.dataFim)}`
+            : undefined
+        }
+        valorTotal={
+          ajudaReembolso
+            ? calcularValorAjuda(ajudaReembolso.dataInicio, ajudaReembolso.dataFim, ajudaReembolso.pernoiteRetorno).valor
+            : 0
+        }
+        valorAtual={ajudaReembolso?.valorReembolso}
+        dataAtual={ajudaReembolso?.dataReembolso}
+        onClose={() => setAjudaReembolso(null)}
+        onConfirm={(valor, data) => {
+          if (ajudaReembolso) {
+            reembolsarAjudaCusto(s.id, ajudaReembolso.id, valor, data);
+            toast.success('Reembolso registrado', `${fmtBRL(valor)} em ${fmtDataBR(data)}`);
+          }
+          setAjudaReembolso(null);
         }}
       />
     </div>

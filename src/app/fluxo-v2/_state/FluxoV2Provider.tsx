@@ -141,14 +141,24 @@ interface FluxoV2ContextValue {
 
   /** T2.AL — Edita uma viagem. (Renomeação clara do já existente `updateViagem`.) */
   editarViagem: (id: string, viagemId: string, patch: Partial<ViagemMock>) => void;
-  /** T2.AL — Remove uma viagem. */
+  /** Inativa uma viagem (substitui o antigo "cancelar"). Mantém histórico,
+   *  mas a viagem deixa de entrar nos KPIs e relatórios. */
+  cancelarViagem: (id: string, viagemId: string, motivo?: string) => void;
+  /** Registra reembolso parcial ou integral. `valor` <= `viagem.valor`. */
+  reembolsarViagem: (id: string, viagemId: string, valor: number, data: string) => void;
+  /** Remove uma viagem fisicamente (hard delete). Uso restrito — preferir
+   *  `cancelarViagem` que mantém histórico. */
   removerViagem: (id: string, viagemId: string) => void;
 
   addAjudaCusto: (id: string, a: Omit<AjudaCustoMock, 'id'>) => void;
   updateAjudaCusto: (id: string, ajudaId: string, patch: Partial<AjudaCustoMock>) => void;
   /** T2.AL — Alias semântico de `updateAjudaCusto`. */
   editarAjudaCusto: (id: string, ajudaId: string, patch: Partial<AjudaCustoMock>) => void;
-  /** T2.AL — Remove uma ajuda de custo. */
+  /** Inativa uma ajuda de custo. */
+  cancelarAjudaCusto: (id: string, ajudaId: string, motivo?: string) => void;
+  /** Registra reembolso parcial ou integral. */
+  reembolsarAjudaCusto: (id: string, ajudaId: string, valor: number, data: string) => void;
+  /** Hard delete — preferir `cancelarAjudaCusto`. */
   removerAjudaCusto: (id: string, ajudaId: string) => void;
 
   addAdicional: (id: string, a: Omit<AdicionalMock, 'id'>) => void;
@@ -737,6 +747,42 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     [mutate],
   );
 
+  const cancelarViagem = useCallback<FluxoV2ContextValue['cancelarViagem']>(
+    (id, viagemId, motivo) => {
+      const hoje = new Date().toISOString().slice(0, 10);
+      mutate(id, (s) => {
+        s.viagens = s.viagens.map((v) =>
+          v.id === viagemId
+            ? { ...v, ativa: false, dataCancelamento: hoje, motivoCancelamentoTexto: motivo }
+            : v,
+        );
+        return s;
+      });
+      persistUpdate('viagens', viagemId, {
+        ativa: false,
+        data_cancelamento: hoje,
+        motivo_cancelamento_texto: motivo ?? null,
+      });
+    },
+    [mutate],
+  );
+
+  const reembolsarViagem = useCallback<FluxoV2ContextValue['reembolsarViagem']>(
+    (id, viagemId, valor, data) => {
+      mutate(id, (s) => {
+        s.viagens = s.viagens.map((v) =>
+          v.id === viagemId ? { ...v, valorReembolso: valor, dataReembolso: data } : v,
+        );
+        return s;
+      });
+      persistUpdate('viagens', viagemId, {
+        valor_reembolso: valor,
+        data_reembolso: data,
+      });
+    },
+    [mutate],
+  );
+
   const addAjudaCusto = useCallback<FluxoV2ContextValue['addAjudaCusto']>((id, a) => {
     const tempId = uid('ac');
     mutate(id, (s) => {
@@ -783,6 +829,42 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         return s;
       });
       persistDelete('ajudas_custo', ajudaId);
+    },
+    [mutate],
+  );
+
+  const cancelarAjudaCusto = useCallback<FluxoV2ContextValue['cancelarAjudaCusto']>(
+    (id, ajudaId, motivo) => {
+      const hoje = new Date().toISOString().slice(0, 10);
+      mutate(id, (s) => {
+        s.ajudasCusto = s.ajudasCusto.map((a) =>
+          a.id === ajudaId
+            ? { ...a, ativa: false, dataCancelamento: hoje, motivoCancelamentoTexto: motivo }
+            : a,
+        );
+        return s;
+      });
+      persistUpdate('ajudas_custo', ajudaId, {
+        ativa: false,
+        data_cancelamento: hoje,
+        motivo_cancelamento_texto: motivo ?? null,
+      });
+    },
+    [mutate],
+  );
+
+  const reembolsarAjudaCusto = useCallback<FluxoV2ContextValue['reembolsarAjudaCusto']>(
+    (id, ajudaId, valor, data) => {
+      mutate(id, (s) => {
+        s.ajudasCusto = s.ajudasCusto.map((a) =>
+          a.id === ajudaId ? { ...a, valorReembolso: valor, dataReembolso: data } : a,
+        );
+        return s;
+      });
+      persistUpdate('ajudas_custo', ajudaId, {
+        valor_reembolso: valor,
+        data_reembolso: data,
+      });
     },
     [mutate],
   );
@@ -1119,10 +1201,14 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     addViagensIdaEVolta,
     updateViagem,
     editarViagem,
+    cancelarViagem,
+    reembolsarViagem,
     removerViagem,
     addAjudaCusto,
     updateAjudaCusto,
     editarAjudaCusto,
+    cancelarAjudaCusto,
+    reembolsarAjudaCusto,
     removerAjudaCusto,
     addAdicional,
     editarAdicional,
@@ -1142,8 +1228,8 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     addParecer, editarParecer, removerParecer,
     setCarimbo,
     addTentativa, editarTentativa, removerTentativa, setAgendamento, registrarSegundoDeferimento,
-    addViagem, addViagensIdaEVolta, updateViagem, editarViagem, removerViagem,
-    addAjudaCusto, updateAjudaCusto, editarAjudaCusto, removerAjudaCusto,
+    addViagem, addViagensIdaEVolta, updateViagem, editarViagem, cancelarViagem, reembolsarViagem, removerViagem,
+    addAjudaCusto, updateAjudaCusto, editarAjudaCusto, cancelarAjudaCusto, reembolsarAjudaCusto, removerAjudaCusto,
     addAdicional, editarAdicional, removerAdicional,
     encerrar, reabrirParaParecer, reabrirSolicitacao,
     addObservacao,

@@ -190,12 +190,18 @@ export interface AgendamentoMock {
 }
 
 export type ModalViagem = 'aereo' | 'terrestre' | 'fluvial';
+/** Status operacional da passagem. `cancelada` e `reembolso` saíram do fluxo
+ *  oficial em mai/2026 — viraram, respectivamente, `ativa=false` e o par
+ *  (`valorReembolso`, `dataReembolso`). Os 2 valores foram mantidos no enum
+ *  apenas pra compat de dados antigos. Não usar em registros novos. */
 export type StatusViagem =
   | 'agendada'
   | 'confirmada'
   | 'remarcada'
   | 'nao_compareceu'
+  /** @deprecated Use `ativa = false` em vez disso. */
   | 'cancelada'
+  /** @deprecated Use os campos `valorReembolso` + `dataReembolso`. */
   | 'reembolso';
 
 /**
@@ -237,6 +243,14 @@ export interface ViagemMock {
   /** Valor calculado de ajuda de custo (SIGTAP) — paciente e acompanhante. */
   valorAjudaCustoPaciente?: number;
   valorAjudaCustoAcompanhante?: number;
+  /** Reembolso parcial ou integral. Subtrai do valor cheio nos KPIs/relatórios. */
+  valorReembolso?: number;
+  dataReembolso?: string;
+  /** `false` = passagem inativada (substitui o antigo status 'cancelada').
+   *  Inativas não entram nos KPIs nem relatórios. Default = true. */
+  ativa?: boolean;
+  dataCancelamento?: string;
+  motivoCancelamentoTexto?: string;
 }
 
 export type StatusAjuda = 'em_analise' | 'aprovada' | 'em_pagamento' | 'concluida' | 'glosada';
@@ -260,6 +274,13 @@ export interface AjudaCustoMock {
    * dia final). Quando true, soma uma diária extra de R$24,75 (regra Ata 7).
    */
   pernoiteRetorno?: boolean;
+  /** Reembolso parcial ou integral. Subtrai do valor calculado nos KPIs/relatórios. */
+  valorReembolso?: number;
+  dataReembolso?: string;
+  /** `false` = ajuda inativada (cancelada). Não entra nos KPIs nem relatórios. */
+  ativa?: boolean;
+  dataCancelamento?: string;
+  motivoCancelamentoTexto?: string;
 }
 
 export type CategoriaAdicional =

@@ -75,9 +75,11 @@ export default function RelatorioFaturamento() {
           'id, numero_bilhete, tipo, beneficiario_tipo, beneficiario_id, ' +
           'data_embarque_prevista, data_retorno_prevista, created_at, ' +
           'origem_cidade, origem_uf, destino_cidade, destino_uf, valor, ' +
+          'valor_reembolso, data_reembolso, ativa, ' +
           'solicitacoes!inner(numero_processo, pacientes(nome_completo)), ' +
           'acompanhantes:beneficiario_id(nome_completo)'
         )
+        .eq('ativa', true)
         .gte('created_at', periodo.inicio)
         .lte('created_at', `${periodo.fim}T23:59:59`)
         .order('created_at', { ascending: true });
@@ -111,7 +113,8 @@ export default function RelatorioFaturamento() {
           data_bilhete: (r.created_at as string) ?? '',
           trecho_origem: `${(r.origem_uf as string) ?? ''}/${(r.origem_cidade as string) ?? ''}`,
           trecho_destino: `${(r.destino_uf as string) ?? ''}/${(r.destino_cidade as string) ?? ''}`,
-          valor: Number(r.valor) || 0,
+          // Valor EFETIVO no relatório = cheio - reembolso (parcial ou total)
+          valor: (Number(r.valor) || 0) - (Number(r.valor_reembolso) || 0),
         };
       });
       setRows(mapped);
