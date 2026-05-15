@@ -453,19 +453,8 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
           }
         />
       )}
-      {!showHeader && (
-        <div className="flex items-center justify-end mb-4">
-          <Can action="sys_papeis.criar">
-            <button className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={handleOpenCreate}>
-              <Plus size={16} />
-              Novo Papel
-            </button>
-          </Can>
-        </div>
-      )}
-
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-4">
+      {/* Filters + ação (botão alinhado à mesma linha da busca quando em aba) */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
         <div
           className="flex items-center gap-2 px-3"
           style={{
@@ -486,6 +475,17 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
             className="flex-1 bg-transparent outline-none text-[13px]"
           />
         </div>
+
+        {!showHeader && (
+          <div className="ml-auto">
+            <Can action="sys_papeis.criar">
+              <button className="tfd-btn tfd-btn-primary" onClick={handleOpenCreate}>
+                <Plus size={16} />
+                Novo Papel
+              </button>
+            </Can>
+          </div>
+        )}
       </div>
 
       {/* Empty state (no data at all) */}

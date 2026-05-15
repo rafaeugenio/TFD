@@ -431,7 +431,7 @@ export function UsuariosPanel({ showHeader = true }: { showHeader?: boolean }) {
 
   return (
     <div>
-      {showHeader ? (
+      {showHeader && (
         <PageHeader
           title="Usuários"
           subtitle="Gerencie os usuários do sistema e seus papéis de acesso"
@@ -456,19 +456,10 @@ export function UsuariosPanel({ showHeader = true }: { showHeader?: boolean }) {
             </div>
           }
         />
-      ) : (
-        <div className="flex items-center justify-end mb-4">
-          <Can action="sys_usuarios.criar">
-            <button className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={handleOpenCreateDrawer}>
-              <Plus size={16} />
-              Adicionar Usuário
-            </button>
-          </Can>
-        </div>
       )}
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-4">
+      {/* Filters + ação (botão alinhado à mesma linha da busca quando em aba) */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
         <div
           className="flex items-center gap-2 px-3"
           style={{
@@ -506,6 +497,17 @@ export function UsuariosPanel({ showHeader = true }: { showHeader?: boolean }) {
             <option key={p.id} value={p.id}>{p.nome}</option>
           ))}
         </select>
+
+        {!showHeader && (
+          <div className="ml-auto">
+            <Can action="sys_usuarios.criar">
+              <button className="tfd-btn tfd-btn-primary" onClick={handleOpenCreateDrawer}>
+                <Plus size={16} />
+                Adicionar Usuário
+              </button>
+            </Can>
+          </div>
+        )}
       </div>
 
       {/* Error message */}
