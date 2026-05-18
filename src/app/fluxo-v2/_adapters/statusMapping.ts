@@ -61,15 +61,23 @@ export function setorFromStatus(status: StatusDb): SetorDb {
 /**
  * Quando o front (v2) quer mover a solicitação para um setor, traduzimos
  * para o status "canônico" daquele setor (entry point).
+ *
+ * `tipoSolicitacao` (opcional) ajusta o entry status do financeiro:
+ *   - 'ajuda_custo' (sem viagens) → entra direto em EM_PAGAMENTO, porque
+ *     não há passagem para emitir.
+ *   - default (normal) → AGUARDANDO_EMISSAO de passagens.
  */
-export function entryStatusForSetor(setor: SetorDb): StatusDb {
+export function entryStatusForSetor(
+  setor: SetorDb,
+  tipoSolicitacao?: 'normal' | 'ajuda_custo',
+): StatusDb {
   switch (setor) {
     case 'dados_basicos':
       return 'NOVO';
     case 'regulacao':
       return 'AGUARDANDO_REGULACAO';
     case 'financeiro':
-      return 'AGUARDANDO_EMISSAO';
+      return tipoSolicitacao === 'ajuda_custo' ? 'EM_PAGAMENTO' : 'AGUARDANDO_EMISSAO';
     case 'encerrada':
       return 'CONCLUIDO';
   }

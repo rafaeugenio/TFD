@@ -451,13 +451,16 @@ export function buildObservacao(
  * O trigger trg_sync_setor_atual no banco também atualiza setor_atual quando
  * status muda — aqui setamos os dois explicitamente para deixar claro.
  */
-export function buildEnvioSetor(setor: 'regulacao' | 'financeiro' | 'dados_basicos'): {
+export function buildEnvioSetor(
+  setor: 'regulacao' | 'financeiro' | 'dados_basicos',
+  tipoSolicitacao?: 'normal' | 'ajuda_custo',
+): {
   status: StatusDb;
   setor_atual: SetorDb;
 } {
   const sd: SetorDb = setor;
   return {
-    status: entryStatusForSetor(sd),
+    status: entryStatusForSetor(sd, tipoSolicitacao),
     setor_atual: sd,
   };
 }

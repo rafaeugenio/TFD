@@ -306,12 +306,15 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
 
   const setStatus = useCallback(
     (id: string, status: StatusGlobalV2) => {
+      // Captura tipo antes do mutate (precisa pra escolher entry status em financeiro)
+      const atual = getById(id);
       // Otimista: atualiza local primeiro
       mutate(id, (s) => ({ ...s, status }));
       // Persiste no Supabase (best-effort, não bloqueia UI)
       const setor = statusGlobalToSetor(status);
       const payload = buildEnvioSetor(
         setor === 'encerrada' ? 'dados_basicos' : setor,
+        atual?.tipoSolicitacao,
       );
       const supabase = createClient();
       const update = setor === 'encerrada'
@@ -326,7 +329,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
           if (error) console.warn('[FluxoV2] setStatus persistência falhou:', error.message);
         });
     },
-    [mutate],
+    [mutate, getById],
   );
 
   const createSolicitacao = useCallback(async (input: NewSolicitacaoInput): Promise<string> => {
@@ -1021,6 +1024,9 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
    */
   const enviarParaSetor = useCallback<FluxoV2ContextValue['enviarParaSetor']>(
     (id, destino, observacao, tipo = 'enviar') => {
+      // Captura tipo antes do mutate — usado pra escolher entry status do financeiro
+      // (ajuda_custo entra direto em EM_PAGAMENTO, não AGUARDANDO_EMISSAO).
+      const tipoSol = getById(id)?.tipoSolicitacao;
       mutate(id, (s) => {
         const obs = observacao?.trim() || undefined;
         // Autor mockado por contexto — Regulação devolve, Financeiro devolve, etc.
@@ -1093,7 +1099,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
 
       // Persiste a troca de setor no Supabase (best-effort)
       const supabase = createClient();
-      const payload = buildEnvioSetor(destino);
+      const payload = buildEnvioSetor(destino, tipoSol);
       supabase
         .from('solicitacoes')
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1103,7 +1109,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
           if (error) console.warn('[FluxoV2] enviarParaSetor persistência falhou:', error.message);
         });
     },
-    [mutate],
+    [mutate, getById],
   );
 
   const encaminharParaFinanceiro = useCallback<FluxoV2ContextValue['encaminharParaFinanceiro']>(
