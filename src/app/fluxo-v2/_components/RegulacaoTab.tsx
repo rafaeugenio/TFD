@@ -286,16 +286,20 @@ export default function RegulacaoTab({ s }: Props) {
         )}
       </Section>
 
-      {/* Bloco Regulação Operacional */}
-      {parecerDeferido && (() => {
+      {/* Bloco Regulação Operacional — sempre visível (editável só após parecer deferido) */}
+      {(() => {
         const carimbo = s.carimboRegulacao;
         const visual = carimbo ? CARIMBO_VISUAL[carimbo] : null;
-        const podeEditar = !locked;
+        const podeEditar = !locked && parecerDeferido;
         return (
           <Section
             icon={ClipboardCheck}
             title="Carimbo de regulação"
-            subtitle="Encaminhamento operacional definido pela equipe."
+            subtitle={
+              !parecerDeferido && !carimbo
+                ? 'Disponível após parecer deferido.'
+                : 'Encaminhamento operacional definido pela equipe.'
+            }
             action={
               podeEditar ? (
                 <button
@@ -400,10 +404,9 @@ export default function RegulacaoTab({ s }: Props) {
         );
       })()}
 
-      {/* T2.AM — Bloco Agendamento e Tentativas (unificado).
+      {/* T2.AM — Bloco Agendamento e Tentativas (unificado, sempre visível).
           Tudo é tentativa; a confirmada vira o agendamento. */}
-      {(s.agendamento || mostraVazioRegistro) && (
-        <Section
+      <Section
           icon={CalendarClock}
           title="Agendamento e Tentativas"
           subtitle={
@@ -413,7 +416,9 @@ export default function RegulacaoTab({ s }: Props) {
                 : 'Agendamento de exceção — fluxo da central reguladora.'
               : isExcecao || carimboExigeAgendamento
                 ? 'Registre tentativas conforme contata as unidades. Quando uma aceitar, marque o desfecho como Agendamento confirmado.'
-                : 'Tentativas com unidades.'
+                : !s.agendamento
+                  ? 'Sem agendamento informado. Registre tentativas conforme contata as unidades.'
+                  : 'Tentativas com unidades.'
           }
           action={
             !locked ? (
@@ -584,7 +589,6 @@ export default function RegulacaoTab({ s }: Props) {
             );
           })()}
         </Section>
-      )}
 
       {/* Drawers */}
       <NewParecerDrawer
