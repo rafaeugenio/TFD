@@ -198,6 +198,8 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
   const [acompDataNascimento, setAcompDataNascimento] = useState('');
   const [acompVinculo, setAcompVinculo] = useState<VinculoAcompanhante | ''>('');
   const [acompTelefone, setAcompTelefone] = useState('');
+  const [acompSexo, setAcompSexo] = useState('');
+  const [acompEmail, setAcompEmail] = useState('');
   const [acompAgeWarning, setAcompAgeWarning] = useState('');
 
   /* ---- Lookup hooks ---- */
@@ -283,7 +285,7 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
     setShowAcompForm(false);
     setEditingAcompId(null);
     setAcompNome(''); setAcompCpf(''); setAcompCns(''); setAcompDataNascimento('');
-    setAcompVinculo(''); setAcompTelefone(''); setAcompAgeWarning('');
+    setAcompVinculo(''); setAcompTelefone(''); setAcompSexo(''); setAcompEmail(''); setAcompAgeWarning('');
   }
 
   async function hydrateFromRow(pac: Record<string, unknown>, id: string) {
@@ -568,6 +570,8 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
     setAcompDataNascimento((acomp.data_nascimento as string) ?? '');
     setAcompVinculo((acomp.vinculo as VinculoAcompanhante) ?? '');
     setAcompTelefone(maskPhone((acomp.telefone as string) ?? ''));
+    setAcompSexo((acomp.sexo as string) ?? '');
+    setAcompEmail((acomp.email as string) ?? '');
     const age = calcularIdade((acomp.data_nascimento as string) ?? '');
     if (age !== null && (age < 20 || age > 65)) {
       setAcompAgeWarning(`Acompanhante com ${age} anos — fora da faixa padrão (20–65). Exige autorização da coordenação.`);
@@ -605,6 +609,10 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
     if (dateErr) { toast.error('Data inválida', dateErr); return; }
     if (!acompVinculo) { toast.error('Campo obrigatório', 'Selecione o vínculo do acompanhante.'); return; }
     if (!acompTelefone.trim()) { toast.error('Campo obrigatório', 'Informe o telefone do acompanhante.'); return; }
+    if (!acompSexo) { toast.error('Campo obrigatório', 'Selecione o sexo do acompanhante.'); return; }
+    if (acompEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(acompEmail.trim())) {
+      toast.error('E-mail inválido', 'Informe um e-mail válido ou deixe em branco.'); return;
+    }
 
     const cleanAcompCpf = acompCpf.replace(/\D/g, '');
     const cleanAcompCns = acompCns.replace(/\D/g, '');
@@ -617,6 +625,8 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
       data_nascimento: acompDataNascimento,
       vinculo: acompVinculo,
       telefone: cleanAcompPhone,
+      sexo: acompSexo,
+      email: acompEmail.trim() || null,
       necessidade_especial: false,
       descricao_necessidade: null,
     };
@@ -1162,6 +1172,19 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
               />
               <FormField label="Telefone" required>
                 <input type="tel" className="tfd-input" placeholder="(99) 99999-0000" value={acompTelefone} onChange={(e) => setAcompTelefone(maskPhone(e.target.value))} />
+              </FormField>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label="Sexo" required>
+                <select className="tfd-input" value={acompSexo} onChange={(e) => setAcompSexo(e.target.value)}>
+                  <option value="">Selecione</option>
+                  <option value="MASCULINO">Masculino</option>
+                  <option value="FEMININO">Feminino</option>
+                  <option value="OUTRO">Outro</option>
+                </select>
+              </FormField>
+              <FormField label="E-mail" hint="opcional">
+                <input type="email" className="tfd-input" placeholder="exemplo@email.com" value={acompEmail} onChange={(e) => setAcompEmail(e.target.value)} />
               </FormField>
             </div>
             <div className="flex items-center gap-2">
