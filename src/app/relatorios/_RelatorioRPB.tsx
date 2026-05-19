@@ -15,6 +15,8 @@ import {
 import { MES_LABEL, MES_LABEL_SHORT, anosDisponiveis } from './_shared/format';
 import {
   resolveSigtapAjudaCusto,
+  resolveSigtapPassagem,
+  calcularQuantidadePassagem,
   type Beneficiario,
   type Modal,
 } from './_shared/sigtap-mapper';
@@ -160,8 +162,155 @@ export default function RelatorioRPB() {
         });
         setRows(mapped);
       } else {
-        // Passagens — implementado na Task 5
-        setRows([]);
+        // PASSAGENS — busca viagens cujo embarque ou retorno caia no período
+        const { data, error } = await supabase
+          .from('viagens')
+          .select(
+            'id, tipo, modal, beneficiario_tipo, beneficiario_id, ' +
+            'data_embarque_prevista, data_retorno_prevista, ' +
+            'origem_cidade, origem_uf, destino_cidade, destino_uf, ativa, ' +
+            'solicitacoes!inner(cid_principal, paciente_id, ' +
+            '  pacientes(cpf, cns, nome_completo, sexo, data_nascimento, telefone_celular, email, logradouro, numero, bairro, cep, municipio))'
+          )
+          .eq('ativa', true)
+          .or(
+            `and(data_embarque_prevista.gte.${periodo.inicio},data_embarque_prevista.lte.${periodo.fim}),` +
+            `and(data_retorno_prevista.gte.${periodo.inicio},data_retorno_prevista.lte.${periodo.fim})`
+          )
+          .order('data_embarque_prevista', { ascending: true });
+
+        if (cancel) return;
+        if (error || !data) {
+          setRows([]);
+          setLancados(new Set());
+          setLoading(false);
+          return;
+        }
+
+        // Carregar TODAS as rotas (pequeno dataset) — lookup local
+        const rotaMap = new Map<string, { km: number | null; mi: number | null; mn: number | null }>();
+        const { data: rotas } = await supabase
+          .from('rotas_deslocamento')
+          .select('cidade_origem, uf_origem, cidade_destino, uf_destino, distancia_km, distancia_milhas, distancia_milhas_nauticas');
+        (rotas ?? []).forEach((r: Record<string, unknown>) => {
+          const key = `${r.cidade_origem}|${r.uf_origem}|${r.cidade_destino}|${r.uf_destino}`;
+          rotaMap.set(key, {
+            km: r.distancia_km as number | null,
+            mi: r.distancia_milhas as number | null,
+            mn: r.distancia_milhas_nauticas as number | null,
+          });
+        });
+
+        // Buscar acompanhantes por id (beneficiario_id quando beneficiario_tipo='acompanhante')
+        const acompIds = Array.from(
+          new Set(
+            (data as unknown as Array<Record<string, unknown>>)
+              .filter((v) => (v.beneficiario_tipo as string)?.toLowerCase() === 'acompanhante')
+              .map((v) => v.beneficiario_id as string)
+              .filter(Boolean)
+          )
+        );
+        const acompMap = new Map<string, Record<string, unknown>>();
+        if (acompIds.length > 0) {
+          const { data: acomps } = await supabase
+            .from('acompanhantes')
+            .select('id, nome_completo, cpf, cns')
+            .in('id', acompIds);
+          (acomps ?? []).forEach((a: Record<string, unknown>) => {
+            acompMap.set(a.id as string, a);
+          });
+        }
+
+        const inPeriodo = (d: string | null | undefined) =>
+          !!d && d >= periodo.inicio && d <= periodo.fim;
+
+        const mapped: RPBRow[] = [];
+
+        (data as unknown as Array<Record<string, unknown>>).forEach((v) => {
+          const sol = v.solicitacoes as Record<string, unknown> | null;
+          const pac = sol?.pacientes as Record<string, unknown> | null;
+          const beneficiario: Beneficiario =
+            (v.beneficiario_tipo as string)?.toLowerCase() === 'acompanhante' ? 'acompanhante' : 'paciente';
+          const modalRaw = (v.modal as string)?.toLowerCase();
+          const modal: Modal =
+            modalRaw === 'aereo' ? 'aereo' : modalRaw === 'fluvial' ? 'fluvial' : 'terrestre';
+          const acomp = beneficiario === 'acompanhante' ? acompMap.get(v.beneficiario_id as string) : null;
+
+          const nome = (acomp?.nome_completo as string) ?? (pac?.nome_completo as string) ?? '—';
+          const cpfCns = (acomp?.cpf as string) ?? (pac?.cpf as string) ?? (pac?.cns as string) ?? '—';
+          const enderecoFull = [pac?.logradouro, pac?.numero].filter(Boolean).join(', ');
+
+          const sig = resolveSigtapPassagem({ beneficiario, modal, cnrac: false });
+
+          // Trecho IDA
+          if (inPeriodo(v.data_embarque_prevista as string | null)) {
+            const rotaKey = `${v.origem_cidade}|${v.origem_uf}|${v.destino_cidade}|${v.destino_uf}`;
+            const rota = rotaMap.get(rotaKey);
+            const distancia =
+              modal === 'terrestre' ? rota?.km ?? null :
+              modal === 'aereo' ? rota?.mi ?? null :
+              rota?.mn ?? null;
+            const qtd = calcularQuantidadePassagem(distancia, sig.unidadeDivisor);
+            mapped.push({
+              id: `${v.id}:ida`,
+              origem_id: String(v.id),
+              trecho: 'ida',
+              dt_atendimento: String(v.data_embarque_prevista),
+              cpf_cns: cpfCns,
+              nome,
+              sexo: acomp ? null : ((pac?.sexo as string) ?? null),
+              data_nascimento: acomp ? null : ((pac?.data_nascimento as string) ?? null),
+              cep: (pac?.cep as string) ?? null,
+              municipio: (pac?.municipio as string) ?? null,
+              endereco: enderecoFull || null,
+              bairro: (pac?.bairro as string) ?? null,
+              telefone: (pac?.telefone_celular as string) ?? null,
+              email: acomp ? null : ((pac?.email as string) ?? null),
+              codigo_sigtap: sig.codigo,
+              quantidade: qtd,
+              cid: (sol?.cid_principal as string) ?? null,
+              modal,
+              trecho_label: `${v.origem_uf}/${v.origem_cidade} → ${v.destino_uf}/${v.destino_cidade}`,
+              rota_pendente: qtd === null,
+            });
+          }
+
+          // Trecho VOLTA (apenas IDA_E_VOLTA com data_retorno no período)
+          if ((v.tipo as string) === 'IDA_E_VOLTA' && inPeriodo(v.data_retorno_prevista as string | null)) {
+            const rotaKey = `${v.destino_cidade}|${v.destino_uf}|${v.origem_cidade}|${v.origem_uf}`;
+            const rota = rotaMap.get(rotaKey);
+            const distancia =
+              modal === 'terrestre' ? rota?.km ?? null :
+              modal === 'aereo' ? rota?.mi ?? null :
+              rota?.mn ?? null;
+            const qtd = calcularQuantidadePassagem(distancia, sig.unidadeDivisor);
+            mapped.push({
+              id: `${v.id}:volta`,
+              origem_id: String(v.id),
+              trecho: 'volta',
+              dt_atendimento: String(v.data_retorno_prevista),
+              cpf_cns: cpfCns,
+              nome,
+              sexo: acomp ? null : ((pac?.sexo as string) ?? null),
+              data_nascimento: acomp ? null : ((pac?.data_nascimento as string) ?? null),
+              cep: (pac?.cep as string) ?? null,
+              municipio: (pac?.municipio as string) ?? null,
+              endereco: enderecoFull || null,
+              bairro: (pac?.bairro as string) ?? null,
+              telefone: (pac?.telefone_celular as string) ?? null,
+              email: acomp ? null : ((pac?.email as string) ?? null),
+              codigo_sigtap: sig.codigo,
+              quantidade: qtd,
+              cid: (sol?.cid_principal as string) ?? null,
+              modal,
+              trecho_label: `${v.destino_uf}/${v.destino_cidade} → ${v.origem_uf}/${v.origem_cidade}`,
+              rota_pendente: qtd === null,
+            });
+          }
+        });
+
+        mapped.sort((a, b) => a.dt_atendimento.localeCompare(b.dt_atendimento));
+        setRows(mapped);
       }
 
       // Carrega "lançados" do tipo atual
