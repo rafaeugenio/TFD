@@ -106,11 +106,11 @@ export default function RelatorioRPB() {
               .filter(Boolean)
           )
         );
-        const acompMap = new Map<string, { nome: string; cpf: string; cns: string | null }>();
+        const acompMap = new Map<string, { nome: string; cpf: string; cns: string | null; sexo: string | null; email: string | null; data_nascimento: string | null; telefone: string | null }>();
         if (pacienteIds.length > 0) {
           const { data: acomps } = await supabase
             .from('acompanhantes')
-            .select('paciente_id, nome_completo, cpf, cns')
+            .select('paciente_id, nome_completo, cpf, cns, sexo, email, data_nascimento, telefone')
             .in('paciente_id', pacienteIds);
           (acomps ?? []).forEach((a: Record<string, unknown>) => {
             const pid = a.paciente_id as string;
@@ -119,6 +119,10 @@ export default function RelatorioRPB() {
                 nome: a.nome_completo as string,
                 cpf: a.cpf as string,
                 cns: (a.cns as string) ?? null,
+                sexo: (a.sexo as string) ?? null,
+                email: (a.email as string) ?? null,
+                data_nascimento: (a.data_nascimento as string) ?? null,
+                telefone: (a.telefone as string) ?? null,
               });
             }
           });
@@ -149,14 +153,14 @@ export default function RelatorioRPB() {
             dt_atendimento: String(r.data_inicio),
             cpf_cns: cpfCns,
             nome,
-            sexo: acomp ? null : ((pac?.sexo as string) ?? null),
-            data_nascimento: acomp ? null : ((pac?.data_nascimento as string) ?? null),
+            sexo: acomp ? acomp.sexo : ((pac?.sexo as string) ?? null),
+            data_nascimento: acomp ? acomp.data_nascimento : ((pac?.data_nascimento as string) ?? null),
             cep: (pac?.cep as string) ?? null,
             municipio: (pac?.municipio as string) ?? null,
             endereco: enderecoFull || null,
             bairro: (pac?.bairro as string) ?? null,
-            telefone: (pac?.telefone_celular as string) ?? null,
-            email: acomp ? null : ((pac?.email as string) ?? null),
+            telefone: acomp ? acomp.telefone : ((pac?.telefone_celular as string) ?? null),
+            email: acomp ? acomp.email : ((pac?.email as string) ?? null),
             codigo_sigtap: sig.codigo,
             quantidade: comPernoite ? dias : 1,
             cid: (sol?.cid_principal as string) ?? null,
@@ -164,21 +168,21 @@ export default function RelatorioRPB() {
         });
         setRows(mapped);
       } else {
-        // PASSAGENS — busca viagens cujo embarque ou retorno caia no período
+        // PASSAGENS — cada viagem já é um trecho único (IDA ou RETORNO).
+        // Distância e unidade vêm direto da viagem (distancia_valor/distancia_unidade).
         const { data, error } = await supabase
           .from('viagens')
           .select(
-            'id, tipo, modal, beneficiario_tipo, beneficiario_id, ' +
-            'data_embarque_prevista, data_retorno_prevista, ' +
+            'id, tipo, modal, ' +
+            'data_embarque_prevista, ' +
             'origem_cidade, origem_uf, destino_cidade, destino_uf, ativa, ' +
-            'solicitacoes!inner(cid_principal, paciente_id, ' +
+            'distancia_valor, distancia_unidade, ' +
+            'solicitacoes!inner(cid_principal, paciente_id, tipo_solicitacao, ' +
             '  pacientes(cpf, cns, nome_completo, sexo, data_nascimento, telefone_celular, email, logradouro, numero, bairro, cep, municipio))'
           )
           .eq('ativa', true)
-          .or(
-            `and(data_embarque_prevista.gte.${periodo.inicio},data_embarque_prevista.lte.${periodo.fim}),` +
-            `and(data_retorno_prevista.gte.${periodo.inicio},data_retorno_prevista.lte.${periodo.fim})`
-          )
+          .gte('data_embarque_prevista', periodo.inicio)
+          .lte('data_embarque_prevista', periodo.fim)
           .order('data_embarque_prevista', { ascending: true });
 
         if (cancel) return;
@@ -189,54 +193,39 @@ export default function RelatorioRPB() {
           return;
         }
 
-        // Carregar TODAS as rotas (pequeno dataset) — lookup local
-        const rotaMap = new Map<string, { km: number | null; mi: number | null; mn: number | null }>();
-        const { data: rotas } = await supabase
-          .from('rotas_deslocamento')
-          .select('cidade_origem, uf_origem, cidade_destino, uf_destino, distancia_km, distancia_milhas, distancia_milhas_nauticas');
-        (rotas ?? []).forEach((r: Record<string, unknown>) => {
-          const key = `${r.cidade_origem}|${r.uf_origem}|${r.cidade_destino}|${r.uf_destino}`;
-          rotaMap.set(key, {
-            km: r.distancia_km as number | null,
-            mi: r.distancia_milhas as number | null,
-            mn: r.distancia_milhas_nauticas as number | null,
-          });
-        });
-
-        // Buscar acompanhantes por id (beneficiario_id quando beneficiario_tipo='acompanhante')
-        const acompIds = Array.from(
+        // Acompanhantes vinculados às solicitações (via solicitacao_acompanhantes)
+        const solicitacaoIds = Array.from(
           new Set(
             (data as unknown as Array<Record<string, unknown>>)
-              .filter((v) => (v.beneficiario_tipo as string)?.toLowerCase() === 'acompanhante')
-              .map((v) => v.beneficiario_id as string)
+              .map((v) => ((v.solicitacoes as Record<string, unknown>)?.paciente_id as string))
               .filter(Boolean)
           )
         );
-        const acompMap = new Map<string, Record<string, unknown>>();
-        if (acompIds.length > 0) {
+        const acompPorPaciente = new Map<string, Record<string, unknown>>();
+        if (solicitacaoIds.length > 0) {
           const { data: acomps } = await supabase
             .from('acompanhantes')
-            .select('id, nome_completo, cpf, cns')
-            .in('id', acompIds);
+            .select('paciente_id, nome_completo, cpf, cns, sexo, email, data_nascimento, telefone')
+            .in('paciente_id', solicitacaoIds);
           (acomps ?? []).forEach((a: Record<string, unknown>) => {
-            acompMap.set(a.id as string, a);
+            const pid = a.paciente_id as string;
+            if (!acompPorPaciente.has(pid)) acompPorPaciente.set(pid, a);
           });
         }
 
-        const inPeriodo = (d: string | null | undefined) =>
-          !!d && d >= periodo.inicio && d <= periodo.fim;
-
-        const mapped: RPBRow[] = [];
-
-        (data as unknown as Array<Record<string, unknown>>).forEach((v) => {
+        const mapped: RPBRow[] = (data as unknown as Array<Record<string, unknown>>).map((v) => {
           const sol = v.solicitacoes as Record<string, unknown> | null;
           const pac = sol?.pacientes as Record<string, unknown> | null;
-          const beneficiario: Beneficiario =
-            (v.beneficiario_tipo as string)?.toLowerCase() === 'acompanhante' ? 'acompanhante' : 'paciente';
           const modalRaw = (v.modal as string)?.toLowerCase();
           const modal: Modal =
             modalRaw === 'aereo' ? 'aereo' : modalRaw === 'fluvial' ? 'fluvial' : 'terrestre';
-          const acomp = beneficiario === 'acompanhante' ? acompMap.get(v.beneficiario_id as string) : null;
+
+          // Considera "acompanhante" quando a solicitação é para acompanhante
+          const tipoSol = (sol?.tipo_solicitacao as string)?.toUpperCase();
+          const beneficiario: Beneficiario = tipoSol === 'ACOMPANHANTE' ? 'acompanhante' : 'paciente';
+          const acomp = beneficiario === 'acompanhante' && sol?.paciente_id
+            ? acompPorPaciente.get(sol.paciente_id as string)
+            : null;
 
           const nome = (acomp?.nome_completo as string) ?? (pac?.nome_completo as string) ?? '—';
           const cpfCns = (acomp?.cpf as string) ?? (pac?.cpf as string) ?? (pac?.cns as string) ?? '—';
@@ -244,74 +233,40 @@ export default function RelatorioRPB() {
 
           const sig = resolveSigtapPassagem({ beneficiario, modal, cnrac: false });
 
-          // Trecho IDA
-          if (inPeriodo(v.data_embarque_prevista as string | null)) {
-            const rotaKey = `${v.origem_cidade}|${v.origem_uf}|${v.destino_cidade}|${v.destino_uf}`;
-            const rota = rotaMap.get(rotaKey);
-            const distancia =
-              modal === 'terrestre' ? rota?.km ?? null :
-              modal === 'aereo' ? rota?.mi ?? null :
-              rota?.mn ?? null;
-            const qtd = calcularQuantidadePassagem(distancia, sig.unidadeDivisor);
-            mapped.push({
-              id: `${v.id}:ida`,
-              origem_id: String(v.id),
-              trecho: 'ida',
-              dt_atendimento: String(v.data_embarque_prevista),
-              cpf_cns: cpfCns,
-              nome,
-              sexo: acomp ? null : ((pac?.sexo as string) ?? null),
-              data_nascimento: acomp ? null : ((pac?.data_nascimento as string) ?? null),
-              cep: (pac?.cep as string) ?? null,
-              municipio: (pac?.municipio as string) ?? null,
-              endereco: enderecoFull || null,
-              bairro: (pac?.bairro as string) ?? null,
-              telefone: (pac?.telefone_celular as string) ?? null,
-              email: acomp ? null : ((pac?.email as string) ?? null),
-              codigo_sigtap: sig.codigo,
-              quantidade: qtd,
-              cid: (sol?.cid_principal as string) ?? null,
-              modal,
-              trecho_label: `${v.origem_uf}/${v.origem_cidade} → ${v.destino_uf}/${v.destino_cidade}`,
-              rota_pendente: qtd === null,
-            });
-          }
+          const distancia = v.distancia_valor as number | null;
+          const qtd = calcularQuantidadePassagem(distancia, sig.unidadeDivisor);
 
-          // Trecho VOLTA (apenas IDA_E_VOLTA com data_retorno no período)
-          if ((v.tipo as string) === 'IDA_E_VOLTA' && inPeriodo(v.data_retorno_prevista as string | null)) {
-            const rotaKey = `${v.destino_cidade}|${v.destino_uf}|${v.origem_cidade}|${v.origem_uf}`;
-            const rota = rotaMap.get(rotaKey);
-            const distancia =
-              modal === 'terrestre' ? rota?.km ?? null :
-              modal === 'aereo' ? rota?.mi ?? null :
-              rota?.mn ?? null;
-            const qtd = calcularQuantidadePassagem(distancia, sig.unidadeDivisor);
-            mapped.push({
-              id: `${v.id}:volta`,
-              origem_id: String(v.id),
-              trecho: 'volta',
-              dt_atendimento: String(v.data_retorno_prevista),
-              cpf_cns: cpfCns,
-              nome,
-              sexo: acomp ? null : ((pac?.sexo as string) ?? null),
-              data_nascimento: acomp ? null : ((pac?.data_nascimento as string) ?? null),
-              cep: (pac?.cep as string) ?? null,
-              municipio: (pac?.municipio as string) ?? null,
-              endereco: enderecoFull || null,
-              bairro: (pac?.bairro as string) ?? null,
-              telefone: (pac?.telefone_celular as string) ?? null,
-              email: acomp ? null : ((pac?.email as string) ?? null),
-              codigo_sigtap: sig.codigo,
-              quantidade: qtd,
-              cid: (sol?.cid_principal as string) ?? null,
-              modal,
-              trecho_label: `${v.destino_uf}/${v.destino_cidade} → ${v.origem_uf}/${v.origem_cidade}`,
-              rota_pendente: qtd === null,
-            });
-          }
+          const tipoTrecho = (v.tipo as string)?.toUpperCase();
+          const isRetorno = tipoTrecho === 'RETORNO' || tipoTrecho === 'VOLTA';
+          const trecho: 'ida' | 'volta' = isRetorno ? 'volta' : 'ida';
+          const trechoLabel = isRetorno
+            ? `${v.destino_uf}/${v.destino_cidade} → ${v.origem_uf}/${v.origem_cidade}`
+            : `${v.origem_uf}/${v.origem_cidade} → ${v.destino_uf}/${v.destino_cidade}`;
+
+          return {
+            id: String(v.id),
+            origem_id: String(v.id),
+            trecho,
+            dt_atendimento: String(v.data_embarque_prevista),
+            cpf_cns: cpfCns,
+            nome,
+            sexo: (acomp?.sexo as string) ?? (pac?.sexo as string) ?? null,
+            data_nascimento: (acomp?.data_nascimento as string) ?? (pac?.data_nascimento as string) ?? null,
+            cep: (pac?.cep as string) ?? null,
+            municipio: (pac?.municipio as string) ?? null,
+            endereco: enderecoFull || null,
+            bairro: (pac?.bairro as string) ?? null,
+            telefone: (acomp?.telefone as string) ?? (pac?.telefone_celular as string) ?? null,
+            email: (acomp?.email as string) ?? (pac?.email as string) ?? null,
+            codigo_sigtap: sig.codigo,
+            quantidade: qtd,
+            cid: (sol?.cid_principal as string) ?? null,
+            modal,
+            trecho_label: trechoLabel,
+            rota_pendente: qtd === null,
+          };
         });
 
-        mapped.sort((a, b) => a.dt_atendimento.localeCompare(b.dt_atendimento));
         setRows(mapped);
       }
 
