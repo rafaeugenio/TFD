@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Calendar, ClipboardList, Loader2, RefreshCw } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 import {
   ReportToolbar,
   FilterField,
@@ -12,15 +13,46 @@ import {
   ReportPrintStyles,
 } from './_shared/ReportShell';
 import { MES_LABEL, MES_LABEL_SHORT, anosDisponiveis } from './_shared/format';
+import {
+  resolveSigtapAjudaCusto,
+  type Beneficiario,
+  type Modal,
+} from './_shared/sigtap-mapper';
 
 type RPBTipo = 'ajuda_custo' | 'passagem';
+
+interface RPBRow {
+  id: string;
+  origem_id: string;
+  trecho: 'ida' | 'volta' | null;
+  dt_atendimento: string;
+  cpf_cns: string;
+  nome: string;
+  sexo: string | null;
+  data_nascimento: string | null;
+  cep: string | null;
+  municipio: string | null;
+  endereco: string | null;
+  bairro: string | null;
+  telefone: string | null;
+  email: string | null;
+  codigo_sigtap: string;
+  quantidade: number | null;
+  cid: string | null;
+  // específicas de passagens
+  modal?: Modal;
+  trecho_label?: string;
+  rota_pendente?: boolean;
+}
 
 export default function RelatorioRPB() {
   const hoje = new Date();
   const [tipo, setTipo] = useState<RPBTipo>('ajuda_custo');
   const [ano, setAno] = useState<number>(hoje.getFullYear());
   const [mes, setMes] = useState<number>(hoje.getMonth() + 1); // 0 = ano inteiro
-  const [loading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<RPBRow[]>([]);
+  const [lancados, setLancados] = useState<Set<string>>(new Set());
 
   const periodo = useMemo(() => {
     if (mes === 0) {
@@ -34,6 +66,122 @@ export default function RelatorioRPB() {
       label: `${MES_LABEL[mes - 1]} de ${ano}`,
     };
   }, [ano, mes]);
+
+  useEffect(() => {
+    let cancel = false;
+    setLoading(true);
+    (async () => {
+      const supabase = createClient();
+
+      if (tipo === 'ajuda_custo') {
+        const { data, error } = await supabase
+          .from('ajudas_custo')
+          .select(
+            'id, tipo, data_inicio, data_fim, dias_elegiveis, solicitacao_id, ' +
+            'solicitacoes!inner(cid_principal, paciente_id, ' +
+            '  pacientes(cpf, cns, nome_completo, sexo, data_nascimento, telefone_celular, email, logradouro, numero, bairro, cep, municipio))'
+          )
+          .gte('data_inicio', periodo.inicio)
+          .lte('data_inicio', periodo.fim)
+          .order('data_inicio', { ascending: true });
+
+        if (cancel) return;
+        if (error || !data) {
+          setRows([]);
+          setLancados(new Set());
+          setLoading(false);
+          return;
+        }
+
+        // Para tipos ACOMPANHANTE, buscar acompanhantes do paciente
+        const pacienteIds = Array.from(
+          new Set(
+            (data as unknown as Array<Record<string, unknown>>)
+              .filter((r) => (r.tipo as string)?.toUpperCase() === 'ACOMPANHANTE')
+              .map((r) => ((r.solicitacoes as Record<string, unknown>)?.paciente_id as string))
+              .filter(Boolean)
+          )
+        );
+        const acompMap = new Map<string, { nome: string; cpf: string; cns: string | null }>();
+        if (pacienteIds.length > 0) {
+          const { data: acomps } = await supabase
+            .from('acompanhantes')
+            .select('paciente_id, nome_completo, cpf, cns')
+            .in('paciente_id', pacienteIds);
+          (acomps ?? []).forEach((a: Record<string, unknown>) => {
+            const pid = a.paciente_id as string;
+            if (!acompMap.has(pid)) {
+              acompMap.set(pid, {
+                nome: a.nome_completo as string,
+                cpf: a.cpf as string,
+                cns: (a.cns as string) ?? null,
+              });
+            }
+          });
+        }
+
+        const mapped: RPBRow[] = (data as unknown as Array<Record<string, unknown>>).map((r) => {
+          const sol = r.solicitacoes as Record<string, unknown> | null;
+          const pac = sol?.pacientes as Record<string, unknown> | null;
+          const beneficiario: Beneficiario =
+            (r.tipo as string)?.toUpperCase() === 'ACOMPANHANTE' ? 'acompanhante' : 'paciente';
+          const dias = Number(r.dias_elegiveis ?? 0);
+          const comPernoite = dias > 0;
+          const sig = resolveSigtapAjudaCusto({ beneficiario, comPernoite, cnrac: false });
+
+          const enderecoFull = [pac?.logradouro, pac?.numero].filter(Boolean).join(', ');
+          const acomp =
+            beneficiario === 'acompanhante' && sol?.paciente_id
+              ? acompMap.get(sol.paciente_id as string) ?? null
+              : null;
+
+          const nome = acomp?.nome ?? (pac?.nome_completo as string) ?? '—';
+          const cpfCns = acomp?.cpf ?? (pac?.cpf as string) ?? (pac?.cns as string) ?? '—';
+
+          return {
+            id: String(r.id),
+            origem_id: String(r.id),
+            trecho: null,
+            dt_atendimento: String(r.data_inicio),
+            cpf_cns: cpfCns,
+            nome,
+            sexo: acomp ? null : ((pac?.sexo as string) ?? null),
+            data_nascimento: acomp ? null : ((pac?.data_nascimento as string) ?? null),
+            cep: (pac?.cep as string) ?? null,
+            municipio: (pac?.municipio as string) ?? null,
+            endereco: enderecoFull || null,
+            bairro: (pac?.bairro as string) ?? null,
+            telefone: (pac?.telefone_celular as string) ?? null,
+            email: acomp ? null : ((pac?.email as string) ?? null),
+            codigo_sigtap: sig.codigo,
+            quantidade: comPernoite ? dias : 1,
+            cid: (sol?.cid_principal as string) ?? null,
+          };
+        });
+        setRows(mapped);
+      } else {
+        // Passagens — implementado na Task 5
+        setRows([]);
+      }
+
+      // Carrega "lançados" do tipo atual
+      const { data: lanc } = await supabase
+        .from('bpa_lancamentos')
+        .select('tipo, origem_id, trecho')
+        .eq('tipo', tipo);
+      if (!cancel) {
+        const s = new Set<string>();
+        (lanc ?? []).forEach((l: Record<string, unknown>) => {
+          s.add(`${l.origem_id}:${l.trecho ?? ''}`);
+        });
+        setLancados(s);
+      }
+      setLoading(false);
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [tipo, periodo]);
 
   return (
     <div className="space-y-4">
@@ -99,14 +247,15 @@ export default function RelatorioRPB() {
         periodoLabel={periodo.label}
       />
 
-      <TableCard title="Itens para lançamento" count={0}>
+      <TableCard title="Itens para lançamento" count={rows.length}>
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 size={20} className="animate-spin" style={{ color: 'var(--tfd-primary-500)' }} />
           </div>
         ) : (
           <div className="text-center text-[13px] py-10" style={{ color: '#94A3B8' }}>
-            Carregamento de dados implementado na próxima task.
+            {rows.length} linha(s) carregada(s). Renderização da tabela na próxima task.
+            {lancados.size > 0 && ` · ${lancados.size} já lançada(s) no BPA`}
           </div>
         )}
       </TableCard>
