@@ -104,7 +104,7 @@ export interface DistribuicaoCarimbo {
   APROVADO_DIRETO: number;
   CNRAC: number;
   CET: number;
-  SAIS_DUTRA: number;
+  SAAS: number;
   AGENDAMENTO: number;
   sem: number;
 }
@@ -114,7 +114,7 @@ export interface DistribuicaoCarimbo {
  */
 export function contarPorCarimbo(solicitacoes: SolicitacaoMock[]): DistribuicaoCarimbo {
   const acc: DistribuicaoCarimbo = {
-    APROVADO_DIRETO: 0, CNRAC: 0, CET: 0, SAIS_DUTRA: 0, AGENDAMENTO: 0, sem: 0,
+    APROVADO_DIRETO: 0, CNRAC: 0, CET: 0, SAAS: 0, AGENDAMENTO: 0, sem: 0,
   };
   for (const s of solicitacoes) {
     if (s.status !== 'em_regulacao') continue;

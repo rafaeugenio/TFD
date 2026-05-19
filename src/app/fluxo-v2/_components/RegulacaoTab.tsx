@@ -29,7 +29,7 @@ const CARIMBO_VISUAL: Record<CarimboRegulacao, { label: string; sublabel: string
   APROVADO_DIRETO: { label: 'Aprovado direto',                          sublabel: 'Encaminhamento padrão, sem exceção.' },
   CNRAC:           { label: 'CNRAC — Central Nacional de Regulação',    sublabel: 'Alta complexidade fora do estado.' },
   CET:             { label: 'CET — Central Estadual de Tratamento',     sublabel: 'Busca de vaga via central estadual.' },
-  SAIS_DUTRA:      { label: 'SAIS / Hospital Dutra',                    sublabel: 'Encaminhamento via SAIS / Dutra — caso de exceção.' },
+  SAAS:            { label: 'SAAS',                                     sublabel: 'Encaminhamento via SAAS — caso de exceção.' },
   AGENDAMENTO:     { label: 'Agendamento manual',                       sublabel: 'Regulação agenda manualmente via tentativas até obter resposta.' },
 };
 
@@ -58,7 +58,7 @@ export default function RegulacaoTab({ s }: Props) {
   const carimboExigeAgendamento =
     s.carimboRegulacao === 'CNRAC' ||
     s.carimboRegulacao === 'CET' ||
-    s.carimboRegulacao === 'SAIS_DUTRA' ||
+    s.carimboRegulacao === 'SAAS' ||
     s.carimboRegulacao === 'AGENDAMENTO';
   const isExcecao = !!s.agendamento && s.agendamento.origem !== 'criacao';
 

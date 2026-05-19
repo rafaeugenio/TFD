@@ -160,7 +160,7 @@ function carimboFromRotas(rotas: Row[]): {
   if (tipo === 'APROVADO_DIRETO') carimbo = 'APROVADO_DIRETO';
   else if (tipo === 'CNRAC') carimbo = 'CNRAC';
   else if (tipo === 'SETI') carimbo = 'CET';
-  else if (tipo === 'SAIS_DUTRA') carimbo = 'SAIS_DUTRA';
+  else if (tipo === 'SAAS') carimbo = 'SAAS';
   else if (tipo === 'RESPOSTA_EXTERNA' || tipo === 'ENCAMINHADO_SERVICO_SOCIAL') carimbo = 'AGENDAMENTO';
 
   const formaContato = str(latest.outros_forma_contato);

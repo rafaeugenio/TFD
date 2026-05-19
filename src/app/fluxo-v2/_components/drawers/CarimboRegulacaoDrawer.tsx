@@ -33,7 +33,7 @@ interface CarimboOption {
 }
 
 /**
- * Opções de carimbo. Aprovação direta + 3 exceções (CNRAC, CET, SAIS/Dutra) +
+ * Opções de carimbo. Aprovação direta + 3 exceções (CNRAC, CET, SAAS) +
  * "Agendamento" (contato manual via tentativas — antigo "OUTROS"). As cores
  * semânticas aparecem só como acento via StatusDot.
  */
@@ -60,10 +60,10 @@ const OPTIONS: CarimboOption[] = [
     tone: 'info',
   },
   {
-    value: 'SAIS_DUTRA',
-    abrev: 'SAIS',
-    label: 'SAIS / Dutra',
-    desc: 'Encaminhamento via SAIS / Hospital Dutra — caso de exceção.',
+    value: 'SAAS',
+    abrev: 'SAAS',
+    label: 'SAAS',
+    desc: 'Encaminhamento via SAAS — caso de exceção.',
     tone: 'info',
   },
   {
@@ -102,7 +102,7 @@ export default function CarimboRegulacaoDrawer({
   const exigeAgendamento =
     selecionado === 'CNRAC' ||
     selecionado === 'CET' ||
-    selecionado === 'SAIS_DUTRA' ||
+    selecionado === 'SAAS' ||
     selecionado === 'AGENDAMENTO';
   // Os detalhes do contato vivem em Agendamentos & tentativas.
   const valid = !!selecionado;

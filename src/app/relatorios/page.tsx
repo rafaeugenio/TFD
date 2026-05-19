@@ -33,7 +33,7 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode; desc: string }[
   },
   {
     key: 'rpb',
-    label: 'RPB',
+    label: 'BPA',
     icon: <ClipboardList size={15} />,
     desc: 'Dados para lançamento no BPA',
   },

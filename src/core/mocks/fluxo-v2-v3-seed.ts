@@ -111,7 +111,7 @@ export type CarimboRegulacao =
   | 'APROVADO_DIRETO'
   | 'CNRAC'
   | 'CET'
-  | 'SAIS_DUTRA'
+  | 'SAAS'
   | 'AGENDAMENTO';
 
 /**
@@ -121,7 +121,7 @@ export type CarimboRegulacao =
  * legados persistidos antes do rename.
  */
 export interface CarimboOutrosInfo {
-  /** Nome da unidade ou órgão contatado (ex.: 'SAIS', 'Hospital Universitário'). */
+  /** Nome da unidade ou órgão contatado (ex.: 'SAAS', 'Hospital Universitário'). */
   unidadeOrgao: string;
   /** Forma pela qual o contato foi feito. */
   formaContato: 'email' | 'telefone' | 'sistema' | 'presencial';

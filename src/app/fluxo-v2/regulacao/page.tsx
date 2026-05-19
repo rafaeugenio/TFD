@@ -52,7 +52,7 @@ const CARIMBO_OPTIONS: { value: CarimboFiltro; label: string }[] = [
   { value: 'APROVADO_DIRETO', label: 'APROVADO DIRETO' },
   { value: 'CNRAC', label: 'CNRAC' },
   { value: 'CET', label: 'CET' },
-  { value: 'SAIS_DUTRA', label: 'SAIS / DUTRA' },
+  { value: 'SAAS', label: 'SAAS' },
   { value: 'AGENDAMENTO', label: 'AGENDAMENTO' },
   { value: 'sem_carimbo', label: 'Sem carimbo' },
 ];
@@ -683,15 +683,15 @@ function CarimboCell({ s }: { s: SolicitacaoMock }) {
   const sigla =
     s.carimboRegulacao === 'APROVADO_DIRETO'
       ? 'APR'
-      : s.carimboRegulacao === 'SAIS_DUTRA'
-        ? 'SAIS'
+      : s.carimboRegulacao === 'SAAS'
+        ? 'SAAS'
         : s.carimboRegulacao === 'AGENDAMENTO'
           ? 'AGND'
           : s.carimboRegulacao;
 
   const nomeCarimbo: Record<string, string> = {
     APROVADO_DIRETO: 'Aprovado direto',
-    SAIS_DUTRA: 'SAIS / Dutra',
+    SAAS: 'SAAS',
     AGENDAMENTO: 'Agendamento',
     CNRAC: 'CNRAC',
     CET: 'CET',

@@ -338,6 +338,11 @@ export default function RelatorioRPB() {
     }
   };
 
+  const enderecoCompleto = (r: RPBRow) => {
+    const parts = [r.cep, r.municipio, r.endereco, r.bairro].filter(Boolean);
+    return parts.length > 0 ? parts.join(' — ') : '—';
+  };
+
   const columnsCommon: ReportColumn<RPBRow>[] = [
     {
       key: 'check',
@@ -363,25 +368,25 @@ export default function RelatorioRPB() {
       ),
     },
     { key: 'idx',  header: '#', width: '36px', mono: true, render: (_r, i) => String(i + 1).padStart(3, '0') },
-    { key: 'dt',   header: 'Dt. Atend.', width: '92px', render: (r) => fmtDataBR(r.dt_atendimento) },
     { key: 'cpf',  header: 'CPF/CNS', width: '120px', mono: true, render: (r) => r.cpf_cns },
     { key: 'nome', header: 'Nome', render: (r) => <span style={{ fontWeight: 500 }}>{r.nome}</span> },
     { key: 'sexo', header: 'Sexo', width: '56px', render: (r) => r.sexo ? r.sexo[0] : '—' },
-    { key: 'nasc', header: 'Nasc.', width: '92px', render: (r) => fmtDataBR(r.data_nascimento ?? '') || '—' },
-    { key: 'cep',  header: 'CEP', width: '88px', render: (r) => r.cep ?? '—' },
-    { key: 'mun',  header: 'Município', width: '120px', render: (r) => r.municipio ?? '—' },
+    { key: 'nasc', header: 'Nascimento', width: '100px', render: (r) => fmtDataBR(r.data_nascimento ?? '') || '—' },
     {
       key: 'end',
       header: 'Endereço',
-      render: (r) => (
-        <span title={r.endereco ?? ''} style={{ display: 'inline-block', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {r.endereco ?? '—'}
-        </span>
-      ),
+      render: (r) => {
+        const full = enderecoCompleto(r);
+        return (
+          <span title={full} style={{ display: 'inline-block', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {full}
+          </span>
+        );
+      },
     },
-    { key: 'bairro', header: 'Bairro',   width: '110px', render: (r) => r.bairro ?? '—' },
     { key: 'tel',    header: 'Telefone', width: '110px', render: (r) => r.telefone ?? '—' },
     { key: 'email',  header: 'E-mail',   render: (r) => r.email ?? '—' },
+    { key: 'dt',   header: 'Dt. Atend.', width: '100px', render: (r) => fmtDataBR(r.dt_atendimento) },
   ];
 
   const columnsAjuda: ReportColumn<RPBRow>[] = [
@@ -474,7 +479,7 @@ export default function RelatorioRPB() {
       />
 
       <ReportHero
-        titulo={`Relatório RPB — ${tipo === 'ajuda_custo' ? 'Ajuda de Custo' : 'Passagens'}`}
+        titulo={`Relatório BPA — ${tipo === 'ajuda_custo' ? 'Ajuda de Custo' : 'Passagens'}`}
         periodoLabel={periodo.label}
       />
 
