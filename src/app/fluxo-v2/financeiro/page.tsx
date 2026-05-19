@@ -319,6 +319,7 @@ export default function FinanceiroListPage() {
                 isTramitacaoRecente(tram);
               const locked = isLocked(s, 'financeiro');
               const lockedTip = tooltipLocked(s, 'financeiro');
+              const isAjudaCusto = s.tipoSolicitacao === 'ajuda_custo';
 
               return (
                 <tr
@@ -369,6 +370,7 @@ export default function FinanceiroListPage() {
                       s={s}
                       totalPassagens={totalPassagens}
                       totalAjuda={totalAjuda}
+                      isAjudaCusto={isAjudaCusto}
                     />
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono" style={{ color: '#0F172A', fontWeight: 600, fontSize: 14 }}>
@@ -381,13 +383,13 @@ export default function FinanceiroListPage() {
                     <div className="inline-flex items-center">
                       <RowActions
                         actions={[
-                          {
-                            key: 'passagem',
+                          ...(isAjudaCusto ? [] : [{
+                            key: 'passagem' as const,
                             icon: Plane,
                             label: locked ? lockedTip : 'Adicionar passagem',
                             onClick: () => open('passagem', s),
                             disabled: locked,
-                          },
+                          }]),
                           {
                             key: 'ajuda',
                             icon: Wallet,
@@ -487,10 +489,12 @@ function ResumoSolicitacao({
   s,
   totalPassagens,
   totalAjuda,
+  isAjudaCusto = false,
 }: {
   s: SolicitacaoMock;
   totalPassagens: number;
   totalAjuda: number;
+  isAjudaCusto?: boolean;
 }) {
   const viagensAtivas = s.viagens.filter(
     (v) => !['cancelada', 'reembolso'].includes(v.status),
@@ -514,6 +518,9 @@ function ResumoSolicitacao({
   if (qtdPassagens === 0 && qtdAjudas === 0) {
     return <span style={{ color: '#CBD5E1', fontSize: 12 }}>—</span>;
   }
+
+  // Solicitações de ajuda de custo nunca têm passagens — omite a linha de viagens.
+  const mostrarPassagens = !isAjudaCusto;
 
   // Resolve nome do acompanhante por id (usado nos tooltips)
   const nomeAcompanhante = (id?: string): string | null => {
@@ -551,17 +558,19 @@ function ResumoSolicitacao({
 
   return (
     <div className="flex flex-col gap-1">
-      <HoverTooltip content={passagensTooltip} disabled={qtdPassagens === 0} maxWidth={380}>
-        <ResumoItem
-          icon={<Plane size={13} strokeWidth={2.2} />}
-          tone="blue"
-          quantidade={qtdPassagens}
-          unidadeSing="passagem"
-          unidadePlural="passagens"
-          valor={totalPassagens}
-          statusInline={statusPassagem}
-        />
-      </HoverTooltip>
+      {mostrarPassagens && (
+        <HoverTooltip content={passagensTooltip} disabled={qtdPassagens === 0} maxWidth={380}>
+          <ResumoItem
+            icon={<Plane size={13} strokeWidth={2.2} />}
+            tone="blue"
+            quantidade={qtdPassagens}
+            unidadeSing="passagem"
+            unidadePlural="passagens"
+            valor={totalPassagens}
+            statusInline={statusPassagem}
+          />
+        </HoverTooltip>
+      )}
       {qtdAjudas > 0 && (
         <HoverTooltip content={ajudasTooltip} disabled={qtdAjudas === 0} maxWidth={380}>
           <ResumoItem

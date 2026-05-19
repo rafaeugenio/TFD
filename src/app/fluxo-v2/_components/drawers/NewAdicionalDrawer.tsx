@@ -70,6 +70,8 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
     }
   }, [open, editar]);
 
+  const isAjudaCusto = solicitacao?.tipoSolicitacao === 'ajuda_custo';
+
   /** Viagens da solicitação (todas), ordenadas: aéreas primeiro, depois por data.
    *  Exclui viagens canceladas/reembolso — não faz sentido vincular adicional a elas. */
   const viagensDisponiveis = useMemo(() => {
@@ -120,7 +122,7 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
         valor: Number(valor),
         documentoUrl: anexoNome ? `mock://${anexoNome}` : undefined,
         tipoDespesa: tipoDespesa || undefined,
-        viagemId: viagemId || undefined,
+        viagemId: isAjudaCusto ? undefined : (viagemId || undefined),
         ...beneficiarioPayload,
       });
     } else {
@@ -132,7 +134,7 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
         status: 'pendente_aprovacao',
         documentoUrl: anexoNome ? `mock://${anexoNome}` : undefined,
         tipoDespesa: tipoDespesa || undefined,
-        viagemId: viagemId || undefined,
+        viagemId: isAjudaCusto ? undefined : (viagemId || undefined),
         ...beneficiarioPayload,
       });
     }
@@ -210,33 +212,37 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
         className="mb-4"
       />
 
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-        Vincular a passagem
-      </label>
-      <select
-        value={viagemId}
-        onChange={(e) => setViagemId(e.target.value)}
-        className="w-full px-3 py-2 text-[13px] mb-1"
-        style={inputStyle}
-        disabled={viagensDisponiveis.length === 0}
-      >
-        <option value="">Sem vínculo</option>
-        {viagensDisponiveis.map((v) => {
-          const origem = v.origem.split(' - ')[0];
-          const destino = v.destino.split(' - ')[0];
-          const modal = MODAL_LABEL[v.modal] ?? v.modal;
-          return (
-            <option key={v.id} value={v.id}>
-              {modal} · {origem} → {destino} · {fmtDataBR(v.data)}
-            </option>
-          );
-        })}
-      </select>
-      <p className="text-[11px] mb-4" style={{ color: '#9CA3AF' }}>
-        {viagensDisponiveis.length === 0
-          ? 'Nenhuma passagem cadastrada nesta solicitação.'
-          : 'Quando vinculado, o valor é somado à passagem nos relatórios. Aéreas listadas primeiro.'}
-      </p>
+      {!isAjudaCusto && (
+        <>
+          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+            Vincular a passagem
+          </label>
+          <select
+            value={viagemId}
+            onChange={(e) => setViagemId(e.target.value)}
+            className="w-full px-3 py-2 text-[13px] mb-1"
+            style={inputStyle}
+            disabled={viagensDisponiveis.length === 0}
+          >
+            <option value="">Sem vínculo</option>
+            {viagensDisponiveis.map((v) => {
+              const origem = v.origem.split(' - ')[0];
+              const destino = v.destino.split(' - ')[0];
+              const modal = MODAL_LABEL[v.modal] ?? v.modal;
+              return (
+                <option key={v.id} value={v.id}>
+                  {modal} · {origem} → {destino} · {fmtDataBR(v.data)}
+                </option>
+              );
+            })}
+          </select>
+          <p className="text-[11px] mb-4" style={{ color: '#9CA3AF' }}>
+            {viagensDisponiveis.length === 0
+              ? 'Nenhuma passagem cadastrada nesta solicitação.'
+              : 'Quando vinculado, o valor é somado à passagem nos relatórios. Aéreas listadas primeiro.'}
+          </p>
+        </>
+      )}
 
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div>
