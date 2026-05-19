@@ -12,6 +12,7 @@ const PUBLIC_PATHS = [
   '/primeiro-acesso',
   '/consulta',
   '/design-system',
+  '/backlog',
 ];
 
 function isPublic(pathname: string): boolean {

@@ -237,6 +237,12 @@ export type StatusViagem =
  * ViagemMock independentes (ida + volta), permitindo edições/remarcações
  * separadas no fluxo real.
  */
+/**
+ * Tipos de passagem persistidos. `'transfer'` foi descontinuado em 2026 —
+ * agora é categoria de Adicional. Mantemos o literal só para tipagem de
+ * dados antigos vindos do banco; novos registros usam apenas ida/volta.
+ * @see CategoriaAdicional['transfer']
+ */
 export type TipoViagem = 'ida' | 'volta' | 'transfer';
 
 export interface ViagemMock {
@@ -250,6 +256,10 @@ export interface ViagemMock {
   origemUf?: string;
   destinoCidade?: string;
   destinoUf?: string;
+  /** IATA do aeroporto de origem — só preenchido quando `modal === 'aereo'`. */
+  origemAeroporto?: string;
+  /** IATA do aeroporto de destino — só preenchido quando `modal === 'aereo'`. */
+  destinoAeroporto?: string;
   data: string;
   modal: ModalViagem;
   tipo: TipoViagem;
@@ -861,13 +871,14 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       { id: 'v5b', origem: 'Rio de Janeiro - RJ', destino: 'Bacabal - MA',  data: '2025-05-12', modal: 'aereo',     tipo: 'volta',    status: 'confirmada',     valor: 1520, beneficiarioTipo: 'paciente' },
       { id: 'v5c', origem: 'Bacabal - MA',   destino: 'Rio de Janeiro - RJ', data: '2025-05-22', modal: 'aereo',     tipo: 'ida',      status: 'remarcada',      valor: 1480, beneficiarioTipo: 'acompanhante', beneficiarioId: 'a5' },
       { id: 'v5d', origem: 'Rio de Janeiro - RJ', destino: 'Bacabal - MA',  data: '2025-05-30', modal: 'aereo',     tipo: 'volta',    status: 'agendada',       valor: 1520, beneficiarioTipo: 'acompanhante', beneficiarioId: 'a5' },
-      { id: 'v5e', origem: 'Aeroporto GIG',  destino: 'INCA',                data: '2025-05-04', modal: 'terrestre', tipo: 'transfer', status: 'confirmada',     valor: 180, beneficiarioTipo: 'paciente' },
-      { id: 'v5f', origem: 'INCA',           destino: 'Aeroporto GIG',       data: '2025-05-12', modal: 'terrestre', tipo: 'transfer', status: 'confirmada',     valor: 180, beneficiarioTipo: 'paciente' },
     ],
     ajudasCusto: [
       { id: 'ac5', beneficiarioTipo: 'acompanhante', beneficiarioId: 'a5', dataInicio: '2025-05-04', dataFim: '2025-05-12', status: 'aprovada' },
     ],
-    adicionais: [],
+    adicionais: [
+      { id: 'ad5a', categoria: 'transfer', descricao: 'Transfer Aeroporto GIG → INCA', data: '2025-05-04', valor: 180, status: 'pago',     beneficiarioTipo: 'paciente' },
+      { id: 'ad5b', categoria: 'transfer', descricao: 'Transfer INCA → Aeroporto GIG', data: '2025-05-12', valor: 180, status: 'pago',     beneficiarioTipo: 'paciente' },
+    ],
     numeroSEI: '00100.002345/2025-09',
     seiUrl: 'https://sei.ses.ma.gov.br/processo/00100.002345-2025-09',
     observacoes: [

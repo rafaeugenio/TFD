@@ -241,7 +241,7 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div>
           <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Data
+            Data de pagamento
           </label>
           <input
             type="date"

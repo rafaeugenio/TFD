@@ -18,6 +18,9 @@ import { isTramitacaoRecente } from '../_utils/tramitacao';
 import { TramitacaoInfoPopover } from '../_components/TramitacaoBadge';
 import { isLocked, setorAtual, tooltipLocked } from '../_utils/lock';
 import { temAgendamentoConfirmado, agendamentoConfirmado, dataDoAgendamento } from '../_utils/agendamento';
+import HoverTooltip, { TooltipKV } from '../_components/HoverTooltip';
+import { TIPO_PROCEDIMENTO_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
+import { useCidLookup, getCidDescricao } from '../_utils/useCidLookup';
 
 const fmtDataBR = (iso: string) => {
   const [y, m, d] = iso.split('-');
@@ -121,6 +124,20 @@ export default function RegulacaoListPage() {
     [filaOrdenada, page, pageSize],
   );
 
+  // Coleta os CIDs (principal + secundário) do último parecer de cada solicitação
+  // exibida na página e resolve as descrições em batch via cid10/cid11.
+  const cidPares = useMemo(() => {
+    const pares: Array<{ codigo: string | undefined; versao: '10' | '11' | undefined }> = [];
+    for (const s of paginadas) {
+      const ultimo = s.pareceres.length > 0 ? s.pareceres[s.pareceres.length - 1] : null;
+      if (!ultimo) continue;
+      if (ultimo.cidPrincipal) pares.push({ codigo: ultimo.cidPrincipal, versao: ultimo.versaoCID });
+      if (ultimo.cidSecundario) pares.push({ codigo: ultimo.cidSecundario, versao: ultimo.versaoCID });
+    }
+    return pares;
+  }, [paginadas]);
+  const cidMap = useCidLookup(cidPares);
+
   const toggleSort = (field: string) => setSort((prev) => nextSort(field, prev));
 
   function open(kind: Exclude<DrawerKind, null>, sol: SolicitacaoMock) {
@@ -198,6 +215,7 @@ export default function RegulacaoListPage() {
               <SortTh label="Paciente" field="paciente" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Município" field="municipio" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <Th>Resumo</Th>
+              <Th>CID</Th>
               <SortTh label="Carimbo" field="carimbo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Tempo" field="tempo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <Th align="right">Ações</Th>
@@ -207,9 +225,9 @@ export default function RegulacaoListPage() {
             {isLoading && (
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={`sk-${i}`} style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
-                  {Array.from({ length: 7 }).map((__, c) => (
+                  {Array.from({ length: 8 }).map((__, c) => (
                     <td key={c} className="px-4 py-3.5">
-                      <Skeleton className={`h-4 ${c === 0 ? 'w-24' : c === 1 ? 'w-44' : c === 6 ? 'w-16 ml-auto' : 'w-28'}`} />
+                      <Skeleton className={`h-4 ${c === 0 ? 'w-24' : c === 1 ? 'w-44' : c === 7 ? 'w-16 ml-auto' : 'w-28'}`} />
                     </td>
                   ))}
                 </tr>
@@ -217,7 +235,7 @@ export default function RegulacaoListPage() {
             )}
             {!isLoading && fila.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
+                <td colSpan={8} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
                   Nenhuma solicitação na fila de regulação.
                 </td>
               </tr>
@@ -281,33 +299,10 @@ export default function RegulacaoListPage() {
                     <ResumoRegulacao s={s} />
                   </td>
                   <td className="px-4 py-3.5">
-                    {s.carimboRegulacao ? (
-                      <span
-                        className="inline-flex items-center px-2 py-[3px] text-[11px] font-semibold uppercase"
-                        style={{
-                          background: '#F1F5F9',
-                          color: '#475569',
-                          border: '1px solid #E2E8F0',
-                          borderRadius: 6,
-                          letterSpacing: '0.05em',
-                        }}
-                        title={
-                          s.carimboRegulacao === 'AGENDAMENTO' && s.carimboOutrosInfo
-                            ? `Agendamento — ${s.carimboOutrosInfo.unidadeOrgao}`
-                            : undefined
-                        }
-                      >
-                        {s.carimboRegulacao === 'APROVADO_DIRETO'
-                          ? 'APR'
-                          : s.carimboRegulacao === 'SAIS_DUTRA'
-                            ? 'SAIS'
-                            : s.carimboRegulacao === 'AGENDAMENTO'
-                              ? 'AGND'
-                              : s.carimboRegulacao}
-                      </span>
-                    ) : (
-                      <span style={{ color: '#CBD5E1', fontSize: 13 }}>—</span>
-                    )}
+                    <CidCell s={s} cidMap={cidMap} />
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <CarimboCell s={s} />
                   </td>
                   <td className="px-4 py-3.5" style={{ color: '#64748B', fontSize: 13 }}>
                     {tempoNoSetor(s.dataCriacao)}d
@@ -434,45 +429,332 @@ function Th({ children, align = 'left' }: { children: React.ReactNode; align?: '
  * estados que exigem atenção.
  */
 function ResumoRegulacao({ s }: { s: SolicitacaoMock }) {
-  const ag = agendamentoConfirmado(s);
-  const dataAg = ag ? fmtDataBR(dataDoAgendamento(ag).slice(0, 10)) : null;
+  // Todos os agendamentos confirmados (suporta múltiplos procedimentos criados
+  // na própria solicitação OU adicionados depois pela Regulação).
+  const agendamentosConfirmados = useMemo(
+    () => (s.agendamento?.tentativas ?? []).filter((t) => t.desfecho === 'agendamento_confirmado'),
+    [s.agendamento],
+  );
+  // "Resumo" do primeiro/principal — usado pra preencher a linha colapsada
+  const ag = agendamentosConfirmados[0] ?? null;
+  const dataAgIso = ag ? dataDoAgendamento(ag) : null;
+  const dataAg = dataAgIso ? fmtDataBR(dataAgIso.slice(0, 10)) : null;
   const unidadeAg = ag?.unidade ?? null;
+  const totalAgendamentos = agendamentosConfirmados.length;
 
   const totalPareceres = s.pareceres.length;
   const ultimoParecer = totalPareceres > 0 ? s.pareceres[totalPareceres - 1] : null;
   const ultimaDecisao = ultimoParecer?.decisao === 'deferido' ? 'Deferido' : ultimoParecer?.decisao === 'indeferido' ? 'Indeferido' : null;
 
+  // Tooltip do agendamento — lista TODOS os agendamentos confirmados, cada um
+  // com tipo de procedimento + data (formato compacto, ordenado por data asc).
+  const agendamentoTooltip = totalAgendamentos > 0 ? (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div
+        style={{
+          color: '#94A3B8',
+          fontSize: 10.5,
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+          fontWeight: 600,
+        }}
+      >
+        {totalAgendamentos === 1
+          ? '1 agendamento confirmado'
+          : `${totalAgendamentos} agendamentos confirmados`}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {[...agendamentosConfirmados]
+          .sort((a, b) => {
+            const da = dataDoAgendamento(a) ?? '';
+            const db = dataDoAgendamento(b) ?? '';
+            return da.localeCompare(db);
+          })
+          .map((t, idx) => {
+            const dataIso = dataDoAgendamento(t);
+            const dataBR = dataIso ? fmtDataBR(dataIso.slice(0, 10)) : '—';
+            const tipoLabel = t.tipoProcedimento
+              ? TIPO_PROCEDIMENTO_LABEL[t.tipoProcedimento] ?? t.tipoProcedimento
+              : null;
+            const isFirst = idx === 0;
+            return (
+              <div
+                key={t.id}
+                style={{
+                  paddingTop: isFirst ? 0 : 8,
+                  borderTop: isFirst ? 'none' : '1px solid rgba(255,255,255,0.10)',
+                }}
+              >
+                <TooltipKV
+                  rows={[
+                    ...(tipoLabel ? [{ k: 'Procedimento', v: tipoLabel }] : []),
+                    { k: 'Data', v: dataBR, mono: true },
+                    ...(t.hora ? [{ k: 'Hora', v: t.hora, mono: true }] : []),
+                    { k: 'Unidade', v: t.unidade ?? '—' },
+                    ...(t.contatoUnidade ? [{ k: 'Contato', v: t.contatoUnidade, mono: true }] : []),
+                    ...(t.observacoesChegada ? [{ k: 'Chegada', v: t.observacoesChegada }] : []),
+                  ]}
+                />
+              </div>
+            );
+          })}
+      </div>
+    </div>
+  ) : null;
+
+  // Tooltip do parecer — exibe decisão, médico, data e trecho da observação
+  const parecerTooltip = ultimoParecer ? (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <TooltipKV
+        rows={[
+          {
+            k: 'Decisão',
+            v: (
+              <strong style={{ color: ultimoParecer.decisao === 'deferido' ? '#86EFAC' : '#FCA5A5' }}>
+                {ultimaDecisao}
+              </strong>
+            ),
+          },
+          { k: 'Médico', v: ultimoParecer.medico },
+          ...(ultimoParecer.medicoCrm
+            ? [{ k: 'CRM', v: `${ultimoParecer.medicoCrm}${ultimoParecer.medicoCrmUf ? '/' + ultimoParecer.medicoCrmUf : ''}`, mono: true }]
+            : []),
+          { k: 'Data', v: fmtDataBR(ultimoParecer.data.slice(0, 10)), mono: true },
+          ...(totalPareceres > 1
+            ? [{ k: 'Histórico', v: `${totalPareceres} pareceres nesta solicitação` }]
+            : []),
+        ]}
+      />
+      {ultimoParecer.observacao && (
+        <div
+          style={{
+            paddingTop: 8,
+            borderTop: '1px solid rgba(255,255,255,0.12)',
+            color: '#E2E8F0',
+            fontSize: 11.5,
+            fontStyle: 'italic',
+            lineHeight: 1.5,
+          }}
+        >
+          {truncate(ultimoParecer.observacao, 220)}
+        </div>
+      )}
+    </div>
+  ) : null;
+
   return (
     <div className="flex flex-col gap-1">
-      <ResumoLinha
-        icon={ag ? <CalendarCheck size={13} strokeWidth={2.2} /> : <CalendarPlus size={13} strokeWidth={2.2} />}
-        tone={ag ? 'green' : 'muted'}
-        label={ag ? 'Agendamento' : '0 agendamentos'}
-        info={
-          ag
-            ? [unidadeAg?.split(' (')[0], dataAg].filter(Boolean).join(' · ')
-            : null
-        }
-        statusInline={ag ? null : 'Sem agendamento'}
-        statusTone="green"
-      />
-      <ResumoLinha
-        icon={<Stethoscope size={13} strokeWidth={2.2} />}
-        tone={totalPareceres > 0 ? 'violet' : 'muted'}
-        label={
-          totalPareceres === 0
-            ? '0 pareceres'
-            : totalPareceres === 1
-              ? '1 parecer'
-              : `${totalPareceres} pareceres`
-        }
-        info={ultimaDecisao ? `Último: ${ultimaDecisao}` : null}
-        statusInline={totalPareceres === 0 ? 'Sem parecer' : null}
-        statusTone="violet"
-      />
+      <HoverTooltip
+        content={agendamentoTooltip}
+        disabled={totalAgendamentos === 0}
+        maxWidth={360}
+      >
+        <ResumoLinha
+          icon={totalAgendamentos > 0 ? <CalendarCheck size={13} strokeWidth={2.2} /> : <CalendarPlus size={13} strokeWidth={2.2} />}
+          tone={totalAgendamentos > 0 ? 'green' : 'muted'}
+          label={
+            totalAgendamentos === 0
+              ? '0 agendamentos'
+              : totalAgendamentos === 1
+                ? '1 agendamento'
+                : `${totalAgendamentos} agendamentos`
+          }
+          info={
+            ag
+              ? [unidadeAg?.split(' (')[0], dataAg].filter(Boolean).join(' · ')
+              : null
+          }
+          statusInline={totalAgendamentos === 0 ? 'Sem agendamento' : null}
+          statusTone="green"
+        />
+      </HoverTooltip>
+      <HoverTooltip
+        content={parecerTooltip}
+        disabled={!ultimoParecer}
+      >
+        <ResumoLinha
+          icon={<Stethoscope size={13} strokeWidth={2.2} />}
+          tone={totalPareceres > 0 ? 'violet' : 'muted'}
+          label={
+            totalPareceres === 0
+              ? '0 pareceres'
+              : totalPareceres === 1
+                ? '1 parecer'
+                : `${totalPareceres} pareceres`
+          }
+          info={ultimaDecisao ? `Último: ${ultimaDecisao}` : null}
+          statusInline={totalPareceres === 0 ? 'Sem parecer' : null}
+          statusTone="violet"
+        />
+      </HoverTooltip>
     </div>
   );
 }
+
+function truncate(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return text.slice(0, max).trimEnd() + '…';
+}
+
+/**
+ * Coluna CID — mostra CID principal (e secundário) do último parecer, com
+ * tooltip exibindo a descrição completa de cada CID. As descrições vêm:
+ *   1) do snapshot embarcado no parecer (`cidPrincipalNome` / `cidSecundarioNome`)
+ *   2) OU do `cidMap` resolvido em batch pela página via `useCidLookup`.
+ */
+function CidCell({
+  s,
+  cidMap,
+}: {
+  s: SolicitacaoMock;
+  cidMap: Map<string, string>;
+}) {
+  const ultimoParecer = s.pareceres.length > 0 ? s.pareceres[s.pareceres.length - 1] : null;
+  const cidPrincipal = ultimoParecer?.cidPrincipal;
+  const cidSecundario = ultimoParecer?.cidSecundario;
+  const versao = (ultimoParecer?.versaoCID ?? '10') as '10' | '11';
+
+  if (!cidPrincipal && !cidSecundario) {
+    return <span style={{ color: '#CBD5E1', fontSize: 13 }}>—</span>;
+  }
+
+  // Snapshot embarcado tem prioridade; fallback no map resolvido.
+  const descPrincipal =
+    ultimoParecer?.cidPrincipalNome ?? getCidDescricao(cidMap, cidPrincipal, versao);
+  const descSecundario =
+    ultimoParecer?.cidSecundarioNome ?? getCidDescricao(cidMap, cidSecundario, versao);
+
+  const renderLinha = (codigo: string, descricao: string | undefined) => (
+    <span style={{ display: 'flex', flexDirection: 'column' }}>
+      <span style={{ fontFamily: 'var(--tfd-mono, ui-monospace, monospace)', fontWeight: 600 }}>{codigo}</span>
+      {descricao ? (
+        <span style={{ color: '#E2E8F0', fontWeight: 400, marginTop: 1 }}>{descricao}</span>
+      ) : (
+        <span style={{ color: '#94A3B8', fontWeight: 400, fontStyle: 'italic', marginTop: 1 }}>
+          descrição não disponível
+        </span>
+      )}
+    </span>
+  );
+
+  const tooltip = (
+    <TooltipKV
+      rows={[
+        { k: 'Versão', v: `CID-${versao}` },
+        ...(cidPrincipal ? [{ k: 'Principal', v: renderLinha(cidPrincipal, descPrincipal) }] : []),
+        ...(cidSecundario ? [{ k: 'Secundário', v: renderLinha(cidSecundario, descSecundario) }] : []),
+      ]}
+    />
+  );
+
+  return (
+    <HoverTooltip content={tooltip}>
+      <div className="flex flex-col gap-0.5 leading-tight" style={{ cursor: 'help' }}>
+        {cidPrincipal && (
+          <span
+            className="font-mono text-[12.5px] font-semibold"
+            style={{ color: '#6D28D9' }}
+          >
+            {cidPrincipal}
+          </span>
+        )}
+        {cidSecundario && (
+          <span
+            className="font-mono text-[11px]"
+            style={{ color: '#94A3B8' }}
+          >
+            {cidSecundario}
+          </span>
+        )}
+      </div>
+    </HoverTooltip>
+  );
+}
+
+/**
+ * Célula do Carimbo — chip com a sigla do carimbo e tooltip com a observação
+ * digitada pela enfermeira responsável (e info de origem quando AGENDAMENTO).
+ */
+function CarimboCell({ s }: { s: SolicitacaoMock }) {
+  if (!s.carimboRegulacao) {
+    return <span style={{ color: '#CBD5E1', fontSize: 13 }}>—</span>;
+  }
+
+  const sigla =
+    s.carimboRegulacao === 'APROVADO_DIRETO'
+      ? 'APR'
+      : s.carimboRegulacao === 'SAIS_DUTRA'
+        ? 'SAIS'
+        : s.carimboRegulacao === 'AGENDAMENTO'
+          ? 'AGND'
+          : s.carimboRegulacao;
+
+  const nomeCarimbo: Record<string, string> = {
+    APROVADO_DIRETO: 'Aprovado direto',
+    SAIS_DUTRA: 'SAIS / Dutra',
+    AGENDAMENTO: 'Agendamento',
+    CNRAC: 'CNRAC',
+    CET: 'CET',
+  };
+
+  const temObs = !!s.carimboObservacao?.trim();
+  const temOutros = s.carimboRegulacao === 'AGENDAMENTO' && !!s.carimboOutrosInfo;
+
+  const tooltip = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <TooltipKV
+        rows={[
+          { k: 'Carimbo', v: nomeCarimbo[s.carimboRegulacao] ?? s.carimboRegulacao },
+          ...(temOutros && s.carimboOutrosInfo
+            ? [
+                { k: 'Unidade/Órgão', v: s.carimboOutrosInfo.unidadeOrgao },
+                { k: 'Contato', v: FORMA_CONTATO_LABEL_LOCAL[s.carimboOutrosInfo.formaContato] ?? s.carimboOutrosInfo.formaContato },
+              ]
+            : []),
+        ]}
+      />
+      {temObs && (
+        <div
+          style={{
+            paddingTop: 8,
+            borderTop: '1px solid rgba(255,255,255,0.12)',
+            color: '#E2E8F0',
+            fontSize: 11.5,
+            fontStyle: 'italic',
+            lineHeight: 1.5,
+          }}
+        >
+          {truncate(s.carimboObservacao!.trim(), 240)}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <HoverTooltip content={tooltip} disabled={!temObs && !temOutros}>
+      <span
+        className="inline-flex items-center px-2 py-[3px] text-[11px] font-semibold uppercase"
+        style={{
+          background: '#F1F5F9',
+          color: '#475569',
+          border: '1px solid #E2E8F0',
+          borderRadius: 6,
+          letterSpacing: '0.05em',
+          cursor: temObs || temOutros ? 'help' : 'default',
+        }}
+      >
+        {sigla}
+      </span>
+    </HoverTooltip>
+  );
+}
+
+const FORMA_CONTATO_LABEL_LOCAL: Record<string, string> = {
+  email: 'E-mail',
+  telefone: 'Telefone',
+  sistema: 'Sistema',
+  presencial: 'Presencial',
+};
 
 function ResumoLinha({
   icon,

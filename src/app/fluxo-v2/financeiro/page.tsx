@@ -30,8 +30,13 @@ import {
 } from '../_utils/stats';
 import {
   calcularValorAjuda,
+  STATUS_VIAGEM_LABEL,
+  STATUS_AJUDA_LABEL,
   type SolicitacaoMock,
+  type ViagemMock,
+  type AjudaCustoMock,
 } from '@/core/mocks/fluxo-v2-v3-seed';
+import HoverTooltip, { TooltipKV } from '../_components/HoverTooltip';
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import SortTh, { compareValues, nextSort, type SortDir } from '@/shared/components/sort-th/SortTh';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -491,14 +496,12 @@ function ResumoSolicitacao({
     (v) => !['cancelada', 'reembolso'].includes(v.status),
   );
   const qtdPassagens = viagensAtivas.length;
-  const qtdAjudas = s.ajudasCusto.length;
+  const ajudasAtivas = s.ajudasCusto.filter((a) => a.ativa !== false);
+  const qtdAjudas = ajudasAtivas.length;
 
   const viagensAgendadas = viagensAtivas.filter((v) => v.status === 'agendada').length;
-  const ajudaEmAnalise = s.ajudasCusto.filter((a) => a.status === 'em_analise').length;
+  const ajudaEmAnalise = ajudasAtivas.filter((a) => a.status === 'em_analise').length;
 
-  // Status inline da passagem — sempre azul. "Sem viagem" cobre o caso vazio,
-  // "N a emitir" cobre o caso parcial; quando tudo emitido, omitimos o chip
-  // pra não poluir a célula.
   const statusPassagem =
     qtdPassagens === 0
       ? 'Sem viagem'
@@ -512,28 +515,254 @@ function ResumoSolicitacao({
     return <span style={{ color: '#CBD5E1', fontSize: 12 }}>—</span>;
   }
 
+  // Resolve nome do acompanhante por id (usado nos tooltips)
+  const nomeAcompanhante = (id?: string): string | null => {
+    if (!id) return null;
+    const a = s.acompanhantes.find((x) => x.id === id);
+    return a?.nome ?? null;
+  };
+
+  // ── Tooltip de Passagens: lista cada viagem com tipo, modal, datas,
+  // trecho, beneficiário, status e valor.
+  const passagensTooltip = qtdPassagens > 0 ? (
+    <ListaTooltip
+      header={`${qtdPassagens} passagem${qtdPassagens > 1 ? 's' : ''} · ${fmtBRL(totalPassagens)}`}
+      itens={[...viagensAtivas]
+        .sort((a, b) => a.data.localeCompare(b.data))
+        .map((v) => (
+          <PassagemTooltipItem key={v.id} v={v} nomeAcompanhante={nomeAcompanhante} />
+        ))}
+    />
+  ) : null;
+
+  // ── Tooltip de Ajudas de Custo: lista cada ajuda com período, dias,
+  // beneficiário, status, observação e valor calculado (com pernoite extra
+  // quando aplicável).
+  const ajudasTooltip = qtdAjudas > 0 ? (
+    <ListaTooltip
+      header={`${qtdAjudas} ajuda${qtdAjudas > 1 ? 's' : ''} de custo · ${fmtBRL(totalAjuda)}`}
+      itens={[...ajudasAtivas]
+        .sort((a, b) => a.dataInicio.localeCompare(b.dataInicio))
+        .map((a) => (
+          <AjudaTooltipItem key={a.id} a={a} nomeAcompanhante={nomeAcompanhante} />
+        ))}
+    />
+  ) : null;
+
   return (
     <div className="flex flex-col gap-1">
-      <ResumoItem
-        icon={<Plane size={13} strokeWidth={2.2} />}
-        tone="blue"
-        quantidade={qtdPassagens}
-        unidadeSing="passagem"
-        unidadePlural="passagens"
-        valor={totalPassagens}
-        statusInline={statusPassagem}
-      />
-      {qtdAjudas > 0 && (
+      <HoverTooltip content={passagensTooltip} disabled={qtdPassagens === 0} maxWidth={380}>
         <ResumoItem
-          icon={<Wallet size={13} strokeWidth={2.2} />}
-          tone="orange"
-          quantidade={qtdAjudas}
-          unidadeSing="ajuda de custo"
-          unidadePlural="ajudas de custo"
-          valor={totalAjuda}
-          statusInline={statusAjuda}
+          icon={<Plane size={13} strokeWidth={2.2} />}
+          tone="blue"
+          quantidade={qtdPassagens}
+          unidadeSing="passagem"
+          unidadePlural="passagens"
+          valor={totalPassagens}
+          statusInline={statusPassagem}
         />
+      </HoverTooltip>
+      {qtdAjudas > 0 && (
+        <HoverTooltip content={ajudasTooltip} disabled={qtdAjudas === 0} maxWidth={380}>
+          <ResumoItem
+            icon={<Wallet size={13} strokeWidth={2.2} />}
+            tone="orange"
+            quantidade={qtdAjudas}
+            unidadeSing="ajuda de custo"
+            unidadePlural="ajudas de custo"
+            valor={totalAjuda}
+            statusInline={statusAjuda}
+          />
+        </HoverTooltip>
       )}
+    </div>
+  );
+}
+
+/* ── Helpers de tooltip ───────────────────────────────────────── */
+
+/** Wrapper visual: header em mono uppercase + items separados por divisor sutil. */
+function ListaTooltip({
+  header,
+  itens,
+}: {
+  header: string;
+  itens: React.ReactNode[];
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div
+        style={{
+          color: '#94A3B8',
+          fontSize: 10.5,
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+          fontWeight: 600,
+        }}
+      >
+        {header}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {itens.map((node, idx) => (
+          <div
+            key={idx}
+            style={{
+              paddingTop: idx === 0 ? 0 : 8,
+              borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.10)',
+            }}
+          >
+            {node}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const MODAL_LABEL: Record<string, string> = {
+  aereo: 'Aéreo',
+  terrestre: 'Terrestre',
+  fluvial: 'Fluvial',
+};
+
+const TIPO_VIAGEM_LABEL: Record<string, string> = {
+  ida: 'Ida',
+  volta: 'Volta',
+  transfer: 'Transfer',
+};
+
+function PassagemTooltipItem({
+  v,
+  nomeAcompanhante,
+}: {
+  v: ViagemMock;
+  nomeAcompanhante: (id?: string) => string | null;
+}) {
+  const tipoLabel = TIPO_VIAGEM_LABEL[v.tipo] ?? v.tipo;
+  const modalLabel = MODAL_LABEL[v.modal] ?? v.modal;
+  const statusLabel = STATUS_VIAGEM_LABEL[v.status] ?? v.status;
+  const trecho =
+    v.origem && v.destino
+      ? `${v.origem.split(' - ')[0]} → ${v.destino.split(' - ')[0]}`
+      : null;
+  const beneficiario =
+    v.beneficiarioTipo === 'paciente'
+      ? 'Paciente'
+      : nomeAcompanhante(v.beneficiarioId) ?? 'Acompanhante';
+  const dataBR = v.data ? fmtDataBR(v.data) : '—';
+
+  // Chip de status colorido por estado
+  const chipColor = (() => {
+    switch (v.status) {
+      case 'confirmada': return { bg: 'rgba(16,185,129,0.18)', fg: '#86EFAC' };
+      case 'agendada': return { bg: 'rgba(20,107,250,0.18)', fg: '#93C5FD' };
+      case 'remarcada': return { bg: 'rgba(245,158,11,0.18)', fg: '#FCD34D' };
+      case 'nao_compareceu':
+      case 'cancelada': return { bg: 'rgba(239,68,68,0.18)', fg: '#FCA5A5' };
+      default: return { bg: 'rgba(148,163,184,0.18)', fg: '#CBD5E1' };
+    }
+  })();
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <strong style={{ color: 'white', fontSize: 12 }}>{tipoLabel}</strong>
+        <span style={{ color: '#94A3B8', fontSize: 11 }}>·</span>
+        <span style={{ color: '#E2E8F0', fontSize: 11 }}>{modalLabel}</span>
+        <span
+          style={{
+            background: chipColor.bg,
+            color: chipColor.fg,
+            padding: '1px 8px',
+            borderRadius: 999,
+            fontSize: 10,
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+            marginLeft: 'auto',
+          }}
+        >
+          {statusLabel}
+        </span>
+      </div>
+      <TooltipKV
+        rows={[
+          { k: 'Data', v: dataBR, mono: true },
+          ...(trecho ? [{ k: 'Trecho', v: trecho }] : []),
+          ...(v.companhia ? [{ k: 'Companhia', v: v.companhia }] : []),
+          { k: 'Beneficiário', v: beneficiario },
+          { k: 'Valor', v: fmtBRL(v.valor), mono: true },
+          ...(v.valorReembolso
+            ? [{ k: 'Reembolso', v: `${fmtBRL(v.valorReembolso)} em ${v.dataReembolso ? fmtDataBR(v.dataReembolso) : '—'}`, mono: true }]
+            : []),
+        ]}
+      />
+    </div>
+  );
+}
+
+function AjudaTooltipItem({
+  a,
+  nomeAcompanhante,
+}: {
+  a: AjudaCustoMock;
+  nomeAcompanhante: (id?: string) => string | null;
+}) {
+  const calc = calcularValorAjuda(a.dataInicio, a.dataFim, a.pernoiteRetorno);
+  const statusLabel = STATUS_AJUDA_LABEL[a.status] ?? a.status;
+  const beneficiario =
+    a.beneficiarioTipo === 'paciente'
+      ? 'Paciente'
+      : nomeAcompanhante(a.beneficiarioId) ?? 'Acompanhante';
+
+  const chipColor = (() => {
+    switch (a.status) {
+      case 'aprovada':
+      case 'em_pagamento':
+      case 'concluida': return { bg: 'rgba(16,185,129,0.18)', fg: '#86EFAC' };
+      case 'em_analise': return { bg: 'rgba(245,158,11,0.18)', fg: '#FCD34D' };
+      case 'glosada': return { bg: 'rgba(239,68,68,0.18)', fg: '#FCA5A5' };
+      default: return { bg: 'rgba(148,163,184,0.18)', fg: '#CBD5E1' };
+    }
+  })();
+
+  const periodo = `${fmtDataBR(a.dataInicio)} → ${fmtDataBR(a.dataFim)}`;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <strong style={{ color: 'white', fontSize: 12 }}>Ajuda de custo</strong>
+        <span
+          style={{
+            background: chipColor.bg,
+            color: chipColor.fg,
+            padding: '1px 8px',
+            borderRadius: 999,
+            fontSize: 10,
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+            marginLeft: 'auto',
+          }}
+        >
+          {statusLabel}
+        </span>
+      </div>
+      <TooltipKV
+        rows={[
+          { k: 'Período', v: periodo, mono: true },
+          { k: 'Dias', v: `${calc.dias} ${calc.dias === 1 ? 'dia' : 'dias'}` },
+          { k: 'Beneficiário', v: beneficiario },
+          ...(a.pernoiteRetorno
+            ? [{ k: 'Pernoite', v: `Retorno após meia-noite (+${fmtBRL(calc.pernoiteRetornoExtra)})` }]
+            : []),
+          { k: 'Valor', v: fmtBRL(calc.valor), mono: true },
+          ...(a.valorReembolso
+            ? [{ k: 'Reembolso', v: `${fmtBRL(a.valorReembolso)} em ${a.dataReembolso ? fmtDataBR(a.dataReembolso) : '—'}`, mono: true }]
+            : []),
+          ...(a.observacao ? [{ k: 'Observação', v: a.observacao }] : []),
+        ]}
+      />
     </div>
   );
 }

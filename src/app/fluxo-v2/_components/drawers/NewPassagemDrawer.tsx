@@ -12,7 +12,9 @@ import { STATUS_VIAGEM_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
 import { calcularIdade } from '@/shared/utils/idade';
 import { createClient } from '@/lib/supabase/client';
 import { buscarMunicipio } from '@/services/municipios.service';
+import { listarAeroportos, type Aeroporto } from '@/services/aeroportos.service';
 import { distanciaKm, distanciaMilhas, distanciaMilhasNauticas } from '@/lib/distancia/haversine';
+import { rotaTerrestreEntre } from '@/lib/distancia/rota-terrestre';
 import { calcularAjudaCusto, unidadeDoModal, type AjudaCustoCalculada } from '@/lib/distancia/ajuda-custo';
 
 interface CompanhiaRow {
@@ -46,9 +48,10 @@ function formatarMoeda(v: number | null | undefined): string {
 
 /**
  * Tipo do select. `'ida_e_volta'` é virtual: ao salvar, o provider expande
- * em duas ViagemMock independentes (T2.X). Os outros três persistem 1:1.
+ * em duas ViagemMock independentes (T2.X). Transfer foi removido da emissão
+ * de passagem em 2026 — virou categoria de Adicional.
  */
-type TipoOpcao = 'ida' | 'volta' | 'transfer' | 'ida_e_volta';
+type TipoOpcao = 'ida' | 'volta' | 'ida_e_volta';
 
 interface Props {
   open: boolean;
@@ -67,11 +70,18 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
 
   const solicitacao = getById(solicitacaoId);
 
-  // Origem / destino — UF + cidade separados
+  // Origem / destino — UF + cidade separados (usado quando modal != aereo).
   const [origemUf, setOrigemUf] = useState('MA');
   const [origemCidade, setOrigemCidade] = useState('');
   const [destinoUf, setDestinoUf] = useState('');
   const [destinoCidade, setDestinoCidade] = useState('');
+
+  // Aeroportos — usados quando modal === 'aereo'.
+  const [aeroportos, setAeroportos] = useState<Aeroporto[]>([]);
+  const [loadingAeroportos, setLoadingAeroportos] = useState(false);
+  const [aeroportosErro, setAeroportosErro] = useState<string | null>(null);
+  const [origemAeroportoId, setOrigemAeroportoId] = useState('');
+  const [destinoAeroportoId, setDestinoAeroportoId] = useState('');
 
   // Demais campos
   const [data, setData] = useState('');
@@ -111,9 +121,31 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       });
   }, [open]);
 
-  // Auto-cálculo de distância e ajuda de custo sempre que origem/destino/modal mudam.
+  // Carrega aeroportos (apenas quando o drawer abre — pequeno o suficiente
+  // para vir todo de uma vez e filtrar no client).
   useEffect(() => {
-    if (!origemCidade || !origemUf || !destinoCidade || !destinoUf) {
+    if (!open) return;
+    setLoadingAeroportos(true);
+    setAeroportosErro(null);
+    listarAeroportos().then(({ data, error }) => {
+      setAeroportos(data);
+      setAeroportosErro(error);
+      setLoadingAeroportos(false);
+    });
+  }, [open]);
+
+  const origemAeroporto = aeroportos.find((a) => a.id === origemAeroportoId);
+  const destinoAeroporto = aeroportos.find((a) => a.id === destinoAeroportoId);
+  const isAereo = modal === 'aereo';
+
+  // Auto-cálculo de distância e ajuda de custo sempre que origem/destino/modal mudam.
+  // Quando o modal é aéreo, usa coordenadas reais dos aeroportos; caso contrário,
+  // cai no centroide IBGE da cidade (que é mais aproximado mas suficiente para
+  // modais terrestre/fluvial).
+  useEffect(() => {
+    const algumPreenchidoAereo = isAereo && origemAeroporto && destinoAeroporto;
+    const algumPreenchidoCidade = !isAereo && origemCidade && origemUf && destinoCidade && destinoUf;
+    if (!algumPreenchidoAereo && !algumPreenchidoCidade) {
       setDistanciaValor(null);
       setDistErro(null);
       setAjudaPaciente(null);
@@ -125,26 +157,52 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
     setDistErro(null);
     (async () => {
       try {
-        const [o, d] = await Promise.all([
-          buscarMunicipio(origemCidade, origemUf),
-          buscarMunicipio(destinoCidade, destinoUf),
-        ]);
-        if (cancelado) return;
-        if (!o) {
-          setDistErro(`Cidade de origem "${origemCidade}/${origemUf}" não está na base IBGE.`);
-          setDistanciaValor(null); setAjudaPaciente(null); setAjudaAcompanhante(null);
-          return;
+        let coordOrigem: { lat: number; lon: number } | null = null;
+        let coordDestino: { lat: number; lon: number } | null = null;
+
+        if (isAereo) {
+          if (!origemAeroporto || !destinoAeroporto) return;
+          coordOrigem = { lat: origemAeroporto.latitude, lon: origemAeroporto.longitude };
+          coordDestino = { lat: destinoAeroporto.latitude, lon: destinoAeroporto.longitude };
+        } else {
+          const [o, d] = await Promise.all([
+            buscarMunicipio(origemCidade, origemUf),
+            buscarMunicipio(destinoCidade, destinoUf),
+          ]);
+          if (cancelado) return;
+          if (!o) {
+            setDistErro(`Cidade de origem "${origemCidade}/${origemUf}" não está na base IBGE.`);
+            setDistanciaValor(null); setAjudaPaciente(null); setAjudaAcompanhante(null);
+            return;
+          }
+          if (!d) {
+            setDistErro(`Cidade de destino "${destinoCidade}/${destinoUf}" não está na base IBGE.`);
+            setDistanciaValor(null); setAjudaPaciente(null); setAjudaAcompanhante(null);
+            return;
+          }
+          coordOrigem = o;
+          coordDestino = d;
         }
-        if (!d) {
-          setDistErro(`Cidade de destino "${destinoCidade}/${destinoUf}" não está na base IBGE.`);
-          setDistanciaValor(null); setAjudaPaciente(null); setAjudaAcompanhante(null);
-          return;
+
+        if (!coordOrigem || !coordDestino) return;
+        let valorBase: number;
+        if (modal === 'aereo') {
+          valorBase = Math.round(distanciaMilhas(coordOrigem, coordDestino));
+        } else if (modal === 'fluvial') {
+          valorBase = Math.round(distanciaMilhasNauticas(coordOrigem, coordDestino));
+        } else {
+          // Terrestre — usa rota rodoviária real via ORS (OpenStreetMap).
+          // Fallback para haversine se a API estiver indisponível ou sem chave.
+          try {
+            const rota = await rotaTerrestreEntre(coordOrigem, coordDestino);
+            if (cancelado) return;
+            valorBase = Math.round(rota.distanciaKm);
+          } catch (e) {
+            console.warn('[NewPassagemDrawer] rota terrestre falhou, usando linha reta:', e);
+            valorBase = Math.round(distanciaKm(coordOrigem, coordDestino));
+            setDistErro('Rota rodoviária indisponível — distância em linha reta como aproximação.');
+          }
         }
-        const valorBase = modal === 'aereo'
-          ? Math.round(distanciaMilhas(o, d))
-          : modal === 'fluvial'
-            ? Math.round(distanciaMilhasNauticas(o, d))
-            : Math.round(distanciaKm(o, d));
         const valorDist = tipo === 'ida_e_volta' ? valorBase * 2 : valorBase;
         setDistanciaValor(valorDist);
 
@@ -166,7 +224,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       }
     })();
     return () => { cancelado = true; };
-  }, [origemCidade, origemUf, destinoCidade, destinoUf, modal, tipo]);
+  }, [isAereo, origemAeroporto, destinoAeroporto, origemCidade, origemUf, destinoCidade, destinoUf, modal, tipo]);
 
   // Inicialização ao abrir
   useEffect(() => {
@@ -176,10 +234,13 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       setOrigemUf(editar.origemUf ?? 'MA');
       setDestinoCidade(editar.destinoCidade ?? '');
       setDestinoUf(editar.destinoUf ?? '');
+      setOrigemAeroportoId('');
+      setDestinoAeroportoId('');
       setData(editar.data);
       setDataVolta('');
       setModal(editar.modal);
-      setTipo(editar.tipo);
+      // Defensivo: registros legados com tipo='transfer' caem em 'ida'.
+      setTipo(editar.tipo === 'transfer' ? 'ida' : (editar.tipo as TipoOpcao));
       setValor(String(editar.valor));
       setStatus(editar.status);
       setBeneficiario(
@@ -191,6 +252,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
     } else {
       setOrigemCidade(''); setOrigemUf('MA');
       setDestinoCidade(''); setDestinoUf('');
+      setOrigemAeroportoId(''); setDestinoAeroportoId('');
       setData(''); setDataVolta('');
       setModal('aereo'); setTipo('ida');
       setValor(''); setStatus('agendada');
@@ -206,6 +268,20 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
     if (match) setCompanhiaId(match.id);
   }, [editar, companhias, companhiaId]);
 
+  // Em edição aérea, pré-seleciona o aeroporto a partir do IATA persistido.
+  useEffect(() => {
+    if (!editar || aeroportos.length === 0) return;
+    if (editar.modal !== 'aereo') return;
+    if (editar.origemAeroporto && !origemAeroportoId) {
+      const m = aeroportos.find((a) => a.iata === editar.origemAeroporto);
+      if (m) setOrigemAeroportoId(m.id);
+    }
+    if (editar.destinoAeroporto && !destinoAeroportoId) {
+      const m = aeroportos.find((a) => a.iata === editar.destinoAeroporto);
+      if (m) setDestinoAeroportoId(m.id);
+    }
+  }, [editar, aeroportos, origemAeroportoId, destinoAeroportoId]);
+
   const isIdaEVolta = tipo === 'ida_e_volta';
   const acompanhanteSelecionado = beneficiario.startsWith('a:');
   const temAcompanhantes = (solicitacao?.acompanhantes.length ?? 0) > 0;
@@ -219,10 +295,23 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
   }, [beneficiario]);
 
   function handleSalvar() {
-    if (!origemCidade || !origemUf || !destinoCidade || !destinoUf || !data || !valor) return;
+    // No modo aéreo, origem/destino vêm do aeroporto selecionado.
+    const oCidade = isAereo ? (origemAeroporto?.cidade ?? '') : origemCidade;
+    const oUf = isAereo ? (origemAeroporto?.uf ?? '') : origemUf;
+    const dCidade = isAereo ? (destinoAeroporto?.cidade ?? '') : destinoCidade;
+    const dUf = isAereo ? (destinoAeroporto?.uf ?? '') : destinoUf;
+    if (!oCidade || !oUf || !dCidade || !dUf || !data || !valor) return;
+
     const companhiaNome = companhias.find((c) => c.id === companhiaId)?.nome;
-    const origemStr = `${origemCidade} - ${origemUf}`;
-    const destinoStr = `${destinoCidade} - ${destinoUf}`;
+    const origemStr = isAereo && origemAeroporto
+      ? `${origemAeroporto.cidade}/${origemAeroporto.uf} (${origemAeroporto.iata})`
+      : `${oCidade} - ${oUf}`;
+    const destinoStr = isAereo && destinoAeroporto
+      ? `${destinoAeroporto.cidade}/${destinoAeroporto.uf} (${destinoAeroporto.iata})`
+      : `${dCidade} - ${dUf}`;
+    const aeroportoExtras = isAereo
+      ? { origemAeroporto: origemAeroporto?.iata, destinoAeroporto: destinoAeroporto?.iata }
+      : { origemAeroporto: undefined, destinoAeroporto: undefined };
     const distExtras = distanciaValor != null
       ? {
           distanciaValor,
@@ -236,10 +325,11 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       editarViagem(solicitacaoId, editar.id, {
         origem: origemStr,
         destino: destinoStr,
-        origemCidade, origemUf,
-        destinoCidade, destinoUf,
+        origemCidade: oCidade, origemUf: oUf,
+        destinoCidade: dCidade, destinoUf: dUf,
+        ...aeroportoExtras,
         data, modal,
-        tipo: tipo as 'ida' | 'volta' | 'transfer',
+        tipo: tipo as 'ida' | 'volta',
         status,
         valor: Number(valor),
         companhia: companhiaNome,
@@ -255,8 +345,9 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       addViagensIdaEVolta(solicitacaoId, {
         origem: origemStr,
         destino: destinoStr,
-        origemCidade, origemUf,
-        destinoCidade, destinoUf,
+        origemCidade: oCidade, origemUf: oUf,
+        destinoCidade: dCidade, destinoUf: dUf,
+        ...aeroportoExtras,
         modal, status,
         dataIda: data, dataVolta,
         valorTotal: Number(valor),
@@ -268,10 +359,11 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       addViagem(solicitacaoId, {
         origem: origemStr,
         destino: destinoStr,
-        origemCidade, origemUf,
-        destinoCidade, destinoUf,
+        origemCidade: oCidade, origemUf: oUf,
+        destinoCidade: dCidade, destinoUf: dUf,
+        ...aeroportoExtras,
         data, modal,
-        tipo: tipo as 'ida' | 'volta' | 'transfer',
+        tipo: tipo as 'ida' | 'volta',
         status,
         valor: Number(valor),
         companhia: companhiaNome,
@@ -283,8 +375,9 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
     onClose();
   }
 
-  const valid =
-    origemCidade && origemUf && destinoCidade && destinoUf && data && valor && (!isIdaEVolta || !!dataVolta);
+  const valid = isAereo
+    ? !!origemAeroporto && !!destinoAeroporto && !!data && !!valor && (!isIdaEVolta || !!dataVolta)
+    : !!origemCidade && !!origemUf && !!destinoCidade && !!destinoUf && !!data && !!valor && (!isIdaEVolta || !!dataVolta);
 
   const unidade = UNIDADE_LABEL[unidadeDoModal(modal)];
 
@@ -341,32 +434,9 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         </p>
       )}
 
-      {/* Origem */}
-      <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Origem</h3>
-      <UfCidadeSelect
-        ufLabel="UF"
-        cidadeLabel="Cidade"
-        uf={origemUf}
-        cidade={origemCidade}
-        onUfChange={setOrigemUf}
-        onCidadeChange={setOrigemCidade}
-        required
-      />
-
-      {/* Destino */}
-      <h3 className="text-sm font-semibold mb-3 mt-4" style={{ color: 'var(--tfd-text-primary)' }}>Destino</h3>
-      <UfCidadeSelect
-        ufLabel="UF"
-        cidadeLabel="Cidade"
-        uf={destinoUf}
-        cidade={destinoCidade}
-        onUfChange={setDestinoUf}
-        onCidadeChange={setDestinoCidade}
-        required
-      />
-
-      {/* Modal */}
-      <div className="grid grid-cols-3 gap-3 mb-4 mt-4">
+      {/* Modal / Tipo / Status — vêm logo após o beneficiário porque definem o
+          formato dos campos de origem/destino (cidade vs aeroporto). */}
+      <div className="grid grid-cols-3 gap-3 mb-4">
         <div>
           <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
             Modal
@@ -394,7 +464,6 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
           >
             <option value="ida">Ida</option>
             <option value="volta">Volta</option>
-            <option value="transfer">Transfer</option>
             {!isEdicao && <option value="ida_e_volta">Ida e volta</option>}
           </select>
         </div>
@@ -417,6 +486,108 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         </div>
       </div>
 
+      {/* Origem / Destino: aeroporto (aéreo) ou UF+cidade (terrestre/fluvial). */}
+      {isAereo ? (
+        <>
+          {!loadingAeroportos && (aeroportosErro || aeroportos.length === 0) && (
+            <div
+              className="mb-4 px-3 py-2.5 text-[12px]"
+              style={{
+                background: '#FEF3C7',
+                border: '1px solid #FCD34D',
+                borderRadius: 8,
+                color: '#78350F',
+              }}
+            >
+              {aeroportosErro ? (
+                <>
+                  Não foi possível carregar a lista de aeroportos.
+                  Verifique se a migration <code>00051_aeroportos.sql</code> foi aplicada no Supabase.
+                  <br /><span className="text-[11px] opacity-80">Erro: {aeroportosErro}</span>
+                </>
+              ) : (
+                <>
+                  A tabela <code>aeroportos</code> está vazia. Aplique a migration{' '}
+                  <code>00051_aeroportos.sql</code> no Supabase para popular o seed.
+                </>
+              )}
+            </div>
+          )}
+          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+            Aeroporto de origem <span style={{ color: '#DC2626' }}>*</span>
+          </label>
+          <select
+            value={origemAeroportoId}
+            onChange={(e) => setOrigemAeroportoId(e.target.value)}
+            className="w-full px-3 py-2 text-[13px] mb-4"
+            style={inputStyle}
+          >
+            <option value="">
+              {loadingAeroportos
+                ? 'Carregando aeroportos...'
+                : aeroportosErro
+                  ? `Erro ao carregar (${aeroportosErro})`
+                  : aeroportos.length === 0
+                    ? 'Nenhum aeroporto cadastrado'
+                    : 'Selecione o aeroporto...'}
+            </option>
+            {aeroportos.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.iata} — {a.cidade}/{a.uf} ({a.nome})
+              </option>
+            ))}
+          </select>
+
+          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+            Aeroporto de destino <span style={{ color: '#DC2626' }}>*</span>
+          </label>
+          <select
+            value={destinoAeroportoId}
+            onChange={(e) => setDestinoAeroportoId(e.target.value)}
+            className="w-full px-3 py-2 text-[13px] mb-4"
+            style={inputStyle}
+          >
+            <option value="">
+              {loadingAeroportos
+                ? 'Carregando aeroportos...'
+                : aeroportosErro
+                  ? `Erro ao carregar (${aeroportosErro})`
+                  : aeroportos.length === 0
+                    ? 'Nenhum aeroporto cadastrado'
+                    : 'Selecione o aeroporto...'}
+            </option>
+            {aeroportos.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.iata} — {a.cidade}/{a.uf} ({a.nome})
+              </option>
+            ))}
+          </select>
+        </>
+      ) : (
+        <>
+          <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Origem</h3>
+          <UfCidadeSelect
+            ufLabel="UF"
+            cidadeLabel="Cidade"
+            uf={origemUf}
+            cidade={origemCidade}
+            onUfChange={setOrigemUf}
+            onCidadeChange={setOrigemCidade}
+            required
+          />
+          <h3 className="text-sm font-semibold mb-3 mt-4" style={{ color: 'var(--tfd-text-primary)' }}>Destino</h3>
+          <UfCidadeSelect
+            ufLabel="UF"
+            cidadeLabel="Cidade"
+            uf={destinoUf}
+            cidade={destinoCidade}
+            onUfChange={setDestinoUf}
+            onCidadeChange={setDestinoCidade}
+            required
+          />
+        </>
+      )}
+
       {/* Distância (calculada) */}
       <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
         Distância ({unidade})
@@ -428,9 +599,13 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
           tabIndex={-1}
           className="w-full px-3 py-2 text-[13px]"
           placeholder={
-            !origemCidade || !destinoCidade
-              ? 'Selecione origem e destino'
-              : calculandoDist ? 'Calculando…' : ''
+            isAereo
+              ? (!origemAeroporto || !destinoAeroporto
+                  ? 'Selecione origem e destino'
+                  : calculandoDist ? 'Calculando…' : '')
+              : (!origemCidade || !destinoCidade
+                  ? 'Selecione origem e destino'
+                  : calculandoDist ? 'Calculando…' : '')
           }
           value={distanciaValor != null ? `${distanciaValor.toLocaleString('pt-BR')} ${unidade}` : ''}
           style={readonlyInputStyle}
@@ -440,7 +615,12 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         )}
       </div>
       <p className="text-[10px] mb-4" style={{ color: distErro ? '#DC2626' : '#94A3B8' }}>
-        {distErro ?? 'Calculado automaticamente em linha reta a partir das coordenadas IBGE.'}
+        {distErro ??
+          (isAereo
+            ? 'Calculado em linha reta entre as coordenadas dos aeroportos.'
+            : modal === 'terrestre'
+              ? 'Rota rodoviária real via OpenStreetMap (OpenRouteService).'
+              : 'Calculado em linha reta a partir das coordenadas IBGE da cidade.')}
       </p>
 
       {/* Ajuda de custo (paciente sempre; acompanhante se houver) */}

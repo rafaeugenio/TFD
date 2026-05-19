@@ -1,7 +1,6 @@
 import {
   STATUS_AJUDA_LABEL,
   STATUS_VIAGEM_LABEL,
-  STATUS_ADICIONAL_LABEL,
   CATEGORIA_ADICIONAL_LABEL,
   MOTIVO_ENCERRAMENTO_LABEL,
   type SolicitacaoMock,
@@ -237,7 +236,6 @@ export function derivarEventos(
       data: isoFromDate(ad.data),
       titulo: `${CATEGORIA_ADICIONAL_LABEL[ad.categoria]} — ${ad.descricao}`,
       descricao: `R$ ${ad.valor.toFixed(2)}`,
-      badge: STATUS_ADICIONAL_LABEL[ad.status],
       autor: autorDe('adicionais', ad.id),
     });
   });

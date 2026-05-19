@@ -122,6 +122,9 @@ interface FluxoV2ContextValue {
       origemUf?: string;
       destinoCidade?: string;
       destinoUf?: string;
+      /** IATA dos aeroportos (modal aéreo). */
+      origemAeroporto?: string;
+      destinoAeroporto?: string;
       modal: ViagemMock['modal'];
       status: ViagemMock['status'];
       dataIda: string;
@@ -661,6 +664,8 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         origemUf: input.origemUf,
         destinoCidade: input.destinoCidade,
         destinoUf: input.destinoUf,
+        origemAeroporto: input.origemAeroporto,
+        destinoAeroporto: input.destinoAeroporto,
         data: input.dataIda,
         modal: input.modal,
         tipo: 'ida',
@@ -678,6 +683,8 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         origemUf: input.destinoUf,
         destinoCidade: input.origemCidade,
         destinoUf: input.origemUf,
+        origemAeroporto: input.destinoAeroporto,
+        destinoAeroporto: input.origemAeroporto,
         data: input.dataVolta,
         modal: input.modal,
         tipo: 'volta',

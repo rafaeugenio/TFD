@@ -18,7 +18,6 @@ import { fmtDataBR } from '@/shared/utils/fmtData';
 import {
   STATUS_AJUDA_LABEL,
   STATUS_VIAGEM_LABEL,
-  STATUS_ADICIONAL_LABEL,
   VALOR_DIARIA_PERNOITE,
   VALOR_DIARIA_RETORNO,
   calcularValorAjuda,
@@ -310,7 +309,6 @@ export default function FinanceiroTab({ s }: Props) {
                         <span>{fmtDataBR(a.data)}</span>
                         <span style={{ color: '#CBD5E1' }}>·</span>
                         <span className="font-mono" style={{ color: '#1A1D2B' }}>{fmtBRL(a.valor)}</span>
-                        <AdicionalStatusBadge status={a.status} />
                         {anexoNome && (
                           <span className="inline-flex items-center gap-1" title={anexoNome} style={{ color: '#475569' }}>
                             <Paperclip size={11} />
@@ -586,16 +584,6 @@ const AJUDA_TONE: Record<StatusAjuda, StatusDotTone> = {
 };
 function AjudaStatusBadge({ status }: { status: StatusAjuda }) {
   return <StatusDot tone={AJUDA_TONE[status]}>{STATUS_AJUDA_LABEL[status]}</StatusDot>;
-}
-
-const ADICIONAL_TONE = {
-  pendente_aprovacao: 'warning',
-  aprovado:           'info',
-  indeferido:         'danger',
-  pago:               'success',
-} as const satisfies Record<string, StatusDotTone>;
-function AdicionalStatusBadge({ status }: { status: keyof typeof ADICIONAL_TONE }) {
-  return <StatusDot tone={ADICIONAL_TONE[status]}>{STATUS_ADICIONAL_LABEL[status]}</StatusDot>;
 }
 
 /** Beneficiário — texto cinza neutro com ícone, sem cor. */
