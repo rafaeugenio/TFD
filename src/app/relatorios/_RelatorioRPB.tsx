@@ -386,6 +386,7 @@ export default function RelatorioRPB() {
   const columnsCommon: ReportColumn<RPBRow>[] = [
     {
       key: 'check',
+      printHide: true,
       header: (
         <input
           type="checkbox"

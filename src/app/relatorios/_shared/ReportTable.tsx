@@ -16,6 +16,8 @@ export interface ReportColumn<T> {
   width?: string;
   /** Se true, aplica fonte mono (tabular). Default true para align='right'. */
   mono?: boolean;
+  /** Oculta a coluna na impressão (CSS `no-print`). */
+  printHide?: boolean;
   render: (row: T, index: number) => ReactNode;
 }
 
@@ -39,6 +41,7 @@ export function ReportTable<T>({
           {columns.map((c) => (
             <th
               key={c.key}
+              className={c.printHide ? 'no-print' : undefined}
               style={{
                 background: '#F8FAFC',
                 borderBottom: '1px solid var(--tfd-surface-border)',
@@ -84,6 +87,7 @@ export function ReportTable<T>({
                 return (
                   <td
                     key={c.key}
+                    className={c.printHide ? 'no-print' : undefined}
                     style={{
                       padding: '10px 12px',
                       fontSize: 12.5,
