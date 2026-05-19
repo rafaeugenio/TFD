@@ -1,12 +1,30 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import EventoLinhaTempo from './EventoLinhaTempo';
 import { derivarEventos } from '../_utils/derivarLinhaDoTempo';
 import type { SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
+import { carregarAutoresDaSolicitacao, type AutorResolver } from '@/services/logs.service';
 
 export default function LinhaDoTempoTab({ s }: { s: SolicitacaoMock }) {
-  const eventos = useMemo(() => derivarEventos(s), [s]);
+  // Resolver de autores derivados de `log_auditoria`. Enquanto carrega,
+  // a timeline já renderiza com os fallbacks (parecer.medico, etc.).
+  const [resolverAutor, setResolverAutor] = useState<AutorResolver | null>(null);
+
+  useEffect(() => {
+    let cancelado = false;
+    carregarAutoresDaSolicitacao(s.id).then((resolver) => {
+      if (!cancelado) setResolverAutor(() => resolver);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, [s.id]);
+
+  const eventos = useMemo(
+    () => derivarEventos(s, resolverAutor ?? undefined),
+    [s, resolverAutor],
+  );
 
   if (eventos.length === 0) {
     return (

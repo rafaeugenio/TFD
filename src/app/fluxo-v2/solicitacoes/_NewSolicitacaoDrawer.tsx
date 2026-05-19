@@ -13,7 +13,17 @@ import {
   Loader2,
   ExternalLink,
   UserPlus,
+  Plus,
+  Pencil,
+  MapPin,
+  Phone,
+  Mail,
+  IdCard,
+  CalendarPlus,
 } from 'lucide-react';
+import { type TipoProcedimento } from '@/core/mocks/fluxo-v2-v3-seed';
+import { useTiposProcedimento } from '@/shared/hooks/useTiposProcedimento';
+import { maskCEP } from '@/shared/pipes/formatters';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { listarPacientes } from '@/services/pacientes.service';
 import { listarPorPaciente, criarAcompanhante } from '@/services/acompanhantes.service';
@@ -29,17 +39,44 @@ interface PacienteRow {
   id: string;
   nome_completo: string;
   cpf: string;
+  cns: string | null;
+  sexo: 'M' | 'F' | string | null;
   data_nascimento: string;
+  telefone_celular: string | null;
+  telefone_fixo: string | null;
+  email: string | null;
+  logradouro: string | null;
+  numero: string | null;
+  bairro: string | null;
+  cep: string | null;
   municipio: string | null;
   uf: string | null;
+}
+
+interface AgendamentoLinha {
+  id: string;
+  tipoProcedimento: TipoProcedimento | '';
+  data: string;
+}
+
+function novaLinhaAgendamento(): AgendamentoLinha {
+  return {
+    id: `ag-${Math.random().toString(36).slice(2, 9)}`,
+    tipoProcedimento: '',
+    data: '',
+  };
 }
 
 interface AcompanhanteRow {
   id: string;
   nome_completo: string;
   cpf: string;
+  cns: string | null;
   data_nascimento: string;
   vinculo: string | null;
+  telefone: string | null;
+  necessidade_especial: boolean | null;
+  descricao_necessidade: string | null;
 }
 
 interface UnidadeRow {
@@ -57,6 +94,7 @@ interface TipoDocRow {
 
 export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
   const { createSolicitacao } = useFluxoV2State();
+  const { tipos: tiposProcedimento, loading: loadingTiposProc } = useTiposProcedimento();
   const toast = useToast();
   const router = useRouter();
 
@@ -65,8 +103,9 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
   const [acompanhanteIds, setAcompanhanteIds] = useState<string[]>([]);
   const [semAgendamento, setSemAgendamento] = useState(false);
   const [unidade, setUnidade] = useState('');
-  const [data, setData] = useState('');
-  const [hora, setHora] = useState('');
+  /** Lista de agendamentos (tipoProcedimento + data). 0..N — o paciente pode
+   *  ter vários procedimentos planejados na mesma unidade. */
+  const [agendamentos, setAgendamentos] = useState<AgendamentoLinha[]>([novaLinhaAgendamento()]);
   const [dataLaudo, setDataLaudo] = useState('');
   const [numeroSEI, setNumeroSEI] = useState('');
   const [seiUrl, setSeiUrl] = useState('');
@@ -192,18 +231,23 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
   const validacaoMenor = isMenor && acompanhantesAdultos.length === 0;
 
   const unidadeSelecionada = unidades.find((u) => u.id === unidadeId);
+  const agendamentosValidos = agendamentos.filter((a) => a.tipoProcedimento && a.data);
+  // Ajuda de custo agora também pode ter agendamento (alinhado com o fluxo
+  // normal). Validação: ou marca "sem agendamento", ou preenche unidade +
+  // pelo menos um procedimento — independente do tipo da solicitação.
   const podeSalvar =
     !!paciente &&
     !validacaoMenor &&
     !seiUrlInvalido &&
-    (tipoSolicitacao === 'ajuda_custo' || semAgendamento || (unidadeId && data && hora));
+    (semAgendamento || (!!unidadeId && agendamentosValidos.length > 0));
 
   function reset() {
     setTipoSolicitacao('normal');
     setPacienteId('');
     setAcompanhanteIds([]);
     setSemAgendamento(false);
-    setUnidade(''); setUnidadeId(''); setData(''); setHora('');
+    setUnidade(''); setUnidadeId('');
+    setAgendamentos([novaLinhaAgendamento()]);
     setDataLaudo('');
     setNumeroSEI(''); setSeiUrl('');
     setAnexos([]);
@@ -292,7 +336,16 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
       pacienteId: paciente.id,
       acompanhanteIds,
       tipoSolicitacao,
-      agendamento: !semAgendamento ? { unidade: unidadeNome, data, hora } : undefined,
+      agendamento:
+        !semAgendamento && agendamentosValidos.length > 0
+          ? {
+              unidade: unidadeNome,
+              procedimentos: agendamentosValidos.map((a) => ({
+                tipoProcedimento: a.tipoProcedimento as TipoProcedimento,
+                data: a.data,
+              })),
+            }
+          : undefined,
       dataLaudo: dataLaudo || undefined,
       numeroSEI: numeroSEI.trim() || undefined,
       seiUrl: seiUrl.trim() || undefined,
@@ -392,16 +445,7 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
               </option>
             ))}
           </select>
-          {paciente && (
-            <div className="mt-2 flex items-center gap-2 text-[12px]" style={{ color: '#475569' }}>
-              <IdadeBadge dataNascimento={paciente.data_nascimento} />
-              <span>
-                {paciente.municipio
-                  ? `${paciente.municipio}${paciente.uf ? ` - ${paciente.uf}` : ''}`
-                  : '—'}
-              </span>
-            </div>
-          )}
+          {paciente && <ResumoPaciente paciente={paciente} />}
         </section>
 
         {/* Acompanhantes */}
@@ -455,40 +499,22 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
               Este paciente não possui acompanhantes cadastrados.
             </p>
           ) : (
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
               {acompanhantes.map((a) => {
                 const checked = acompanhanteIds.includes(a.id);
                 return (
-                  <label
+                  <AcompanhanteCard
                     key={a.id}
-                    className="flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors"
-                    style={{
-                      border:
-                        '1px solid ' +
-                        (checked ? 'var(--tfd-blue)' : 'var(--tfd-surface-border)'),
-                      background: checked ? '#EBF0FF' : 'white',
-                      borderRadius: 8,
+                    acompanhante={a}
+                    checked={checked}
+                    onToggle={() => {
+                      setAcompanhanteIds((prev) =>
+                        prev.includes(a.id)
+                          ? prev.filter((id) => id !== a.id)
+                          : [...prev, a.id],
+                      );
                     }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => {
-                        setAcompanhanteIds((prev) =>
-                          e.target.checked
-                            ? [...prev, a.id]
-                            : prev.filter((id) => id !== a.id),
-                        );
-                      }}
-                    />
-                    <span className="text-[13px] font-medium" style={{ color: '#1A1D2B' }}>
-                      {a.nome_completo}
-                    </span>
-                    <IdadeBadge dataNascimento={a.data_nascimento} />
-                    <span className="text-[11px] ml-auto" style={{ color: '#6B7280' }}>
-                      {a.vinculo ?? '—'}
-                    </span>
-                  </label>
+                  />
                 );
               })}
             </div>
@@ -634,8 +660,9 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
           )}
         </section>
 
-        {/* Agendamento — apenas no fluxo normal (ajuda de custo não usa) */}
-        {tipoSolicitacao !== 'ajuda_custo' && (
+        {/* Agendamento — vale tanto para solicitação normal quanto para
+            ajuda de custo. Ambos os tipos podem ter ou não ter agendamento;
+            o checkbox "sem agendamento" cobre o caso de exceção. */}
         <section>
           <h3 className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
             Agendamento
@@ -654,8 +681,9 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
             Marque apenas quando o paciente ainda não tem unidade/data definidas — o caso seguirá para a Regulação registrar o agendamento posteriormente (CNRAC, CET ou Outros).
           </p>
           {!semAgendamento && (
-            <div className="grid grid-cols-2 gap-2">
-              <div className="col-span-2 flex flex-col gap-1">
+            <div className="flex flex-col gap-3">
+              {/* Unidade — compartilhada entre todos os procedimentos */}
+              <div className="flex flex-col gap-1">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px]" style={{ color: '#94A3B8' }}>
                     Selecione a unidade cadastrada
@@ -694,20 +722,104 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
                   ))}
                 </select>
               </div>
-              <input
-                type="date" value={data} onChange={(e) => setData(e.target.value)}
-                className="px-3 py-2 text-[13px]"
-                style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
-              />
-              <input
-                type="time" value={hora} onChange={(e) => setHora(e.target.value)}
-                className="px-3 py-2 text-[13px]"
-                style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
-              />
+
+              {/* Lista repetível de Procedimento + Data — múltiplos
+                  agendamentos por solicitação. Cada linha vira uma tentativa
+                  confirmada dentro do mesmo container de agendamento. */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[11px]" style={{ color: '#94A3B8' }}>
+                  Procedimentos agendados {agendamentos.length > 1 ? `(${agendamentos.length})` : ''}
+                </span>
+                {agendamentos.map((linha, idx) => (
+                  <div
+                    key={linha.id}
+                    className="grid items-center gap-2"
+                    style={{ gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr) 32px' }}
+                  >
+                    <select
+                      value={linha.tipoProcedimento}
+                      disabled={loadingTiposProc}
+                      onChange={(e) =>
+                        setAgendamentos((prev) =>
+                          prev.map((l, i) =>
+                            i === idx
+                              ? { ...l, tipoProcedimento: e.target.value as TipoProcedimento | '' }
+                              : l,
+                          ),
+                        )
+                      }
+                      className="px-3 py-2 text-[13px]"
+                      style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
+                    >
+                      <option value="">
+                        {loadingTiposProc
+                          ? 'Carregando tipos...'
+                          : tiposProcedimento.length === 0
+                            ? 'Nenhum tipo cadastrado'
+                            : 'Tipo do procedimento...'}
+                      </option>
+                      {tiposProcedimento.map((t) => (
+                        <option key={t.codigo} value={t.codigo}>
+                          {t.nome}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="date"
+                      value={linha.data}
+                      onChange={(e) =>
+                        setAgendamentos((prev) =>
+                          prev.map((l, i) => (i === idx ? { ...l, data: e.target.value } : l)),
+                        )
+                      }
+                      className="px-3 py-2 text-[13px]"
+                      style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAgendamentos((prev) =>
+                          prev.length === 1
+                            ? [novaLinhaAgendamento()]
+                            : prev.filter((_, i) => i !== idx),
+                        )
+                      }
+                      className="tfd-btn tfd-btn--text tfd-btn--sm tfd-btn--icon-only"
+                      title={agendamentos.length === 1 ? 'Limpar' : 'Remover este agendamento'}
+                      aria-label="Remover agendamento"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAgendamentos((prev) => [...prev, novaLinhaAgendamento()])
+                  }
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 mt-1 text-[12.5px] font-medium transition-colors"
+                  style={{
+                    background: '#F8FAFC',
+                    border: '1px dashed #CBD5E1',
+                    borderRadius: 8,
+                    color: '#146BFA',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#EFF6FF';
+                    e.currentTarget.style.borderColor = '#146BFA';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#F8FAFC';
+                    e.currentTarget.style.borderColor = '#CBD5E1';
+                  }}
+                >
+                  <CalendarPlus size={13} />
+                  Adicionar agendamento
+                </button>
+              </div>
             </div>
           )}
         </section>
-        )}
 
         {/* Data laudo */}
         <section>
@@ -851,6 +963,241 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
         </section>
       </div>
     </Drawer>
+  );
+}
+
+/**
+ * Card de listagem de acompanhante com dados expandidos — CPF, CNS, telefone,
+ * idade, vínculo e necessidade especial ficam sempre visíveis (não somente
+ * quando selecionado), para o usuário da SES conferir cadastro antes de
+ * marcar quem vai junto na viagem.
+ */
+function AcompanhanteCard({
+  acompanhante: a,
+  checked,
+  onToggle,
+}: {
+  acompanhante: AcompanhanteRow;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <label
+      className="flex items-start gap-3 px-3 py-2.5 cursor-pointer transition-colors"
+      style={{
+        border: '1px solid ' + (checked ? 'var(--tfd-blue)' : 'var(--tfd-surface-border)'),
+        background: checked ? '#EBF0FF' : 'white',
+        borderRadius: 8,
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onToggle}
+        className="mt-1 shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        {/* Linha 1 — Nome + idade + vínculo */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[13px] font-semibold" style={{ color: '#1A1D2B' }}>
+            {a.nome_completo}
+          </span>
+          <IdadeBadge dataNascimento={a.data_nascimento} />
+          {a.vinculo && (
+            <span
+              className="inline-flex items-center px-1.5 py-[1px] text-[10px] font-semibold uppercase"
+              style={{
+                background: '#F1F5F9',
+                color: '#475569',
+                border: '1px solid #E2E8F0',
+                borderRadius: 4,
+                letterSpacing: '0.04em',
+              }}
+            >
+              {a.vinculo}
+            </span>
+          )}
+          {a.necessidade_especial && (
+            <span
+              className="inline-flex items-center gap-1 px-1.5 py-[1px] text-[10px] font-semibold uppercase"
+              style={{
+                background: '#FFFBEB',
+                color: '#92400E',
+                border: '1px solid #FDE68A',
+                borderRadius: 4,
+                letterSpacing: '0.04em',
+              }}
+              title={a.descricao_necessidade ?? 'Necessidade especial cadastrada'}
+            >
+              <AlertTriangle size={10} strokeWidth={2.4} />
+              Necessidade especial
+            </span>
+          )}
+        </div>
+
+        {/* Linha 2 — CPF + CNS + Telefone */}
+        <div
+          className="flex items-center gap-x-3 gap-y-1 flex-wrap mt-1 text-[11.5px]"
+          style={{ color: '#64748B' }}
+        >
+          <span title="CPF" className="inline-flex items-center gap-1">
+            <span style={{ color: '#94A3B8' }}>CPF</span>
+            <span className="font-mono" style={{ color: '#1E293B' }}>{maskCPF(a.cpf)}</span>
+          </span>
+          {a.cns && (
+            <>
+              <span style={{ color: '#CBD5E1' }}>·</span>
+              <span title="CNS" className="inline-flex items-center gap-1">
+                <IdCard size={11} style={{ color: '#94A3B8' }} />
+                <span className="font-mono" style={{ color: '#1E293B' }}>{maskCNS(a.cns)}</span>
+              </span>
+            </>
+          )}
+          {a.telefone && (
+            <>
+              <span style={{ color: '#CBD5E1' }}>·</span>
+              <span title="Telefone" className="inline-flex items-center gap-1">
+                <Phone size={11} style={{ color: '#94A3B8' }} />
+                <span className="font-mono" style={{ color: '#1E293B' }}>{maskPhone(a.telefone)}</span>
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* Descrição da necessidade — em linha sutil quando aplicável */}
+        {a.necessidade_especial && a.descricao_necessidade && (
+          <p
+            className="text-[11.5px] mt-1 italic"
+            style={{ color: '#92400E' }}
+            title={a.descricao_necessidade}
+          >
+            {a.descricao_necessidade}
+          </p>
+        )}
+      </div>
+    </label>
+  );
+}
+
+/**
+ * Card de resumo dos campos obrigatórios do paciente, exibido quando um
+ * paciente é selecionado no drawer. Permite ao usuário da SES conferir se
+ * os dados estão atualizados antes de criar a solicitação. Link "Editar
+ * cadastro" abre a tela do paciente em nova aba.
+ */
+function ResumoPaciente({ paciente }: { paciente: PacienteRow }) {
+  const telefone = paciente.telefone_celular || paciente.telefone_fixo;
+  const enderecoLinha = [
+    paciente.logradouro,
+    paciente.numero,
+    paciente.bairro,
+  ]
+    .filter(Boolean)
+    .join(', ');
+  const municipioLinha = paciente.municipio
+    ? `${paciente.municipio}${paciente.uf ? ` - ${paciente.uf}` : ''}`
+    : null;
+  const sexoLabel = paciente.sexo === 'M' ? 'Masculino' : paciente.sexo === 'F' ? 'Feminino' : null;
+
+  return (
+    <div
+      className="mt-3 overflow-hidden"
+      style={{
+        background: '#F8FAFC',
+        border: '1px solid #E2E8F0',
+        borderRadius: 10,
+      }}
+    >
+      <div
+        className="flex items-center justify-between gap-2 px-4 py-2.5"
+        style={{ background: 'white', borderBottom: '1px solid #E2E8F0' }}
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
+            Resumo do cadastro
+          </span>
+          <IdadeBadge dataNascimento={paciente.data_nascimento} />
+        </div>
+        <a
+          href={`/pacientes/${paciente.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[11px] inline-flex items-center gap-1 hover:underline"
+          style={{ color: 'var(--tfd-blue)' }}
+        >
+          <Pencil size={11} />
+          Editar cadastro
+        </a>
+      </div>
+
+      <div
+        className="grid gap-x-4 gap-y-2 px-4 py-3"
+        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}
+      >
+        <ResumoField label="Nome completo" value={paciente.nome_completo} />
+        <ResumoField label="CPF" value={maskCPF(paciente.cpf)} mono />
+        <ResumoField label="CNS" value={paciente.cns ? maskCNS(paciente.cns) : null} mono icon={<IdCard size={11} />} />
+        <ResumoField label="Sexo" value={sexoLabel} />
+        <ResumoField
+          label="Telefone"
+          value={telefone ? maskPhone(telefone) : null}
+          mono
+          icon={<Phone size={11} />}
+        />
+        <ResumoField label="E-mail" value={paciente.email} icon={<Mail size={11} />} />
+        <ResumoField
+          label="Município"
+          value={municipioLinha}
+          icon={<MapPin size={11} />}
+        />
+        <ResumoField
+          label="Endereço"
+          value={enderecoLinha || null}
+          extra={paciente.cep ? `CEP ${maskCEP(paciente.cep)}` : undefined}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ResumoField({
+  label,
+  value,
+  mono,
+  icon,
+  extra,
+}: {
+  label: string;
+  value: string | null | undefined;
+  mono?: boolean;
+  icon?: React.ReactNode;
+  extra?: string;
+}) {
+  const vazio = !value;
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center gap-1 mb-0.5">
+        {icon && <span style={{ color: '#94A3B8' }}>{icon}</span>}
+        <span
+          className="text-[10px] font-semibold uppercase"
+          style={{ color: '#9CA3AF', letterSpacing: '0.05em' }}
+        >
+          {label}
+        </span>
+      </div>
+      <div
+        className={`text-[12.5px] truncate ${mono ? 'font-mono' : ''}`}
+        style={{ color: vazio ? '#CBD5E1' : '#1A1D2B', fontStyle: vazio ? 'italic' : 'normal' }}
+        title={value ?? ''}
+      >
+        {value ?? 'Não informado'}
+      </div>
+      {extra && (
+        <div className="text-[11px] mt-0.5 font-mono" style={{ color: '#64748B' }}>
+          {extra}
+        </div>
+      )}
+    </div>
   );
 }
 

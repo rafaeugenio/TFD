@@ -6,6 +6,16 @@ import {
   MOTIVO_ENCERRAMENTO_LABEL,
   type SolicitacaoMock,
 } from '@/core/mocks/fluxo-v2-v3-seed';
+import type { AutorResolver } from '@/services/logs.service';
+
+/**
+ * Combina autor + perfil em uma string única "Nome · Perfil" pra exibir no
+ * card de evento. Quando perfil estiver vazio, devolve só o nome.
+ */
+function fmtAutor(autor: string, perfil?: string): string {
+  if (!perfil) return autor;
+  return `${autor} · ${perfil}`;
+}
 
 /* -------------------------------------------------------------------------- */
 /*  Tipos                                                                     */
@@ -68,8 +78,21 @@ const addOneYear = (iso: string): string => {
 /*  Derivação                                                                  */
 /* -------------------------------------------------------------------------- */
 
-export function derivarEventos(s: SolicitacaoMock): EventoTimeline[] {
+export function derivarEventos(
+  s: SolicitacaoMock,
+  resolverAutor?: AutorResolver,
+): EventoTimeline[] {
   const eventos: EventoTimeline[] = [];
+
+  // Helper: aplica o resolver de log; cai no fallback se não houver registro.
+  const autorDe = (
+    entidade: string,
+    entidadeId?: string | null,
+    fallback?: string,
+  ): string | undefined => {
+    const reg = resolverAutor?.(entidade, entidadeId);
+    return reg ? fmtAutor(reg.autor, reg.perfilAutor) : fallback;
+  };
 
   // 1. Criação
   eventos.push({
@@ -78,7 +101,7 @@ export function derivarEventos(s: SolicitacaoMock): EventoTimeline[] {
     data: s.dataCriacao,
     titulo: 'Solicitação criada',
     descricao: `Protocolo ${s.numero}`,
-    autor: 'Sistema',
+    autor: autorDe('solicitacoes', s.id, 'Sistema'),
   });
 
   // 2. Laudo
@@ -106,6 +129,7 @@ export function derivarEventos(s: SolicitacaoMock): EventoTimeline[] {
       descricao: p.medico,
       observacao: p.observacao,
       badge: p.cidPrincipal,
+      autor: autorDe('pareceres', p.id, p.medico),
     });
   });
 
@@ -115,14 +139,14 @@ export function derivarEventos(s: SolicitacaoMock): EventoTimeline[] {
       ? s.pareceres[s.pareceres.length - 1].data
       : s.dataCriacao;
     const carimboLabel =
-      s.carimboRegulacao === 'OUTROS' && s.carimboOutrosInfo
-        ? `OUTROS — ${s.carimboOutrosInfo.unidadeOrgao}`
+      s.carimboRegulacao === 'AGENDAMENTO' && s.carimboOutrosInfo
+        ? `AGENDAMENTO — ${s.carimboOutrosInfo.unidadeOrgao}`
         : s.carimboRegulacao;
     const carimboDescricao =
       s.carimboRegulacao === 'APROVADO_DIRETO'
         ? 'Aprovação direta — sem necessidade de exceção'
-        : s.carimboRegulacao === 'OUTROS' && s.carimboOutrosInfo
-          ? `Contato manual — ${s.carimboOutrosInfo.unidadeOrgao}`
+        : s.carimboRegulacao === 'AGENDAMENTO'
+          ? 'Agendamento manual — contato via tentativas'
           : 'Encaminhado para fila de exceção';
     eventos.push({
       id: `${s.id}-carimbo`,
@@ -130,19 +154,22 @@ export function derivarEventos(s: SolicitacaoMock): EventoTimeline[] {
       data: ancora,
       titulo: `Carimbo de regulação — ${carimboLabel}`,
       descricao: carimboDescricao,
+      autor: autorDe('rotas_regulacao'),
     });
   }
 
   // 5/6. Tentativas — agora incluem o agendamento confirmado (T2.AM).
   s.agendamento?.tentativas.forEach((t) => {
     if (t.desfecho === 'agendamento_confirmado') {
+      const dataAg = t.dataAgendamento ?? t.data;
       eventos.push({
         id: `${s.id}-${t.id}`,
         tipo: 'agendamento',
-        data: isoFromDate(t.data),
+        data: isoFromDate(dataAg),
         titulo: `Agendamento confirmado em ${t.unidade}`,
-        descricao: t.hora ? `${fmtBR(t.data)} às ${t.hora}` : fmtBR(t.data),
+        descricao: fmtBR(dataAg),
         observacao: t.observacao,
+        autor: autorDe('tentativas_agendamento', t.id),
       });
     } else {
       const desfechoLabel = t.desfecho.replace(/_/g, ' ');
@@ -154,6 +181,7 @@ export function derivarEventos(s: SolicitacaoMock): EventoTimeline[] {
         descricao: `Desfecho: ${desfechoLabel}`,
         observacao: t.observacao,
         badge: desfechoLabel,
+        autor: autorDe('tentativas_agendamento', t.id),
       });
     }
   });
@@ -167,6 +195,7 @@ export function derivarEventos(s: SolicitacaoMock): EventoTimeline[] {
       data: sd.data,
       titulo: 'Segundo deferimento médico registrado',
       descricao: sd.medico,
+      autor: autorDe('pareceres', undefined, sd.medico),
     });
   }
 
@@ -179,6 +208,7 @@ export function derivarEventos(s: SolicitacaoMock): EventoTimeline[] {
       titulo: `Passagem ${v.tipo} — ${v.origem} → ${v.destino}`,
       descricao: `${v.modal} · R$ ${v.valor.toFixed(2)}`,
       badge: STATUS_VIAGEM_LABEL[v.status],
+      autor: autorDe('viagens', v.id),
     });
   });
 
@@ -195,6 +225,7 @@ export function derivarEventos(s: SolicitacaoMock): EventoTimeline[] {
       descricao: `${fmtBR(a.dataInicio)} a ${fmtBR(a.dataFim)}`,
       observacao: a.observacao,
       badge: STATUS_AJUDA_LABEL[a.status],
+      autor: autorDe('ajudas_custo', a.id),
     });
   });
 
@@ -207,6 +238,7 @@ export function derivarEventos(s: SolicitacaoMock): EventoTimeline[] {
       titulo: `${CATEGORIA_ADICIONAL_LABEL[ad.categoria]} — ${ad.descricao}`,
       descricao: `R$ ${ad.valor.toFixed(2)}`,
       badge: STATUS_ADICIONAL_LABEL[ad.status],
+      autor: autorDe('adicionais', ad.id),
     });
   });
 
@@ -217,9 +249,9 @@ export function derivarEventos(s: SolicitacaoMock): EventoTimeline[] {
       tipo: 'devolucao_regulacao',
       data: d.data,
       titulo: 'Devolvida do Financeiro para Regulação',
-      descricao: `${d.autor} — ${d.perfilAutor}`,
       observacao: d.motivo,
       badge: d.resolvida ? 'Resolvida' : 'Pendente',
+      autor: autorDe('devolucoes', d.id, fmtAutor(d.autor, d.perfilAutor)),
     });
     if (d.resolvida) {
       eventos.push({
@@ -228,6 +260,7 @@ export function derivarEventos(s: SolicitacaoMock): EventoTimeline[] {
         data: d.data, // aproximação — sem timestamp dedicado
         titulo: 'Reencaminhada ao Financeiro',
         descricao: 'Devolução resolvida pela Regulação',
+        autor: autorDe('devolucoes', d.id),
       });
     }
   });
@@ -240,6 +273,7 @@ export function derivarEventos(s: SolicitacaoMock): EventoTimeline[] {
       data: isoFromDate(s.encerramento.data),
       titulo: `Solicitação encerrada — ${MOTIVO_ENCERRAMENTO_LABEL[s.encerramento.motivo]}`,
       observacao: s.encerramento.observacao,
+      autor: autorDe('encerramentos'),
     });
   }
 

@@ -140,11 +140,12 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
           setDistanciaValor(null); setAjudaPaciente(null); setAjudaAcompanhante(null);
           return;
         }
-        const valorDist = modal === 'aereo'
+        const valorBase = modal === 'aereo'
           ? Math.round(distanciaMilhas(o, d))
           : modal === 'fluvial'
             ? Math.round(distanciaMilhasNauticas(o, d))
             : Math.round(distanciaKm(o, d));
+        const valorDist = tipo === 'ida_e_volta' ? valorBase * 2 : valorBase;
         setDistanciaValor(valorDist);
 
         // Ajuda de custo
@@ -165,7 +166,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       }
     })();
     return () => { cancelado = true; };
-  }, [origemCidade, origemUf, destinoCidade, destinoUf, modal]);
+  }, [origemCidade, origemUf, destinoCidade, destinoUf, modal, tipo]);
 
   // Inicialização ao abrir
   useEffect(() => {

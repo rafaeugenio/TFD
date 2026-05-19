@@ -25,207 +25,88 @@ export interface TemplateParecer {
   texto: string;
 }
 
+/**
+ * Variante de texto sobre disponibilidade de serviço no Estado do Maranhão.
+ * Aplicada em templates deferidos de TFD completo e Ajuda de custo —
+ * substitui o placeholder `{{servico_ma}}` no texto inserido.
+ */
+export type VarianteServicoMA = 'sem_servico_ma' | 'com_servico_ma';
+
+export const VARIANTE_SERVICO_MA_LABEL: Record<VarianteServicoMA, string> = {
+  sem_servico_ma: 'Maranhão NÃO dispõe de unidade habilitada',
+  com_servico_ma: 'Maranhão dispõe, mas há justificativa para deslocamento',
+};
+
+/** Texto inserido no parecer para cada variante. Versões específicas por
+ *  tipo (TFD completo vs Ajuda de custo) — extraídas do template oficial. */
+export const VARIANTES_SERVICO_MA: Record<TipoParecer, Partial<Record<VarianteServicoMA, string>>> = {
+  tfd_completo: {
+    sem_servico_ma:
+      'Ressalta-se que o Estado do Maranhão não dispõe de unidade habilitada para o acompanhamento do paciente na condição descrita, inviabilizando a realização do tratamento na rede estadual.',
+    com_servico_ma:
+      'Embora o Estado do Maranhão disponha de unidade habilitada para o acompanhamento da referida condição, observa-se a existência de vínculo assistencial previamente estabelecido do paciente com o serviço de destino, sendo recomendada a manutenção do seguimento naquele local, a fim de evitar prejuízo à continuidade do cuidado.',
+  },
+  apenas_ajuda: {
+    sem_servico_ma:
+      'Ressalta-se que o Estado do Maranhão não dispõe de unidade habilitada para o tratamento da condição apresentada no âmbito do SUS, inviabilizando a assistência na rede estadual.',
+    com_servico_ma:
+      'Ressalta-se que o Estado do Maranhão dispõe de unidade habilitada; contudo, observa-se a existência de vínculo assistencial previamente estabelecido com serviço localizado em outro estado, sendo recomendada a manutenção do seguimento fora do domicílio, a fim de evitar prejuízo à continuidade do cuidado.',
+  },
+  sem_agendamento: {},
+  apenas_passagem: {},
+  prorrogacao: {},
+  medife: {},
+};
+
+/** Variante "serviço no MA" só faz sentido em pareceres deferidos.
+ *  Indeferidos têm template único, sem opção. */
+export function templateExigeVarianteServicoMA(
+  _tipo: TipoParecer | undefined,
+  decisao: DecisaoParecer,
+): boolean {
+  return decisao === 'deferido';
+}
+
 export const templatesParecer: TemplateParecer[] = [
-  /* ============================== DEFERIDOS ============================== */
+  /* Apenas 2 templates oficiais — um deferido (com variante de serviço no MA)
+   * e um indeferido. O campo `tipo` é mantido por compatibilidade com seeds
+   * antigas, mas a UI não usa mais select de tipo. */
 
   {
-    id: 'tpl-tfd-completo-def',
+    id: 'tpl-deferido',
     tipo: 'tfd_completo',
     decisao: 'deferido',
-    titulo: 'TFD (passagem + ajuda de custo) — Deferido',
+    titulo: 'Parecer deferido',
     texto:
-`Processo contendo solicitação de passagem e ajuda de custo para {{paciente.nome}}, {{paciente.sexo}}, nascido em {{paciente.dataNascimento}}, procedente de {{paciente.municipio}}. Segundo Laudo Médico emitido em {{solicitacao.dataLaudo}}, usuário tem diagnóstico de [DIAGNÓSTICO]. Solicitação de [TIPO DE ATENDIMENTO].
+`Processo contendo solicitação de concessão de passagens e ajuda de custo no âmbito do Tratamento Fora do Domicílio (TFD) para {{paciente.nome}}, sexo {{paciente.sexo}}, nascido em {{paciente.dataNascimento}}, residente no município de {{paciente.municipio}}.
 
-Processo para realização de acompanhamento ambulatorial em [CIDADE/ESTADO DESTINO] no Hospital [NOME DO HOSPITAL].
+Conforme Laudo Médico emitido em {{solicitacao.dataLaudo}}, por profissional especialista de unidade habilitada, o paciente apresenta diagnóstico de [DIAGNÓSTICO], com indicação de [PROCEDIMENTO/ACOMPANHAMENTO ESPECÍFICO].
 
-Considerando que o Estado do Maranhão possui unidade habilitada para acompanhamento de paciente em [ESPECIFICAR ESPECIALIDADE].
+A presente solicitação destina-se à realização de acompanhamento ambulatorial no dia [DATA], no serviço [LOCAL DE TRATAMENTO], visando a adequada condução terapêutica do caso.
 
-Considerando que o laudo foi emitido por especialista de unidade habilitada e para não prejudicar o paciente, o processo de passagem e ajuda de custo é deferido. Libero 01 (um) acompanhante.
+{{servico_ma}}
 
-Encaminho ao serviço administrativo do TFD para providências cabíveis.`,
+Considerando a indicação por especialista, a necessidade clínica do paciente e a garantia da integralidade da assistência à saúde, o caso preenche os critérios para concessão de TFD.
+
+Diante do exposto, defere-se a solicitação de passagens e ajuda de custo, com autorização de 01 (um) acompanhante, encaminhando-se ao setor administrativo competente para adoção das providências cabíveis.`,
   },
 
   {
-    id: 'tpl-sem-agendamento-def',
-    tipo: 'sem_agendamento',
-    decisao: 'deferido',
-    titulo: 'Processo sem agendamento — Deferido',
-    texto:
-`Processo contendo solicitação de Tratamento fora do domicílio (TFD) para {{paciente.nome}}, {{paciente.sexo}}, nascido em {{paciente.dataNascimento}}, procedente de {{paciente.municipio}}. Segundo Laudo Médico emitido em {{solicitacao.dataLaudo}}, usuário tem diagnóstico de [DIAGNÓSTICO]. Solicitação de [TIPO DE ATENDIMENTO].
-
-Processo sem agendamento.
-
-Considerando que o Estado do Maranhão não possui unidade habilitada para realização de [ESPECIFICAR PROCEDIMENTO].
-
-Considerando que o laudo foi emitido por especialista.
-
-Processo de TFD deferido.
-
-Encaminho ao serviço administrativo da CET para providências cabíveis.`,
-  },
-
-  {
-    id: 'tpl-apenas-ajuda-def',
-    tipo: 'apenas_ajuda',
-    decisao: 'deferido',
-    titulo: 'Apenas ajuda de custo — Deferido',
-    texto:
-`Processo contendo solicitação de ajuda de custo para {{paciente.nome}}, {{paciente.sexo}}, nascido em {{paciente.dataNascimento}}, procedente de {{paciente.municipio}}. Segundo Laudo Médico emitido em {{solicitacao.dataLaudo}}, usuário tem diagnóstico de [DIAGNÓSTICO]. Solicitação de [TIPO DE ATENDIMENTO].
-
-Processo para liberação de ajuda de custo referente ao período de [DATA DE INÍCIO] a [DATA DE FIM], paciente segue em acompanhamento ambulatorial no Hospital [NOME DO HOSPITAL].
-
-Considerando que o Estado do Maranhão possui unidade habilitada para acompanhamento de pacientes submetidos a [ESPECIFICAR TRATAMENTO], o Hospital [NOME DA UNIDADE HABILITADA].
-
-Considerando que o laudo foi emitido por especialista, porém de unidade não habilitada.
-
-Considerando o vínculo do paciente com serviço de outro estado.
-
-Para não prejudicar o paciente, o processo de ajuda de custo é deferido. Libero 01 (um) acompanhante.
-
-Encaminho ao serviço administrativo do TFD para providências cabíveis.`,
-  },
-
-  {
-    id: 'tpl-apenas-passagem-def',
-    tipo: 'apenas_passagem',
-    decisao: 'deferido',
-    titulo: 'Apenas passagem — Deferido',
-    texto:
-`Processo contendo solicitação de passagem para {{paciente.nome}}, {{paciente.sexo}}, nascido em {{paciente.dataNascimento}}, procedente de {{paciente.municipio}}. Segundo Laudo Médico emitido em {{solicitacao.dataLaudo}}, usuário tem diagnóstico de [DIAGNÓSTICO].
-
-Processo para realização de [ESPECIFICAR PROCEDIMENTO] em [NOME DO HOSPITAL].
-
-Considerando que o Estado do Maranhão não dispõe de [ESPECIFICAR ESPECIALIDADE] no município de origem do paciente, e considerando que o laudo foi emitido por especialista, o processo de passagem é deferido. Libero 01 (um) acompanhante.
-
-Encaminho ao serviço administrativo do TFD para providências cabíveis.`,
-  },
-
-  {
-    id: 'tpl-prorrogacao-def',
-    tipo: 'prorrogacao',
-    decisao: 'deferido',
-    titulo: 'Prorrogação — Deferido',
-    texto:
-`Processo contendo solicitação de prorrogação de TFD para {{paciente.nome}}, {{paciente.sexo}}, nascido em {{paciente.dataNascimento}}, procedente de {{paciente.municipio}}.
-
-Considerando o relatório médico atualizado anexado e a continuidade do acompanhamento ambulatorial em [NOME DO HOSPITAL], a prorrogação do período de [DATA DE INÍCIO] a [DATA DE FIM] é deferida.
-
-Libero 01 (um) acompanhante.
-
-Encaminho ao serviço administrativo do TFD para providências cabíveis.`,
-  },
-
-  {
-    id: 'tpl-medife-def',
-    tipo: 'medife',
-    decisao: 'deferido',
-    titulo: 'Medife — Autorizado',
-    texto:
-`Autorização de transporte aéreo médico (Medife) para {{paciente.nome}}, {{paciente.sexo}}, nascido em {{paciente.dataNascimento}}, procedente de {{paciente.municipio}}.
-
-Considerando o quadro clínico descrito pelo médico assistente, com diagnóstico de [DIAGNÓSTICO], e a necessidade de transporte com assistência médica em razão de [JUSTIFICATIVA CLÍNICA], autorizo o uso do Medife.
-
-Encaminho ao serviço administrativo do TFD para providências cabíveis com a companhia aérea.`,
-  },
-
-  /* ============================== INDEFERIDOS ============================ */
-
-  {
-    id: 'tpl-tfd-completo-ind',
+    id: 'tpl-indeferido',
     tipo: 'tfd_completo',
     decisao: 'indeferido',
-    titulo: 'TFD (passagem + ajuda de custo) — Indeferido',
+    titulo: 'Parecer indeferido',
     texto:
-`Processo contendo solicitação de passagem e ajuda de custo para {{paciente.nome}}, {{paciente.sexo}}, nascido em {{paciente.dataNascimento}}, procedente de {{paciente.municipio}}. Segundo Laudo Médico emitido em {{solicitacao.dataLaudo}}, usuário tem diagnóstico de [DIAGNÓSTICO].
+`Processo contendo solicitação no âmbito do Tratamento Fora do Domicílio (TFD) para {{paciente.nome}}, sexo {{paciente.sexo}}, nascido em {{paciente.dataNascimento}}, residente no município de {{paciente.municipio}}.
 
-Considerando que o Estado do Maranhão possui unidade habilitada para [ESPECIFICAR ESPECIALIDADE/PROCEDIMENTO], podendo o atendimento ser realizado na rede local.
+Conforme Laudo Médico emitido em {{solicitacao.dataLaudo}}, o paciente apresenta diagnóstico de [DIAGNÓSTICO].
 
-Considerando [JUSTIFICATIVA DO INDEFERIMENTO].
+Considerando que [JUSTIFICATIVA DO INDEFERIMENTO — ex.: o Estado do Maranhão possui unidade habilitada para o tratamento, podendo o atendimento ser realizado na rede local; documentação insuficiente; ausência de indicação clínica para encaminhamento extra-domiciliar].
 
-Indefiro o presente pedido. Não há indicação de encaminhamento extra-domiciliar no momento.
-
-Encaminho ao serviço administrativo do TFD para comunicação ao paciente.`,
-  },
-
-  {
-    id: 'tpl-sem-agendamento-ind',
-    tipo: 'sem_agendamento',
-    decisao: 'indeferido',
-    titulo: 'Processo sem agendamento — Indeferido',
-    texto:
-`Processo contendo solicitação de TFD sem agendamento para {{paciente.nome}}, {{paciente.sexo}}, nascido em {{paciente.dataNascimento}}, procedente de {{paciente.municipio}}.
-
-Considerando que o Estado do Maranhão possui unidade habilitada para realização de [ESPECIFICAR PROCEDIMENTO], dispensando encaminhamento extra-estadual.
-
-Considerando [JUSTIFICATIVA DO INDEFERIMENTO].
-
-Indefiro o presente pedido. Recomendo encaminhamento à rede de [ESPECIFICAR REDE/UNIDADE LOCAL].
-
-Encaminho ao serviço administrativo do TFD para comunicação ao paciente.`,
-  },
-
-  {
-    id: 'tpl-apenas-ajuda-ind',
-    tipo: 'apenas_ajuda',
-    decisao: 'indeferido',
-    titulo: 'Apenas ajuda de custo — Indeferido',
-    texto:
-`Processo contendo solicitação de ajuda de custo para {{paciente.nome}}, {{paciente.sexo}}, nascido em {{paciente.dataNascimento}}, procedente de {{paciente.municipio}}.
-
-Considerando que [JUSTIFICATIVA DO INDEFERIMENTO — ex.: tratamento já disponível na rede do MA, paciente sem vínculo com serviço de referência, documentação insuficiente].
-
-Indefiro o presente pedido de ajuda de custo.
-
-Encaminho ao serviço administrativo do TFD para comunicação ao paciente.`,
-  },
-
-  {
-    id: 'tpl-apenas-passagem-ind',
-    tipo: 'apenas_passagem',
-    decisao: 'indeferido',
-    titulo: 'Apenas passagem — Indeferido',
-    texto:
-`Processo contendo solicitação de passagem para {{paciente.nome}}, {{paciente.sexo}}, nascido em {{paciente.dataNascimento}}, procedente de {{paciente.municipio}}. Segundo Laudo Médico emitido em {{solicitacao.dataLaudo}}, usuário tem diagnóstico de [DIAGNÓSTICO].
-
-Considerando que [JUSTIFICATIVA DO INDEFERIMENTO — ex.: existência de unidade habilitada no Estado, ausência de indicação clínica para encaminhamento, laudo fora dos requisitos].
-
-Indefiro o presente pedido de passagem.
-
-Encaminho ao serviço administrativo do TFD para comunicação ao paciente.`,
-  },
-
-  {
-    id: 'tpl-prorrogacao-ind',
-    tipo: 'prorrogacao',
-    decisao: 'indeferido',
-    titulo: 'Prorrogação — Indeferido',
-    texto:
-`Processo contendo solicitação de prorrogação de TFD para {{paciente.nome}}, {{paciente.sexo}}, nascido em {{paciente.dataNascimento}}, procedente de {{paciente.municipio}}.
-
-Considerando que [JUSTIFICATIVA DO INDEFERIMENTO — ex.: relatório médico não justifica continuidade, tratamento concluído, ausência de plano terapêutico atualizado].
-
-Indefiro o presente pedido de prorrogação.
-
-Recomendo retorno do paciente ao município de origem e acompanhamento na rede local.
-
-Encaminho ao serviço administrativo do TFD para comunicação ao paciente.`,
-  },
-
-  {
-    id: 'tpl-medife-ind',
-    tipo: 'medife',
-    decisao: 'indeferido',
-    titulo: 'Medife — Indeferido',
-    texto:
-`Pedido de autorização de transporte aéreo médico (Medife) para {{paciente.nome}}, {{paciente.sexo}}, nascido em {{paciente.dataNascimento}}, procedente de {{paciente.municipio}}.
-
-Considerando que [JUSTIFICATIVA DO INDEFERIMENTO — ex.: quadro clínico estável, ausência de necessidade de assistência médica em voo, documentação insuficiente].
-
-Indefiro o presente pedido. O paciente pode realizar o deslocamento por transporte aéreo regular sem necessidade de Medife.
-
-Encaminho ao serviço administrativo do TFD para providências cabíveis.`,
+Diante do exposto, indefere-se o presente pedido, encaminhando-se ao setor administrativo competente para comunicação ao paciente.`,
   },
 ];
+
 
 /* -------------------------------------------------------------------------- */
 /*  Auto-preenchimento de placeholders                                        */
@@ -272,6 +153,7 @@ export function aplicarPlaceholders(
   s?: SolicitacaoMock,
   tipo?: TipoParecer,
   medico?: MedicoContextoTemplate,
+  varianteServicoMA?: VarianteServicoMA,
 ): string {
   const p = s?.paciente;
   const crmLinha =
@@ -291,6 +173,9 @@ export function aplicarPlaceholders(
     '{{medico.nome}}': medico?.nome?.trim() ? medico.nome : '[NOME DO MÉDICO]',
     '{{medico.crm}}': crmLinha,
     '{{medico.especialidade}}': medico?.especialidade?.trim() ? medico.especialidade : '[ESPECIALIDADE]',
+    '{{servico_ma}}':
+      (tipo && varianteServicoMA && VARIANTES_SERVICO_MA[tipo]?.[varianteServicoMA]) ??
+      '[SELECIONE A SITUAÇÃO DO SERVIÇO NO MA]',
   };
   return Object.entries(map).reduce(
     (acc, [k, v]) => acc.split(k).join(v),

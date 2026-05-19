@@ -72,7 +72,9 @@ export interface ParecerDb {
   decisao: 'DEFERIDO' | 'INDEFERIDO';
   tipo?: string;
   cid_principal?: string;
+  cid_principal_nome?: string;
   cid_secundario?: string;
+  cid_secundario_nome?: string;
   versao_cid?: '10' | '11';
   justificativa?: string;
 }
@@ -88,7 +90,9 @@ export function buildParecer(
     decisao: p.decisao === 'indeferido' ? 'INDEFERIDO' : 'DEFERIDO',
     tipo: p.tipo,
     cid_principal: p.cidPrincipal,
+    cid_principal_nome: p.cidPrincipalNome,
     cid_secundario: p.cidSecundario,
+    cid_secundario_nome: p.cidSecundarioNome,
     versao_cid: p.versaoCID ?? '10',
     justificativa: p.observacao,
   };
@@ -102,7 +106,8 @@ const TIPO_ROTA_FROM_CARIMBO: Record<CarimboRegulacao, string> = {
   APROVADO_DIRETO: 'APROVADO_DIRETO',
   CNRAC: 'CNRAC',
   CET: 'SETI',
-  OUTROS: 'RESPOSTA_EXTERNA',
+  SAIS_DUTRA: 'SAIS_DUTRA',
+  AGENDAMENTO: 'RESPOSTA_EXTERNA',
 };
 
 export interface RotaRegulacaoDb {
@@ -183,8 +188,9 @@ export function buildTentativa(
     resultado: DESFECHO_TO_DB[t.desfecho] ?? 'AGUARDANDO',
     observacao: t.observacao,
     registrado_por: registradoPorId,
-    contato_unidade: confirmada ? t.contatoUnidade : undefined,
-    data_agendamento: confirmada ? t.data : undefined,
+    // Contato (telefone/email) é registrado em qualquer desfecho.
+    contato_unidade: t.contatoUnidade,
+    data_agendamento: confirmada ? t.dataAgendamento : undefined,
     hora_agendamento: confirmada ? t.hora : undefined,
     tipo_procedimento: confirmada && t.tipoProcedimento
       ? TIPO_PROC_TO_DB[t.tipoProcedimento]
@@ -360,6 +366,7 @@ export interface AdicionalDb {
   status: string;
   beneficiario_tipo: 'PACIENTE' | 'ACOMPANHANTE';
   beneficiario_id: string | null;
+  viagem_id: string | null;
 }
 
 export function buildAdicional(
@@ -376,6 +383,7 @@ export function buildAdicional(
     status: STATUS_ADICIONAL_TO_DB[a.status] ?? 'PENDENTE_APROVACAO',
     beneficiario_tipo: bTipo,
     beneficiario_id: bTipo === 'ACOMPANHANTE' ? (a.beneficiarioId ?? null) : null,
+    viagem_id: a.viagemId ?? null,
   };
 }
 

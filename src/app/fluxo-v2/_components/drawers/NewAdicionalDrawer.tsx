@@ -40,6 +40,8 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
   const [tipoDespesa, setTipoDespesa] = useState('');
   /** Beneficiário. "p" = paciente; "a:<id>" = acompanhante específico. */
   const [beneficiario, setBeneficiario] = useState<string>('p');
+  /** Vínculo opcional com uma passagem da solicitação. */
+  const [viagemId, setViagemId] = useState<string>('');
 
   useEffect(() => {
     if (open) {
@@ -54,6 +56,7 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
             ? `a:${editar.beneficiarioId ?? ''}`
             : 'p',
         );
+        setViagemId(editar.viagemId ?? '');
       } else {
         setDescricao('');
         setData('');
@@ -61,10 +64,36 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
         setAnexoNome(null);
         setTipoDespesa('');
         setBeneficiario('p');
+        setViagemId('');
       }
       setTimeout(() => firstInputRef.current?.focus(), 100);
     }
   }, [open, editar]);
+
+  /** Viagens da solicitação (todas), ordenadas: aéreas primeiro, depois por data.
+   *  Exclui viagens canceladas/reembolso — não faz sentido vincular adicional a elas. */
+  const viagensDisponiveis = useMemo(() => {
+    const lista = (solicitacao?.viagens ?? []).filter(
+      (v) => !['cancelada', 'reembolso'].includes(v.status),
+    );
+    return [...lista].sort((a, b) => {
+      const aAereo = a.modal === 'aereo' ? 0 : 1;
+      const bAereo = b.modal === 'aereo' ? 0 : 1;
+      if (aAereo !== bAereo) return aAereo - bAereo;
+      return a.data.localeCompare(b.data);
+    });
+  }, [solicitacao]);
+
+  const fmtDataBR = (iso: string) => {
+    const [y, m, d] = iso.split('-');
+    return y && m && d ? `${d}/${m}/${y}` : iso;
+  };
+
+  const MODAL_LABEL: Record<string, string> = {
+    aereo: 'Aéreo',
+    terrestre: 'Terrestre',
+    fluvial: 'Fluvial',
+  };
 
   const beneficiarioPayload = useMemo(() => {
     if (beneficiario === 'p') {
@@ -91,6 +120,7 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
         valor: Number(valor),
         documentoUrl: anexoNome ? `mock://${anexoNome}` : undefined,
         tipoDespesa: tipoDespesa || undefined,
+        viagemId: viagemId || undefined,
         ...beneficiarioPayload,
       });
     } else {
@@ -102,6 +132,7 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
         status: 'pendente_aprovacao',
         documentoUrl: anexoNome ? `mock://${anexoNome}` : undefined,
         tipoDespesa: tipoDespesa || undefined,
+        viagemId: viagemId || undefined,
         ...beneficiarioPayload,
       });
     }
@@ -178,6 +209,34 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
         onChange={setTipoDespesa}
         className="mb-4"
       />
+
+      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+        Vincular a passagem
+      </label>
+      <select
+        value={viagemId}
+        onChange={(e) => setViagemId(e.target.value)}
+        className="w-full px-3 py-2 text-[13px] mb-1"
+        style={inputStyle}
+        disabled={viagensDisponiveis.length === 0}
+      >
+        <option value="">Sem vínculo</option>
+        {viagensDisponiveis.map((v) => {
+          const origem = v.origem.split(' - ')[0];
+          const destino = v.destino.split(' - ')[0];
+          const modal = MODAL_LABEL[v.modal] ?? v.modal;
+          return (
+            <option key={v.id} value={v.id}>
+              {modal} · {origem} → {destino} · {fmtDataBR(v.data)}
+            </option>
+          );
+        })}
+      </select>
+      <p className="text-[11px] mb-4" style={{ color: '#9CA3AF' }}>
+        {viagensDisponiveis.length === 0
+          ? 'Nenhuma passagem cadastrada nesta solicitação.'
+          : 'Quando vinculado, o valor é somado à passagem nos relatórios. Aéreas listadas primeiro.'}
+      </p>
 
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div>

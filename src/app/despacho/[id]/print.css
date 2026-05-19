@@ -2,7 +2,7 @@
 
 @media print {
   body { background: white !important; }
-  .no-print { display: none !important; }
+  .no-print, .no-print-aux { display: none !important; }
   .print-page { box-shadow: none !important; border: none !important; padding: 0 !important; margin: 0 !important; max-width: 100% !important; }
 }
 
@@ -24,52 +24,7 @@
   box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
 }
 
-.print-page h1 {
-  font-family: 'Georgia', serif;
-  font-weight: 700;
-  font-size: 22px;
-  letter-spacing: -0.01em;
-  text-align: center;
-  margin: 0 0 4px;
-}
-
-.print-page h2 {
-  font-family: 'Inter', sans-serif;
-  font-weight: 500;
-  font-size: 13px;
-  text-align: center;
-  color: #475569;
-  margin: 0 0 24px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.print-page hr {
-  border: none;
-  border-top: 1px solid #CBD5E1;
-  margin: 20px 0;
-}
-
-.print-row {
-  display: grid;
-  grid-template-columns: 180px 1fr;
-  gap: 8px;
-  margin-bottom: 8px;
-  font-size: 13px;
-}
-
-.print-row .lbl {
-  color: #475569;
-  font-weight: 600;
-  text-transform: uppercase;
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  padding-top: 2px;
-}
-
-.print-row .val {
-  color: #1A1D2B;
-}
+.print-page + .print-page { margin-top: 24px; }
 
 .print-section-title {
   font-size: 11px;
@@ -80,32 +35,14 @@
   margin: 16px 0 8px;
 }
 
-.print-decisao {
-  display: inline-block;
-  padding: 8px 18px;
-  font-weight: 800;
-  font-size: 16px;
-  letter-spacing: 0.12em;
-  border: 2px solid;
-  border-radius: 4px;
-}
-
-.print-obs {
+.print-corpo {
   background: #F8FAFC;
   border-left: 3px solid #1A1D2B;
   padding: 14px 16px;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.7;
   white-space: pre-wrap;
   color: #1A1D2B;
-}
-
-.print-stamp {
-  font-size: 10px;
-  color: #6B7280;
-  font-style: italic;
-  text-align: center;
-  margin-top: 24px;
 }
 
 .print-toolbar {
@@ -166,31 +103,119 @@
   color: #1A1D2B;
 }
 
-/* ── Despacho-specific ─────────────────────────── */
-.print-corpo {
-  background: #F8FAFC;
-  border-left: 3px solid #1A1D2B;
-  padding: 14px 16px;
-  font-size: 13px;
-  line-height: 1.7;
-  white-space: pre-wrap;
-  color: #1A1D2B;
+/* ═════════════════════════════════════════════════════════
+   Layout do Despacho oficial (espelhando o template SEI/SES-MA)
+   ═════════════════════════════════════════════════════════ */
+.sei-page {
+  font-family: 'Times New Roman', Times, serif;
+  color: #000;
+  font-size: 12pt;
+  line-height: 1.4;
 }
 
-.print-corpo-vazio {
-  color: #94A3B8;
-  font-style: italic;
-  border-left-color: #CBD5E1;
+/* ── Cabeçalho com brasão ─────────────────────── */
+.sei-header {
+  text-align: center;
+  margin-bottom: 28px;
 }
 
-.template-warning {
-  max-width: 760px;
-  margin: 0 auto 12px;
-  padding: 10px 14px;
-  background: #FFFBEB;
-  border: 1px solid #FCD34D;
-  border-radius: 8px;
-  color: #92400E;
-  font-size: 12px;
-  font-weight: 500;
+.sei-brasao {
+  display: block;
+  margin: 0 auto 8px;
+  max-width: 90px;
+  height: auto;
+}
+
+.sei-orgao {
+  margin: 0;
+  font-weight: 700;
+  font-size: 13pt;
+  letter-spacing: 0.02em;
+}
+
+.sei-subOrgao {
+  margin: 2px 0 0;
+  font-size: 11pt;
+  letter-spacing: 0.02em;
+}
+
+/* ── Metadados (Processo / Assunto) ───────────── */
+.sei-meta {
+  margin: 24px 0 28px;
+  font-size: 11pt;
+}
+
+.sei-meta p {
+  margin: 2px 0;
+}
+
+/* ── Título do despacho ───────────────────────── */
+.sei-titulo {
+  text-align: center;
+  font-size: 13pt;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  margin: 36px 0 28px;
+  font-family: 'Times New Roman', Times, serif;
+}
+
+.sei-destinatario {
+  margin: 0 0 36px;
+  font-size: 11pt;
+}
+
+/* ── Corpo do despacho ────────────────────────── */
+.sei-corpo p {
+  text-align: justify;
+  text-indent: 0;
+  margin: 0 0 10px;
+  font-size: 12pt;
+  line-height: 1.5;
+}
+
+/* ── Saudações e blocos de assinatura ─────────── */
+.sei-assinaturas {
+  margin-top: 28px;
+}
+
+.sei-saudacao {
+  margin: 24px 0 18px;
+}
+
+.sei-bloco-assinatura {
+  margin: 0 0 22px;
+  font-size: 11pt;
+  line-height: 1.35;
+}
+
+.sei-bloco-assinatura p {
+  margin: 0;
+}
+
+.sei-nome {
+  margin-bottom: 2px;
+}
+
+/* ── Rodapé institucional ─────────────────────── */
+.sei-footer {
+  margin-top: 48px;
+  padding-top: 12px;
+  border-top: 1px solid #000;
+  text-align: center;
+  font-size: 10pt;
+  line-height: 1.4;
+}
+
+.sei-footer p {
+  margin: 2px 0;
+  font-weight: 700;
+}
+
+.sei-pagina {
+  margin-top: 18px;
+  padding-top: 6px;
+  border-top: 1px solid #CBD5E1;
+  text-align: center;
+  font-size: 9pt;
+  color: #475569;
 }

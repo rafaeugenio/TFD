@@ -2,25 +2,46 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Sparkles, Stethoscope, UserCircle2 } from 'lucide-react';
+import { AlertTriangle, FileText, Paperclip, Sparkles, Stethoscope, UserCircle2, Users, X } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import Autocomplete, { type AutocompleteOption } from '@/shared/components/autocomplete/Autocomplete';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
-import { templatesParecer, aplicarPlaceholders } from '../../_data/templates-parecer';
+import {
+  templatesParecer,
+  aplicarPlaceholders,
+  templateExigeVarianteServicoMA,
+  VARIANTE_SERVICO_MA_LABEL,
+  type VarianteServicoMA,
+} from '../../_data/templates-parecer';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import { buscarCid10 } from '@/services/cid10.service';
 import { buscarCid11 } from '@/services/cid11.service';
 import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
+import { calcularIdade } from '@/shared/utils/idade';
 import type { DecisaoParecer, ParecerMock, TipoParecer } from '@/core/mocks/fluxo-v2-v3-seed';
-import { TIPO_PARECER_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
 
 const inputStyle: React.CSSProperties = {
   background: 'white',
   border: '1px solid var(--tfd-surface-border)',
   borderRadius: 8,
 };
+
+/**
+ * Wrapper que força o <input> interno do Autocomplete a usar exatamente
+ * a mesma fonte, padding, borda e raio dos selects nativos do drawer.
+ * Tailwind arbitrary-variants ([&_input]) entra no input filho sem mexer
+ * no componente Autocomplete em si.
+ */
+const cidWrapperClass =
+  '[&_input]:w-full ' +
+  '[&_input]:px-3 [&_input]:py-2 ' +
+  '[&_input]:text-[13px] ' +
+  '[&_input]:bg-white ' +
+  '[&_input]:rounded-[8px] ' +
+  '[&_input]:border [&_input]:border-[var(--tfd-surface-border)] ' +
+  '[&_input]:shadow-none';
 
 interface Props {
   open: boolean;
@@ -41,11 +62,18 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
   const { isAdmin } = usePermissions();
 
   const [decisao, setDecisao] = useState<DecisaoParecer>('deferido');
-  const [tipo, setTipo] = useState<TipoParecer>('tfd_completo');
+  // `tipo` ainda é gravado no ParecerMock pra retrocompat — fixado em
+  // 'tfd_completo' já que a UI de seleção foi removida (só temos 2 templates).
+  const tipo: TipoParecer = 'tfd_completo';
   const [cidPrincipal, setCidPrincipal] = useState('');
+  const [cidPrincipalNome, setCidPrincipalNome] = useState('');
   const [cidSecundario, setCidSecundario] = useState('');
+  const [cidSecundarioNome, setCidSecundarioNome] = useState('');
   const [versaoCID, setVersaoCID] = useState<'10' | '11'>('10');
   const [obs, setObs] = useState('');
+  /** Variante "serviço no MA" — só usada em templates deferidos que oferecem
+   *  as duas opções (TFD completo, Ajuda de custo). Default sem_servico_ma. */
+  const [varianteServicoMA, setVarianteServicoMA] = useState<VarianteServicoMA>('sem_servico_ma');
 
   // Dados do médico — em modo CRIAÇÃO vêm do usuário logado (snapshot do perfil).
   // Em modo EDIÇÃO mantemos o que foi gravado no parecer original (não sobrescreve).
@@ -66,16 +94,18 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
     if (open) {
       if (editar) {
         setDecisao(editar.decisao);
-        setTipo(editar.tipo ?? 'tfd_completo');
         setCidPrincipal(editar.cidPrincipal ?? '');
+        setCidPrincipalNome(editar.cidPrincipalNome ?? '');
         setCidSecundario(editar.cidSecundario ?? '');
+        setCidSecundarioNome(editar.cidSecundarioNome ?? '');
         setVersaoCID(editar.versaoCID ?? '10');
         setObs(editar.observacao ?? '');
       } else {
         setDecisao('deferido');
-        setTipo('tfd_completo');
         setCidPrincipal('');
+        setCidPrincipalNome('');
         setCidSecundario('');
+        setCidSecundarioNome('');
         setVersaoCID('10');
         setObs('');
       }
@@ -87,9 +117,10 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
    * Pegamos o primeiro disponível — se houver mais de um, vence o primeiro
    * registrado no array. Se não houver, o botão fica desabilitado.
    */
-  const templateAtual = templatesParecer.find(
-    (t) => t.tipo === tipo && t.decisao === decisao,
-  );
+  // Apenas 2 templates totais: um deferido + um indeferido. Casa por decisao.
+  const templateAtual = templatesParecer.find((t) => t.decisao === decisao);
+
+  const exigeVariante = templateExigeVarianteServicoMA(tipo, decisao);
 
   function aplicarModelo() {
     if (!templateAtual) return;
@@ -99,9 +130,14 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
       crmUf: medicoCrmUf,
       especialidade: medicoEspecialidade,
     };
-    const textoFinal = solicitacao
-      ? aplicarPlaceholders(templateAtual.texto, solicitacao, templateAtual.tipo, medicoCtx)
-      : aplicarPlaceholders(templateAtual.texto, undefined, templateAtual.tipo, medicoCtx);
+    const variante = exigeVariante ? varianteServicoMA : undefined;
+    const textoFinal = aplicarPlaceholders(
+      templateAtual.texto,
+      solicitacao,
+      templateAtual.tipo,
+      medicoCtx,
+      variante,
+    );
     setObs(textoFinal);
   }
 
@@ -137,7 +173,9 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
       decisao,
       tipo,
       cidPrincipal: cidPrincipal || undefined,
+      cidPrincipalNome: cidPrincipalNome || undefined,
       cidSecundario: cidSecundario || undefined,
+      cidSecundarioNome: cidSecundarioNome || undefined,
       versaoCID,
       observacao: obs || undefined,
       medico: medicoNome,
@@ -190,6 +228,11 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
       }
     >
       {snapshotPaciente && <SnapshotPaciente data={snapshotPaciente} />}
+
+      {/* Resumo da solicitação — paciente + acompanhantes + anexos.
+          Dá ao médico tudo que precisa para emitir o parecer sem sair do drawer. */}
+      {solicitacao && <ResumoSolicitacaoCard sol={solicitacao} />}
+
       {/* T2.AH — Decisão (segmented control com 2 opções) */}
       <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
         Decisão
@@ -217,22 +260,28 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
         })}
       </div>
 
-      {/* Tipo de parecer */}
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-        Tipo de parecer
-      </label>
-      <select
-        value={tipo}
-        onChange={(e) => setTipo(e.target.value as TipoParecer)}
-        className="w-full px-3 py-2 text-[13px] mb-4"
-        style={inputStyle}
-      >
-        {(Object.keys(TIPO_PARECER_LABEL) as TipoParecer[]).map((t) => (
-          <option key={t} value={t}>
-            {TIPO_PARECER_LABEL[t]}
-          </option>
-        ))}
-      </select>
+      {/* Variante "serviço no MA" — só aparece em Deferido.
+          A escolha aqui muda o parágrafo inserido pelo "Inserir template". */}
+      {exigeVariante && (
+        <>
+          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+            Situação do serviço no Maranhão
+          </label>
+          <select
+            value={varianteServicoMA}
+            onChange={(e) => setVarianteServicoMA(e.target.value as VarianteServicoMA)}
+            className="w-full px-3 py-2 text-[13px] mb-1"
+            style={inputStyle}
+          >
+            {(Object.keys(VARIANTE_SERVICO_MA_LABEL) as VarianteServicoMA[]).map((v) => (
+              <option key={v} value={v}>{VARIANTE_SERVICO_MA_LABEL[v]}</option>
+            ))}
+          </select>
+          <p className="text-[11px] mb-4" style={{ color: '#9CA3AF' }}>
+            Define qual parágrafo entra no template ao clicar em <strong>Inserir template</strong>.
+          </p>
+        </>
+      )}
 
       {/* Template — único botão de ação direta */}
       <div className="mb-4">
@@ -255,7 +304,7 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
           }
         >
           <Sparkles size={13} style={{ color: templateAtual ? 'var(--tfd-blue)' : '#CBD5E1' }} />
-          Inserir modelo
+          Inserir template
         </button>
       </div>
 
@@ -292,46 +341,78 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
         })}
       </div>
 
-      {/* CIDs — autocomplete puxando da tabela CID-10 ou CID-11 */}
+      {/* CIDs — autocomplete puxando da tabela CID-10 ou CID-11.
+          Empilhados; após seleção exibimos código + descrição juntos.
+          O texto do parecer NÃO é preenchido automaticamente — o médico digita
+          o diagnóstico manualmente quando precisar variar.
+          Wrapper [&_input] padroniza o input do autocomplete pra casar com os
+          selects do drawer (mesma fonte 13px, padding 8/12, raio 8, borda). */}
       <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-        CIDs
+        CID principal
       </label>
-      <div className="grid grid-cols-2 gap-2 mb-4">
-        <div>
-          <Autocomplete
-            placeholder={`CID principal (CID-${versaoCID})`}
-            value={cidPrincipal}
-            onChange={(v) => setCidPrincipal(v)}
-            onSearch={cidSearch}
-            onSelect={(item) => setCidPrincipal(item.value)}
-            renderOption={renderCidOption}
-            size="sm"
-          />
-        </div>
-        <div>
-          <Autocomplete
-            placeholder={`CID secundário (CID-${versaoCID})`}
-            value={cidSecundario}
-            onChange={(v) => setCidSecundario(v)}
-            onSearch={cidSearch}
-            onSelect={(item) => setCidSecundario(item.value)}
-            renderOption={renderCidOption}
-            size="sm"
-          />
-        </div>
+      <div className={cidWrapperClass + ' mb-1'}>
+        <Autocomplete
+          placeholder={`Buscar código ou descrição (CID-${versaoCID})`}
+          value={cidPrincipal}
+          onChange={(v) => {
+            setCidPrincipal(v);
+            // Se o usuário apaga, limpa o nome também — evita estado inconsistente.
+            if (!v) setCidPrincipalNome('');
+          }}
+          onSearch={cidSearch}
+          onSelect={(item) => {
+            setCidPrincipal(item.value);
+            setCidPrincipalNome((item.descricao as string) ?? '');
+          }}
+          renderOption={renderCidOption}
+          size="sm"
+        />
       </div>
+      <CidSelecionadoChip
+        codigo={cidPrincipal}
+        nome={cidPrincipalNome}
+        onClear={() => { setCidPrincipal(''); setCidPrincipalNome(''); }}
+        className="mb-5"
+      />
+
+      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+        CID secundário <span style={{ color: '#94A3B8', fontWeight: 400 }}>(opcional)</span>
+      </label>
+      <div className={cidWrapperClass + ' mb-1'}>
+        <Autocomplete
+          placeholder={`Buscar código ou descrição (CID-${versaoCID})`}
+          value={cidSecundario}
+          onChange={(v) => {
+            setCidSecundario(v);
+            if (!v) setCidSecundarioNome('');
+          }}
+          onSearch={cidSearch}
+          onSelect={(item) => {
+            setCidSecundario(item.value);
+            setCidSecundarioNome((item.descricao as string) ?? '');
+          }}
+          renderOption={renderCidOption}
+          size="sm"
+        />
+      </div>
+      <CidSelecionadoChip
+        codigo={cidSecundario}
+        nome={cidSecundarioNome}
+        onClear={() => { setCidSecundario(''); setCidSecundarioNome(''); }}
+        className="mb-6"
+      />
 
       {/* Observação */}
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2 mt-6" style={{ color: '#6B7280' }}>
         Observação
       </label>
       <textarea
         value={obs}
         onChange={(e) => setObs(e.target.value)}
-        rows={5}
+        rows={16}
         placeholder="Observações do parecer..."
-        className="w-full px-3 py-2 text-[13px] mb-4"
-        style={inputStyle}
+        className="w-full px-3 py-2 text-[13px] mb-4 leading-relaxed"
+        style={{ ...inputStyle, fontFamily: 'inherit', resize: 'vertical', minHeight: 320 }}
       />
 
       {/* Médico — preenchido automaticamente a partir do usuário logado */}
@@ -404,5 +485,165 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
         </div>
       )}
     </Drawer>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Subcomponentes                                                            */
+/* -------------------------------------------------------------------------- */
+
+/** Chip que aparece logo abaixo do autocomplete de CID com o código + descrição
+ *  selecionados — dá ao médico a confirmação visual do que ele escolheu. */
+function CidSelecionadoChip({
+  codigo,
+  nome,
+  onClear,
+  className = '',
+}: {
+  codigo: string;
+  nome: string;
+  onClear: () => void;
+  className?: string;
+}) {
+  if (!codigo || !nome) return null;
+  return (
+    <div
+      className={`inline-flex items-start gap-2 px-2.5 py-1.5 text-[12px] ${className}`}
+      style={{
+        background: '#EFF6FF',
+        border: '1px solid #BFDBFE',
+        borderRadius: 6,
+        color: '#1E40AF',
+        maxWidth: '100%',
+      }}
+    >
+      <span className="font-mono font-semibold shrink-0">{codigo}</span>
+      <span style={{ color: '#1E3A8A' }} className="flex-1">{nome}</span>
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label="Limpar CID"
+        style={{ color: '#64748B' }}
+        className="shrink-0"
+      >
+        <X size={12} />
+      </button>
+    </div>
+  );
+}
+
+/** Card de resumo da solicitação exibido no topo do drawer.
+ *  Mostra paciente, acompanhantes e anexos (com destaque para o laudo) para que
+ *  o médico possa avaliar tudo o que precisa sem fechar o drawer. */
+function ResumoSolicitacaoCard({
+  sol,
+}: {
+  sol: import('@/core/mocks/fluxo-v2-v3-seed').SolicitacaoMock;
+}) {
+  const p = sol.paciente;
+  const ehLaudo = (nome: string) => /laudo/i.test(nome);
+  const laudos = sol.anexos.filter((a) => ehLaudo(a.nome));
+  const outros = sol.anexos.filter((a) => !ehLaudo(a.nome));
+
+  const fmtDataBR = (iso?: string) => {
+    if (!iso) return '—';
+    const [y, m, d] = iso.split('-');
+    return y && m && d ? `${d}/${m}/${y}` : iso;
+  };
+
+  return (
+    <section
+      className="mb-4 p-3"
+      style={{
+        background: '#F8FAFC',
+        border: '1px solid var(--tfd-surface-border)',
+        borderRadius: 10,
+      }}
+    >
+      <header className="flex items-center justify-between mb-2">
+        <h3 className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: '#475569' }}>
+          Resumo da solicitação
+        </h3>
+        <Link
+          href={`/fluxo-v2/solicitacoes/${sol.id}`}
+          target="_blank"
+          rel="noopener"
+          className="text-[11px] hover:underline"
+          style={{ color: 'var(--tfd-blue)' }}
+        >
+          Abrir solicitação ↗
+        </Link>
+      </header>
+
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[12px]" style={{ color: '#334155' }}>
+        <Linha label="Paciente" valor={p.nome} />
+        <Linha label="Sexo / Idade" valor={`${p.sexo === 'F' ? 'Feminino' : 'Masculino'} · ${calcularIdade(p.dataNascimento)} anos`} />
+        <Linha label="CPF" valor={p.cpf} mono />
+        <Linha label="Nascimento" valor={fmtDataBR(p.dataNascimento)} />
+        <Linha label="Município" valor={p.municipio} />
+        <Linha label="Data do laudo" valor={fmtDataBR(sol.dataLaudo)} />
+      </div>
+
+      {sol.acompanhantes.length > 0 && (
+        <div className="mt-3 pt-3" style={{ borderTop: '1px dashed #CBD5E1' }}>
+          <div className="flex items-center gap-1.5 mb-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#475569' }}>
+            <Users size={11} /> Acompanhantes ({sol.acompanhantes.length})
+          </div>
+          <ul className="flex flex-col gap-0.5 text-[12px]" style={{ color: '#334155' }}>
+            {sol.acompanhantes.map((a) => (
+              <li key={a.id}>
+                <span style={{ fontWeight: 500 }}>{a.nome}</span>{' '}
+                <span style={{ color: '#64748B' }}>· {a.vinculo} · {calcularIdade(a.dataNascimento)} anos</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="mt-3 pt-3" style={{ borderTop: '1px dashed #CBD5E1' }}>
+        <div className="flex items-center gap-1.5 mb-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#475569' }}>
+          <Paperclip size={11} /> Documentos ({sol.anexos.length})
+        </div>
+        {sol.anexos.length === 0 ? (
+          <p className="text-[12px]" style={{ color: '#94A3B8' }}>
+            Nenhum documento anexado. <strong style={{ color: '#B45309' }}>Atenção:</strong> laudo costuma ser obrigatório.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {[...laudos, ...outros].map((a) => (
+              <li key={a.id} className="flex items-center gap-2 text-[12px]">
+                <FileText size={12} style={{ color: ehLaudo(a.nome) ? '#1D4ED8' : '#94A3B8' }} />
+                <Link
+                  href={`/fluxo-v2/solicitacoes/${sol.id}?tab=anexos`}
+                  target="_blank"
+                  rel="noopener"
+                  className="hover:underline"
+                  style={{ color: ehLaudo(a.nome) ? '#1D4ED8' : '#334155', fontWeight: ehLaudo(a.nome) ? 600 : 400 }}
+                >
+                  {a.nome}
+                </Link>
+                {ehLaudo(a.nome) && (
+                  <span
+                    className="px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+                    style={{ background: '#EFF6FF', color: '#1D4ED8', borderRadius: 4 }}
+                  >
+                    Laudo
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function Linha({ label, valor, mono }: { label: string; valor: string; mono?: boolean }) {
+  return (
+    <div className="flex flex-col leading-tight">
+      <span className="text-[10.5px] uppercase tracking-wider" style={{ color: '#94A3B8' }}>{label}</span>
+      <span className={mono ? 'font-mono' : ''} style={{ color: '#1E293B' }}>{valor || '—'}</span>
+    </div>
   );
 }

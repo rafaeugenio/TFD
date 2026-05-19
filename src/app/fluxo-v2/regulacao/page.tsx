@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Eye, Stethoscope, Stamp, CalendarPlus, Send, Search } from 'lucide-react';
+import { Stethoscope, Stamp, CalendarPlus, CalendarCheck, Send, Search } from 'lucide-react';
 import { idadeAnos } from '../_utils/idade';
 import RowActions from '../_components/RowActions';
 import BotaoEnvio from '../_components/BotaoEnvio';
@@ -17,7 +17,13 @@ import { tempoNoSetor } from '../_utils/tempoSetor';
 import { isTramitacaoRecente } from '../_utils/tramitacao';
 import { TramitacaoInfoPopover } from '../_components/TramitacaoBadge';
 import { isLocked, setorAtual, tooltipLocked } from '../_utils/lock';
-import { temAgendamentoConfirmado } from '../_utils/agendamento';
+import { temAgendamentoConfirmado, agendamentoConfirmado, dataDoAgendamento } from '../_utils/agendamento';
+
+const fmtDataBR = (iso: string) => {
+  const [y, m, d] = iso.split('-');
+  if (!y || !m || !d) return iso;
+  return `${d}/${m}/${y}`;
+};
 import Pagination from '@/shared/components/pagination/Pagination';
 import StatsRow from '@/shared/components/stats-row/StatsRow';
 import PageHeader from '@/shared/components/page-header/PageHeader';
@@ -43,7 +49,8 @@ const CARIMBO_OPTIONS: { value: CarimboFiltro; label: string }[] = [
   { value: 'APROVADO_DIRETO', label: 'APROVADO DIRETO' },
   { value: 'CNRAC', label: 'CNRAC' },
   { value: 'CET', label: 'CET' },
-  { value: 'OUTROS', label: 'OUTROS' },
+  { value: 'SAIS_DUTRA', label: 'SAIS / DUTRA' },
+  { value: 'AGENDAMENTO', label: 'AGENDAMENTO' },
   { value: 'sem_carimbo', label: 'Sem carimbo' },
 ];
 
@@ -190,7 +197,7 @@ export default function RegulacaoListPage() {
               <SortTh label="Número" field="numero" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Paciente" field="paciente" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Município" field="municipio" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
-              <Th>Pareceres</Th>
+              <Th>Resumo</Th>
               <SortTh label="Carimbo" field="carimbo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Tempo" field="tempo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <Th align="right">Ações</Th>
@@ -235,7 +242,7 @@ export default function RegulacaoListPage() {
                     cursor: 'pointer',
                   }}
                   className={'hover:bg-[#F8FAFC] transition-colors'}
-                  onClick={() => router.push(`/fluxo-v2/solicitacoes/${s.id}?tab=regulacao`)}
+                  onClick={() => router.push(`/fluxo-v2/solicitacoes/${s.id}?tab=regulacao&from=regulacao`)}
                 >
                   <td className="px-4 py-3.5 font-mono text-[13px]">
                     <span className="inline-flex items-center gap-1.5 flex-wrap">
@@ -271,7 +278,7 @@ export default function RegulacaoListPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3.5">
-                    <PareceresCell s={s} />
+                    <ResumoRegulacao s={s} />
                   </td>
                   <td className="px-4 py-3.5">
                     {s.carimboRegulacao ? (
@@ -285,12 +292,18 @@ export default function RegulacaoListPage() {
                           letterSpacing: '0.05em',
                         }}
                         title={
-                          s.carimboRegulacao === 'OUTROS' && s.carimboOutrosInfo
-                            ? `Outros — ${s.carimboOutrosInfo.unidadeOrgao} (${s.carimboOutrosInfo.formaContato})`
+                          s.carimboRegulacao === 'AGENDAMENTO' && s.carimboOutrosInfo
+                            ? `Agendamento — ${s.carimboOutrosInfo.unidadeOrgao}`
                             : undefined
                         }
                       >
-                        {s.carimboRegulacao === 'APROVADO_DIRETO' ? 'APR' : s.carimboRegulacao}
+                        {s.carimboRegulacao === 'APROVADO_DIRETO'
+                          ? 'APR'
+                          : s.carimboRegulacao === 'SAIS_DUTRA'
+                            ? 'SAIS'
+                            : s.carimboRegulacao === 'AGENDAMENTO'
+                              ? 'AGND'
+                              : s.carimboRegulacao}
                       </span>
                     ) : (
                       <span style={{ color: '#CBD5E1', fontSize: 13 }}>—</span>
@@ -303,12 +316,6 @@ export default function RegulacaoListPage() {
                     <div className="inline-flex items-center">
                       <RowActions
                         actions={[
-                          {
-                            key: 'abrir',
-                            icon: Eye,
-                            label: 'Abrir',
-                            onClick: () => router.push(`/fluxo-v2/solicitacoes/${s.id}?tab=regulacao`),
-                          },
                           {
                             key: 'parecer',
                             icon: Stethoscope,
@@ -417,26 +424,130 @@ function Th({ children, align = 'left' }: { children: React.ReactNode; align?: '
  * Coluna Pareceres — link para o último parecer (abre print em nova aba).
  * Quando não há pareceres, mostra texto cinza "Sem parecer ainda".
  */
-function PareceresCell({ s }: { s: SolicitacaoMock }) {
-  const total = s.pareceres.length;
-  if (total === 0) {
-    return (
-      <span className="text-[13px]" style={{ color: '#94A3B8' }}>
-        Sem parecer ainda
-      </span>
-    );
-  }
-  const ultimo = s.pareceres[total - 1];
-  const decisaoLabel = ultimo.decisao === 'deferido' ? 'Deferido' : 'Indeferido';
+/**
+ * Resumo do que a solicitação tem dentro da Regulação:
+ *  Linha 1 (verde)   — Agendamento confirmado (unidade + data) ou "Sem agendamento".
+ *  Linha 2 (violeta) — Pareceres com último desfecho ou "Sem parecer".
+ *
+ * Mesma estética do resumo do Financeiro: ícone em quadrado colorido +
+ * contagem em negrito + info secundária em monospace + chip inline para
+ * estados que exigem atenção.
+ */
+function ResumoRegulacao({ s }: { s: SolicitacaoMock }) {
+  const ag = agendamentoConfirmado(s);
+  const dataAg = ag ? fmtDataBR(dataDoAgendamento(ag).slice(0, 10)) : null;
+  const unidadeAg = ag?.unidade ?? null;
+
+  const totalPareceres = s.pareceres.length;
+  const ultimoParecer = totalPareceres > 0 ? s.pareceres[totalPareceres - 1] : null;
+  const ultimaDecisao = ultimoParecer?.decisao === 'deferido' ? 'Deferido' : ultimoParecer?.decisao === 'indeferido' ? 'Indeferido' : null;
+
   return (
-    <Link
-      href={`/parecer/${ultimo.id}`}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 hover:underline"
-      style={{ color: '#146BFA', fontSize: 13, fontWeight: 500, textUnderlineOffset: 3 }}
-    >
-      Ver parecer #{total} · {decisaoLabel} →
-    </Link>
+    <div className="flex flex-col gap-1">
+      <ResumoLinha
+        icon={ag ? <CalendarCheck size={13} strokeWidth={2.2} /> : <CalendarPlus size={13} strokeWidth={2.2} />}
+        tone={ag ? 'green' : 'muted'}
+        label={ag ? 'Agendamento' : '0 agendamentos'}
+        info={
+          ag
+            ? [unidadeAg?.split(' (')[0], dataAg].filter(Boolean).join(' · ')
+            : null
+        }
+        statusInline={ag ? null : 'Sem agendamento'}
+        statusTone="green"
+      />
+      <ResumoLinha
+        icon={<Stethoscope size={13} strokeWidth={2.2} />}
+        tone={totalPareceres > 0 ? 'violet' : 'muted'}
+        label={
+          totalPareceres === 0
+            ? '0 pareceres'
+            : totalPareceres === 1
+              ? '1 parecer'
+              : `${totalPareceres} pareceres`
+        }
+        info={ultimaDecisao ? `Último: ${ultimaDecisao}` : null}
+        statusInline={totalPareceres === 0 ? 'Sem parecer' : null}
+        statusTone="violet"
+      />
+    </div>
+  );
+}
+
+function ResumoLinha({
+  icon,
+  tone,
+  label,
+  info,
+  statusInline,
+  statusTone,
+}: {
+  icon: React.ReactNode;
+  tone: 'green' | 'violet' | 'muted';
+  label: string;
+  info?: string | null;
+  statusInline?: string | null;
+  /** Tom do chip de status quando exibido. */
+  statusTone?: 'green' | 'violet';
+}) {
+  const tones: Record<
+    'green' | 'violet' | 'muted',
+    { fg: string; iconBg: string }
+  > = {
+    green:  { fg: '#047857', iconBg: '#ECFDF5' },
+    violet: { fg: '#6D28D9', iconBg: '#F5F3FF' },
+    muted:  { fg: '#94A3B8', iconBg: '#F1F5F9' },
+  };
+  const chipTones: Record<'green' | 'violet', { bg: string; fg: string; dot: string }> = {
+    green:  { bg: '#ECFDF5', fg: '#047857', dot: '#10B981' },
+    violet: { bg: '#F5F3FF', fg: '#6D28D9', dot: '#8B5CF6' },
+  };
+  const t = tones[tone];
+  const chip = statusInline && statusTone ? chipTones[statusTone] : null;
+
+  return (
+    <div className="inline-flex items-center gap-2 text-[12.5px] whitespace-nowrap">
+      <span
+        className="inline-flex items-center justify-center shrink-0"
+        style={{
+          width: 22, height: 22,
+          background: t.iconBg, color: t.fg,
+          borderRadius: 6,
+        }}
+        aria-hidden
+      >
+        {icon}
+      </span>
+      <span style={{ color: '#1E293B' }}>
+        <strong style={{ fontWeight: 600 }}>{label.split(' ')[0]}</strong>{' '}
+        {label.split(' ').slice(1).join(' ')}
+      </span>
+      {info && (
+        <span className="font-mono" style={{ color: '#64748B' }} title={info}>
+          · {info}
+        </span>
+      )}
+      {chip && statusInline && (
+        <span
+          className="inline-flex items-center gap-1 shrink-0"
+          style={{
+            background: chip.bg,
+            color: chip.fg,
+            borderRadius: 999,
+            padding: '1px 8px',
+            fontSize: 10.5,
+            fontWeight: 600,
+            lineHeight: 1.4,
+            marginLeft: 2,
+          }}
+        >
+          <span
+            style={{ width: 5, height: 5, borderRadius: '50%', background: chip.dot }}
+            aria-hidden
+          />
+          {statusInline}
+        </span>
+      )}
+    </div>
   );
 }

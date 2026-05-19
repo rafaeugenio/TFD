@@ -90,7 +90,11 @@ export interface ParecerMock {
   /** Tipo de parecer — opcional para retrocompat com seeds antigas. */
   tipo?: TipoParecer;
   cidPrincipal?: string;
+  /** Descrição do CID principal (preservada junto ao código para exibição). */
+  cidPrincipalNome?: string;
   cidSecundario?: string;
+  /** Descrição do CID secundário. */
+  cidSecundarioNome?: string;
   /** T2.AI — Versão da CID usada (default '10' quando ausente). */
   versaoCID?: '10' | '11';
   observacao?: string;
@@ -103,13 +107,18 @@ export interface ParecerMock {
   medicoEspecialidade?: string;
 }
 
-export type CarimboRegulacao = 'APROVADO_DIRETO' | 'CNRAC' | 'CET' | 'OUTROS';
+export type CarimboRegulacao =
+  | 'APROVADO_DIRETO'
+  | 'CNRAC'
+  | 'CET'
+  | 'SAIS_DUTRA'
+  | 'AGENDAMENTO';
 
 /**
- * T2.AP — Quando `carimboRegulacao === 'OUTROS'`, registra o contato manual
- * feito pela regulação com a unidade/órgão (varia por estado/caso). Permite
- * representar SAIS, Hospital Universitário, ou qualquer outro contato manual
- * fora dos fluxos padronizados (CNRAC, CET).
+ * Quando `carimboRegulacao === 'AGENDAMENTO'` (antigo "OUTROS"), a regulação
+ * agora faz o contato manual via Agendamentos & tentativas — os detalhes vivem
+ * nas tentativas. Esta interface segue exposta para compatibilidade com dados
+ * legados persistidos antes do rename.
  */
 export interface CarimboOutrosInfo {
   /** Nome da unidade ou órgão contatado (ex.: 'SAIS', 'Hospital Universitário'). */
@@ -144,14 +153,21 @@ export type DesfechoTentativa =
 export interface TentativaUnidadeMock {
   id: string;
   unidade: string;
-  data: string; // ISO datetime — data da tentativa (ou do agendamento, quando confirmada)
+  /** Data em que a regulação entrou em contato com a unidade (controle interno). */
+  data: string;
   desfecho: DesfechoTentativa;
   observacao?: string;
+  /**
+   * Data efetiva do agendamento do paciente na unidade — só preenchida quando
+   * `desfecho === 'agendamento_confirmado'`. Diferente de `data`, que é a data
+   * em que o contato foi feito.
+   */
+  dataAgendamento?: string;
   /** Hora do agendamento — só preenchido quando `desfecho === 'agendamento_confirmado'`. */
   hora?: string;
   /** Tipo do procedimento — só usado quando `desfecho === 'agendamento_confirmado'`. */
   tipoProcedimento?: TipoProcedimento;
-  /** Telefone da unidade — só usado quando `desfecho === 'agendamento_confirmado'`. */
+  /** Telefone/e-mail da unidade — registrado em qualquer desfecho. */
   contatoUnidade?: string;
   /** Observações de chegada — só usado quando `desfecho === 'agendamento_confirmado'`. */
   observacoesChegada?: string;
@@ -166,10 +182,21 @@ export const DESFECHO_TENTATIVA_LABEL: Record<DesfechoTentativa, string> = {
   agendamento_confirmado: 'Agendamento confirmado',
 };
 
-/** T2.AJ — Tipo de procedimento que será realizado na unidade de destino. */
-export type TipoProcedimento = 'consulta' | 'cirurgia' | 'exame' | 'tratamento_continuo';
+/** T2.AJ — Tipo de procedimento que será realizado na unidade de destino.
+ *  Fonte de verdade: tabela auxiliar `tipo_procedimento` (lookup dinâmico).
+ *  Os 4 literais abaixo são apenas autocompletar para os códigos legados —
+ *  o `(string & {})` permite qualquer outro código vindo da lookup (ex.
+ *  'hemodialise', 'odontologia', 'quimioterapia', 'radioterapia', ...). */
+export type TipoProcedimento =
+  | 'consulta'
+  | 'cirurgia'
+  | 'exame'
+  | 'tratamento_continuo'
+  | (string & {});
 
-export const TIPO_PROCEDIMENTO_LABEL: Record<TipoProcedimento, string> = {
+/** @deprecated Fallback estático. Use `useTiposProcedimento().getLabel(codigo)`
+ *  para resolver rótulos dinamicamente a partir da tabela auxiliar. */
+export const TIPO_PROCEDIMENTO_LABEL: Record<string, string> = {
   consulta: 'Consulta',
   cirurgia: 'Cirurgia',
   exame: 'Exame',
@@ -307,6 +334,9 @@ export interface AdicionalMock {
   beneficiarioTipo?: 'paciente' | 'acompanhante';
   /** Quando ACOMPANHANTE, aponta para o id do acompanhante. */
   beneficiarioId?: string;
+  /** Vínculo opcional com uma passagem da solicitação. Quando presente,
+   *  o valor do adicional é agregado à passagem nos relatórios. */
+  viagemId?: string;
 }
 
 /** Tipo da solicitação. NORMAL cobre o fluxo completo (viagens + adicionais + ajuda).
@@ -388,7 +418,7 @@ export interface SolicitacaoMock {
   pareceres: ParecerMock[];
   carimboRegulacao?: CarimboRegulacao;
   carimboObservacao?: string;
-  /** T2.AP — Detalhes do contato manual quando `carimboRegulacao === 'OUTROS'`. */
+  /** Legado — preenchido em registros antigos quando o carimbo era 'OUTROS'. */
   carimboOutrosInfo?: CarimboOutrosInfo;
   agendamento?: AgendamentoMock;
   viagens: ViagemMock[];

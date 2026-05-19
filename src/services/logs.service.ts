@@ -184,3 +184,72 @@ export const ENTIDADE_MODULO: Record<string, string> = {
   regionais_saude: 'Cadastros',
   unidades_destino: 'Cadastros',
 };
+
+/* -------------------------------------------------------------------------- */
+/*  Autores derivados dos logs (linha do tempo)                               */
+/* -------------------------------------------------------------------------- */
+
+export interface AutorRegistro {
+  autor: string;
+  perfilAutor: string;
+}
+
+export type AutorResolver = (
+  entidade: string,
+  entidadeId?: string | null,
+) => AutorRegistro | null;
+
+/**
+ * Carrega INSERTs de `log_auditoria` para a solicitação e devolve um resolver
+ * que mapeia (entidade, entidadeId?) → { autor, perfilAutor }. Quando o
+ * `entidadeId` não é informado, retorna o registro mais recente daquela
+ * entidade (útil pra entidades sem id no mock, como `encerramento`).
+ */
+export async function carregarAutoresDaSolicitacao(
+  solicitacaoId: string,
+): Promise<AutorResolver> {
+  const supabase = createClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const base: any = supabase
+    .from('log_auditoria')
+    .select(
+      `id, acao, entidade_alterada, entidade_id, perfil_usuario, created_at,
+       usuario:usuarios!log_auditoria_usuario_id_fkey(nome_completo)`,
+    );
+  const { data, error } = (await base
+    .eq('solicitacao_id', solicitacaoId)
+    .eq('acao', 'INSERT')
+    .order('created_at', { ascending: false })) as {
+    data: Array<{
+      entidade_alterada: string;
+      entidade_id: string | null;
+      perfil_usuario: string | null;
+      created_at: string;
+      usuario: { nome_completo: string } | null;
+    }> | null;
+    error: unknown;
+  };
+
+  if (error || !data) return () => null;
+
+  const porId = new Map<string, AutorRegistro>();
+  const ultimoPorTipo = new Map<string, AutorRegistro>();
+  for (const row of data) {
+    const reg: AutorRegistro = {
+      autor: row.usuario?.nome_completo ?? 'Usuário',
+      perfilAutor: row.perfil_usuario ?? '',
+    };
+    if (row.entidade_id) {
+      // primeiro INSERT é o do meio do array (ordenado desc); só preencha se ainda não existir
+      if (!porId.has(row.entidade_id)) porId.set(row.entidade_id, reg);
+    }
+    // como já vem ordenado desc, o primeiro encontrado é o mais recente
+    if (!ultimoPorTipo.has(row.entidade_alterada))
+      ultimoPorTipo.set(row.entidade_alterada, reg);
+  }
+
+  return (entidade, entidadeId) => {
+    if (entidadeId) return porId.get(entidadeId) ?? ultimoPorTipo.get(entidade) ?? null;
+    return ultimoPorTipo.get(entidade) ?? null;
+  };
+}

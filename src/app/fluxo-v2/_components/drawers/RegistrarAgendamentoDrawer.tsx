@@ -93,7 +93,9 @@ export default function RegistrarAgendamentoDrawer({
           (u.cnes && nomeAtual.includes(u.cnes)),
       );
       setUnidadeId(match?.id ?? '');
-      setData(confirmadaAtual?.data?.slice(0, 10) ?? '');
+      // No modelo novo, a data do agendamento mora em `dataAgendamento`. Caímos
+      // em `data` para registros legados.
+      setData((confirmadaAtual?.dataAgendamento ?? confirmadaAtual?.data ?? '').slice(0, 10));
       setHora(confirmadaAtual?.hora ?? '');
       setTipoProcedimento(confirmadaAtual?.tipoProcedimento ?? '');
       setContatoUnidade(confirmadaAtual?.contatoUnidade ?? '');

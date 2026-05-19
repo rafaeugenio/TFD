@@ -473,7 +473,7 @@ function PainelContent() {
                   {alertas.paradas.map((p) => (
                     <li key={p.id}>
                       <Link
-                        href={`/fluxo-v2/solicitacoes/${p.id}`}
+                        href={`/fluxo-v2/solicitacoes/${p.id}?from=dashboard`}
                         className="flex items-center justify-between px-2 py-1 text-[12px] rounded hover:bg-[#FFFBEB] transition-colors"
                         style={{ color: '#78350F' }}
                       >

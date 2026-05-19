@@ -125,7 +125,9 @@ function parecerFromRow(r: Row): ParecerMock {
     decisao: (str(r.decisao) === 'INDEFERIDO' ? 'indeferido' : 'deferido') as DecisaoParecer,
     tipo: opt(r.tipo) as TipoParecer | undefined,
     cidPrincipal: opt(r.cid_principal),
+    cidPrincipalNome: opt(r.cid_principal_nome),
     cidSecundario: opt(r.cid_secundario),
+    cidSecundarioNome: opt(r.cid_secundario_nome),
     versaoCID: (opt(r.versao_cid) as '10' | '11' | undefined) ?? '10',
     observacao: opt(r.justificativa),
     medico: str(auditor?.nome_completo),
@@ -158,11 +160,12 @@ function carimboFromRotas(rotas: Row[]): {
   if (tipo === 'APROVADO_DIRETO') carimbo = 'APROVADO_DIRETO';
   else if (tipo === 'CNRAC') carimbo = 'CNRAC';
   else if (tipo === 'SETI') carimbo = 'CET';
-  else if (tipo === 'RESPOSTA_EXTERNA' || tipo === 'ENCAMINHADO_SERVICO_SOCIAL') carimbo = 'OUTROS';
+  else if (tipo === 'SAIS_DUTRA') carimbo = 'SAIS_DUTRA';
+  else if (tipo === 'RESPOSTA_EXTERNA' || tipo === 'ENCAMINHADO_SERVICO_SOCIAL') carimbo = 'AGENDAMENTO';
 
   const formaContato = str(latest.outros_forma_contato);
   const outrosInfo: CarimboOutrosInfo | undefined =
-    carimbo === 'OUTROS' && str(latest.outros_unidade_orgao)
+    carimbo === 'AGENDAMENTO' && str(latest.outros_unidade_orgao)
       ? {
           unidadeOrgao: str(latest.outros_unidade_orgao),
           formaContato: (formaContato || 'telefone') as CarimboOutrosInfo['formaContato'],
@@ -208,14 +211,16 @@ function tentativasFromRows(rows: Row[]): TentativaUnidadeMock[] {
       return {
         id: str(r.id),
         unidade: str(r.unidade_nome) || str(obj(r.unidades_destino)?.nome),
-        data: isConfirmada && dataConfirmada ? dataConfirmada : dataContato,
+        data: dataContato,
         desfecho,
         observacao: opt(r.observacao),
+        dataAgendamento: isConfirmada && dataConfirmada ? dataConfirmada : undefined,
         hora: isConfirmada ? opt(r.hora_agendamento) : undefined,
         tipoProcedimento: isConfirmada
           ? TIPO_PROC_FROM_DB[str(r.tipo_procedimento)]
           : undefined,
-        contatoUnidade: isConfirmada ? opt(r.contato_unidade) : undefined,
+        // Contato (telefone/email) é registrado em qualquer desfecho — não só no confirmado.
+        contatoUnidade: opt(r.contato_unidade),
         observacoesChegada: isConfirmada ? opt(r.observacoes_chegada) : undefined,
       };
     })
@@ -330,6 +335,7 @@ function adicionaisFromRows(rows: Row[]): AdicionalMock[] {
     status: STATUS_ADICIONAL_FROM_DB[str(r.status)] ?? 'pendente_aprovacao',
     beneficiarioTipo: str(r.beneficiario_tipo) === 'ACOMPANHANTE' ? 'acompanhante' : 'paciente',
     beneficiarioId: opt(r.beneficiario_id),
+    viagemId: opt(r.viagem_id),
   }));
 }
 

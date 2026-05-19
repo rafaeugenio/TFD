@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Eye, Pencil, Archive, Send } from 'lucide-react';
+import { Plus, Search, Pencil, Archive, Send } from 'lucide-react';
 import { idadeAnos } from '../_utils/idade';
 import StatusV2Badge from '../_components/StatusV2Badge';
 import RowActions from '../_components/RowActions';
@@ -307,12 +307,6 @@ export default function SolicitacoesV2ListPage() {
                     <div className="inline-flex items-center">
                       <RowActions
                         actions={[
-                          {
-                            key: 'abrir',
-                            icon: Eye,
-                            label: 'Abrir',
-                            onClick: () => router.push(`/fluxo-v2/solicitacoes/${s.id}`),
-                          },
                           {
                             key: 'editar',
                             icon: Pencil,

@@ -23,6 +23,15 @@ export function temAgendamentoConfirmado(s: SolicitacaoMock): boolean {
   return !!agendamentoConfirmado(s);
 }
 
+/**
+ * Data efetiva do agendamento do paciente. Quando a tentativa foi registrada
+ * com o campo `dataAgendamento` (modelo novo), usamos ele; caso contrário cai
+ * no `data` (legado, onde os dois conceitos eram unificados).
+ */
+export function dataDoAgendamento(t: TentativaUnidadeMock): string {
+  return t.dataAgendamento ?? t.data;
+}
+
 /** Tentativas que NÃO são o agendamento confirmado (histórico). */
 export function tentativasHistoricas(
   s: SolicitacaoMock,

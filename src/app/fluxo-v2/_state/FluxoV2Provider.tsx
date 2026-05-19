@@ -232,7 +232,16 @@ export interface NewSolicitacaoInput {
   acompanhanteIds: string[];
   /** 'normal' (com viagens) ou 'ajuda_custo' (paciente já no destino — só diárias). */
   tipoSolicitacao?: 'normal' | 'ajuda_custo';
-  agendamento?: { unidade: string; data: string; hora: string };
+  /** Agendamento na criação — uma única unidade pode hospedar múltiplos
+   *  procedimentos (consulta, exame, cirurgia, tratamento contínuo). Cada
+   *  procedimento vira uma tentativa confirmada no AgendamentoMock. */
+  agendamento?: {
+    unidade: string;
+    procedimentos: Array<{
+      tipoProcedimento: import('@/core/mocks/fluxo-v2-v3-seed').TipoProcedimento;
+      data: string;
+    }>;
+  };
   dataLaudo?: string;
   anexos: { nome: string; tipo: string }[];
   numeroSEI?: string;
@@ -360,23 +369,23 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     const realId = await persistInsert('solicitacoes', novaSolicitacaoPayload);
     const id = realId ?? uid('s');
 
-    // T2.AM — Quando criação informa um agendamento, ele entra como tentativa
-    // confirmada (única) dentro do AgendamentoMock-container.
-    const ag: AgendamentoMock | undefined = input.agendamento
-      ? {
-          id: uid('ag'),
-          origem: 'criacao',
-          tentativas: [
-            {
+    // T2.AM — A criação pode informar N procedimentos na mesma unidade.
+    // Cada procedimento vira uma tentativa `agendamento_confirmado` dentro do
+    // mesmo container AgendamentoMock.
+    const ag: AgendamentoMock | undefined =
+      input.agendamento && input.agendamento.procedimentos.length > 0
+        ? {
+            id: uid('ag'),
+            origem: 'criacao',
+            tentativas: input.agendamento.procedimentos.map((p) => ({
               id: uid('t'),
-              unidade: input.agendamento.unidade,
-              data: input.agendamento.data,
+              unidade: input.agendamento!.unidade,
+              data: p.data,
               desfecho: 'agendamento_confirmado',
-              hora: input.agendamento.hora,
-            },
-          ],
-        }
-      : undefined;
+              tipoProcedimento: p.tipoProcedimento,
+            })),
+          }
+        : undefined;
 
     const novo: SolicitacaoMock = {
       id,
@@ -432,7 +441,9 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       if (patch.decisao) dbPatch.decisao = patch.decisao === 'indeferido' ? 'INDEFERIDO' : 'DEFERIDO';
       if (patch.tipo !== undefined) dbPatch.tipo = patch.tipo;
       if (patch.cidPrincipal !== undefined) dbPatch.cid_principal = patch.cidPrincipal;
+      if (patch.cidPrincipalNome !== undefined) dbPatch.cid_principal_nome = patch.cidPrincipalNome || null;
       if (patch.cidSecundario !== undefined) dbPatch.cid_secundario = patch.cidSecundario || null;
+      if (patch.cidSecundarioNome !== undefined) dbPatch.cid_secundario_nome = patch.cidSecundarioNome || null;
       if (patch.versaoCID !== undefined) dbPatch.versao_cid = patch.versaoCID;
       if (patch.observacao !== undefined) dbPatch.justificativa = patch.observacao;
       if (Object.keys(dbPatch).length) persistUpdate('pareceres', parecerId, dbPatch);
@@ -455,13 +466,13 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     mutate(id, (s) => {
       s.carimboRegulacao = c;
       s.carimboObservacao = observacao?.trim() ? observacao.trim() : undefined;
-      s.carimboOutrosInfo = c === 'OUTROS' ? outrosInfo : undefined;
+      s.carimboOutrosInfo = c === 'AGENDAMENTO' ? outrosInfo : undefined;
       return s;
     });
     void currentUserId().then((userId) => {
       void persistInsert(
         'rotas_regulacao',
-        buildRotaRegulacao(id, c, userId, observacao, c === 'OUTROS' ? outrosInfo : undefined),
+        buildRotaRegulacao(id, c, userId, observacao, c === 'AGENDAMENTO' ? outrosInfo : undefined),
       );
     });
   }, [mutate]);
@@ -570,7 +581,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
           ? {
               ...t,
               unidade: a.unidade,
-              data: a.data,
+              dataAgendamento: a.data,
               hora: a.hora,
               tipoProcedimento: a.tipoProcedimento,
               contatoUnidade: contato,
@@ -578,12 +589,14 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
             }
           : t,
       );
-      // Se ainda não havia uma confirmada, cria uma nova.
+      // Se ainda não havia uma confirmada, cria uma nova. Nesse caso usamos a
+      // mesma data para "data" (sem outra referência) e "dataAgendamento".
       if (!tentativas.some((t) => t.desfecho === 'agendamento_confirmado')) {
         tentativas.push({
           id: uid('t'),
           unidade: a.unidade,
           data: a.data,
+          dataAgendamento: a.data,
           desfecho: 'agendamento_confirmado',
           hora: a.hora,
           tipoProcedimento: a.tipoProcedimento,
@@ -920,6 +933,9 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         dbPatch.beneficiario_id = patch.beneficiarioTipo === 'acompanhante' ? (patch.beneficiarioId ?? null) : null;
       } else if (patch.beneficiarioId !== undefined) {
         dbPatch.beneficiario_id = patch.beneficiarioId ?? null;
+      }
+      if (patch.viagemId !== undefined) {
+        dbPatch.viagem_id = patch.viagemId ?? null;
       }
       if (Object.keys(dbPatch).length) persistUpdate('adicionais', adicionalId, dbPatch);
     },

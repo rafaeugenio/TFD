@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Eye, Plane, Wallet, PlusCircle, Send, Search } from 'lucide-react';
+import { Plane, Wallet, PlusCircle, Send, Search } from 'lucide-react';
 import { idadeAnos } from '../_utils/idade';
 import RowActions from '../_components/RowActions';
 import BotaoEnvio from '../_components/BotaoEnvio';
@@ -110,18 +110,10 @@ export default function FinanceiroListPage() {
     () => solicitacoes.filter((s) => {
       if (s.status !== 'em_financeiro') return false;
 
-      // Critério "tem algo pendente de emissão" — após resolver tudo, sai
-      // do Financeiro e passa a viver em /fluxo-v2/acompanhamento.
       const semViagem = s.viagens.filter(
         (v) => !['cancelada', 'reembolso'].includes(v.status),
       ).length === 0;
-      const ajudaPendente = s.ajudasCusto.some((a) => a.status === 'em_analise');
       const adicionalPendente = s.adicionais.some((a) => a.status === 'pendente_aprovacao');
-      // Solicitação tipo AJUDA_CUSTO não tem viagem por design; "semViagem" não
-      // sinaliza pendência nesse caso. Só pendência de ajuda/adicional importa.
-      const tipoAjudaCusto = (s as unknown as { tipoSolicitacao?: string }).tipoSolicitacao === 'AJUDA_CUSTO';
-      const temPendenciaEmissao = (!tipoAjudaCusto && semViagem) || ajudaPendente || adicionalPendente;
-      if (!temPendenciaEmissao) return false;
 
       if (filtro === 'passagens_pendentes') {
         if (!s.viagens.some((v) => v.status === 'agendada') && !semViagem) return false;
@@ -279,7 +271,7 @@ export default function FinanceiroListPage() {
               <SortTh label="Número" field="numero" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Paciente" field="paciente" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Origem" field="municipio" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
-              <Th>O que falta fazer</Th>
+              <Th>Resumo</Th>
               <SortTh label="Total previsto" field="total" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} align="right" />
               <SortTh label="Aguardando há" field="tempo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <Th align="right">Ações</Th>
@@ -332,7 +324,7 @@ export default function FinanceiroListPage() {
                     cursor: 'pointer',
                   }}
                   className={'hover:bg-[#F8FAFC] transition-colors'}
-                  onClick={() => router.push(`/fluxo-v2/solicitacoes/${s.id}?tab=financeiro`)}
+                  onClick={() => router.push(`/fluxo-v2/solicitacoes/${s.id}?tab=financeiro&from=financeiro`)}
                 >
                   <td className="px-4 py-3.5 font-mono text-[13px]">
                     <span className="inline-flex items-center gap-1.5 flex-wrap">
@@ -368,7 +360,11 @@ export default function FinanceiroListPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3.5">
-                    <PendenciasChips s={s} />
+                    <ResumoSolicitacao
+                      s={s}
+                      totalPassagens={totalPassagens}
+                      totalAjuda={totalAjuda}
+                    />
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono" style={{ color: '#0F172A', fontWeight: 600, fontSize: 14 }}>
                     {fmtBRL(total)}
@@ -380,12 +376,6 @@ export default function FinanceiroListPage() {
                     <div className="inline-flex items-center">
                       <RowActions
                         actions={[
-                          {
-                            key: 'abrir',
-                            icon: Eye,
-                            label: 'Abrir',
-                            onClick: () => router.push(`/fluxo-v2/solicitacoes/${s.id}?tab=financeiro`),
-                          },
                           {
                             key: 'passagem',
                             icon: Plane,
@@ -483,52 +473,136 @@ function Th({ children, align = 'left' }: { children: React.ReactNode; align?: '
 
 /** Chips de pendências da solicitação dentro do Financeiro. Cada chip
  *  representa uma ação que o operador precisa tomar. */
-function PendenciasChips({ s }: { s: SolicitacaoMock }) {
-  const viagensAtivas = s.viagens.filter((v) => !['cancelada', 'reembolso'].includes(v.status));
-  const tipoAjudaCusto = (s as unknown as { tipoSolicitacao?: string }).tipoSolicitacao === 'AJUDA_CUSTO';
-  const semViagem = viagensAtivas.length === 0;
-  const ajudasPendentes = s.ajudasCusto.filter((a) => a.status === 'em_analise').length;
-  const adicionaisPendentes = s.adicionais.filter((a) => a.status === 'pendente_aprovacao').length;
+/**
+ * Resumo do que a solicitação já tem hoje (passagens + ajudas de custo),
+ * com ícone, contagem e valor agregado. Não mostra adicionais por escolha
+ * do usuário — quem precisa desse detalhe abre a solicitação.
+ */
+function ResumoSolicitacao({
+  s,
+  totalPassagens,
+  totalAjuda,
+}: {
+  s: SolicitacaoMock;
+  totalPassagens: number;
+  totalAjuda: number;
+}) {
+  const viagensAtivas = s.viagens.filter(
+    (v) => !['cancelada', 'reembolso'].includes(v.status),
+  );
+  const qtdPassagens = viagensAtivas.length;
+  const qtdAjudas = s.ajudasCusto.length;
 
-  const chips: { label: string; tone: 'blue' | 'amber' | 'violet' }[] = [];
-  if (!tipoAjudaCusto && semViagem) {
-    chips.push({ label: 'Emitir passagem', tone: 'blue' });
-  }
-  if (ajudasPendentes > 0) {
-    chips.push({
-      label: ajudasPendentes === 1 ? 'Aprovar ajuda' : `Aprovar ${ajudasPendentes} ajudas`,
-      tone: 'amber',
-    });
-  }
-  if (adicionaisPendentes > 0) {
-    chips.push({
-      label: adicionaisPendentes === 1 ? 'Decidir adicional' : `Decidir ${adicionaisPendentes} adicionais`,
-      tone: 'violet',
-    });
-  }
-  if (chips.length === 0) {
+  const viagensAgendadas = viagensAtivas.filter((v) => v.status === 'agendada').length;
+  const ajudaEmAnalise = s.ajudasCusto.filter((a) => a.status === 'em_analise').length;
+
+  // Status inline da passagem — sempre azul. "Sem viagem" cobre o caso vazio,
+  // "N a emitir" cobre o caso parcial; quando tudo emitido, omitimos o chip
+  // pra não poluir a célula.
+  const statusPassagem =
+    qtdPassagens === 0
+      ? 'Sem viagem'
+      : viagensAgendadas > 0
+        ? `${viagensAgendadas} a emitir`
+        : null;
+
+  const statusAjuda = ajudaEmAnalise > 0 ? `${ajudaEmAnalise} em análise` : null;
+
+  if (qtdPassagens === 0 && qtdAjudas === 0) {
     return <span style={{ color: '#CBD5E1', fontSize: 12 }}>—</span>;
   }
 
-  const tones: Record<'blue' | 'amber' | 'violet', { bg: string; fg: string; bd: string }> = {
-    blue:   { bg: '#EFF6FF', fg: '#1D4ED8', bd: '#BFDBFE' },
-    amber:  { bg: '#FFFBEB', fg: '#92400E', bd: '#FDE68A' },
-    violet: { bg: '#F5F3FF', fg: '#5B21B6', bd: '#DDD6FE' },
-  };
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {chips.map((c, i) => {
-        const t = tones[c.tone];
-        return (
+    <div className="flex flex-col gap-1">
+      <ResumoItem
+        icon={<Plane size={13} strokeWidth={2.2} />}
+        tone="blue"
+        quantidade={qtdPassagens}
+        unidadeSing="passagem"
+        unidadePlural="passagens"
+        valor={totalPassagens}
+        statusInline={statusPassagem}
+      />
+      {qtdAjudas > 0 && (
+        <ResumoItem
+          icon={<Wallet size={13} strokeWidth={2.2} />}
+          tone="orange"
+          quantidade={qtdAjudas}
+          unidadeSing="ajuda de custo"
+          unidadePlural="ajudas de custo"
+          valor={totalAjuda}
+          statusInline={statusAjuda}
+        />
+      )}
+    </div>
+  );
+}
+
+function ResumoItem({
+  icon,
+  tone,
+  quantidade,
+  unidadeSing,
+  unidadePlural,
+  valor,
+  statusInline,
+}: {
+  icon: React.ReactNode;
+  tone: 'blue' | 'orange';
+  quantidade: number;
+  unidadeSing: string;
+  unidadePlural: string;
+  valor: number;
+  /** Pequeno chip de status na mesma linha (ex.: "1 a emitir"). Quando null,
+   *  fica oculto — o resumo fica em uma única linha limpa. */
+  statusInline?: string | null;
+}) {
+  const tones: Record<'blue' | 'orange', { fg: string; iconBg: string; chipBg: string; chipFg: string; chipDot: string }> = {
+    blue:   { fg: '#1D4ED8', iconBg: '#EFF6FF', chipBg: '#EFF6FF', chipFg: '#1D4ED8', chipDot: '#146BFA' },
+    orange: { fg: '#C2410C', iconBg: '#FFF7ED', chipBg: '#FFF7ED', chipFg: '#C2410C', chipDot: '#F97316' },
+  };
+  const t = tones[tone];
+  const label = quantidade === 1 ? unidadeSing : unidadePlural;
+  return (
+    <div className="inline-flex items-center gap-2 text-[12.5px] whitespace-nowrap">
+      <span
+        className="inline-flex items-center justify-center shrink-0"
+        style={{
+          width: 22, height: 22,
+          background: t.iconBg, color: t.fg,
+          borderRadius: 6,
+        }}
+        aria-hidden
+      >
+        {icon}
+      </span>
+      <span style={{ color: '#1E293B' }}>
+        <strong style={{ fontWeight: 600 }}>{quantidade}</strong> {label}
+      </span>
+      <span className="font-mono" style={{ color: '#64748B' }}>
+        · {fmtBRL(valor)}
+      </span>
+      {statusInline && (
+        <span
+          className="inline-flex items-center gap-1 shrink-0"
+          style={{
+            background: t.chipBg,
+            color: t.chipFg,
+            borderRadius: 999,
+            padding: '1px 8px',
+            fontSize: 10.5,
+            fontWeight: 600,
+            lineHeight: 1.4,
+            marginLeft: 2,
+          }}
+        >
           <span
-            key={i}
-            className="inline-flex items-center px-2 py-[3px] text-[11px] font-semibold"
-            style={{ background: t.bg, color: t.fg, border: `1px solid ${t.bd}`, borderRadius: 999 }}
-          >
-            {c.label}
-          </span>
-        );
-      })}
+            style={{ width: 5, height: 5, borderRadius: '50%', background: t.chipDot }}
+            aria-hidden
+          />
+          {statusInline}
+        </span>
+      )}
     </div>
   );
 }

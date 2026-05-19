@@ -13,8 +13,12 @@ import {
 } from '@/core/mocks/fluxo-v2-v3-seed';
 import { agendamentoConfirmado } from '../../_utils/agendamento';
 import { listarUnidadesSaude } from '@/services/unidades-saude.service';
-import { listarPorCategoria } from '@/services/tabelas-auxiliares.service';
 import AuxSelectInline from '@/shared/components/aux-select-inline/AuxSelectInline';
+import { maskPhone } from '@/shared/pipes/formatters';
+
+// Validações simples para os campos livres de contato.
+const TELEFONE_REGEX = /^\(\d{2}\) 9?\d{4}-\d{4}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface UnidadeRow {
   id: string;
@@ -22,11 +26,6 @@ interface UnidadeRow {
   cnes: string | null;
   cidade: string;
   uf: string;
-}
-
-interface CanalRow {
-  codigo: string;
-  nome: string;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -59,21 +58,17 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
 
   const [unidade, setUnidade] = useState('');
   const [unidadeId, setUnidadeId] = useState('');
-  const [data, setData] = useState('');
+  const [data, setData] = useState(''); // data da tentativa (contato com a unidade)
+  const [dataAgendamento, setDataAgendamento] = useState(''); // data do agendamento do paciente
   const [desfecho, setDesfecho] = useState<DesfechoTentativa>('pendente');
-  const [hora, setHora] = useState('');
   const [tipoProcedimento, setTipoProcedimento] = useState<TipoProcedimento | ''>('');
-  const [contatoUnidade, setContatoUnidade] = useState('');
   const [telefoneContato, setTelefoneContato] = useState('');
-  const [meioContato, setMeioContato] = useState('');
-  const [observacoesChegada, setObservacoesChegada] = useState('');
+  const [emailContato, setEmailContato] = useState('');
   const [obs, setObs] = useState('');
   const [forcarSubstituicao, setForcarSubstituicao] = useState(false);
 
-  // Unidades de saúde + canais (canal_comunicacao agora vem do AuxSelectInline)
   const [unidades, setUnidades] = useState<UnidadeRow[]>([]);
   const [loadingUnidades, setLoadingUnidades] = useState(false);
-  const [canais, setCanais] = useState<CanalRow[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -84,18 +79,6 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
       if (error) console.warn('[NewTentativaDrawer] unidades:', error.message);
       setUnidades(((data ?? []) as unknown as UnidadeRow[]).filter((u) => u.nome));
       setLoadingUnidades(false);
-    });
-    listarPorCategoria('canal_comunicacao').then(({ data, error }) => {
-      if (cancelled) return;
-      if (error) console.warn('[NewTentativaDrawer] canais:', error.message);
-      const seen = new Set<string>();
-      const dedup = ((data ?? []) as unknown as CanalRow[]).filter((c) => {
-        const k = c.nome.toLowerCase();
-        if (seen.has(k)) return false;
-        seen.add(k);
-        return true;
-      });
-      setCanais(dedup);
     });
     return () => { cancelled = true; };
   }, [open]);
@@ -111,25 +94,26 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
       setUnidadeId('');
       // Date input usa só YYYY-MM-DD; aceita ISO datetime cortando.
       setData(editar.data?.slice(0, 10) ?? '');
+      setDataAgendamento(editar.dataAgendamento?.slice(0, 10) ?? '');
       setDesfecho(editar.desfecho);
-      setHora(editar.hora ?? '');
       setTipoProcedimento(editar.tipoProcedimento ?? '');
-      setContatoUnidade(editar.contatoUnidade ?? '');
-      setTelefoneContato(editar.contatoUnidade ?? '');
-      setMeioContato('');
-      setObservacoesChegada(editar.observacoesChegada ?? '');
-      setObs(editar.observacao ?? '');
+      // Tenta separar telefone do email se vier no formato "tel · email" do legado.
+      const partes = (editar.contatoUnidade ?? '').split(' · ');
+      const possivelEmail = partes.find((p) => p.includes('@'));
+      const possivelTel = partes.find((p) => !p.includes('@'));
+      setTelefoneContato(possivelTel ?? '');
+      setEmailContato(possivelEmail ?? '');
+      // "Observações de chegada" foi unificado em uma única observação.
+      setObs(editar.observacao ?? editar.observacoesChegada ?? '');
     } else {
       setUnidade('');
       setUnidadeId('');
       setData('');
+      setDataAgendamento('');
       setDesfecho('pendente');
-      setHora('');
       setTipoProcedimento('');
-      setContatoUnidade('');
       setTelefoneContato('');
-      setMeioContato('');
-      setObservacoesChegada('');
+      setEmailContato('');
       setObs('');
     }
     setForcarSubstituicao(false);
@@ -145,35 +129,40 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
     return confirmadaAtual;
   }, [isConfirmacao, confirmadaAtual, editar]);
 
+  // Telefone e email são opcionais, mas se preenchidos precisam estar válidos.
+  const telTrim = telefoneContato.trim();
+  const emailTrim = emailContato.trim();
+  const telefoneValido = telTrim.length === 0 || TELEFONE_REGEX.test(telTrim);
+  const emailValido = emailTrim.length === 0 || EMAIL_REGEX.test(emailTrim);
+
   const valido =
     (unidadeId.length > 0 || unidade.trim().length > 0) &&
     data.length > 0 &&
-    (!isConfirmacao || hora.length > 0) &&
+    telefoneValido &&
+    emailValido &&
+    (!isConfirmacao || dataAgendamento.length > 0) &&
     (!conflitoConfirmacao || forcarSubstituicao);
-  // contatoUnidade não é mais usado diretamente — combinamos telefone + meio acima.
-  void contatoUnidade;
-  void setContatoUnidade;
 
   function handleSalvar() {
     if (!valido) return;
-    // Junta telefone + canal no campo `contatoUnidade` (registra como ele foi contactado)
-    const telTrim = telefoneContato.trim();
-    const meio = meioContato ? (canais.find((c) => c.codigo === meioContato)?.nome ?? meioContato) : '';
-    const contatoCombo = telTrim
-      ? meio ? `${telTrim} (${meio})` : telTrim
-      : meio || undefined;
+    // Junta telefone + email no campo `contatoUnidade` (registra como o
+    // contato foi feito — separados por " · ").
+    const partes: string[] = [];
+    if (telTrim) partes.push(telTrim);
+    if (emailTrim) partes.push(emailTrim);
+    const contatoFinal = partes.length > 0 ? partes.join(' · ') : undefined;
 
     const payload = {
       unidade: unidade.trim(),
-      data,
+      data, // data de contato com a unidade
       desfecho,
       observacao: obs.trim() || undefined,
-      hora: isConfirmacao ? hora : undefined,
+      // Data efetiva do agendamento do paciente (≠ data da tentativa).
+      dataAgendamento: isConfirmacao ? dataAgendamento : undefined,
+      hora: undefined,
       tipoProcedimento: isConfirmacao ? (tipoProcedimento || undefined) : undefined,
-      // O contato da unidade já foi registrado na tentativa (telefone + meio acima).
-      // No desfecho "confirmado" não pedimos de novo.
-      contatoUnidade: contatoCombo,
-      observacoesChegada: isConfirmacao ? (observacoesChegada.trim() || undefined) : undefined,
+      contatoUnidade: contatoFinal,
+      observacoesChegada: undefined,
     };
     if (isEdicao && editar) {
       editarTentativa(solicitacaoId, editar.id, payload);
@@ -272,8 +261,9 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
         style={inputStyle}
       />
 
-      {/* Telefone + meio de contato — registra como a unidade foi contactada */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
+      {/* Telefone + email — campos livres pra registrar como o contato foi feito.
+          O canal (WhatsApp, SMS, e-mail, Telegram, etc.) vem na linha abaixo. */}
+      <div className="grid grid-cols-2 gap-3 mb-3">
         <div>
           <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
             Telefone
@@ -281,20 +271,46 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
           <input
             type="tel"
             value={telefoneContato}
-            onChange={(e) => setTelefoneContato(e.target.value)}
-            placeholder="(00) 0000-0000"
+            onChange={(e) => setTelefoneContato(maskPhone(e.target.value))}
+            placeholder="(00) 00000-0000"
+            inputMode="tel"
             className="w-full px-3 py-2 text-[13px] font-mono"
-            style={inputStyle}
+            style={{
+              ...inputStyle,
+              borderColor: telefoneValido ? 'var(--tfd-surface-border)' : '#DC2626',
+            }}
           />
+          {!telefoneValido && (
+            <p className="mt-1 text-[11px]" style={{ color: '#DC2626' }}>
+              Formato esperado: (DD) XXXX-XXXX ou (DD) 9XXXX-XXXX.
+            </p>
+          )}
         </div>
-        <AuxSelectInline
-          categoria="canal_comunicacao"
-          label="Meio de contato"
-          value={meioContato}
-          onChange={setMeioContato}
-        />
+        <div>
+          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+            E-mail
+          </label>
+          <input
+            type="email"
+            value={emailContato}
+            onChange={(e) => setEmailContato(e.target.value)}
+            placeholder="contato@unidade.gov.br"
+            inputMode="email"
+            autoCapitalize="off"
+            spellCheck={false}
+            className="w-full px-3 py-2 text-[13px]"
+            style={{
+              ...inputStyle,
+              borderColor: emailValido ? 'var(--tfd-surface-border)' : '#DC2626',
+            }}
+          />
+          {!emailValido && (
+            <p className="mt-1 text-[11px]" style={{ color: '#DC2626' }}>
+              E-mail inválido.
+            </p>
+          )}
+        </div>
       </div>
-
       <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
         Desfecho
       </label>
@@ -327,37 +343,30 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
             </span>
           </div>
 
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Hora
-          </label>
-          <input
-            type="time"
-            value={hora}
-            onChange={(e) => setHora(e.target.value)}
-            className="w-full px-3 py-2 text-[13px] mb-4"
-            style={inputStyle}
-          />
-
           <AuxSelectInline
             categoria="tipo_procedimento"
             label="Tipo de procedimento"
             value={tipoProcedimento}
             onChange={(v) => setTipoProcedimento(v as TipoProcedimento | '')}
             placeholder="— não informado —"
-            className="mb-4"
+            className="mb-3"
           />
 
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Observações de chegada
+          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#15803D' }}>
+            Data do agendamento <span style={{ color: '#94A3B8', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(data em que o paciente vai à unidade)</span>
           </label>
-          <textarea
-            value={observacoesChegada}
-            onChange={(e) => setObservacoesChegada(e.target.value)}
-            rows={3}
-            placeholder="Ex.: comparecer 1h antes, em jejum"
+          <input
+            type="date"
+            value={dataAgendamento}
+            onChange={(e) => setDataAgendamento(e.target.value)}
             className="w-full px-3 py-2 text-[13px]"
             style={inputStyle}
           />
+
+          <p className="mt-2 text-[11.5px]" style={{ color: '#475569' }}>
+            A <strong>data da tentativa</strong> acima é quando o contato foi feito;
+            a <strong>data do agendamento</strong> é quando o paciente comparece à unidade.
+          </p>
         </div>
       )}
 

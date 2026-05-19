@@ -12,6 +12,8 @@ import LinhaDoTempoTab from '../../_components/LinhaDoTempoTab';
 import ObservacoesTab from '../../_components/ObservacoesTab';
 import RegulacaoTab from '../../_components/RegulacaoTab';
 import FinanceiroTab from '../../_components/FinanceiroTab';
+import AnexosTab from '../../_components/AnexosTab';
+import { agregarAnexos } from '../../_utils/anexosUnificados';
 import EnviarParaSetorDrawer from '../../_components/drawers/EnviarParaSetorDrawer';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
@@ -19,13 +21,15 @@ import { isLocked, tooltipLocked, setorAtual } from '../../_utils/lock';
 import { DetailPageSkeleton } from '@/shared/components/skeleton';
 import { Can } from '@/shared/auth/Can';
 import { useToast } from '@/shared/components/toast/Toast';
+import { resolverOrigem } from '@/shared/utils/solicitacaoOrigem';
 
-type TabKey = 'timeline' | 'regulacao' | 'financeiro' | 'observacoes';
+type TabKey = 'timeline' | 'regulacao' | 'financeiro' | 'anexos' | 'observacoes';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'timeline',    label: 'Linha do tempo' },
   { key: 'regulacao',   label: 'Regulação' },
   { key: 'financeiro',  label: 'Financeiro' },
+  { key: 'anexos',      label: 'Anexos' },
   { key: 'observacoes', label: 'Observações' },
 ];
 
@@ -52,6 +56,10 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
 
   const tabParam = searchParams.get('tab');
   const activeTab: TabKey = tabParam && TABS.some((t) => t.key === tabParam) ? (tabParam as TabKey) : 'timeline';
+
+  // "Voltar" usa a origem (?from=...) quando informada, senão cai em Solicitações.
+  const origem = resolverOrigem(searchParams.get('from'));
+  const voltar = origem ?? { href: '/fluxo-v2/solicitacoes', label: 'Solicitações' };
 
   // Redireciona aba legada `?tab=dados` para sem param (vira Linha do tempo).
   useEffect(() => {
@@ -126,8 +134,8 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
 
   return (
     <div>
-      <Link href="/fluxo-v2/solicitacoes" className="inline-flex items-center gap-1 text-[12px] mb-3 transition-colors hover:text-[#1A1D2B]" style={{ color: '#6B7280' }}>
-        <ArrowLeft size={12} /> Voltar para Solicitações
+      <Link href={voltar.href} className="inline-flex items-center gap-1 text-[12px] mb-3 transition-colors hover:text-[#1A1D2B]" style={{ color: '#6B7280' }}>
+        <ArrowLeft size={12} /> Voltar para {voltar.label}
       </Link>
 
       {/* ============ Header (corporativo, 2-3 linhas) ============ */}
@@ -273,7 +281,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
               </>
             )}
             <Sep />
-            <AnexosPopover anexos={s.anexos} />
+            <AnexosCounter total={agregarAnexos(s).length} onClick={() => setTab('anexos')} ativo={activeTab === 'anexos'} />
             <Sep />
             <span style={{ color: '#475569' }}>{acompResumo}</span>
           </div>
@@ -364,6 +372,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
         )}
         {activeTab === 'regulacao'   && <RegulacaoTab s={s} />}
         {activeTab === 'financeiro'  && <FinanceiroTab s={s} />}
+        {activeTab === 'anexos'      && <AnexosTab s={s} />}
         {activeTab === 'observacoes' && (
           <div id="observacoes" className="min-w-0">
             <ObservacoesTab s={s} />
@@ -593,76 +602,41 @@ function TipoSolicitacaoBadge({ tipo }: { tipo?: 'normal' | 'ajuda_custo' }) {
 }
 
 /**
- * T2.AO — Popover compacto para listar anexos da solicitação. Cada anexo é
- * clicável (mock-only — abre alert simulando download). Mantém aparência
- * neutra (cinza), sem cor.
+ * Chip de contagem de anexos no header. Linka para a aba "Anexos" que mostra
+ * a lista completa (incluindo comprovantes de adicionais, bilhetes, pareceres
+ * gerados pelo sistema e despachos). Substitui o antigo popover por uma única
+ * fonte de verdade — a aba.
  */
-function AnexosPopover({
-  anexos,
-}: {
-  anexos: Array<{ id: string; nome: string; tipo: string; tamanhoKB?: number }>;
-}) {
-  const [open, setOpen] = useState(false);
-  const count = anexos.length;
-  const dim = count === 0;
+function AnexosCounter({ total, onClick, ativo }: { total: number; onClick: () => void; ativo: boolean }) {
+  const dim = total === 0;
   return (
-    <span className="relative inline-flex">
-      <button
-        type="button"
-        onClick={() => !dim && setOpen((v) => !v)}
-        onBlur={() => setTimeout(() => setOpen(false), 120)}
-        className="inline-flex items-center gap-1.5 transition-colors"
-        style={{
-          color: dim ? '#94A3B8' : '#475569',
-          background: 'transparent',
-          cursor: dim ? 'default' : 'pointer',
-        }}
-        title={count === 0 ? 'Nenhum anexo' : `${count} anexo(s)`}
-      >
-        <Paperclip size={12} strokeWidth={2.2} style={{ color: '#94A3B8' }} />
-        <span>
-          <strong style={{ color: dim ? '#94A3B8' : '#1E293B', fontWeight: 600 }}>{count}</strong>{' '}
-          {count === 1 ? 'anexo' : 'anexos'}
-        </span>
-      </button>
-      {open && count > 0 && (
-        <div
-          className="absolute left-0 top-full mt-1 z-30"
-          style={{
-            background: 'white',
-            border: '1px solid #E2E8F0',
-            borderRadius: 8,
-            boxShadow: '0 10px 24px rgba(15,23,42,0.10)',
-            minWidth: 280,
-            padding: 6,
-          }}
-        >
-          <ul className="flex flex-col gap-0.5">
-            {anexos.map((a) => (
-              <li key={a.id}>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    if (typeof window !== 'undefined') {
-                      window.alert(`Abrir/baixar anexo: ${a.nome}`);
-                    }
-                  }}
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[12.5px] transition-colors hover:bg-[#F8FAFC] text-left"
-                  style={{ borderRadius: 6, background: 'transparent' }}
-                >
-                  <FileText size={13} style={{ color: '#94A3B8', flexShrink: 0 }} />
-                  <span className="flex-1 truncate" style={{ color: '#1E293B' }}>{a.nome}</span>
-                  {typeof a.tamanhoKB === 'number' && (
-                    <span className="text-[11px] font-mono" style={{ color: '#94A3B8' }}>{a.tamanhoKB} KB</span>
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </span>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={dim}
+      className="inline-flex items-center gap-1.5 transition-colors"
+      style={{
+        color: dim ? '#94A3B8' : ativo ? '#146BFA' : '#475569',
+        background: 'transparent',
+        cursor: dim ? 'default' : 'pointer',
+        textDecoration: dim ? 'none' : 'underline',
+        textUnderlineOffset: 3,
+        textDecorationColor: 'transparent',
+      }}
+      onMouseEnter={(e) => {
+        if (!dim) e.currentTarget.style.textDecorationColor = '#CBD5E1';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.textDecorationColor = 'transparent';
+      }}
+      title={total === 0 ? 'Nenhum anexo nesta solicitação' : `${total} anexo(s) — abrir aba Anexos`}
+    >
+      <Paperclip size={12} strokeWidth={2.2} style={{ color: '#94A3B8' }} />
+      <span>
+        <strong style={{ color: dim ? '#94A3B8' : '#1E293B', fontWeight: 600 }}>{total}</strong>{' '}
+        {total === 1 ? 'anexo' : 'anexos'}
+      </span>
+    </button>
   );
 }
 

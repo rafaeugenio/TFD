@@ -6,7 +6,6 @@ import Drawer from '@/shared/components/drawer/Drawer';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import StatusDot, { type StatusDotTone } from '../StatusDot';
 import {
-  FORMA_CONTATO_LABEL,
   type CarimboRegulacao,
   type CarimboOutrosInfo,
 } from '@/core/mocks/fluxo-v2-v3-seed';
@@ -34,8 +33,9 @@ interface CarimboOption {
 }
 
 /**
- * T2.AP — 4 opções de carimbo. As cores semânticas aparecem só como acento
- * via StatusDot (verde/info/info/warning), mantendo a paleta corporativa.
+ * Opções de carimbo. Aprovação direta + 3 exceções (CNRAC, CET, SAIS/Dutra) +
+ * "Agendamento" (contato manual via tentativas — antigo "OUTROS"). As cores
+ * semânticas aparecem só como acento via StatusDot.
  */
 const OPTIONS: CarimboOption[] = [
   {
@@ -60,19 +60,19 @@ const OPTIONS: CarimboOption[] = [
     tone: 'info',
   },
   {
-    value: 'OUTROS',
-    abrev: 'OUTROS',
-    label: 'Outros',
-    desc: 'Contato manual com unidade/órgão (varia por estado/caso).',
+    value: 'SAIS_DUTRA',
+    abrev: 'SAIS',
+    label: 'SAIS / Dutra',
+    desc: 'Encaminhamento via SAIS / Hospital Dutra — caso de exceção.',
+    tone: 'info',
+  },
+  {
+    value: 'AGENDAMENTO',
+    abrev: 'AGND',
+    label: 'Agendamento',
+    desc: 'A regulação fará os agendamentos e as tentativas manualmente até obter resposta.',
     tone: 'warning',
   },
-];
-
-const FORMA_OPTIONS: CarimboOutrosInfo['formaContato'][] = [
-  'email',
-  'telefone',
-  'sistema',
-  'presencial',
 ];
 
 export default function CarimboRegulacaoDrawer({
@@ -87,26 +87,24 @@ export default function CarimboRegulacaoDrawer({
   const [selecionado, setSelecionado] = useState<CarimboRegulacao | undefined>(carimboAtual);
   const [observacao, setObservacao] = useState(observacaoAtual ?? '');
 
-  // Campos extras quando "Outros"
-  const [unidadeOrgao, setUnidadeOrgao] = useState(outrosInfoAtual?.unidadeOrgao ?? '');
-  const [formaContato, setFormaContato] = useState<CarimboOutrosInfo['formaContato']>(
-    outrosInfoAtual?.formaContato ?? 'email',
-  );
-  const [obsOutros, setObsOutros] = useState(outrosInfoAtual?.observacao ?? '');
-
   useEffect(() => {
     if (open) {
       setSelecionado(carimboAtual);
       setObservacao(observacaoAtual ?? '');
-      setUnidadeOrgao(outrosInfoAtual?.unidadeOrgao ?? '');
-      setFormaContato(outrosInfoAtual?.formaContato ?? 'email');
-      setObsOutros(outrosInfoAtual?.observacao ?? '');
     }
-  }, [open, carimboAtual, observacaoAtual, outrosInfoAtual]);
+  }, [open, carimboAtual, observacaoAtual]);
+
+  // Mantemos `outrosInfoAtual` por compatibilidade com chamadas existentes,
+  // mas a UI atual não edita esses campos (movidos para tentativas).
+  void outrosInfoAtual;
 
   const editando = !!carimboAtual;
-  const isOutros = selecionado === 'OUTROS';
-  // Os detalhes do contato vivem agora em Agendamentos & tentativas.
+  const exigeAgendamento =
+    selecionado === 'CNRAC' ||
+    selecionado === 'CET' ||
+    selecionado === 'SAIS_DUTRA' ||
+    selecionado === 'AGENDAMENTO';
+  // Os detalhes do contato vivem em Agendamentos & tentativas.
   const valid = !!selecionado;
 
   function handleSalvar() {
@@ -192,7 +190,7 @@ export default function CarimboRegulacaoDrawer({
                     <StatusDot tone={opt.tone}>
                       {opt.value === 'APROVADO_DIRETO'
                         ? 'Aprovação'
-                        : opt.value === 'OUTROS'
+                        : opt.value === 'AGENDAMENTO'
                           ? 'Manual'
                           : 'Exceção'}
                     </StatusDot>
@@ -208,7 +206,7 @@ export default function CarimboRegulacaoDrawer({
         })}
       </div>
 
-      {isOutros && (
+      {exigeAgendamento && (
         <div
           className="mb-5 p-3 text-[12px]"
           style={{
@@ -218,7 +216,7 @@ export default function CarimboRegulacaoDrawer({
             color: '#475569',
           }}
         >
-          Os detalhes da unidade/órgão contactado ficam registrados em{' '}
+          Os detalhes do contato com a unidade ficam registrados em{' '}
           <strong>Agendamentos &amp; tentativas</strong>.
         </div>
       )}

@@ -15,7 +15,6 @@ import {
   Activity,
   FileText,
   XCircle,
-  MessageSquare,
   Loader2,
   ChevronRight,
   Package,
@@ -120,7 +119,6 @@ const SECOES: SecaoConfig[] = [
     title: 'Sistema e Acesso',
     icon: Settings,
     categorias: [
-      { key: 'canal_comunicacao', label: 'Canais de Comunicação', icon: MessageSquare, desc: 'Canais de notificação ao paciente' },
       { key: '_regioes', label: 'Regiões do Maranhão', icon: MapPin, desc: 'Agrupamentos geográficos das regionais (Sul, Leste, Norte)' },
     ],
   },

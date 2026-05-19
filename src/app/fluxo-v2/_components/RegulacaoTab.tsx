@@ -12,7 +12,7 @@ import NewTentativaDrawer from './drawers/NewTentativaDrawer';
 import CarimboRegulacaoDrawer from './drawers/CarimboRegulacaoDrawer';
 import { useToast } from '@/shared/components/toast/Toast';
 import { isLocked, tooltipLocked } from '../_utils/lock';
-import { agendamentoConfirmado, tentativasHistoricas } from '../_utils/agendamento';
+import { agendamentoConfirmado, dataDoAgendamento, tentativasHistoricas } from '../_utils/agendamento';
 import type {
   CarimboRegulacao,
   DecisaoParecer,
@@ -21,7 +21,7 @@ import type {
   SolicitacaoMock,
   TentativaUnidadeMock,
 } from '@/core/mocks/fluxo-v2-v3-seed';
-import { DESFECHO_TENTATIVA_LABEL, FORMA_CONTATO_LABEL, TIPO_PARECER_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
+import { DESFECHO_TENTATIVA_LABEL, TIPO_PARECER_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
 import { useTiposProcedimento } from '@/shared/hooks/useTiposProcedimento';
 import { descricaoCID } from '../_data/cid-labels';
 
@@ -29,7 +29,8 @@ const CARIMBO_VISUAL: Record<CarimboRegulacao, { label: string; sublabel: string
   APROVADO_DIRETO: { label: 'Aprovado direto',                          sublabel: 'Encaminhamento padrão, sem exceção.' },
   CNRAC:           { label: 'CNRAC — Central Nacional de Regulação',    sublabel: 'Alta complexidade fora do estado.' },
   CET:             { label: 'CET — Central Estadual de Tratamento',     sublabel: 'Busca de vaga via central estadual.' },
-  OUTROS:          { label: 'Outros — Contato manual',                  sublabel: 'Contato com unidade/órgão fora dos fluxos padronizados.' },
+  SAIS_DUTRA:      { label: 'SAIS / Hospital Dutra',                    sublabel: 'Encaminhamento via SAIS / Dutra — caso de exceção.' },
+  AGENDAMENTO:     { label: 'Agendamento manual',                       sublabel: 'Regulação agenda manualmente via tentativas até obter resposta.' },
 };
 
 interface Props {
@@ -54,7 +55,11 @@ export default function RegulacaoTab({ s }: Props) {
 
   const ultimoParecer = s.pareceres[s.pareceres.length - 1];
   const parecerDeferido = ultimoParecer?.decisao === 'deferido';
-  const carimboExigeAgendamento = s.carimboRegulacao === 'CNRAC' || s.carimboRegulacao === 'CET';
+  const carimboExigeAgendamento =
+    s.carimboRegulacao === 'CNRAC' ||
+    s.carimboRegulacao === 'CET' ||
+    s.carimboRegulacao === 'SAIS_DUTRA' ||
+    s.carimboRegulacao === 'AGENDAMENTO';
   const isExcecao = !!s.agendamento && s.agendamento.origem !== 'criacao';
 
   // T2.AM — Agendamento confirmado vem da tentativa com desfecho 'agendamento_confirmado'.
@@ -72,8 +77,8 @@ export default function RegulacaoTab({ s }: Props) {
   const agendamentoExcecao =
     s.agendamento &&
     (s.agendamento.origem === 'excecao_cnrac' || s.agendamento.origem === 'excecao_cet');
-  const dataAgendamento = confirmada?.data
-    ? new Date(confirmada.data).getTime()
+  const dataAgendamento = confirmada
+    ? new Date(dataDoAgendamento(confirmada)).getTime()
     : 0;
   const temParecerPosterior =
     !!agendamentoExcecao &&
@@ -207,7 +212,7 @@ export default function RegulacaoTab({ s }: Props) {
             <div className="text-[12px] leading-relaxed">
               <strong style={{ color: '#92400E' }}>Agendamento de exceção registrado</strong>
               {confirmada.unidade ? <> em <strong>{confirmada.unidade}</strong></> : null}
-              {confirmada.data ? <> em <strong>{new Date(confirmada.data).toLocaleDateString('pt-BR')}</strong></> : null}.
+              {confirmada ? <> em <strong>{new Date(dataDoAgendamento(confirmada)).toLocaleDateString('pt-BR')}</strong></> : null}.
               <br />
               Aguardando parecer de aprovação do agendamento (segundo deferimento — exigência da controladoria SES).
               <br />
@@ -337,25 +342,12 @@ export default function RegulacaoTab({ s }: Props) {
                   {carimbo === 'APROVADO_DIRETO' ? 'APR' : carimbo}
                 </span>
                 <div className="flex-1 min-w-0">
-                  {/* (label below already differentiates OUTROS from the others) */}
                   <div className="text-[13.5px] font-semibold" style={{ color: '#1A1D2B' }}>
-                    {carimbo === 'OUTROS' && s.carimboOutrosInfo
-                      ? `Outros — ${s.carimboOutrosInfo.unidadeOrgao}`
-                      : visual.label}
+                    {visual.label}
                   </div>
                   <p className="text-[12px] mt-0.5" style={{ color: '#6B7280' }}>
                     {visual.sublabel}
                   </p>
-                  {carimbo === 'OUTROS' && s.carimboOutrosInfo && (
-                    <div className="mt-2 flex items-center gap-2 text-[12px]" style={{ color: '#475569' }}>
-                      <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: '#94A3B8', letterSpacing: '0.06em' }}>
-                        Forma de contato
-                      </span>
-                      <StatusDot tone="neutral">
-                        {FORMA_CONTATO_LABEL[s.carimboOutrosInfo.formaContato]}
-                      </StatusDot>
-                    </div>
-                  )}
                   {s.carimboObservacao && (
                     <div
                       className="mt-2.5 px-3 py-2 text-[12px] leading-relaxed"
@@ -464,8 +456,7 @@ export default function RegulacaoTab({ s }: Props) {
                     {confirmada.unidade}
                   </span>
                   <span className="text-[14px]" style={{ color: '#475569', fontWeight: 500 }}>
-                    {new Date(confirmada.data).toLocaleDateString('pt-BR')}
-                    {confirmada.hora ? ` · ${confirmada.hora}` : ''}
+                    {new Date(dataDoAgendamento(confirmada)).toLocaleDateString('pt-BR')}
                   </span>
                 </div>
                 {(confirmada.tipoProcedimento || confirmada.contatoUnidade || confirmada.observacoesChegada) && (
@@ -611,7 +602,7 @@ export default function RegulacaoTab({ s }: Props) {
         outrosInfoAtual={s.carimboOutrosInfo}
         onSalvar={(c, obs, info) => {
           setCarimbo(s.id, c, obs, info);
-          toast.success('Carimbo aplicado', c === 'OUTROS' ? 'OUTROS' : c);
+          toast.success('Carimbo aplicado', CARIMBO_VISUAL[c]?.label ?? c);
         }}
       />
 

@@ -1,14 +1,14 @@
 'use client';
 
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import clsx from 'clsx';
+import { resolverOrigem } from '@/shared/utils/solicitacaoOrigem';
 import {
   LayoutDashboard,
   FileText,
   MapPin,
   Wallet,
-  ClipboardCheck,
   LogOut,
   BarChart3,
   Settings,
@@ -53,7 +53,6 @@ const navSections: NavSection[] = [
       { icon: FileText,     label: 'Solicitações', href: '/fluxo-v2/solicitacoes', tela: 'solicitacoes' },
       { icon: Stethoscope,  label: 'Regulação',    href: '/fluxo-v2/regulacao',    tela: 'regulacao' },
       { icon: Wallet,         label: 'Financeiro',     href: '/fluxo-v2/financeiro',     tela: 'financeiro' },
-      { icon: ClipboardCheck, label: 'Acompanhamento', href: '/fluxo-v2/acompanhamento', tela: 'acompanhamento' },
     ],
   },
   {
@@ -93,9 +92,20 @@ export default function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { can, isLoading } = usePermissions();
+
+  // Quando o usuário entra no detalhe de uma solicitação a partir de outra
+  // tela (ex.: Financeiro → /fluxo-v2/solicitacoes/abc?from=financeiro),
+  // mantém o item de origem ativo no menu lateral em vez de Solicitações.
+  const fromParam = searchParams.get('from');
+  const origem = resolverOrigem(fromParam);
+  const isDetalheSolicitacao = pathname.startsWith('/fluxo-v2/solicitacoes/');
+  const pathEfetivo =
+    isDetalheSolicitacao && origem ? origem.href : pathname;
+
   const isActive = (href: string) =>
-    pathname === href || pathname.startsWith(href + '/');
+    pathEfetivo === href || pathEfetivo.startsWith(href + '/');
 
   // Filtra cada seção pelos itens que o usuário pode acessar.
   // Enquanto carrega, esconde tudo (evita pisca-pisca de itens que somem).

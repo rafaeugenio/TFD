@@ -6,6 +6,7 @@ import { useToast } from '@/shared/components/toast/Toast';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import {
+  STATUS_AJUDA_LABEL,
   VALOR_DIARIA_PERNOITE,
   VALOR_DIARIA_RETORNO,
   calcularValorAjuda,
@@ -45,6 +46,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
   // T2.AQ — beneficiário no formato dos passagens: "p" = paciente, "a:<id>" = acompanhante.
   const [beneficiario, setBeneficiario] = useState<string>('p');
   const [pernoiteRetorno, setPernoiteRetorno] = useState(false);
+  const [status, setStatus] = useState<StatusAjuda>('em_analise');
 
   useEffect(() => {
     if (open) {
@@ -57,11 +59,13 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
             : `a:${editar.beneficiarioId ?? ''}`,
         );
         setPernoiteRetorno(!!editar.pernoiteRetorno);
+        setStatus(editar.status);
       } else {
         setDataInicio('');
         setDataFim('');
         setBeneficiario('p');
         setPernoiteRetorno(false);
+        setStatus('em_analise');
       }
       setTimeout(() => firstInputRef.current?.focus(), 100);
     }
@@ -88,6 +92,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
       editarAjudaCusto(solicitacaoId, editar.id, {
         dataInicio,
         dataFim,
+        status,
         ...beneficiarioPayload,
         pernoiteRetorno: pernoiteRetorno || undefined,
       });
@@ -95,7 +100,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
       addAjudaCusto(solicitacaoId, {
         dataInicio,
         dataFim,
-        status: 'em_analise' as StatusAjuda,
+        status,
         ...beneficiarioPayload,
         pernoiteRetorno: pernoiteRetorno || undefined,
       });
@@ -241,9 +246,21 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         )}
       </div>
 
-      <p className="text-[11px]" style={{ color: '#9CA3AF' }}>
-        Status inicial: <strong>em análise</strong>.
-      </p>
+      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+        Status
+      </label>
+      <select
+        value={status}
+        onChange={(e) => setStatus(e.target.value as StatusAjuda)}
+        className="w-full px-3 py-2 text-[13px]"
+        style={inputStyle}
+      >
+        {(Object.keys(STATUS_AJUDA_LABEL) as StatusAjuda[]).map((s) => (
+          <option key={s} value={s}>
+            {STATUS_AJUDA_LABEL[s]}
+          </option>
+        ))}
+      </select>
     </Drawer>
   );
 }
