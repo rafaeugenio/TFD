@@ -82,7 +82,7 @@ export default function RelatorioRPB() {
           .from('ajudas_custo')
           .select(
             'id, tipo, data_inicio, data_fim, dias_elegiveis, solicitacao_id, ' +
-            'solicitacoes!inner(cid_principal, paciente_id, ' +
+            'solicitacoes!inner(cid10_principal, paciente_id, ' +
             '  pacientes(cpf, cns, nome_completo, sexo, data_nascimento, telefone_celular, email, logradouro, numero, bairro, cep, municipio))'
           )
           .gte('data_inicio', periodo.inicio)
@@ -163,7 +163,7 @@ export default function RelatorioRPB() {
             email: acomp ? acomp.email : ((pac?.email as string) ?? null),
             codigo_sigtap: sig.codigo,
             quantidade: comPernoite ? dias : 1,
-            cid: (sol?.cid_principal as string) ?? null,
+            cid: (sol?.cid10_principal as string) ?? null,
           };
         });
         setRows(mapped);
@@ -177,7 +177,7 @@ export default function RelatorioRPB() {
             'data_embarque_prevista, ' +
             'origem_cidade, origem_uf, destino_cidade, destino_uf, ativa, ' +
             'distancia_valor, distancia_unidade, ' +
-            'solicitacoes!inner(cid_principal, paciente_id, tipo_solicitacao, ' +
+            'solicitacoes!inner(cid10_principal, paciente_id, tipo_solicitacao, ' +
             '  pacientes(cpf, cns, nome_completo, sexo, data_nascimento, telefone_celular, email, logradouro, numero, bairro, cep, municipio))'
           )
           .eq('ativa', true)
@@ -260,7 +260,7 @@ export default function RelatorioRPB() {
             email: (acomp?.email as string) ?? (pac?.email as string) ?? null,
             codigo_sigtap: sig.codigo,
             quantidade: qtd,
-            cid: (sol?.cid_principal as string) ?? null,
+            cid: (sol?.cid10_principal as string) ?? null,
             modal,
             trecho_label: trechoLabel,
             rota_pendente: qtd === null,
