@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Calendar, ClipboardList, Loader2, RefreshCw } from 'lucide-react';
+import { Calendar, ClipboardList, Loader2, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
   ReportToolbar,
@@ -9,10 +9,12 @@ import {
   PillButton,
   PrintButton,
   ReportHero,
+  StatsRow,
   TableCard,
   ReportPrintStyles,
 } from './_shared/ReportShell';
-import { MES_LABEL, MES_LABEL_SHORT, anosDisponiveis } from './_shared/format';
+import { ReportTable, type ReportColumn } from './_shared/ReportTable';
+import { MES_LABEL, MES_LABEL_SHORT, anosDisponiveis, fmtDataBR } from './_shared/format';
 import {
   resolveSigtapAjudaCusto,
   resolveSigtapPassagem,
@@ -332,6 +334,130 @@ export default function RelatorioRPB() {
     };
   }, [tipo, periodo]);
 
+  const isLancado = (r: RPBRow) => lancados.has(`${r.origem_id}:${r.trecho ?? ''}`);
+
+  const toggleLancado = async (r: RPBRow, on: boolean) => {
+    const supabase = createClient();
+    const key = `${r.origem_id}:${r.trecho ?? ''}`;
+    // Optimistic update
+    setLancados((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(key); else next.delete(key);
+      return next;
+    });
+    if (on) {
+      await (supabase.from('bpa_lancamentos') as unknown as { insert: (v: Record<string, unknown>) => Promise<unknown> }).insert({
+        tipo,
+        origem_id: r.origem_id,
+        trecho: r.trecho,
+      });
+    } else {
+      let q = supabase.from('bpa_lancamentos').delete().eq('tipo', tipo).eq('origem_id', r.origem_id);
+      q = r.trecho ? q.eq('trecho', r.trecho) : q.is('trecho', null);
+      await q;
+    }
+  };
+
+  const allChecked = rows.length > 0 && rows.every(isLancado);
+  const someChecked = rows.some(isLancado) && !allChecked;
+
+  const toggleAll = async () => {
+    const supabase = createClient();
+    const target = !allChecked;
+    if (target) {
+      const toInsert = rows.filter((r) => !isLancado(r)).map((r) => ({
+        tipo,
+        origem_id: r.origem_id,
+        trecho: r.trecho,
+      }));
+      setLancados(new Set(rows.map((r) => `${r.origem_id}:${r.trecho ?? ''}`)));
+      if (toInsert.length > 0) {
+        await (supabase.from('bpa_lancamentos') as unknown as { insert: (v: Record<string, unknown>[]) => Promise<unknown> }).insert(toInsert);
+      }
+    } else {
+      setLancados(new Set());
+      const ids = rows.map((r) => r.origem_id);
+      if (ids.length > 0) {
+        await supabase.from('bpa_lancamentos').delete().eq('tipo', tipo).in('origem_id', ids);
+      }
+    }
+  };
+
+  const columnsCommon: ReportColumn<RPBRow>[] = [
+    {
+      key: 'check',
+      header: (
+        <input
+          type="checkbox"
+          checked={allChecked}
+          ref={(el) => { if (el) el.indeterminate = someChecked; }}
+          onChange={toggleAll}
+          aria-label="Marcar/desmarcar todas"
+        />
+      ),
+      width: '36px',
+      align: 'center',
+      render: (r) => (
+        <input
+          type="checkbox"
+          checked={isLancado(r)}
+          onChange={(e) => toggleLancado(r, e.target.checked)}
+          aria-label="Lançado no BPA"
+        />
+      ),
+    },
+    { key: 'idx',  header: '#', width: '36px', mono: true, render: (_r, i) => String(i + 1).padStart(3, '0') },
+    { key: 'dt',   header: 'Dt. Atend.', width: '92px', render: (r) => fmtDataBR(r.dt_atendimento) },
+    { key: 'cpf',  header: 'CPF/CNS', width: '120px', mono: true, render: (r) => r.cpf_cns },
+    { key: 'nome', header: 'Nome', render: (r) => <span style={{ fontWeight: 500 }}>{r.nome}</span> },
+    { key: 'sexo', header: 'Sexo', width: '56px', render: (r) => r.sexo ? r.sexo[0] : '—' },
+    { key: 'nasc', header: 'Nasc.', width: '92px', render: (r) => fmtDataBR(r.data_nascimento ?? '') || '—' },
+    { key: 'cep',  header: 'CEP', width: '88px', render: (r) => r.cep ?? '—' },
+    { key: 'mun',  header: 'Município', width: '120px', render: (r) => r.municipio ?? '—' },
+    {
+      key: 'end',
+      header: 'Endereço',
+      render: (r) => (
+        <span title={r.endereco ?? ''} style={{ display: 'inline-block', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {r.endereco ?? '—'}
+        </span>
+      ),
+    },
+    { key: 'bairro', header: 'Bairro',   width: '110px', render: (r) => r.bairro ?? '—' },
+    { key: 'tel',    header: 'Telefone', width: '110px', render: (r) => r.telefone ?? '—' },
+    { key: 'email',  header: 'E-mail',   render: (r) => r.email ?? '—' },
+  ];
+
+  const columnsAjuda: ReportColumn<RPBRow>[] = [
+    { key: 'cod', header: 'Cód. SIGTAP', width: '120px', mono: true, render: (r) => r.codigo_sigtap },
+    { key: 'qtd', header: 'Qtd. (diárias)', width: '100px', align: 'right', render: (r) => r.quantidade ?? '—' },
+    { key: 'cid', header: 'CID', width: '70px', mono: true, render: (r) => r.cid ?? '—' },
+  ];
+
+  const columnsPassagem: ReportColumn<RPBRow>[] = [
+    { key: 'modal',  header: 'Modal',  width: '90px', render: (r) => r.modal ?? '—' },
+    { key: 'trecho', header: 'Trecho', render: (r) => r.trecho_label ?? '—' },
+    { key: 'cod',    header: 'Cód. SIGTAP', width: '120px', mono: true, render: (r) => r.codigo_sigtap },
+    {
+      key: 'qtd',
+      header: 'Qtd.',
+      width: '110px',
+      align: 'right',
+      render: (r) => r.rota_pendente
+        ? <span style={{ color: '#C2410C', display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertCircle size={12} /> rota pendente</span>
+        : (r.quantidade ?? '—'),
+    },
+    { key: 'cid', header: 'CID', width: '70px', mono: true, render: (r) => r.cid ?? '—' },
+  ];
+
+  const columns = tipo === 'ajuda_custo'
+    ? [...columnsCommon, ...columnsAjuda]
+    : [...columnsCommon, ...columnsPassagem];
+
+  const totalLancados = rows.filter(isLancado).length;
+  const totalPendentes = rows.length - totalLancados;
+  const totalQtd = rows.reduce((s, r) => s + (r.quantidade ?? 0), 0);
+
   return (
     <div className="space-y-4">
       <ReportPrintStyles />
@@ -396,16 +522,31 @@ export default function RelatorioRPB() {
         periodoLabel={periodo.label}
       />
 
-      <TableCard title="Itens para lançamento" count={rows.length}>
+      <StatsRow
+        items={[
+          { label: 'Total de linhas', value: String(rows.length), icon: <ClipboardList size={11} /> },
+          { label: 'Lançadas no BPA', value: String(totalLancados), tone: 'success', icon: <CheckCircle2 size={11} /> },
+          { label: 'Pendentes', value: String(totalPendentes), tone: 'warning', icon: <AlertCircle size={11} /> },
+          { label: tipo === 'ajuda_custo' ? 'Total de diárias' : 'Total de unidades', value: String(totalQtd) },
+        ]}
+      />
+
+      <TableCard
+        title="Itens para lançamento"
+        subtitle={loading ? 'Carregando...' : undefined}
+        count={rows.length}
+      >
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 size={20} className="animate-spin" style={{ color: 'var(--tfd-primary-500)' }} />
           </div>
         ) : (
-          <div className="text-center text-[13px] py-10" style={{ color: '#94A3B8' }}>
-            {rows.length} linha(s) carregada(s). Renderização da tabela na próxima task.
-            {lancados.size > 0 && ` · ${lancados.size} já lançada(s) no BPA`}
-          </div>
+          <ReportTable
+            columns={columns}
+            rows={rows}
+            rowStyle={(r) => isLancado(r) ? { opacity: 0.55 } : undefined}
+            emptyLabel={`Nenhum item em ${periodo.label.toLowerCase()}.`}
+          />
         )}
       </TableCard>
     </div>

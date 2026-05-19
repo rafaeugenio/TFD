@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 /**
  * Tabela tipográfica padrão dos relatórios — densa, com header sticky-ish,
@@ -24,11 +24,13 @@ export function ReportTable<T>({
   rows,
   emptyLabel = 'Nenhum registro para os filtros aplicados.',
   footerRow,
+  rowStyle,
 }: {
   columns: ReportColumn<T>[];
   rows: T[];
   emptyLabel?: string;
   footerRow?: ReactNode;
+  rowStyle?: (row: T, index: number) => CSSProperties | undefined;
 }) {
   return (
     <table className="report-table w-full" style={{ borderCollapse: 'collapse' }}>
@@ -74,6 +76,7 @@ export function ReportTable<T>({
               style={{
                 borderBottom: '1px solid var(--tfd-surface-border)',
                 background: idx % 2 === 1 ? 'rgba(248,250,252,0.5)' : 'white',
+                ...(rowStyle?.(row, idx) ?? {}),
               }}
             >
               {columns.map((c) => {
