@@ -1,11 +1,11 @@
-import { loadBacklog } from './_lib/parser';
 import BacklogClient from './_BacklogClient';
+import { BACKLOG } from './_data';
 
-// Sempre relê os MDs do disco — não cacheia.
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
-export default async function BacklogPage() {
-  const tree = await loadBacklog();
-  return <BacklogClient tree={tree} />;
+/**
+ * Backlog do TFD — conteúdo inline em `_data.ts` (igual ao /design-system).
+ * Toda mudança no protótipo (regras, banco, front) deve refletir em
+ * `_data.ts` para manter os devs sincronizados.
+ */
+export default function BacklogPage() {
+  return <BacklogClient tree={BACKLOG} />;
 }

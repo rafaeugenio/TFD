@@ -21,7 +21,7 @@ import type {
   Feature,
   UserStory,
   UserStorySection,
-} from './_lib/parser';
+} from './_types';
 
 interface Selection {
   epicCode: string;
