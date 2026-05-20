@@ -1,16 +1,18 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  AlertTriangle,
   ArrowUpRight,
   CalendarClock,
   ClipboardCheck,
   ClipboardList,
+  FileText,
+  Plane,
   Stethoscope,
   Wallet,
 } from 'lucide-react';
+import { listarLogs, type LogAuditoria } from '@/services/logs.service';
 import {
   Area,
   AreaChart,
@@ -287,22 +289,6 @@ function PainelContent() {
       .slice(0, 6);
   }, [solicitacoes]);
 
-  /* ── Alertas ── */
-  const alertas = useMemo(() => {
-    const paradas = solicitacoes
-      .filter((s) => s.status !== 'encerrada' && diasNoSetor(s) >= 5)
-      .map((s) => ({
-        id: s.id,
-        numero: s.numero,
-        paciente: s.paciente.nome,
-        setor: setorLabel(s.status),
-        dias: diasNoSetor(s),
-      }))
-      .sort((a, b) => b.dias - a.dias)
-      .slice(0, 5);
-    return { paradas, viagens7d: financeiro.viagens7d };
-  }, [solicitacoes, financeiro.viagens7d]);
-
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -319,8 +305,8 @@ function PainelContent() {
   return (
     <div className="flex flex-col gap-6">
       {/* ─── Hero: Donut Distribuição + KPIs ─── */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Donut */}
+      <section className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        {/* Donut — ocupa 2 colunas (metade da linha) */}
         <div
           className="lg:col-span-2 p-5 flex flex-col"
           style={{
@@ -396,114 +382,22 @@ function PainelContent() {
           </div>
         </div>
 
-        {/* KPIs laterais */}
-        <div className="flex flex-col gap-4">
-          <KpiTile
-            label="Encerradas no mês"
-            value={distribuicao.encerradasMes}
-            tone="green"
-          />
-          <KpiTile
-            label="Taxa de aprovação"
-            value={`${distribuicao.aprovacao}%`}
-            tone="blue"
-            progress={distribuicao.aprovacao}
-          />
-        </div>
+        {/* KPIs — cada um ocupa 1 coluna, alinhados na mesma linha do donut */}
+        <KpiTile
+          label="Encerradas no mês"
+          value={distribuicao.encerradasMes}
+          tone="green"
+        />
+        <KpiTile
+          label="Taxa de aprovação"
+          value={`${distribuicao.aprovacao}%`}
+          tone="blue"
+          progress={distribuicao.aprovacao}
+        />
       </section>
 
-      {/* ─── Alertas ─── */}
-      {(alertas.paradas.length > 0 || alertas.viagens7d > 0) && (
-        <section
-          className="p-4"
-          style={{
-            background: '#FFFBEB',
-            border: '1px solid #FCD34D',
-            borderRadius: 10,
-          }}
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <AlertTriangle size={16} style={{ color: '#B45309' }} />
-            <h3
-              className="text-[13px] font-semibold uppercase tracking-wider"
-              style={{ color: '#92400E', letterSpacing: '0.06em' }}
-            >
-              Atenção
-            </h3>
-          </div>
-          <div className="flex flex-col gap-2">
-            {alertas.viagens7d > 0 && (
-              <Link
-                href="/fluxo-v2/financeiro"
-                className="flex items-center justify-between px-3 py-2 text-[12.5px] hover:bg-white/60 transition-colors"
-                style={{
-                  background: 'white',
-                  border: '1px solid #FDE68A',
-                  borderRadius: 8,
-                  color: '#78350F',
-                }}
-              >
-                <span>
-                  <strong>{alertas.viagens7d}</strong>{' '}
-                  {alertas.viagens7d === 1 ? 'viagem marcada' : 'viagens marcadas'} para os próximos 7 dias
-                </span>
-                <ArrowUpRight size={14} style={{ color: '#92400E' }} />
-              </Link>
-            )}
-            {alertas.paradas.length > 0 && (
-              <div
-                className="px-3 py-2.5"
-                style={{
-                  background: 'white',
-                  border: '1px solid #FDE68A',
-                  borderRadius: 8,
-                }}
-              >
-                <p
-                  className="text-[12px] font-semibold mb-2"
-                  style={{ color: '#92400E' }}
-                >
-                  {alertas.paradas.length}{' '}
-                  {alertas.paradas.length === 1
-                    ? 'solicitação parada'
-                    : 'solicitações paradas'}{' '}
-                  há 5 dias ou mais no mesmo setor
-                </p>
-                <ul className="flex flex-col gap-1">
-                  {alertas.paradas.map((p) => (
-                    <li key={p.id}>
-                      <Link
-                        href={`/fluxo-v2/solicitacoes/${p.id}?from=dashboard`}
-                        className="flex items-center justify-between px-2 py-1 text-[12px] rounded hover:bg-[#FFFBEB] transition-colors"
-                        style={{ color: '#78350F' }}
-                      >
-                        <span className="flex items-center gap-2 min-w-0">
-                          <span className="font-mono shrink-0" style={{ color: '#92400E' }}>
-                            {p.numero}
-                          </span>
-                          <span className="truncate">{p.paciente}</span>
-                          <span
-                            className="text-[11px] shrink-0"
-                            style={{ color: '#B45309' }}
-                          >
-                            · {p.setor}
-                          </span>
-                        </span>
-                        <span
-                          className="font-mono text-[11px] shrink-0 ml-3"
-                          style={{ color: '#B91C1C' }}
-                        >
-                          {p.dias} dias
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
+      {/* ─── Atividades recentes ─── */}
+      <AtividadesRecentes />
 
       {/* ─── 3 setores ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -1099,5 +993,160 @@ export default function DashboardPage() {
       <PageHeader title="Painel" subtitle="Visão por setor do TFD" />
       <PainelContent />
     </FluxoV2Provider>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  AtividadesRecentes — feed compacto de logs de operações do fluxo          */
+/* -------------------------------------------------------------------------- */
+
+const ENTIDADES_RELEVANTES = new Set([
+  'solicitacoes',
+  'pareceres',
+  'agendamentos',
+  'viagens',
+  'ajudas_custo',
+]);
+
+const ENTIDADE_META: Record<string, { label: string; icon: React.ComponentType<{ size?: number }>; color: string }> = {
+  solicitacoes: { label: 'Solicitação', icon: ClipboardList, color: '#146BFA' },
+  pareceres:    { label: 'Parecer médico', icon: Stethoscope, color: '#7C3AED' },
+  agendamentos: { label: 'Agendamento', icon: CalendarClock, color: '#0891B2' },
+  viagens:      { label: 'Passagem', icon: Plane, color: '#0EA5E9' },
+  ajudas_custo: { label: 'Ajuda de custo', icon: Wallet, color: '#F59E0B' },
+};
+
+function acaoVerbo(acao: string): string {
+  if (acao === 'INSERT') return 'criou';
+  if (acao === 'UPDATE') return 'atualizou';
+  if (acao === 'DELETE') return 'excluiu';
+  return acao.toLowerCase();
+}
+
+function tempoRelativo(iso: string): string {
+  const d = new Date(iso);
+  const diff = Date.now() - d.getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return 'agora';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}min`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const dias = Math.floor(h / 24);
+  if (dias < 7) return `${dias}d`;
+  return d.toLocaleDateString('pt-BR');
+}
+
+function AtividadesRecentes() {
+  const [logs, setLogs] = useState<LogAuditoria[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      const { data } = await listarLogs({ limit: 80 });
+      if (cancel) return;
+      // Filtra só entidades relevantes do fluxo
+      const filtrados = (data ?? []).filter((l) => ENTIDADES_RELEVANTES.has(l.entidade_alterada));
+      setLogs(filtrados.slice(0, 8));
+      setLoading(false);
+    })();
+    return () => { cancel = true; };
+  }, []);
+
+  return (
+    <section
+      className="p-5"
+      style={{
+        background: 'white',
+        border: `1px solid ${COLORS.border}`,
+        borderRadius: 12,
+        boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
+      }}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h2 className="text-[14px] font-semibold" style={{ color: COLORS.text }}>
+            Atividades recentes
+          </h2>
+          <p className="text-[12px] mt-0.5" style={{ color: COLORS.muted }}>
+            Últimas ações da equipe no fluxo
+          </p>
+        </div>
+        <Link
+          href="/sistema/logs"
+          className="inline-flex items-center gap-1 text-[12px] hover:underline"
+          style={{ color: COLORS.blue }}
+        >
+          Ver todos <ArrowUpRight size={12} />
+        </Link>
+      </div>
+
+      {loading ? (
+        <div className="flex flex-col gap-2">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-9 w-full" />
+          ))}
+        </div>
+      ) : logs.length === 0 ? (
+        <p className="text-[12px] py-4 text-center" style={{ color: COLORS.muted }}>
+          Nenhuma atividade recente nas operações do fluxo.
+        </p>
+      ) : (
+        <ul className="flex flex-col">
+          {logs.map((l, idx) => {
+            const meta = ENTIDADE_META[l.entidade_alterada] ?? { label: l.entidade_alterada, icon: FileText, color: '#64748B' };
+            const Icon = meta.icon;
+            const conteudo = (
+              <div
+                className="flex items-center gap-3 py-2.5"
+                style={{ borderTop: idx === 0 ? 'none' : `1px solid ${COLORS.border}` }}
+              >
+                <span
+                  className="inline-flex items-center justify-center shrink-0"
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: 6,
+                    background: `${meta.color}15`,
+                    color: meta.color,
+                  }}
+                >
+                  <Icon size={13} />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[12.5px] leading-snug truncate" style={{ color: COLORS.text }}>
+                    <span style={{ fontWeight: 500 }}>{l.nome_usuario ?? 'Usuário'}</span>{' '}
+                    <span style={{ color: COLORS.muted }}>{acaoVerbo(l.acao)}</span>{' '}
+                    <span>{meta.label.toLowerCase()}</span>
+                  </p>
+                </div>
+                <span
+                  className="text-[11px] shrink-0 font-mono"
+                  style={{ color: COLORS.muted }}
+                  title={new Date(l.created_at).toLocaleString('pt-BR')}
+                >
+                  {tempoRelativo(l.created_at)}
+                </span>
+              </div>
+            );
+            return (
+              <li key={l.id}>
+                {l.solicitacao_id ? (
+                  <Link
+                    href={`/fluxo-v2/solicitacoes/${l.solicitacao_id}?from=dashboard`}
+                    className="block hover:bg-[#F8FAFC] rounded-md px-2 -mx-2 transition-colors"
+                  >
+                    {conteudo}
+                  </Link>
+                ) : (
+                  <div className="px-2 -mx-2">{conteudo}</div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
