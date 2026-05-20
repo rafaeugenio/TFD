@@ -89,7 +89,7 @@ export function ReportTable<T>({
                     key={c.key}
                     className={c.printHide ? 'no-print' : undefined}
                     style={{
-                      padding: '10px 12px',
+                      padding: '8px 10px',
                       fontSize: 12.5,
                       color: '#1A1D2B',
                       textAlign: c.align ?? 'left',

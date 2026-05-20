@@ -13,7 +13,7 @@ import {
   TableCard,
   ReportPrintStyles,
 } from './_shared/ReportShell';
-import { ReportTable, type ReportColumn } from './_shared/ReportTable';
+import { ReportTable, TipoBeneficiarioBadge, type ReportColumn } from './_shared/ReportTable';
 import { MES_LABEL, MES_LABEL_SHORT, anosDisponiveis, fmtDataBR } from './_shared/format';
 import {
   resolveSigtapAjudaCusto,
@@ -22,6 +22,23 @@ import {
   type Beneficiario,
   type Modal,
 } from './_shared/sigtap-mapper';
+
+function ModalBadge({ modal }: { modal: Modal }) {
+  const MAP: Record<Modal, { label: string; bg: string; fg: string }> = {
+    terrestre: { label: 'Terrestre', bg: '#DCFCE7', fg: '#166534' },
+    aereo:     { label: 'Aéreo',     bg: '#DBEAFE', fg: '#1E40AF' },
+    fluvial:   { label: 'Fluvial',   bg: '#CFFAFE', fg: '#0E7490' },
+  };
+  const v = MAP[modal];
+  return (
+    <span
+      className="inline-flex items-center text-[10px] font-semibold px-1.5"
+      style={{ background: v.bg, color: v.fg, borderRadius: 3, whiteSpace: 'nowrap', lineHeight: '16px' }}
+    >
+      {v.label}
+    </span>
+  );
+}
 
 type RPBTipo = 'ajuda_custo' | 'passagem';
 
@@ -32,6 +49,7 @@ interface RPBRow {
   dt_atendimento: string;
   cpf_cns: string;
   nome: string;
+  beneficiario_tipo: Beneficiario;
   sexo: string | null;
   data_nascimento: string | null;
   cep: string | null;
@@ -41,6 +59,7 @@ interface RPBRow {
   telefone: string | null;
   email: string | null;
   codigo_sigtap: string;
+  sigtap_descricao: string;
   quantidade: number | null;
   cid: string | null;
   // específicas de passagens
@@ -157,6 +176,7 @@ export default function RelatorioRPB() {
             dt_atendimento: String(r.data_inicio),
             cpf_cns: cpfCns,
             nome,
+            beneficiario_tipo: beneficiario,
             sexo: acomp ? acomp.sexo : ((pac?.sexo as string) ?? null),
             data_nascimento: acomp ? acomp.data_nascimento : ((pac?.data_nascimento as string) ?? null),
             cep: (pac?.cep as string) ?? null,
@@ -166,6 +186,7 @@ export default function RelatorioRPB() {
             telefone: acomp ? acomp.telefone : ((pac?.telefone_celular as string) ?? null),
             email: acomp ? acomp.email : ((pac?.email as string) ?? null),
             codigo_sigtap: sig.codigo,
+            sigtap_descricao: sig.descricao,
             quantidade: comPernoite ? dias : 1,
             cid: (sol?.cid10_principal as string) ?? null,
           };
@@ -254,6 +275,7 @@ export default function RelatorioRPB() {
             dt_atendimento: String(v.data_embarque_prevista),
             cpf_cns: cpfCns,
             nome,
+            beneficiario_tipo: beneficiario,
             sexo: (acomp?.sexo as string) ?? (pac?.sexo as string) ?? null,
             data_nascimento: (acomp?.data_nascimento as string) ?? (pac?.data_nascimento as string) ?? null,
             cep: (pac?.cep as string) ?? null,
@@ -263,6 +285,7 @@ export default function RelatorioRPB() {
             telefone: (acomp?.telefone as string) ?? (pac?.telefone_celular as string) ?? null,
             email: (acomp?.email as string) ?? (pac?.email as string) ?? null,
             codigo_sigtap: sig.codigo,
+            sigtap_descricao: sig.descricao,
             quantidade: qtd,
             cid: (sol?.cid10_principal as string) ?? null,
             modal,
@@ -346,9 +369,17 @@ export default function RelatorioRPB() {
     }
   };
 
-  const enderecoCompleto = (r: RPBRow) => {
-    const parts = [r.cep, r.municipio, r.endereco, r.bairro].filter(Boolean);
-    return parts.length > 0 ? parts.join(' — ') : '—';
+  const formatTelefone = (t: string | null) => {
+    if (!t) return null;
+    const d = t.replace(/\D/g, '');
+    if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+    if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+    return t;
+  };
+  const formatCep = (c: string | null) => {
+    if (!c) return null;
+    const d = c.replace(/\D/g, '');
+    return d.length === 8 ? `${d.slice(0, 5)}-${d.slice(5)}` : c;
   };
 
   const columnsCommon: ReportColumn<RPBRow>[] = [
@@ -375,55 +406,116 @@ export default function RelatorioRPB() {
         />
       ),
     },
-    { key: 'idx',  header: '#', width: '36px', mono: true, render: (_r, i) => String(i + 1).padStart(3, '0') },
-    { key: 'cpf',  header: 'CPF/CNS', width: '120px', mono: true, render: (r) => r.cpf_cns },
-    { key: 'nome', header: 'Nome', render: (r) => <span style={{ fontWeight: 500 }}>{r.nome}</span> },
-    { key: 'sexo', header: 'Sexo', width: '56px', render: (r) => r.sexo ? r.sexo[0] : '—' },
-    { key: 'nasc', header: 'Nascimento', width: '100px', render: (r) => fmtDataBR(r.data_nascimento ?? '') || '—' },
+    { key: 'idx', header: '#', width: '36px', mono: true, render: (_r, i) => String(i + 1).padStart(3, '0') },
     {
-      key: 'end',
-      header: 'Endereço',
+      key: 'pessoa',
+      header: 'Pessoa',
+      width: '260px',
       render: (r) => {
-        const full = enderecoCompleto(r);
+        const sexo = r.sexo ? r.sexo[0].toUpperCase() : null;
+        const nasc = fmtDataBR(r.data_nascimento ?? '') || null;
+        const subline = [r.cpf_cns, sexo, nasc].filter(Boolean).join(' · ');
         return (
-          <span title={full} style={{ display: 'inline-block', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {full}
-          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+            <div className="flex items-center gap-1.5" style={{ whiteSpace: 'nowrap' }}>
+              {tipo === 'ajuda_custo' && <TipoBeneficiarioBadge tipo={r.beneficiario_tipo} />}
+              <span style={{ fontWeight: 600, color: '#0F172A' }}>{r.nome}</span>
+            </div>
+            <span style={{ fontFamily: 'var(--tfd-font-mono)', fontSize: 11, color: '#64748B', whiteSpace: 'nowrap' }}>
+              {subline || '—'}
+            </span>
+          </div>
         );
       },
     },
-    { key: 'tel',    header: 'Telefone', width: '110px', render: (r) => r.telefone ?? '—' },
-    { key: 'email',  header: 'E-mail',   render: (r) => r.email ?? '—' },
-    { key: 'dt',   header: 'Dt. Atend.', width: '100px', render: (r) => fmtDataBR(r.dt_atendimento) },
+    {
+      key: 'contato',
+      header: 'Contato',
+      width: '200px',
+      render: (r) => {
+        const tel = formatTelefone(r.telefone);
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 1, lineHeight: 1.35 }}>
+            <span style={{ fontFamily: tel ? 'var(--tfd-font-mono)' : undefined, fontSize: 12, whiteSpace: 'nowrap' }}>
+              {tel ?? <span style={{ color: '#94A3B8' }}>—</span>}
+            </span>
+            <span style={{ fontSize: 11, color: '#64748B', overflowWrap: 'anywhere' }}>
+              {r.email ?? '—'}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'endereco',
+      header: 'Endereço',
+      render: (r) => {
+        const linha1 = r.endereco || null;
+        const bairroCep = [r.bairro, formatCep(r.cep)].filter(Boolean).join(' · ');
+        const linha3 = r.municipio || null;
+        const hasAny = linha1 || bairroCep || linha3;
+        if (!hasAny) return <span style={{ color: '#94A3B8' }}>—</span>;
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 1, lineHeight: 1.35, fontSize: 12 }}>
+            {linha1 && <span style={{ color: '#0F172A' }}>{linha1}</span>}
+            {bairroCep && <span style={{ color: '#64748B', fontSize: 11 }}>{bairroCep}</span>}
+            {linha3 && <span style={{ color: '#64748B', fontSize: 11 }}>{linha3}</span>}
+          </div>
+        );
+      },
+    },
+    { key: 'dt', header: 'Dt. Atend.', width: '92px', mono: true, render: (r) => fmtDataBR(r.dt_atendimento) },
   ];
 
+  const sigtapCell = (r: RPBRow) => (
+    <div title={r.sigtap_descricao} style={{ display: 'flex', flexDirection: 'column', gap: 1, lineHeight: 1.3 }}>
+      <span style={{ fontFamily: 'var(--tfd-font-mono)', fontSize: 12, color: '#0F172A', whiteSpace: 'nowrap' }}>
+        {r.codigo_sigtap}
+      </span>
+      <span style={{ fontSize: 10.5, color: '#64748B', whiteSpace: 'normal' }}>
+        {r.sigtap_descricao}
+      </span>
+    </div>
+  );
+
   const columnsAjuda: ReportColumn<RPBRow>[] = [
-    { key: 'cod', header: 'Cód. SIGTAP', width: '120px', mono: true, render: (r) => r.codigo_sigtap },
-    { key: 'qtd', header: 'Qtd. (diárias)', width: '100px', align: 'right', render: (r) => r.quantidade ?? '—' },
-    { key: 'cid', header: 'CID', width: '70px', mono: true, render: (r) => r.cid ?? '—' },
+    { key: 'cod', header: 'SIGTAP', width: '210px', render: sigtapCell },
+    { key: 'qtd', header: 'Diárias', width: '70px', align: 'right', render: (r) => r.quantidade ?? '—' },
+    { key: 'cid', header: 'CID', width: '64px', mono: true, render: (r) => r.cid ?? '—' },
   ];
 
   const columnsPassagem: ReportColumn<RPBRow>[] = [
-    { key: 'modal',  header: 'Modal',  width: '90px', render: (r) => r.modal ?? '—' },
-    { key: 'trecho', header: 'Trecho', render: (r) => r.trecho_label ?? '—' },
     {
-      key: 'dist',
-      header: 'Distância',
-      width: '110px',
-      align: 'right',
-      render: (r) => r.distancia_valor != null
-        ? `${r.distancia_valor.toLocaleString('pt-BR')} ${r.distancia_unidade ?? r.unidade_label ?? ''}`.trim()
-        : '—',
+      key: 'rota',
+      header: 'Rota',
+      width: '240px',
+      render: (r) => (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, lineHeight: 1.3 }}>
+          <span style={{ fontSize: 12, color: '#0F172A', whiteSpace: 'nowrap' }}>{r.trecho_label ?? '—'}</span>
+          <span className="inline-flex items-center gap-1.5" style={{ fontSize: 11 }}>
+            {r.modal && <ModalBadge modal={r.modal} />}
+            <span style={{ color: '#64748B', fontFamily: 'var(--tfd-font-mono)' }}>
+              {r.distancia_valor != null
+                ? `${r.distancia_valor.toLocaleString('pt-BR')} ${r.distancia_unidade ?? r.unidade_label ?? ''}`.trim()
+                : <span style={{ color: '#C2410C' }}>sem distância</span>}
+            </span>
+          </span>
+        </div>
+      ),
     },
-    { key: 'cod',    header: 'Cód. SIGTAP', width: '120px', mono: true, render: (r) => r.codigo_sigtap },
+    { key: 'cod', header: 'SIGTAP', width: '210px', render: sigtapCell },
     {
       key: 'qtd',
       header: 'Qtd.',
-      width: '110px',
+      width: '88px',
       align: 'right',
       render: (r) => {
         if (r.rota_pendente) {
-          return <span style={{ color: '#C2410C', display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertCircle size={12} /> rota pendente</span>;
+          return (
+            <span style={{ color: '#C2410C', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+              <AlertCircle size={12} /> pendente
+            </span>
+          );
         }
         if (r.quantidade == null) return '—';
         const tooltip = r.distancia_valor != null && r.unidade_divisor
@@ -432,7 +524,7 @@ export default function RelatorioRPB() {
         return <span title={tooltip}>{r.quantidade}</span>;
       },
     },
-    { key: 'cid', header: 'CID', width: '70px', mono: true, render: (r) => r.cid ?? '—' },
+    { key: 'cid', header: 'CID', width: '64px', mono: true, render: (r) => r.cid ?? '—' },
   ];
 
   const columns = tipo === 'ajuda_custo'
@@ -534,6 +626,12 @@ export default function RelatorioRPB() {
           />
         )}
       </TableCard>
+
+      <p className="text-[11px]" style={{ color: '#64748B', lineHeight: 1.5 }}>
+        O código SIGTAP é derivado automaticamente do contexto da solicitação
+        {tipo === 'ajuda_custo' ? ' (beneficiário, com/sem pernoite, CNRAC)' : ' (beneficiário, modal terrestre/aéreo/fluvial, CNRAC)'},
+        com base na tabela auxiliar. A unidade de cálculo (km, milhas, milhas náuticas ou diárias) acompanha o código.
+      </p>
     </div>
   );
 }
