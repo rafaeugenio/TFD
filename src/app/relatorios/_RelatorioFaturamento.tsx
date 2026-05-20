@@ -31,7 +31,6 @@ interface ViagemRow {
   beneficiario_tipo: 'paciente' | 'acompanhante';
   tipo: 'IDA' | 'VOLTA' | 'IDA_E_VOLTA';
   data_viagem?: string | null;
-  data_viagem_volta?: string | null;
   data_bilhete: string;
   trecho_origem: string;
   trecho_destino: string;
@@ -72,12 +71,11 @@ export default function RelatorioFaturamento() {
       const { data, error } = await supabase
         .from('viagens')
         .select(
-          'id, numero_bilhete, tipo, beneficiario_tipo, beneficiario_id, ' +
-          'data_embarque_prevista, data_retorno_prevista, created_at, ' +
+          'id, numero_bilhete, tipo, ' +
+          'data_embarque_prevista, created_at, emitido_em, ' +
           'origem_cidade, origem_uf, destino_cidade, destino_uf, valor, ' +
           'valor_reembolso, data_reembolso, ativa, ' +
-          'solicitacoes!inner(numero_processo, pacientes(nome_completo)), ' +
-          'acompanhantes:beneficiario_id(nome_completo)'
+          'solicitacoes!inner(numero_processo, pacientes(nome_completo))'
         )
         .eq('ativa', true)
         .gte('created_at', periodo.inicio)
@@ -91,26 +89,25 @@ export default function RelatorioFaturamento() {
         return;
       }
 
+      const mapTipo = (t: string): ViagemRow['tipo'] => {
+        if (t === 'RETORNO' || t === 'VOLTA') return 'VOLTA';
+        if (t === 'IDA_E_VOLTA') return 'IDA_E_VOLTA';
+        return 'IDA';
+      };
+
       const mapped: ViagemRow[] = (data as unknown as Array<Record<string, unknown>>).map((r, i) => {
         const sol = r.solicitacoes as Record<string, unknown> | null;
         const pac = sol?.pacientes as Record<string, unknown> | null;
-        const acomp = r.acompanhantes as Record<string, unknown> | null;
-        const beneficiarioTipo = (r.beneficiario_tipo as string)?.toLowerCase() === 'acompanhante'
-          ? 'acompanhante' : 'paciente';
-        const nomeBeneficiario = beneficiarioTipo === 'acompanhante'
-          ? ((acomp?.nome_completo as string) ?? 'Acompanhante')
-          : ((pac?.nome_completo as string) ?? 'Paciente');
-        const sufixo = beneficiarioTipo === 'acompanhante' ? ' (A)' : ' (P)';
+        const nomeBeneficiario = (pac?.nome_completo as string) ?? 'Paciente';
         return {
           id: (r.id as string) ?? `tmp-${i}`,
           numero_processo: (sol?.numero_processo as string) ?? null,
           numero_documento: (r.numero_bilhete as string) ?? null,
-          passageiro_nome: `${nomeBeneficiario}${sufixo}`,
-          beneficiario_tipo: beneficiarioTipo,
-          tipo: (r.tipo as ViagemRow['tipo']) ?? 'IDA',
+          passageiro_nome: `${nomeBeneficiario} (P)`,
+          beneficiario_tipo: 'paciente',
+          tipo: mapTipo(r.tipo as string),
           data_viagem: (r.data_embarque_prevista as string) ?? null,
-          data_viagem_volta: (r.data_retorno_prevista as string) ?? null,
-          data_bilhete: (r.created_at as string) ?? '',
+          data_bilhete: ((r.emitido_em as string) ?? (r.created_at as string)) ?? '',
           trecho_origem: `${(r.origem_uf as string) ?? ''}/${(r.origem_cidade as string) ?? ''}`,
           trecho_destino: `${(r.destino_uf as string) ?? ''}/${(r.destino_cidade as string) ?? ''}`,
           // Valor EFETIVO no relatório = cheio - reembolso (parcial ou total)
@@ -171,10 +168,7 @@ export default function RelatorioFaturamento() {
       key: 'data_viagem',
       header: 'Data viagem',
       width: '116px',
-      render: (r) =>
-        r.tipo === 'IDA_E_VOLTA'
-          ? `${fmtDataBR(r.data_viagem)} | ${fmtDataBR(r.data_viagem_volta)}`
-          : fmtDataBR(r.data_viagem),
+      render: (r) => fmtDataBR(r.data_viagem),
     },
     {
       key: 'trecho',

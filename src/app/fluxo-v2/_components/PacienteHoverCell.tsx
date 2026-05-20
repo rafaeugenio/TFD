@@ -66,7 +66,12 @@ export default function PacienteHoverCell({ paciente, size = 14 }: Props) {
         { k: 'Telefone', v: maskTelefone(paciente.telefone) },
         ...(paciente.email ? [{ k: 'E-mail', v: paciente.email }] : []),
         { k: 'Município', v: paciente.municipio || '—' },
-        ...(paciente.regional ? [{ k: 'Regional', v: paciente.regional }] : []),
+        ...(paciente.regional
+          ? [{
+              k: 'Regional',
+              v: `${paciente.regionalCodigo ? `${paciente.regionalCodigo} · ` : ''}${paciente.regional}${paciente.regionalSede && paciente.regionalSede !== paciente.regional ? ` (sede: ${paciente.regionalSede})` : ''}`,
+            }]
+          : []),
       ]}
     />
   );

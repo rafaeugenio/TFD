@@ -277,37 +277,47 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         const supabase = createClient();
-        const [{ data, error }, { data: muniRows }] = await Promise.all([
+        const [{ data, error }, { data: vinculosRows }] = await Promise.all([
           supabase
             .from('solicitacoes')
             .select(SOLICITACAO_V2_SELECT)
             .order('created_at', { ascending: false }),
+          // Mapeamento município→regional vem do vínculo cadastrado em
+          // regionais_saude_municipios (texto), unido a regionais_saude
+          // (código + sede + nome). Fonte mais confiável que municipios.regional,
+          // que está esparso.
           supabase
-            .from('municipios')
-            .select('nome, uf, regional'),
+            .from('regionais_saude_municipios')
+            .select('municipio_nome, regionais_saude:regional_saude_id(nome, codigo, municipio_sede)'),
         ]);
         if (cancelled) return;
         if (error || !data) {
           if (error) console.warn('[FluxoV2] erro ao carregar Supabase:', error.message);
           return;
         }
-        // Mapa nome+uf → regional, para enriquecer pacientes (cuja FK municipio_residencia_id
-        // está nula no banco atual).
-        const regionalPorMunicipio = new Map<string, string>();
-        ((muniRows ?? []) as unknown as Array<Record<string, unknown>>).forEach((m) => {
-          const nome = String(m.nome ?? '').trim().toLowerCase();
-          const uf = String(m.uf ?? '').trim().toUpperCase();
-          const regional = String(m.regional ?? '').trim();
-          if (nome && regional) regionalPorMunicipio.set(`${nome}|${uf}`, regional);
+        // Mapa nome do município (lowercase) → { regional, código, sede }.
+        const regionalPorMunicipio = new Map<string, { nome: string; codigo: string; sede: string }>();
+        ((vinculosRows ?? []) as unknown as Array<Record<string, unknown>>).forEach((v) => {
+          const muniNome = String(v.municipio_nome ?? '').trim().toLowerCase();
+          const rs = v.regionais_saude as Record<string, unknown> | null;
+          if (!muniNome || !rs) return;
+          regionalPorMunicipio.set(muniNome, {
+            nome: String(rs.nome ?? '').trim(),
+            codigo: String(rs.codigo ?? '').trim(),
+            sede: String(rs.municipio_sede ?? '').trim(),
+          });
         });
 
         const real = solicitacoesFromSupabase(data as unknown as Record<string, unknown>[]);
         for (const s of real) {
-          if (!s.paciente.regional && s.paciente.municipio) {
-            const [nome, uf] = s.paciente.municipio.split(' - ');
-            const key = `${nome.trim().toLowerCase()}|${(uf ?? '').trim().toUpperCase()}`;
-            const r = regionalPorMunicipio.get(key);
-            if (r) s.paciente.regional = r;
+          if (s.paciente.municipio) {
+            const [nome] = s.paciente.municipio.split(' - ');
+            const info = regionalPorMunicipio.get(nome.trim().toLowerCase());
+            if (info) {
+              s.paciente.regional = info.nome;
+              s.paciente.regionalCodigo = info.codigo;
+              s.paciente.regionalSede = info.sede;
+            }
           }
         }
         setSolicitacoes(real);

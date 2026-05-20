@@ -47,6 +47,10 @@ interface RPBRow {
   modal?: Modal;
   trecho_label?: string;
   rota_pendente?: boolean;
+  distancia_valor?: number | null;
+  distancia_unidade?: string | null;
+  unidade_divisor?: number;
+  unidade_label?: string;
 }
 
 export default function RelatorioRPB() {
@@ -264,6 +268,10 @@ export default function RelatorioRPB() {
             modal,
             trecho_label: trechoLabel,
             rota_pendente: qtd === null,
+            distancia_valor: distancia,
+            distancia_unidade: (v.distancia_unidade as string) ?? sig.unidadeLabel,
+            unidade_divisor: sig.unidadeDivisor,
+            unidade_label: sig.unidadeLabel,
           };
         });
 
@@ -398,15 +406,31 @@ export default function RelatorioRPB() {
   const columnsPassagem: ReportColumn<RPBRow>[] = [
     { key: 'modal',  header: 'Modal',  width: '90px', render: (r) => r.modal ?? '—' },
     { key: 'trecho', header: 'Trecho', render: (r) => r.trecho_label ?? '—' },
+    {
+      key: 'dist',
+      header: 'Distância',
+      width: '110px',
+      align: 'right',
+      render: (r) => r.distancia_valor != null
+        ? `${r.distancia_valor.toLocaleString('pt-BR')} ${r.distancia_unidade ?? r.unidade_label ?? ''}`.trim()
+        : '—',
+    },
     { key: 'cod',    header: 'Cód. SIGTAP', width: '120px', mono: true, render: (r) => r.codigo_sigtap },
     {
       key: 'qtd',
       header: 'Qtd.',
       width: '110px',
       align: 'right',
-      render: (r) => r.rota_pendente
-        ? <span style={{ color: '#C2410C', display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertCircle size={12} /> rota pendente</span>
-        : (r.quantidade ?? '—'),
+      render: (r) => {
+        if (r.rota_pendente) {
+          return <span style={{ color: '#C2410C', display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertCircle size={12} /> rota pendente</span>;
+        }
+        if (r.quantidade == null) return '—';
+        const tooltip = r.distancia_valor != null && r.unidade_divisor
+          ? `${r.distancia_valor.toLocaleString('pt-BR')} ${r.unidade_label} ÷ ${r.unidade_divisor} ${r.unidade_label} = ${r.quantidade}`
+          : undefined;
+        return <span title={tooltip}>{r.quantidade}</span>;
+      },
     },
     { key: 'cid', header: 'CID', width: '70px', mono: true, render: (r) => r.cid ?? '—' },
   ];

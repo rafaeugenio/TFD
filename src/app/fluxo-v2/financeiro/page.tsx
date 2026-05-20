@@ -351,7 +351,11 @@ export default function FinanceiroListPage() {
                   <td className="px-4 py-3.5">
                     <div className="leading-tight">
                       <div style={{ color: '#1E293B', fontSize: 13, fontWeight: 500 }}>{s.paciente.municipio.split(' - ')[0]}</div>
-                      <div style={{ color: '#94A3B8', fontSize: 12 }}>{s.paciente.regional || '—'}</div>
+                      <div style={{ color: '#94A3B8', fontSize: 12 }}>
+                        {s.paciente.regional
+                          ? `${s.paciente.regionalCodigo ?? ''}${s.paciente.regionalCodigo ? ' · ' : ''}${s.paciente.regional}`
+                          : '—'}
+                      </div>
                     </div>
                   </td>
                   <td className="px-4 py-3.5">

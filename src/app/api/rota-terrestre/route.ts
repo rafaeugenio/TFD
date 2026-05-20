@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const resp = await fetch(url, {
-      headers: { Authorization: key, Accept: 'application/json' },
+      headers: { Authorization: key, Accept: 'application/geo+json' },
       // Cache de 24h por par de coordenadas — rotas rodoviárias mudam pouco.
       next: { revalidate: 60 * 60 * 24 },
     });

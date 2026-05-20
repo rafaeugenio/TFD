@@ -46,7 +46,9 @@ export interface PacienteMock {
   telefone: string;          // formato (XX) XXXXX-XXXX
   email?: string;
   municipio: string;         // ex.: 'São Luís - MA'
-  regional: string;          // ex.: 'Regional de São Luís', 'Regional de Caxias'
+  regional: string;          // nome da regional (ex.: 'Açailândia')
+  regionalCodigo?: string;   // código da URS (ex.: 'URS XIV')
+  regionalSede?: string;     // cidade-sede da regional
   zonaRegional: ZonaRegional;
   endereco: EnderecoPaciente;
 }

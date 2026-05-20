@@ -2,15 +2,14 @@
 
 import { Suspense, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { BarChart3, Receipt, Wallet, ClipboardList } from 'lucide-react';
+import { BarChart3, Receipt, ClipboardList } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import RelatorioFinanceiro from './_RelatorioFinanceiro';
 import RelatorioFaturamento from './_RelatorioFaturamento';
-import RecibosAjudaCusto from './_RecibosAjudaCusto';
 import RelatorioRPB from './_RelatorioRPB';
 
-type TabKey = 'financeiro' | 'faturamento' | 'recibos' | 'rpb';
+type TabKey = 'financeiro' | 'faturamento' | 'rpb';
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode; desc: string }[] = [
   {
@@ -24,12 +23,6 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode; desc: string }[
     label: 'Faturamento',
     icon: <Receipt size={15} />,
     desc: 'Relatório mensal de passagens',
-  },
-  {
-    key: 'recibos',
-    label: 'Ajuda de Custo',
-    icon: <Wallet size={15} />,
-    desc: 'Recibos individuais por beneficiário',
   },
   {
     key: 'rpb',
@@ -106,7 +99,6 @@ function RelatoriosInner() {
       <div className="animate-fade-in">
         {activeTab === 'financeiro' && <RelatorioFinanceiro />}
         {activeTab === 'faturamento' && <RelatorioFaturamento />}
-        {activeTab === 'recibos' && <RecibosAjudaCusto />}
         {activeTab === 'rpb' && <RelatorioRPB />}
       </div>
 
