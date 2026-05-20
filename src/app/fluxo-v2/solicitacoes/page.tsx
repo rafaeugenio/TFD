@@ -1,16 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Plus, Search, Pencil, Archive, Send } from 'lucide-react';
-import { idadeAnos } from '../_utils/idade';
 import StatusV2Badge from '../_components/StatusV2Badge';
 import RowActions from '../_components/RowActions';
 import BotaoEnvio from '../_components/BotaoEnvio';
 import NewEditarSolicitacaoDrawer from '../_components/drawers/NewEditarSolicitacaoDrawer';
 import EnviarParaSetorDrawer from '../_components/drawers/EnviarParaSetorDrawer';
 import { snapshotFromSolicitacao } from '../_components/SnapshotPaciente';
+import SolicitacaoNumeroCell from '../_components/SolicitacaoNumeroCell';
+import PacienteHoverCell from '../_components/PacienteHoverCell';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { derivarEventos, tempoRelativo } from '../_utils/derivarLinhaDoTempo';
 import { isLocked, setorAtual, tooltipLocked } from '../_utils/lock';
@@ -272,20 +272,11 @@ export default function SolicitacoesV2ListPage() {
                   className="hover:bg-[#F8FAFC] transition-colors"
                   onClick={() => router.push(`/fluxo-v2/solicitacoes/${s.id}`)}
                 >
-                  <td className="px-4 py-3.5 font-mono text-[12px]" style={{ color: '#1A1D2B' }}>{s.numero}</td>
-                  <td className="px-4 py-3.5.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Link
-                        href={`/pacientes/${s.paciente.id}`}
-                        className="transition-colors hover:underline"
-                        style={{ color: '#146BFA', fontWeight: 500, fontSize: 14, textUnderlineOffset: 3 }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {s.paciente.nome}
-                      </Link>
-                      <span className="text-[12px]" style={{ color: '#94A3B8' }}>{idadeAnos(s.paciente.dataNascimento)} anos</span>
-                    </div>
-                    <div className="text-[12px] font-mono mt-0.5" style={{ color: '#94A3B8' }}>{s.paciente.cpf}</div>
+                  <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+                    <SolicitacaoNumeroCell s={s} size={12} />
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <PacienteHoverCell paciente={s.paciente} />
                   </td>
                   <td className="px-4 py-3.5">
                     <div className="leading-tight">

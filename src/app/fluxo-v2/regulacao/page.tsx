@@ -1,10 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Stethoscope, Stamp, CalendarPlus, CalendarCheck, Send, Search } from 'lucide-react';
-import { idadeAnos } from '../_utils/idade';
 import RowActions from '../_components/RowActions';
 import BotaoEnvio from '../_components/BotaoEnvio';
 import NewParecerDrawer from '../_components/drawers/NewParecerDrawer';
@@ -12,6 +10,8 @@ import CarimboRegulacaoDrawer from '../_components/drawers/CarimboRegulacaoDrawe
 import RegistrarAgendamentoDrawer from '../_components/drawers/RegistrarAgendamentoDrawer';
 import EnviarParaSetorDrawer from '../_components/drawers/EnviarParaSetorDrawer';
 import { snapshotFromSolicitacao } from '../_components/SnapshotPaciente';
+import SolicitacaoNumeroCell from '../_components/SolicitacaoNumeroCell';
+import PacienteHoverCell from '../_components/PacienteHoverCell';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { tempoNoSetor } from '../_utils/tempoSetor';
 import { isTramitacaoRecente } from '../_utils/tramitacao';
@@ -262,32 +262,21 @@ export default function RegulacaoListPage() {
                   className={'hover:bg-[#F8FAFC] transition-colors'}
                   onClick={() => router.push(`/fluxo-v2/solicitacoes/${s.id}?tab=regulacao&from=regulacao`)}
                 >
-                  <td className="px-4 py-3.5 font-mono text-[13px]">
-                    <span className="inline-flex items-center gap-1.5 flex-wrap">
-                      <span>{s.numero}</span>
-                      {destaque && tram && (
+                  <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+                    <SolicitacaoNumeroCell
+                      s={s}
+                      trailing={destaque && tram ? (
                         <span className="inline-flex items-center gap-1">
                           <span className="font-mono text-[11px]" style={{ color: '#64748B' }}>
                             · Chegou há {tram.data ? Math.max(1, Math.round((Date.now() - new Date(tram.data).getTime()) / 3.6e6)) : 0}h
                           </span>
                           <TramitacaoInfoPopover tramitacao={tram} variant="amber" />
                         </span>
-                      )}
-                    </span>
+                      ) : null}
+                    />
                   </td>
                   <td className="px-4 py-3.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Link
-                        href={`/pacientes/${s.paciente.id}`}
-                        className="transition-colors hover:underline"
-                        style={{ color: '#146BFA', fontWeight: 500, fontSize: 14, textUnderlineOffset: 3 }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {s.paciente.nome}
-                      </Link>
-                      <span className="text-[12px]" style={{ color: '#94A3B8' }}>{idadeAnos(s.paciente.dataNascimento)} anos</span>
-                    </div>
-                    <div className="text-[12px] font-mono mt-0.5" style={{ color: '#94A3B8' }}>{s.paciente.cpf}</div>
+                    <PacienteHoverCell paciente={s.paciente} />
                   </td>
                   <td className="px-4 py-3.5">
                     <div className="leading-tight">
