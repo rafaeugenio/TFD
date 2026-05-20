@@ -304,11 +304,11 @@ function PainelContent() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* ─── Hero: Donut Distribuição + KPIs ─── */}
-      <section className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        {/* Donut — ocupa 2 colunas (metade da linha) */}
+      {/* ─── Hero: Donut + KPIs + Atividades, 3 colunas alinhadas ─── */}
+      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
+        {/* Coluna 1 — Donut */}
         <div
-          className="lg:col-span-2 p-5 flex flex-col"
+          className="p-5 flex flex-col"
           style={{
             background: 'white',
             border: `1px solid ${COLORS.border}`,
@@ -382,22 +382,24 @@ function PainelContent() {
           </div>
         </div>
 
-        {/* KPIs — cada um ocupa 1 coluna, alinhados na mesma linha do donut */}
-        <KpiTile
-          label="Encerradas no mês"
-          value={distribuicao.encerradasMes}
-          tone="green"
-        />
-        <KpiTile
-          label="Taxa de aprovação"
-          value={`${distribuicao.aprovacao}%`}
-          tone="blue"
-          progress={distribuicao.aprovacao}
-        />
-      </section>
+        {/* Coluna 2 — KPIs empilhados (mesma altura do donut) */}
+        <div className="flex flex-col gap-4">
+          <KpiTile
+            label="Encerradas no mês"
+            value={distribuicao.encerradasMes}
+            tone="green"
+          />
+          <KpiTile
+            label="Taxa de aprovação"
+            value={`${distribuicao.aprovacao}%`}
+            tone="blue"
+            progress={distribuicao.aprovacao}
+          />
+        </div>
 
-      {/* ─── Atividades recentes ─── */}
-      <AtividadesRecentes />
+        {/* Coluna 3 — Atividades recentes (limitada à altura da linha) */}
+        <AtividadesRecentes />
+      </section>
 
       {/* ─── 3 setores ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -1056,15 +1058,17 @@ function AtividadesRecentes() {
 
   return (
     <section
-      className="p-5"
+      className="p-5 flex flex-col"
       style={{
         background: 'white',
         border: `1px solid ${COLORS.border}`,
         borderRadius: 12,
         boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
+        // Mesma altura visual do donut (header ~50 + chart 220 + paddings)
+        minHeight: 0,
       }}
     >
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 shrink-0">
         <div>
           <h2 className="text-[14px] font-semibold" style={{ color: COLORS.text }}>
             Atividades recentes
@@ -1093,7 +1097,7 @@ function AtividadesRecentes() {
           Nenhuma atividade recente nas operações do fluxo.
         </p>
       ) : (
-        <ul className="flex flex-col">
+        <ul className="flex flex-col overflow-y-auto pr-1" style={{ maxHeight: 250 }}>
           {logs.map((l, idx) => {
             const meta = ENTIDADE_META[l.entidade_alterada] ?? { label: l.entidade_alterada, icon: FileText, color: '#64748B' };
             const Icon = meta.icon;
