@@ -1273,6 +1273,62 @@ function TagsBadgesSection() {
           <div className="tfd-avatar" style={{ background: 'var(--tfd-warning)' }}>AL</div>
         </div>
       </SubSection>
+
+      <SubSection
+        title="Beneficiário (P / A)"
+        hint="Badge quadrado de 18×18px usado em listas e relatórios. P = paciente (azul), A = acompanhante (roxo)."
+      >
+        <div className="flex items-center gap-3">
+          <span
+            title="Paciente"
+            className="inline-flex items-center justify-center text-[10px] font-bold"
+            style={{ width: 18, height: 18, borderRadius: 4, background: '#DBEAFE', color: '#1E40AF' }}
+          >
+            P
+          </span>
+          <span
+            title="Acompanhante"
+            className="inline-flex items-center justify-center text-[10px] font-bold"
+            style={{ width: 18, height: 18, borderRadius: 4, background: '#EDE9FE', color: '#6D28D9' }}
+          >
+            A
+          </span>
+          <span className="text-[12px]" style={{ color: 'var(--tfd-text-secondary)' }}>
+            Componente: <code>TipoBeneficiarioBadge</code> em <code>src/app/relatorios/_shared/ReportTable.tsx</code>
+          </span>
+        </div>
+        <CodeBlock code={`<TipoBeneficiarioBadge tipo="paciente" />
+<TipoBeneficiarioBadge tipo="acompanhante" />`} />
+      </SubSection>
+
+      <SubSection
+        title="Modal de transporte"
+        hint="Distingue base de cálculo SIGTAP: terrestre (km, ÷50), aéreo (mi, ÷200), fluvial (mn, ÷27)."
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className="inline-flex items-center text-[10px] font-semibold px-1.5"
+            style={{ background: '#DCFCE7', color: '#166534', borderRadius: 3, lineHeight: '16px' }}
+          >
+            Terrestre
+          </span>
+          <span
+            className="inline-flex items-center text-[10px] font-semibold px-1.5"
+            style={{ background: '#DBEAFE', color: '#1E40AF', borderRadius: 3, lineHeight: '16px' }}
+          >
+            Aéreo
+          </span>
+          <span
+            className="inline-flex items-center text-[10px] font-semibold px-1.5"
+            style={{ background: '#CFFAFE', color: '#0E7490', borderRadius: 3, lineHeight: '16px' }}
+          >
+            Fluvial
+          </span>
+        </div>
+        <CodeBlock code={`<ModalBadge modal="terrestre" />
+<ModalBadge modal="aereo" />
+<ModalBadge modal="fluvial" />`} />
+      </SubSection>
     </>
   );
 }
