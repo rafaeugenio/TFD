@@ -277,16 +277,39 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         const supabase = createClient();
-        const { data, error } = await supabase
-          .from('solicitacoes')
-          .select(SOLICITACAO_V2_SELECT)
-          .order('created_at', { ascending: false });
+        const [{ data, error }, { data: muniRows }] = await Promise.all([
+          supabase
+            .from('solicitacoes')
+            .select(SOLICITACAO_V2_SELECT)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('municipios')
+            .select('nome, uf, regional'),
+        ]);
         if (cancelled) return;
         if (error || !data) {
           if (error) console.warn('[FluxoV2] erro ao carregar Supabase:', error.message);
           return;
         }
+        // Mapa nome+uf → regional, para enriquecer pacientes (cuja FK municipio_residencia_id
+        // está nula no banco atual).
+        const regionalPorMunicipio = new Map<string, string>();
+        ((muniRows ?? []) as unknown as Array<Record<string, unknown>>).forEach((m) => {
+          const nome = String(m.nome ?? '').trim().toLowerCase();
+          const uf = String(m.uf ?? '').trim().toUpperCase();
+          const regional = String(m.regional ?? '').trim();
+          if (nome && regional) regionalPorMunicipio.set(`${nome}|${uf}`, regional);
+        });
+
         const real = solicitacoesFromSupabase(data as unknown as Record<string, unknown>[]);
+        for (const s of real) {
+          if (!s.paciente.regional && s.paciente.municipio) {
+            const [nome, uf] = s.paciente.municipio.split(' - ');
+            const key = `${nome.trim().toLowerCase()}|${(uf ?? '').trim().toUpperCase()}`;
+            const r = regionalPorMunicipio.get(key);
+            if (r) s.paciente.regional = r;
+          }
+        }
         setSolicitacoes(real);
       } catch (err) {
         console.warn('[FluxoV2] erro ao carregar Supabase:', err);
