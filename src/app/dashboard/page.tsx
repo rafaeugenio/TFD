@@ -1006,16 +1006,20 @@ const ENTIDADES_RELEVANTES = new Set([
   'solicitacoes',
   'pareceres',
   'agendamentos',
+  'tentativas_agendamento',
+  'rotas_regulacao',
   'viagens',
   'ajudas_custo',
 ]);
 
 const ENTIDADE_META: Record<string, { label: string; icon: React.ComponentType<{ size?: number }>; color: string }> = {
-  solicitacoes: { label: 'Solicitação', icon: ClipboardList, color: '#146BFA' },
-  pareceres:    { label: 'Parecer médico', icon: Stethoscope, color: '#7C3AED' },
-  agendamentos: { label: 'Agendamento', icon: CalendarClock, color: '#0891B2' },
-  viagens:      { label: 'Passagem', icon: Plane, color: '#0EA5E9' },
-  ajudas_custo: { label: 'Ajuda de custo', icon: Wallet, color: '#F59E0B' },
+  solicitacoes:           { label: 'solicitação',  icon: ClipboardList, color: '#146BFA' },
+  pareceres:              { label: 'parecer médico', icon: Stethoscope, color: '#7C3AED' },
+  agendamentos:           { label: 'agendamento',  icon: CalendarClock, color: '#0891B2' },
+  tentativas_agendamento: { label: 'tentativa de agendamento', icon: CalendarClock, color: '#0891B2' },
+  rotas_regulacao:        { label: 'rota de regulação', icon: Stethoscope, color: '#7C3AED' },
+  viagens:                { label: 'passagem',     icon: Plane, color: '#0EA5E9' },
+  ajudas_custo:           { label: 'ajuda de custo', icon: Wallet, color: '#F59E0B' },
 };
 
 function acaoVerbo(acao: string): string {
@@ -1046,11 +1050,12 @@ function AtividadesRecentes() {
   useEffect(() => {
     let cancel = false;
     (async () => {
-      const { data } = await listarLogs({ limit: 80 });
+      // Apenas criações (INSERT). Updates raramente carregam usuario_id e
+      // poluem o feed com mudanças de status.
+      const { data } = await listarLogs({ limit: 50, acao: 'INSERT' });
       if (cancel) return;
-      // Filtra só entidades relevantes do fluxo
       const filtrados = (data ?? []).filter((l) => ENTIDADES_RELEVANTES.has(l.entidade_alterada));
-      setLogs(filtrados.slice(0, 8));
+      setLogs(filtrados.slice(0, 5));
       setLoading(false);
     })();
     return () => { cancel = true; };
@@ -1097,7 +1102,7 @@ function AtividadesRecentes() {
           Nenhuma atividade recente nas operações do fluxo.
         </p>
       ) : (
-        <ul className="flex flex-col overflow-y-auto pr-1" style={{ maxHeight: 250 }}>
+        <ul className="flex flex-col">
           {logs.map((l, idx) => {
             const meta = ENTIDADE_META[l.entidade_alterada] ?? { label: l.entidade_alterada, icon: FileText, color: '#64748B' };
             const Icon = meta.icon;
@@ -1120,9 +1125,9 @@ function AtividadesRecentes() {
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="text-[12.5px] leading-snug truncate" style={{ color: COLORS.text }}>
-                    <span style={{ fontWeight: 500 }}>{l.nome_usuario ?? 'Usuário'}</span>{' '}
+                    <span style={{ fontWeight: 500 }}>{l.nome_usuario ?? 'Sistema'}</span>{' '}
                     <span style={{ color: COLORS.muted }}>{acaoVerbo(l.acao)}</span>{' '}
-                    <span>{meta.label.toLowerCase()}</span>
+                    <span>{meta.label}</span>
                   </p>
                 </div>
                 <span
