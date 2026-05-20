@@ -93,7 +93,16 @@ export default function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { can, isLoading } = usePermissions();
+  const { can, isLoading, user, isAdmin } = usePermissions();
+
+  const userIniciais = (() => {
+    if (!user?.nome_completo) return '?';
+    const parts = user.nome_completo.trim().split(/\s+/);
+    const first = parts[0]?.[0] ?? '';
+    const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
+    return (first + last).toUpperCase() || '?';
+  })();
+  const userPerfil = isAdmin ? 'Administrador master' : (user?.perfil ?? '—');
 
   // Quando o usuário entra no detalhe de uma solicitação a partir de outra
   // tela (ex.: Financeiro → /fluxo-v2/solicitacoes/abc?from=financeiro),
@@ -299,16 +308,17 @@ export default function Sidebar({
               border: '2px solid white',
               boxShadow: '0 0 0 1px #E8ECF4',
             }}
+            title={user?.nome_completo ?? ''}
           >
-            MS
+            {userIniciais}
           </div>
           {!collapsed && (
             <div className="flex-1 min-w-0 text-left">
               <p className="text-[12px] font-semibold truncate" style={{ color: '#1A1D2B' }}>
-                Maria Silva
+                {user?.nome_completo ?? '—'}
               </p>
               <p className="text-[10px] truncate" style={{ color: '#9CA3AF' }}>
-                Coordenação Estadual
+                {userPerfil}
               </p>
             </div>
           )}
