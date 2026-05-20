@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { Suspense, useState, useEffect, useCallback } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from '@/layout/sidebar/Sidebar';
 import { Menu } from 'lucide-react';
@@ -92,12 +92,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--tfd-surface-ground)' }}>
-      <Sidebar
-        collapsed={collapsed}
-        onToggle={() => setCollapsed((p) => !p)}
-        mobileOpen={mobileOpen}
-        onMobileClose={() => setMobileOpen(false)}
-      />
+      <Suspense fallback={null}>
+        <Sidebar
+          collapsed={collapsed}
+          onToggle={() => setCollapsed((p) => !p)}
+          mobileOpen={mobileOpen}
+          onMobileClose={() => setMobileOpen(false)}
+        />
+      </Suspense>
 
       <div
         style={{
