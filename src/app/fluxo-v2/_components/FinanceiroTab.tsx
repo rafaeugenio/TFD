@@ -10,7 +10,7 @@ import ReembolsoModal from './ReembolsoModal';
 import NewPassagemDrawer from './drawers/NewPassagemDrawer';
 import NewAjudaCustoDrawer from './drawers/NewAjudaCustoDrawer';
 import NewAdicionalDrawer from './drawers/NewAdicionalDrawer';
-import GerarDespachoButton from './GerarDespachoButton';
+import FechamentoSolicitacaoCard from './FechamentoSolicitacaoCard';
 import DadosBancariosBlock from './DadosBancariosBlock';
 import { isLocked, tooltipLocked } from '../_utils/lock';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
@@ -132,14 +132,8 @@ export default function FinanceiroTab({ s }: Props) {
         </div>
       )}
 
-      {/* Ações financeiras (despacho, etc.) */}
-      <div className="flex items-center justify-end gap-2 mb-3">
-        <GerarDespachoButton
-          solicitacaoId={s.id}
-          numeroSEI={s.numeroSEI ?? null}
-          disabled={locked}
-        />
-      </div>
+      {/* Card de fechamento — checklist + Relatório TFD + Despacho */}
+      <FechamentoSolicitacaoCard s={s} locked={locked} lockedTip={lockedTip} />
 
       {/* Linha tipográfica horizontal — 4 stats neutros com divisor vertical */}
       <div
