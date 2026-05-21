@@ -37,6 +37,7 @@ export interface NewSolicitacaoSupabase {
   numero_protocolo?: string;
   url_sei?: string;
   data_laudo?: string;
+  origem_laudo_unidade_id?: string;
   status: StatusDb;
   setor_atual: SetorDb;
   tipo_solicitacao: 'NORMAL' | 'AJUDA_CUSTO';
@@ -48,6 +49,7 @@ export function buildNewSolicitacao(input: {
   numeroSEI?: string;
   seiUrl?: string;
   dataLaudo?: string;
+  origemLaudoUnidadeId?: string;
   tipoSolicitacao?: 'normal' | 'ajuda_custo';
 }): NewSolicitacaoSupabase {
   return {
@@ -56,6 +58,7 @@ export function buildNewSolicitacao(input: {
     numero_protocolo: input.numeroSEI,
     url_sei: input.seiUrl,
     data_laudo: input.dataLaudo,
+    origem_laudo_unidade_id: input.origemLaudoUnidadeId,
     status: 'NOVO',
     setor_atual: 'dados_basicos',
     tipo_solicitacao: input.tipoSolicitacao === 'ajuda_custo' ? 'AJUDA_CUSTO' : 'NORMAL',

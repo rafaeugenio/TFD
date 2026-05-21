@@ -101,12 +101,14 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
   const [tipoSolicitacao, setTipoSolicitacao] = useState<'normal' | 'ajuda_custo'>('normal');
   const [pacienteId, setPacienteId] = useState('');
   const [acompanhanteIds, setAcompanhanteIds] = useState<string[]>([]);
+  const [acompDoadores, setAcompDoadores] = useState<Set<string>>(new Set());
   const [semAgendamento, setSemAgendamento] = useState(false);
   const [unidade, setUnidade] = useState('');
   /** Lista de agendamentos (tipoProcedimento + data). 0..N — o paciente pode
    *  ter vários procedimentos planejados na mesma unidade. */
   const [agendamentos, setAgendamentos] = useState<AgendamentoLinha[]>([novaLinhaAgendamento()]);
   const [dataLaudo, setDataLaudo] = useState('');
+  const [origemLaudoUnidadeId, setOrigemLaudoUnidadeId] = useState('');
   const [numeroSEI, setNumeroSEI] = useState('');
   const [seiUrl, setSeiUrl] = useState('');
   const [anexos, setAnexos] = useState<{ nome: string; tipo: string; tipoDocumento?: string }[]>([]);
@@ -200,6 +202,7 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
   // Sempre que muda o paciente, reseta acompanhantes selecionados e busca os do paciente
   useEffect(() => {
     setAcompanhanteIds([]);
+    setAcompDoadores(new Set());
     if (!pacienteId) {
       setAcompanhantes([]);
       return;
@@ -245,6 +248,7 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
     setTipoSolicitacao('normal');
     setPacienteId('');
     setAcompanhanteIds([]);
+    setAcompDoadores(new Set());
     setSemAgendamento(false);
     setUnidade(''); setUnidadeId('');
     setAgendamentos([novaLinhaAgendamento()]);
@@ -319,13 +323,17 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
       endereco: { logradouro: '', numero: '', bairro: '', cep: '' },
     };
 
-    const acompanhantesSnapshot = acompanhantes.map((a) => ({
-      id: a.id,
-      nome: a.nome_completo,
-      cpf: a.cpf,
-      dataNascimento: a.data_nascimento,
-      vinculo: a.vinculo ?? 'Outro',
-    }));
+    const acompanhantesSnapshot = acompanhantes
+      .filter((a) => acompanhanteIds.includes(a.id))
+      .map((a) => ({
+        id: a.id,
+        nome: a.nome_completo,
+        cpf: a.cpf,
+        dataNascimento: a.data_nascimento,
+        vinculo: a.vinculo ?? 'Outro',
+        // doador é por solicitação — vem do estado local do drawer.
+        doador: acompDoadores.has(a.id),
+      }));
 
     const unidadeNome =
       unidadeSelecionada
@@ -347,6 +355,7 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
             }
           : undefined,
       dataLaudo: dataLaudo || undefined,
+      origemLaudoUnidadeId: origemLaudoUnidadeId || undefined,
       numeroSEI: numeroSEI.trim() || undefined,
       seiUrl: seiUrl.trim() || undefined,
       anexos,
@@ -513,6 +522,22 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
                           ? prev.filter((id) => id !== a.id)
                           : [...prev, a.id],
                       );
+                      // Desmarcar acompanhante remove o flag de doador.
+                      setAcompDoadores((prev) => {
+                        if (!prev.has(a.id)) return prev;
+                        const next = new Set(prev);
+                        next.delete(a.id);
+                        return next;
+                      });
+                    }}
+                    doador={acompDoadores.has(a.id)}
+                    onToggleDoador={() => {
+                      setAcompDoadores((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(a.id)) next.delete(a.id);
+                        else next.add(a.id);
+                        return next;
+                      });
                     }}
                   />
                 );
@@ -821,16 +846,42 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
           )}
         </section>
 
-        {/* Data laudo */}
+        {/* Laudo médico — origem (unidade de saúde) + data */}
         <section>
           <h3 className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Data do laudo
+            Laudo médico
           </h3>
-          <input
-            type="date" value={dataLaudo} onChange={(e) => setDataLaudo(e.target.value)}
-            className="px-3 py-2 text-[13px]"
-            style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
-          />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div className="md:col-span-2">
+              <label className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8', letterSpacing: '0.04em' }}>
+                Origem do laudo
+              </label>
+              <select
+                value={origemLaudoUnidadeId}
+                onChange={(e) => setOrigemLaudoUnidadeId(e.target.value)}
+                disabled={loadingUnidades}
+                className="w-full px-3 py-2 text-[13px] mt-1"
+                style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
+              >
+                <option value="">— Selecione a unidade de saúde —</option>
+                {unidades.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.nome}{u.cidade ? ` — ${u.cidade}${u.uf ? `/${u.uf}` : ''}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8', letterSpacing: '0.04em' }}>
+                Data do laudo
+              </label>
+              <input
+                type="date" value={dataLaudo} onChange={(e) => setDataLaudo(e.target.value)}
+                className="w-full px-3 py-2 text-[13px] mt-1"
+                style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
+              />
+            </div>
+          </div>
         </section>
 
         {/* Processo SEI */}
@@ -976,10 +1027,14 @@ function AcompanhanteCard({
   acompanhante: a,
   checked,
   onToggle,
+  doador,
+  onToggleDoador,
 }: {
   acompanhante: AcompanhanteRow;
   checked: boolean;
   onToggle: () => void;
+  doador: boolean;
+  onToggleDoador: () => void;
 }) {
   return (
     <label
@@ -1073,6 +1128,44 @@ function AcompanhanteCard({
           >
             {a.descricao_necessidade}
           </p>
+        )}
+
+        {/* Toggle "doador" — só aparece quando o acompanhante está selecionado
+            para esta solicitação. É per-solicitação, não trait do cadastro. */}
+        {checked && (
+          <div
+            className="mt-2 flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer select-none"
+            style={{
+              background: doador ? '#FFE4E6' : '#F8FAFC',
+              border: '1px solid ' + (doador ? '#FECDD3' : '#E2E8F0'),
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleDoador();
+            }}
+            title="Doador (órgão/tecido): conta como paciente no cálculo SIGTAP do BPA"
+          >
+            <input
+              type="checkbox"
+              checked={doador}
+              onChange={() => {}}
+              onClick={(e) => e.stopPropagation()}
+              tabIndex={-1}
+              readOnly
+            />
+            <span
+              className="text-[11.5px] font-medium"
+              style={{ color: doador ? '#9F1239' : '#475569' }}
+            >
+              Marcar como <strong>doador</strong> nesta solicitação
+              {doador && (
+                <span className="ml-1.5 text-[10.5px]" style={{ opacity: 0.85 }}>
+                  · conta como paciente no BPA
+                </span>
+              )}
+            </span>
+          </div>
         )}
       </div>
     </label>

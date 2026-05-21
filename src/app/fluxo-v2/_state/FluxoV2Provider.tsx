@@ -221,6 +221,7 @@ interface FluxoV2ContextValue {
 export interface EditarSolicitacaoPatch {
   acompanhanteIds?: string[];
   dataLaudo?: string | undefined;
+  origemLaudoUnidadeId?: string | undefined;
   anexos?: { id?: string; nome: string; tipo: string; tipoDocumento?: string }[];
   /** T2.AG — Número do processo SEI (formato XXXXX.XXXXXX/AAAA-DD). */
   numeroSEI?: string | undefined;
@@ -246,6 +247,9 @@ export interface NewSolicitacaoInput {
     }>;
   };
   dataLaudo?: string;
+  /** Origem do laudo: id de uma unidade de saúde cadastrada (unidades_destino).
+   *  Usado para relatórios regionais. */
+  origemLaudoUnidadeId?: string;
   anexos: { nome: string; tipo: string }[];
   numeroSEI?: string;
   seiUrl?: string;
@@ -400,10 +404,27 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       numeroSEI: input.numeroSEI?.trim() || undefined,
       seiUrl: input.seiUrl?.trim() || undefined,
       dataLaudo: input.dataLaudo,
+      origemLaudoUnidadeId: input.origemLaudoUnidadeId,
       tipoSolicitacao: input.tipoSolicitacao,
     });
     const realId = await persistInsert('solicitacoes', novaSolicitacaoPayload);
     const id = realId ?? uid('s');
+
+    // Persiste vínculos com acompanhantes selecionados. Inclui o flag doador
+    // (por solicitação) que veio do snapshot.
+    if (realId && acompanhantes.length > 0) {
+      const supabase = createClient();
+      const vinculos = acompanhantes.map((a) => ({
+        solicitacao_id: realId,
+        acompanhante_id: a.id,
+        doador: Boolean(a.doador),
+      }));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: vincErr } = await (supabase.from('solicitacao_acompanhantes') as any).insert(vinculos);
+      if (vincErr) {
+        console.warn('[FluxoV2] erro ao vincular acompanhantes:', vincErr.message);
+      }
+    }
 
     // T2.AM — A criação pode informar N procedimentos na mesma unidade.
     // Cada procedimento vira uma tentativa `agendamento_confirmado` dentro do
