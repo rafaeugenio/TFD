@@ -1110,12 +1110,14 @@ export type Database = {
         Row: {
           id: string;
           paciente_id: string;
+          solicitacao_id: string;
           banco: string;
           agencia: string;
           conta: string;
           tipo_conta: TipoConta;
           nome_titular: string;
           cpf_titular: string;
+          titular_vinculo: 'PROPRIO' | 'PAI' | 'MAE' | 'CONJUGE' | 'RESPONSAVEL_LEGAL' | 'OUTRO' | null;
           pix_tipo: 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA' | null;
           pix_chave: string | null;
           created_at: string;
@@ -1124,12 +1126,14 @@ export type Database = {
         Insert: {
           id?: string;
           paciente_id: string;
+          solicitacao_id: string;
           banco: string;
           agencia: string;
           conta: string;
           tipo_conta: TipoConta;
           nome_titular: string;
           cpf_titular: string;
+          titular_vinculo?: 'PROPRIO' | 'PAI' | 'MAE' | 'CONJUGE' | 'RESPONSAVEL_LEGAL' | 'OUTRO' | null;
           pix_tipo?: 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA' | null;
           pix_chave?: string | null;
           created_at?: string;
@@ -1138,12 +1142,14 @@ export type Database = {
         Update: {
           id?: string;
           paciente_id?: string;
+          solicitacao_id?: string;
           banco?: string;
           agencia?: string;
           conta?: string;
           tipo_conta?: TipoConta;
           nome_titular?: string;
           cpf_titular?: string;
+          titular_vinculo?: 'PROPRIO' | 'PAI' | 'MAE' | 'CONJUGE' | 'RESPONSAVEL_LEGAL' | 'OUTRO' | null;
           pix_tipo?: 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA' | null;
           pix_chave?: string | null;
           created_at?: string;

@@ -11,6 +11,7 @@ import NewPassagemDrawer from './drawers/NewPassagemDrawer';
 import NewAjudaCustoDrawer from './drawers/NewAjudaCustoDrawer';
 import NewAdicionalDrawer from './drawers/NewAdicionalDrawer';
 import GerarDespachoButton from './GerarDespachoButton';
+import DadosBancariosBlock from './DadosBancariosBlock';
 import { isLocked, tooltipLocked } from '../_utils/lock';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { useToast } from '@/shared/components/toast/Toast';
@@ -422,6 +423,16 @@ export default function FinanceiroTab({ s }: Props) {
         ) : (
           <p className="text-[12px]" style={{ color: '#9CA3AF' }}>Nenhum período de ajuda registrado.</p>
         )}
+
+        {/* ── Sub-bloco: Dados bancários da solicitação ── */}
+        <DadosBancariosBlock
+          solicitacaoId={s.id}
+          pacienteId={s.paciente.id}
+          pacienteCpf={s.paciente.cpf}
+          pacienteNome={s.paciente.nome}
+          locked={locked}
+          lockedTip={lockedTip}
+        />
       </Section>
 
       {/* Drawers */}
