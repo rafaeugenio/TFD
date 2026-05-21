@@ -23,7 +23,7 @@ import { DetailPageSkeleton, CardListSkeleton } from '@/shared/components/skelet
 import { buscarPaciente, historicoProcessos } from '@/services/pacientes.service';
 import PacienteDrawer from '../_PacienteDrawer';
 import { listarPorPaciente } from '@/services/acompanhantes.service';
-import { buscarPorPaciente as buscarDadosBancariosPorPaciente } from '@/services/dados-bancarios.service';
+import { listarPorPaciente as listarDadosBancariosPorPaciente, TITULAR_VINCULO_LABEL, type TitularVinculo } from '@/services/dados-bancarios.service';
 import { formatCPF, formatCNS, formatDate } from '@/shared/pipes/formatters';
 import type { StatusSolicitacao } from '@/core/models';
 
@@ -108,7 +108,7 @@ function PacienteDetalheInner({ id }: { id: string }) {
   const [paciente, setPaciente] = useState<Record<string, unknown> | null>(null);
   const [solicitacoes, setSolicitacoes] = useState<Record<string, unknown>[]>([]);
   const [acompanhantes, setAcompanhantes] = useState<Record<string, unknown>[]>([]);
-  const [dadosBancarios, setDadosBancarios] = useState<Record<string, unknown> | null>(null);
+  const [dadosBancariosHistorico, setDadosBancariosHistorico] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingSol, setLoadingSol] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
@@ -125,11 +125,11 @@ function PacienteDetalheInner({ id }: { id: string }) {
       const [solResult, acompResult, bancRes] = await Promise.all([
         historicoProcessos(id),
         listarPorPaciente(id),
-        buscarDadosBancariosPorPaciente(id),
+        listarDadosBancariosPorPaciente(id),
       ]);
       if (solResult.data) setSolicitacoes(solResult.data as Record<string, unknown>[]);
       if (acompResult.data) setAcompanhantes(acompResult.data as Record<string, unknown>[]);
-      if (bancRes.data) setDadosBancarios(bancRes.data as Record<string, unknown>);
+      if (bancRes.data) setDadosBancariosHistorico(bancRes.data as Record<string, unknown>[]);
       setLoadingSol(false);
     }
     load();
@@ -416,74 +416,71 @@ function PacienteDetalheInner({ id }: { id: string }) {
           )}
         </Section>
 
-        {/* Dados Bancários (com PIX) */}
-        <Section title="Dados Bancários" icon={<Landmark size={18} />}>
-          {dadosBancarios ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {(dadosBancarios.banco as string) && (
-                <InfoRow label="Banco" value={dadosBancarios.banco as string} />
-              )}
-              {(dadosBancarios.agencia as string) && (
-                <InfoRow label="Agência" value={dadosBancarios.agencia as string} mono />
-              )}
-              {(dadosBancarios.conta as string) && (
-                <InfoRow
-                  label="Conta"
-                  value={
-                    <span>
-                      <span className="font-mono">{dadosBancarios.conta as string}</span>
-                      {(dadosBancarios.tipo_conta as string) && (
-                        <span
-                          className="ml-2 text-[11px] px-1.5 py-0.5 rounded"
-                          style={{ backgroundColor: '#EFF6FF', color: '#1E40AF' }}
-                        >
-                          {TIPO_CONTA_LABELS[dadosBancarios.tipo_conta as string] ?? (dadosBancarios.tipo_conta as string)}
+        {/* Dados Bancários — histórico por solicitação (read-only) */}
+        <Section
+          title="Dados Bancários"
+          icon={<Landmark size={18} />}
+          badge={
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}>
+              {dadosBancariosHistorico.length}
+            </span>
+          }
+        >
+          {dadosBancariosHistorico.length === 0 ? (
+            <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
+              Nenhuma conta cadastrada ainda. O cadastro é feito por solicitação, na aba Financeiro.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {dadosBancariosHistorico.map((d) => {
+                const sol = d.solicitacoes as Record<string, unknown> | null;
+                const numero = (sol?.numero_processo as string) ?? '—';
+                const banco = d.banco as string;
+                const agencia = d.agencia as string;
+                const conta = d.conta as string;
+                const tipoConta = d.tipo_conta as string;
+                const titular = d.nome_titular as string;
+                const cpfTitular = d.cpf_titular as string;
+                const vinculo = d.titular_vinculo as TitularVinculo | null;
+                const pixTipo = d.pix_tipo as string | null;
+                const pixChave = d.pix_chave as string | null;
+                return (
+                  <li key={d.id as string} className="px-3 py-2.5" style={{ background: '#F8FAFC', borderRadius: 8, border: '1px solid var(--tfd-surface-border)' }}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[11.5px] font-mono" style={{ color: 'var(--tfd-primary-500)' }}>{numero}</span>
+                      {vinculo && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: '#EEF2FF', color: '#3730A3' }}>
+                          {TITULAR_VINCULO_LABEL[vinculo]}
                         </span>
                       )}
-                    </span>
-                  }
-                />
-              )}
-              {(dadosBancarios.nome_titular as string) && (
-                <InfoRow label="Titular" value={dadosBancarios.nome_titular as string} />
-              )}
-              {(dadosBancarios.cpf_titular as string) && (
-                <InfoRow label="CPF do titular" value={formatCPF(dadosBancarios.cpf_titular as string)} mono />
-              )}
-              {(dadosBancarios.pix_tipo as string) && (
-                <InfoRow
-                  label={
-                    <span className="inline-flex items-center gap-1.5">
-                      <Key size={12} style={{ color: '#0EA5E9' }} />
-                      <span>PIX</span>
-                    </span>
-                  }
-                  value={
-                    <span>
-                      <span className="text-[11px] px-1.5 py-0.5 rounded mr-2" style={{ backgroundColor: '#ECFEFF', color: '#0E7490' }}>
-                        {PIX_TIPO_LABELS[dadosBancarios.pix_tipo as string] ?? (dadosBancarios.pix_tipo as string)}
-                      </span>
-                      <span className={['CPF', 'CNPJ', 'TELEFONE', 'ALEATORIA'].includes(dadosBancarios.pix_tipo as string) ? 'font-mono' : ''}>
-                        {formatarChavePix(dadosBancarios.pix_tipo as string, dadosBancarios.pix_chave as string)}
-                      </span>
-                    </span>
-                  }
-                />
-              )}
-            </div>
-          ) : (
-            <div className="py-4 text-center">
-              <p className="text-sm mb-3" style={{ color: 'var(--tfd-text-muted)' }}>
-                Nenhum dado bancário cadastrado.
-              </p>
-              <button
-                type="button"
-                onClick={() => router.push(`/pacientes?editar=${id}`)}
-                className="tfd-btn tfd-btn-secondary tfd-btn--sm"
-              >
-                <Pencil size={12} /> Cadastrar conta
-              </button>
-            </div>
+                    </div>
+                    <div className="text-[12.5px] flex items-center gap-2 flex-wrap" style={{ color: '#0F172A' }}>
+                      <span style={{ fontWeight: 600 }}>{banco}</span>
+                      <span style={{ color: '#CBD5E1' }}>·</span>
+                      <span className="font-mono">Ag. {agencia} / Conta {conta}</span>
+                      {tipoConta && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: '#EFF6FF', color: '#1E40AF' }}>
+                          {TIPO_CONTA_LABELS[tipoConta] ?? tipoConta}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11.5px] mt-0.5" style={{ color: '#475569' }}>
+                      Titular: <strong style={{ color: '#0F172A' }}>{titular}</strong>
+                      {cpfTitular && <span className="font-mono ml-2">{formatCPF(cpfTitular)}</span>}
+                    </div>
+                    {pixTipo && pixChave && (
+                      <div className="text-[11.5px] mt-0.5 inline-flex items-center gap-1.5" style={{ color: '#475569' }}>
+                        <Key size={11} style={{ color: '#0EA5E9' }} />
+                        PIX <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: '#ECFEFF', color: '#0E7490' }}>{PIX_TIPO_LABELS[pixTipo] ?? pixTipo}</span>
+                        <span className={['CPF','CNPJ','TELEFONE','ALEATORIA'].includes(pixTipo) ? 'font-mono' : ''}>
+                          {formatarChavePix(pixTipo, pixChave)}
+                        </span>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </Section>
 

@@ -26,8 +26,6 @@ import { buscarPaciente, criarPaciente, atualizarPaciente } from '@/services/pac
 import { buscarRegionalPorMunicipio, listarRegionaisSaude } from '@/services/regionais-saude.service';
 import {
   buscarPorPaciente as buscarDadosBancariosPorPaciente,
-  upsertPorPaciente as upsertDadosBancariosPorPaciente,
-  removerDadosBancarios,
 } from '@/services/dados-bancarios.service';
 import { listarPorPaciente, criarAcompanhante, atualizarAcompanhante, excluirAcompanhante } from '@/services/acompanhantes.service';
 import { uploadDocumento, listarDocumentosPaciente, excluirDocumento } from '@/services/documentos.service';
@@ -487,41 +485,12 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
         }
       }
 
-      const algumCampoBanco =
-        bancoNome.trim() || bancoAgencia.trim() || bancoConta.trim() ||
-        bancoTipoConta || bancoTitular.trim() || bancoCpfTitular.trim() || bancoPixChave.trim();
-
-      if (algumCampoBanco) {
-        if (!bancoNome.trim() || !bancoAgencia.trim() || !bancoConta.trim() ||
-            !bancoTipoConta || !bancoTitular.trim() || !bancoCpfTitular.trim()) {
-          toast.error('Dados bancários incompletos', 'Preencha banco, agência, conta, tipo, titular e CPF do titular — ou deixe todos em branco.');
-          return;
-        }
-        const cpfTitularLimpo = bancoCpfTitular.replace(/\D/g, '');
-        if (!validarCpfModulo11(bancoCpfTitular)) {
-          toast.error('CPF do titular inválido', 'Verifique o CPF informado.');
-          return;
-        }
-        if ((bancoPixTipo && !bancoPixChave.trim()) || (!bancoPixTipo && bancoPixChave.trim())) {
-          toast.error('PIX incompleto', 'Informe tipo e chave PIX — ou deixe ambos em branco.');
-          return;
-        }
-        const { error: dbErr } = await upsertDadosBancariosPorPaciente(pacienteId, {
-          banco: bancoNome.trim(),
-          agencia: bancoAgencia.trim(),
-          conta: bancoConta.trim(),
-          tipo_conta: bancoTipoConta,
-          nome_titular: bancoTitular.trim(),
-          cpf_titular: cpfTitularLimpo,
-          pix_tipo: bancoPixTipo || null,
-          pix_chave: bancoPixChave.trim() || null,
-        });
-        if (dbErr) {
-          toast.warning('Paciente salvo, dados bancários falharam', (dbErr as { message?: string }).message ?? 'Erro desconhecido');
-        }
-      } else if (bancoRegistroId) {
-        await removerDadosBancarios(bancoRegistroId);
-      }
+      // Dados bancários NÃO são mais salvos pelo cadastro do paciente. A
+      // partir da migration 00053 eles passam a viver na solicitação (cada
+      // ciclo tem sua própria conta de recebimento). O cadastro/edição é
+      // feito pelo setor de Ajuda de Custo na aba Financeiro da solicitação.
+      // Campos do drawer permanecem visíveis como referência histórica, mas
+      // não disparam upsert.
 
       if (pendingFiles.length > 0) {
         setUploading(true);
@@ -985,12 +954,14 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
         <hr className="tfd-divider" />
         <div className="flex items-center justify-between mb-1">
           <h3 className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>Dados Bancários</h3>
-          <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full" style={{ background: 'var(--tfd-surface-50, #F8FAFC)', color: 'var(--tfd-text-muted)', letterSpacing: '0.06em' }}>
-            Opcional
+          <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full" style={{ background: '#FEF3C7', color: '#92400E', letterSpacing: '0.06em' }}>
+            Histórico — não editável aqui
           </span>
         </div>
         <p className="text-xs mb-3" style={{ color: 'var(--tfd-text-muted)' }}>
-          Usado para repasse de ajuda de custo e ressarcimentos. Preencha apenas se o paciente tiver conta para recebimento.
+          A partir de maio/2026 os dados bancários são cadastrados por solicitação,
+          na aba <strong>Financeiro</strong>. Os campos abaixo mostram o último registro
+          deste paciente, apenas como referência. Edições aqui não serão salvas.
         </p>
 
         <LookupSelect
