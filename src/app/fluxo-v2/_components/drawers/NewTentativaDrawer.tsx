@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ExternalLink } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ExternalLink, Phone, Target, MessageSquare } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
+import FormSection from '@/shared/components/drawer/FormSection';
+import AnexosUploadField, { type AnexoLocal } from '@/shared/components/anexos-upload-field/AnexosUploadField';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import {
@@ -52,7 +54,8 @@ const DESFECHOS_ORDENADOS: DesfechoTentativa[] = [
 ];
 
 export default function NewTentativaDrawer({ open, onClose, solicitacaoId, editar }: Props) {
-  const { addTentativa, editarTentativa, getById } = useFluxoV2State();
+  const { addTentativa, editarTentativa, getById, addAnexos } = useFluxoV2State();
+  const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
   const toast = useToast();
   const firstInputRef = useRef<HTMLInputElement>(null);
 
@@ -171,6 +174,10 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
       addTentativa(solicitacaoId, payload);
       toast.success('Tentativa registrada', unidade);
     }
+    if (anexos.length > 0) {
+      addAnexos(solicitacaoId, anexos, 'tentativa');
+      setAnexos([]);
+    }
     onClose();
   }
 
@@ -206,8 +213,9 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
         </>
       }
     >
+      <FormSection title="Contato" icon={<Phone size={12} />} tone="primary">
       <div className="flex items-center justify-between mb-2">
-        <label className="block text-[12px] font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
+        <label className="block text-[12px] font-semibold" style={{ color: '#6B7280' }}>
           Unidade contatada
         </label>
         <a
@@ -250,7 +258,7 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
         ))}
       </select>
 
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         Data da tentativa
       </label>
       <input
@@ -265,7 +273,7 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
           O canal (WhatsApp, SMS, e-mail, Telegram, etc.) vem na linha abaixo. */}
       <div className="grid grid-cols-2 gap-3 mb-3">
         <div>
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+          <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
             Telefone
           </label>
           <input
@@ -287,7 +295,7 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
           )}
         </div>
         <div>
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+          <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
             E-mail
           </label>
           <input
@@ -311,7 +319,10 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
           )}
         </div>
       </div>
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+      </FormSection>
+
+      <FormSection title="Desfecho da tentativa" icon={<Target size={12} />} tone="info">
+      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         Desfecho
       </label>
       <select
@@ -352,7 +363,7 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
             className="mb-3"
           />
 
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#15803D' }}>
+          <label className="block text-[12px] font-semibold mb-2" style={{ color: '#15803D' }}>
             Data do agendamento <span style={{ color: '#94A3B8', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(data em que o paciente vai à unidade)</span>
           </label>
           <input
@@ -403,7 +414,10 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
         </div>
       )}
 
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+      </FormSection>
+
+      <FormSection title="Observação" icon={<MessageSquare size={12} />} tone="default">
+      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         Observação
       </label>
       <textarea
@@ -414,6 +428,9 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
         className="w-full px-3 py-2 text-[13px]"
         style={inputStyle}
       />
+      </FormSection>
+
+      <AnexosUploadField value={anexos} onChange={setAnexos} hint="E-mail trocado, print de WhatsApp, comprovante (opcional)." />
     </Drawer>
   );
 }

@@ -59,6 +59,7 @@ export interface AcompanhanteMock {
   cpf: string;
   dataNascimento: string;
   vinculo: string;
+  doador?: boolean;
 }
 
 export type DecisaoParecer = 'deferido' | 'indeferido';
@@ -375,6 +376,25 @@ export interface AnexoMock {
   tamanhoKB?: number;
   /** Categoria do documento (vem da tabela auxiliar `tipo_documento`). */
   tipoDocumento?: string;
+  /**
+   * De qual ponto do fluxo o anexo veio (abertura, parecer, passagem,
+   * agendamento, etc.). Quando ausente, assumimos 'abertura' por
+   * compatibilidade com seeds antigos. Renderiza o badge "Origem" na aba
+   * Anexos.
+   */
+  origem?:
+    | 'abertura'
+    | 'edicao'
+    | 'adicional'
+    | 'passagem'
+    | 'parecer'
+    | 'despacho'
+    | 'agendamento'
+    | 'tentativa'
+    | 'ajuda_custo'
+    | 'carimbo';
+  /** ISO datetime — quando o anexo foi adicionado (para ordenação por data). */
+  data?: string;
 }
 
 export interface ObservacaoChat {

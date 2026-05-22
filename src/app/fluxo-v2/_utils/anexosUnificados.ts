@@ -13,7 +13,11 @@ export type OrigemAnexo =
   | 'adicional'
   | 'passagem'
   | 'parecer'
-  | 'despacho';
+  | 'despacho'
+  | 'agendamento'
+  | 'tentativa'
+  | 'ajuda_custo'
+  | 'carimbo';
 
 export const ORIGEM_ANEXO_LABEL: Record<OrigemAnexo, string> = {
   abertura: 'Abertura',
@@ -22,6 +26,10 @@ export const ORIGEM_ANEXO_LABEL: Record<OrigemAnexo, string> = {
   passagem: 'Passagem',
   parecer: 'Parecer médico',
   despacho: 'Despacho financeiro',
+  agendamento: 'Agendamento',
+  tentativa: 'Tentativa de contato',
+  ajuda_custo: 'Ajuda de custo',
+  carimbo: 'Carimbo de regulação',
 };
 
 /**
@@ -84,14 +92,16 @@ export function agregarAnexos(
   const catalogo = opts.tiposDocumentoCatalogo ?? new Map<string, string>();
   const itens: AnexoUnificado[] = [];
 
-  // 1) Anexos da abertura/edição
+  // 1) Anexos da abertura/edição/qualquer drawer do fluxo
+  //    Origem fica gravada no próprio AnexoMock (`a.origem`); legacy fica como
+  //    'abertura'. Data idem — se vazia, herda da data da solicitação.
   for (const a of s.anexos ?? []) {
     itens.push({
       id: a.id,
       nome: a.nome,
       tipoDocumento: resolverTipoDocumentoLabel(a.tipoDocumento, catalogo),
-      origem: 'abertura',
-      data: s.dataCriacao,
+      origem: (a.origem ?? 'abertura') as OrigemAnexo,
+      data: a.data ?? s.dataCriacao,
       geradoPeloSistema: false,
       href: `mock://${a.nome}`,
       tamanhoKB: a.tamanhoKB,

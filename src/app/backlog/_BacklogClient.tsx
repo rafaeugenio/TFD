@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
   ChevronDown,
@@ -11,8 +11,12 @@ import {
   ListChecks,
   Workflow,
   FileCode2,
-  Calendar,
   ExternalLink,
+  Square,
+  CheckSquare2,
+  User as UserIcon,
+  Target,
+  Zap,
 } from 'lucide-react';
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import type {
@@ -29,7 +33,82 @@ interface Selection {
   usId?: string;
 }
 
-type View = 'overview' | 'wireframes' | 'sprints' | 'us';
+type View = 'overview' | 'us';
+
+/**
+ * Checklist persistente em localStorage — dev marca US/Feature/Épico como feito
+ * e o estado sobrevive a refresh e deploy. Chave única por ID (US-XXX, F01, EPIC-01).
+ */
+const CHECKLIST_KEY = 'tfd-backlog-done-v1';
+
+function useChecklist() {
+  const [done, setDone] = useState<Set<string>>(new Set());
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CHECKLIST_KEY);
+      if (raw) setDone(new Set(JSON.parse(raw) as string[]));
+    } catch {}
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      localStorage.setItem(CHECKLIST_KEY, JSON.stringify(Array.from(done)));
+    } catch {}
+  }, [done, hydrated]);
+
+  /**
+   * Marca/desmarca um id. Se `cascade` for informado (lista de ids filhos),
+   * o estado do `id` é propagado em massa: marcar pai → marca todos filhos;
+   * desmarcar pai → desmarca todos. Usado em Épicos (propaga p/ features + US)
+   * e Features (propaga p/ US).
+   */
+  const toggle = useCallback((id: string, cascade?: string[]) => {
+    setDone((prev) => {
+      const next = new Set(prev);
+      const willCheck = !next.has(id);
+      if (willCheck) {
+        next.add(id);
+        for (const c of cascade ?? []) next.add(c);
+      } else {
+        next.delete(id);
+        for (const c of cascade ?? []) next.delete(c);
+      }
+      return next;
+    });
+  }, []);
+
+  const isDone = useCallback((id: string) => done.has(id), [done]);
+
+  return { isDone, toggle, hydrated };
+}
+
+interface Checklist {
+  isDone: (id: string) => boolean;
+  toggle: (id: string, cascade?: string[]) => void;
+  hydrated: boolean;
+}
+
+function featureProgress(feature: Feature, isDone: (id: string) => boolean) {
+  const total = feature.userStories.length;
+  const done = feature.userStories.filter((u) => isDone(u.id)).length;
+  return { total, done };
+}
+
+function epicProgress(epic: Epic, isDone: (id: string) => boolean) {
+  let total = 0;
+  let done = 0;
+  for (const f of epic.features) {
+    for (const u of f.userStories) {
+      total += 1;
+      if (isDone(u.id)) done += 1;
+    }
+  }
+  return { total, done };
+}
 
 export default function BacklogClient({ tree }: { tree: BacklogTree }) {
   const firstEpic = tree.epics[0];
@@ -41,6 +120,7 @@ export default function BacklogClient({ tree }: { tree: BacklogTree }) {
   const [openEpics, setOpenEpics] = useState<Set<string>>(
     new Set(firstEpic ? [firstEpic.code] : []),
   );
+  const checklist = useChecklist();
 
   const epic = useMemo(
     () => tree.epics.find((e) => e.code === selection.epicCode) ?? tree.epics[0],
@@ -70,6 +150,11 @@ export default function BacklogClient({ tree }: { tree: BacklogTree }) {
     (acc, e) => acc + e.features.reduce((a, f) => a + f.userStories.length, 0),
     0,
   );
+  const totalDone = tree.epics.reduce(
+    (acc, e) => acc + e.features.reduce((a, f) => a + f.userStories.filter((u) => checklist.isDone(u.id)).length, 0),
+    0,
+  );
+  const pctDone = totalUSs > 0 ? Math.round((totalDone / totalUSs) * 100) : 0;
 
   return (
     <>
@@ -102,16 +187,50 @@ export default function BacklogClient({ tree }: { tree: BacklogTree }) {
       )}
 
       {/* Stats globais do backlog */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <StatCard label="Épicos" value={totalEpicos} icon={<BookOpen size={16} />} />
         <StatCard label="Features" value={totalFeatures} icon={<ListChecks size={16} />} />
         <StatCard label="User stories" value={totalUSs} icon={<FileCode2 size={16} />} />
         <StatCard
-          label="Pendentes"
-          value={tree.epics.filter((e) => e.pendente).length}
-          icon={<AlertTriangle size={16} />}
-          tone="warning"
+          label="Concluídas"
+          value={`${totalDone}/${totalUSs}`}
+          icon={<CheckCircle2 size={16} />}
+          tone="success"
         />
+      </div>
+
+      {/* Barra de progresso global + dica de checkbox */}
+      <div
+        className="mb-6 p-4 flex items-center gap-4"
+        style={{
+          background: 'white',
+          border: '1px solid var(--tfd-surface-border)',
+          borderRadius: 'var(--tfd-radius-lg)',
+        }}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: 'var(--tfd-text-muted)' }}>
+              Progresso geral
+            </span>
+            <span className="text-[12px] font-mono font-semibold" style={{ color: 'var(--tfd-blue-700)' }}>
+              {pctDone}% · {totalDone} de {totalUSs} US
+            </span>
+          </div>
+          <div style={{ height: 6, background: '#F1F5F9', borderRadius: 999, overflow: 'hidden' }}>
+            <div
+              style={{
+                width: `${pctDone}%`,
+                height: '100%',
+                background: 'linear-gradient(90deg, var(--tfd-blue-500), #10B981)',
+                transition: 'width 0.3s ease',
+              }}
+            />
+          </div>
+        </div>
+        <p className="text-[11.5px] hidden md:block" style={{ color: 'var(--tfd-text-muted)', maxWidth: 260, lineHeight: 1.5 }}>
+          Marque os checkboxes do menu lateral conforme conclui cada US. O estado fica salvo neste navegador.
+        </p>
       </div>
 
       <div className="grid grid-cols-12 gap-6">
@@ -127,48 +246,6 @@ export default function BacklogClient({ tree }: { tree: BacklogTree }) {
               overflowY: 'auto',
             }}
           >
-            {/* Atalhos do épico ativo */}
-            {epic && (
-              <div className="px-3 pt-3 pb-2" style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
-                <p
-                  className="text-[10px] font-semibold uppercase tracking-wider mb-1.5"
-                  style={{ color: 'var(--tfd-text-muted)' }}
-                >
-                  Visões do épico
-                </p>
-                <div className="flex flex-col gap-0.5">
-                  <ViewLink
-                    label="Visão geral"
-                    icon={<Sparkles size={13} />}
-                    active={view === 'overview' && !feature && !us}
-                    onClick={() => {
-                      setView('overview');
-                      setSelection({ epicCode: epic.code });
-                    }}
-                  />
-                  <ViewLink
-                    label="Wireframe do fluxo"
-                    icon={<Workflow size={13} />}
-                    active={view === 'wireframes'}
-                    onClick={() => {
-                      setView('wireframes');
-                      setSelection({ epicCode: epic.code });
-                    }}
-                  />
-                  {tree.cronograma && (
-                    <ViewLink
-                      label="Cronograma de sprints"
-                      icon={<Calendar size={13} />}
-                      active={view === 'sprints'}
-                      onClick={() => {
-                        setView('sprints');
-                      }}
-                    />
-                  )}
-                </div>
-              </div>
-            )}
-
             <div className="px-3 py-3">
               <p
                 className="text-[10px] font-semibold uppercase tracking-wider mb-1.5"
@@ -189,6 +266,7 @@ export default function BacklogClient({ tree }: { tree: BacklogTree }) {
                       isOpen={openEpics.has(e.code)}
                       onToggle={() => toggleEpic(e.code)}
                       selection={selection}
+                      checklist={checklist}
                       onSelectEpic={() => {
                         setSelection({ epicCode: e.code });
                         setView('overview');
@@ -212,21 +290,19 @@ export default function BacklogClient({ tree }: { tree: BacklogTree }) {
 
         {/* Conteúdo principal */}
         <section className="col-span-12 lg:col-span-9 xl:col-span-9 min-w-0">
-          {view === 'sprints' && tree.cronograma ? (
-            <MdPanel
-              title="Cronograma de sprints"
-              hint="Distribuição em sprints de 2 semanas."
-              raw={tree.cronograma}
-            />
-          ) : view === 'wireframes' && epic ? (
-            <WireframePanel epic={epic} />
-          ) : us && feature && epic ? (
-            <UserStoryPanel epic={epic} feature={feature} us={us} />
+          {us && feature && epic ? (
+            <UserStoryPanel epic={epic} feature={feature} us={us} checklist={checklist} />
           ) : feature && epic ? (
-            <FeaturePanel epic={epic} feature={feature} onSelectUs={(u) => setSelection({ epicCode: epic.code, featureCode: feature.code, usId: u.id })} />
+            <FeaturePanel
+              epic={epic}
+              feature={feature}
+              checklist={checklist}
+              onSelectUs={(u) => setSelection({ epicCode: epic.code, featureCode: feature.code, usId: u.id })}
+            />
           ) : epic ? (
             <EpicOverview
               epic={epic}
+              checklist={checklist}
               onSelectFeature={(f) => setSelection({ epicCode: epic.code, featureCode: f.code })}
               onSelectUs={(f, u) => setSelection({ epicCode: epic.code, featureCode: f.code, usId: u.id })}
             />
@@ -243,38 +319,62 @@ export default function BacklogClient({ tree }: { tree: BacklogTree }) {
    Sidebar nodes
    ────────────────────────────────────────────────────── */
 
-function ViewLink({
-  label,
-  icon,
-  active,
-  onClick,
+function CheckboxCell({
+  checked,
+  onToggle,
+  size = 14,
+  title,
 }: {
-  label: string;
-  icon: React.ReactNode;
-  active: boolean;
-  onClick: () => void;
+  checked: boolean;
+  onToggle: () => void;
+  size?: number;
+  title?: string;
 }) {
   return (
     <button
       type="button"
-      onClick={onClick}
-      className="w-full flex items-center gap-2 px-2 py-1.5 text-[12.5px] text-left transition-colors"
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      aria-label={checked ? 'Desmarcar como feito' : 'Marcar como feito'}
+      title={title ?? (checked ? 'Feito — clique para desmarcar' : 'Marcar como feito')}
+      className="flex-shrink-0 flex items-center justify-center rounded transition-colors"
       style={{
-        background: active ? 'var(--tfd-blue-50)' : 'transparent',
-        color: active ? 'var(--tfd-blue-700)' : 'var(--tfd-text-secondary)',
-        fontWeight: active ? 600 : 500,
-        borderRadius: 6,
+        width: size + 4,
+        height: size + 4,
+        color: checked ? '#059669' : 'var(--tfd-text-muted)',
+        background: 'transparent',
       }}
       onMouseEnter={(e) => {
-        if (!active) e.currentTarget.style.background = '#F8FAFC';
+        e.currentTarget.style.background = checked ? '#ECFDF5' : '#F1F5F9';
       }}
       onMouseLeave={(e) => {
-        if (!active) e.currentTarget.style.background = 'transparent';
+        e.currentTarget.style.background = 'transparent';
       }}
     >
-      {icon}
-      <span>{label}</span>
+      {checked ? <CheckSquare2 size={size} strokeWidth={2.5} /> : <Square size={size} strokeWidth={1.8} />}
     </button>
+  );
+}
+
+function ProgressDot({ done, total }: { done: number; total: number }) {
+  if (total === 0) return null;
+  const pct = Math.round((done / total) * 100);
+  const complete = done === total;
+  return (
+    <span
+      className="ml-auto inline-flex items-center gap-1 text-[10px] flex-shrink-0"
+      style={{
+        fontFamily: 'var(--tfd-mono)',
+        color: complete ? '#059669' : 'var(--tfd-text-muted)',
+        fontWeight: complete ? 600 : 500,
+      }}
+      title={`${done} de ${total} concluídas`}
+    >
+      {complete && <CheckCircle2 size={11} />}
+      <span>{done}/{total}</span>
+    </span>
   );
 }
 
@@ -283,6 +383,7 @@ function EpicNode({
   isOpen,
   onToggle,
   selection,
+  checklist,
   onSelectEpic,
   onSelectFeature,
   onSelectUs,
@@ -291,22 +392,33 @@ function EpicNode({
   isOpen: boolean;
   onToggle: () => void;
   selection: Selection;
+  checklist: Checklist;
   onSelectEpic: () => void;
   onSelectFeature: (f: Feature) => void;
   onSelectUs: (f: Feature, u: UserStory) => void;
 }) {
   const isActive = selection.epicCode === epic.code;
-  const totalUSs = epic.features.reduce((a, f) => a + f.userStories.length, 0);
+  const prog = epicProgress(epic, checklist.isDone);
+  const epicDone = checklist.isDone(epic.code);
 
   return (
     <div>
       <div
-        className="flex items-center gap-1 px-2 py-1.5"
+        className="flex items-center gap-1 px-1 py-1.5"
         style={{
           background: isActive && !selection.featureCode ? 'var(--tfd-blue-50)' : 'transparent',
           borderRadius: 6,
         }}
       >
+        <CheckboxCell
+          checked={epicDone}
+          onToggle={() => checklist.toggle(epic.code, [
+            ...epic.features.map((f) => f.code),
+            ...epic.features.flatMap((f) => f.userStories.map((u) => u.id)),
+          ])}
+          size={14}
+          title={epicDone ? 'Épico marcado como concluído' : 'Marcar épico inteiro como concluído (propaga p/ features + US)'}
+        />
         <button
           type="button"
           onClick={onToggle}
@@ -320,7 +432,10 @@ function EpicNode({
           type="button"
           onClick={onSelectEpic}
           className="flex-1 flex items-center gap-2 min-w-0 text-left"
-          style={{ color: isActive ? 'var(--tfd-blue-700)' : 'var(--tfd-text-primary)' }}
+          style={{
+            color: isActive ? 'var(--tfd-blue-700)' : 'var(--tfd-text-primary)',
+            opacity: epicDone ? 0.6 : 1,
+          }}
         >
           <span
             className="font-mono text-[10px] flex-shrink-0"
@@ -330,7 +445,10 @@ function EpicNode({
           </span>
           <span
             className="text-[12.5px] truncate"
-            style={{ fontWeight: isActive ? 600 : 500 }}
+            style={{
+              fontWeight: isActive ? 600 : 500,
+              textDecoration: epicDone ? 'line-through' : 'none',
+            }}
           >
             {epic.title}
           </span>
@@ -342,9 +460,7 @@ function EpicNode({
               Pend.
             </span>
           )}
-          <span className="ml-auto text-[10px]" style={{ color: 'var(--tfd-text-muted)', fontFamily: 'var(--tfd-mono)' }}>
-            {totalUSs}
-          </span>
+          <ProgressDot done={prog.done} total={prog.total} />
         </button>
       </div>
 
@@ -356,6 +472,7 @@ function EpicNode({
               feature={f}
               isActive={selection.featureCode === f.code && selection.epicCode === epic.code}
               selectedUsId={selection.epicCode === epic.code && selection.featureCode === f.code ? selection.usId : undefined}
+              checklist={checklist}
               onSelect={() => onSelectFeature(f)}
               onSelectUs={(u) => onSelectUs(f, u)}
             />
@@ -370,28 +487,38 @@ function FeatureNode({
   feature,
   isActive,
   selectedUsId,
+  checklist,
   onSelect,
   onSelectUs,
 }: {
   feature: Feature;
   isActive: boolean;
   selectedUsId?: string;
+  checklist: Checklist;
   onSelect: () => void;
   onSelectUs: (u: UserStory) => void;
 }) {
   const [open, setOpen] = useState(isActive);
   // Mantém aberto se está ativo
   const isOpen = open || isActive;
+  const prog = featureProgress(feature, checklist.isDone);
+  const featureDone = checklist.isDone(feature.code);
 
   return (
     <li>
       <div
-        className="flex items-center gap-1 px-2 py-1"
+        className="flex items-center gap-1 px-1 py-1"
         style={{
           background: isActive && !selectedUsId ? 'var(--tfd-blue-50)' : 'transparent',
           borderRadius: 6,
         }}
       >
+        <CheckboxCell
+          checked={featureDone}
+          onToggle={() => checklist.toggle(feature.code, feature.userStories.map((u) => u.id))}
+          size={12}
+          title={featureDone ? 'Feature marcada como concluída' : 'Marcar feature como concluída (propaga p/ US)'}
+        />
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -405,48 +532,76 @@ function FeatureNode({
           type="button"
           onClick={onSelect}
           className="flex-1 flex items-center gap-2 min-w-0 text-left text-[12px]"
-          style={{ color: isActive ? 'var(--tfd-blue-700)' : 'var(--tfd-text-secondary)' }}
+          style={{
+            color: isActive ? 'var(--tfd-blue-700)' : 'var(--tfd-text-secondary)',
+            opacity: featureDone ? 0.6 : 1,
+          }}
         >
           <span className="font-mono text-[10px] flex-shrink-0" style={{ color: 'var(--tfd-text-muted)' }}>
             {feature.code}
           </span>
-          <span className="truncate" style={{ fontWeight: isActive ? 600 : 400 }}>
+          <span
+            className="truncate"
+            style={{
+              fontWeight: isActive ? 600 : 400,
+              textDecoration: featureDone ? 'line-through' : 'none',
+            }}
+          >
             {feature.title}
           </span>
-          <span className="ml-auto text-[10px]" style={{ color: 'var(--tfd-text-muted)', fontFamily: 'var(--tfd-mono)' }}>
-            {feature.userStories.length}
-          </span>
+          <ProgressDot done={prog.done} total={prog.total} />
         </button>
       </div>
 
       {isOpen && feature.userStories.length > 0 && (
         <ul className="ml-3 mt-0.5 mb-1 pl-2" style={{ borderLeft: '1px solid var(--tfd-surface-border)' }}>
-          {feature.userStories.map((u) => (
-            <li key={u.id}>
-              <button
-                type="button"
-                onClick={() => onSelectUs(u)}
-                className="w-full text-left px-2 py-1 text-[11.5px] flex items-center gap-2 transition-colors"
-                style={{
-                  background: u.id === selectedUsId ? 'var(--tfd-blue-50)' : 'transparent',
-                  color: u.id === selectedUsId ? 'var(--tfd-blue-700)' : 'var(--tfd-text-secondary)',
-                  fontWeight: u.id === selectedUsId ? 600 : 400,
-                  borderRadius: 6,
-                }}
-                onMouseEnter={(e) => {
-                  if (u.id !== selectedUsId) e.currentTarget.style.background = '#F8FAFC';
-                }}
-                onMouseLeave={(e) => {
-                  if (u.id !== selectedUsId) e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                <span className="font-mono text-[10px]" style={{ color: 'var(--tfd-text-muted)' }}>
-                  {u.id.replace(/^US-/, '')}
-                </span>
-                <span className="truncate">{u.title}</span>
-              </button>
-            </li>
-          ))}
+          {feature.userStories.map((u) => {
+            const usDone = checklist.isDone(u.id);
+            const isUsActive = u.id === selectedUsId;
+            return (
+              <li key={u.id}>
+                <div
+                  className="flex items-center gap-1 px-1 py-0.5 transition-colors"
+                  style={{
+                    background: isUsActive ? 'var(--tfd-blue-50)' : 'transparent',
+                    borderRadius: 6,
+                  }}
+                >
+                  <CheckboxCell
+                    checked={usDone}
+                    onToggle={() => checklist.toggle(u.id)}
+                    size={11}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onSelectUs(u)}
+                    className="flex-1 text-left px-1 py-1 text-[11.5px] flex items-center gap-2 transition-colors min-w-0"
+                    style={{
+                      color: isUsActive ? 'var(--tfd-blue-700)' : 'var(--tfd-text-secondary)',
+                      fontWeight: isUsActive ? 600 : 400,
+                      opacity: usDone ? 0.55 : 1,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isUsActive) e.currentTarget.style.background = '#F8FAFC';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    <span className="font-mono text-[10px] flex-shrink-0" style={{ color: 'var(--tfd-text-muted)' }}>
+                      {u.id.replace(/^US-/, '')}
+                    </span>
+                    <span
+                      className="truncate"
+                      style={{ textDecoration: usDone ? 'line-through' : 'none' }}
+                    >
+                      {u.title}
+                    </span>
+                  </button>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </li>
@@ -466,12 +621,14 @@ function StatCard({
   label: string;
   value: number | string;
   icon?: React.ReactNode;
-  tone?: 'default' | 'warning';
+  tone?: 'default' | 'warning' | 'success';
 }) {
   const colors =
     tone === 'warning'
       ? { iconBg: '#FFFBEB', iconFg: '#92400E' }
-      : { iconBg: 'var(--tfd-blue-50)', iconFg: 'var(--tfd-blue-700)' };
+      : tone === 'success'
+        ? { iconBg: '#ECFDF5', iconFg: '#047857' }
+        : { iconBg: 'var(--tfd-blue-50)', iconFg: 'var(--tfd-blue-700)' };
   return (
     <div
       style={{
@@ -540,13 +697,17 @@ function Crumbs({ items }: { items: { label: string; onClick?: () => void }[] })
 
 function EpicOverview({
   epic,
+  checklist,
   onSelectFeature,
   onSelectUs,
 }: {
   epic: Epic;
+  checklist: Checklist;
   onSelectFeature: (f: Feature) => void;
   onSelectUs: (f: Feature, u: UserStory) => void;
 }) {
+  const prog = epicProgress(epic, checklist.isDone);
+  const pct = prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0;
   return (
     <div>
       <Crumbs items={[{ label: 'Backlog' }, { label: epic.code + ' · ' + epic.title }]} />
@@ -575,22 +736,39 @@ function EpicOverview({
           </div>
         </div>
         <div className="tfd-panel-content">
-          <p className="text-[13.5px]" style={{ color: 'var(--tfd-text-secondary)', lineHeight: 1.6 }}>
+          <p className="text-[13.5px] mb-3" style={{ color: 'var(--tfd-text-secondary)', lineHeight: 1.6 }}>
             {epic.pendente
               ? 'Este épico foi documentado mas ainda aguarda validação dos setores. Não está alocado em sprints — pode haver ajustes antes da implementação.'
               : 'Validado pelos setores e refletido no protótipo. As features abaixo são prontas para virar PBIs no Azure DevOps.'}
           </p>
+          <div className="flex items-center gap-3">
+            <div className="flex-1" style={{ height: 8, background: '#F1F5F9', borderRadius: 999, overflow: 'hidden' }}>
+              <div
+                style={{
+                  width: `${pct}%`,
+                  height: '100%',
+                  background: pct === 100 ? '#10B981' : 'var(--tfd-blue-500)',
+                  transition: 'width 0.3s ease',
+                }}
+              />
+            </div>
+            <span className="text-[12px] font-mono font-semibold flex-shrink-0" style={{ color: pct === 100 ? '#047857' : 'var(--tfd-blue-700)' }}>
+              {prog.done}/{prog.total} US · {pct}%
+            </span>
+          </div>
         </div>
       </div>
 
       {/* Lista de features */}
       <div className="flex flex-col gap-3">
-        {epic.features.map((f) => (
-          <button
+        {epic.features.map((f) => {
+          const fp = featureProgress(f, checklist.isDone);
+          const fpct = fp.total > 0 ? Math.round((fp.done / fp.total) * 100) : 0;
+          const fdone = checklist.isDone(f.code);
+          return (
+          <div
             key={f.code}
-            type="button"
-            onClick={() => onSelectFeature(f)}
-            className="text-left p-4 transition-all"
+            className="p-4 transition-all"
             style={{
               background: 'white',
               border: '1px solid var(--tfd-surface-border)',
@@ -606,16 +784,43 @@ function EpicOverview({
             }}
           >
             <div className="flex items-start gap-3">
-              <span
-                className="font-mono text-[11px] font-semibold uppercase px-2 py-1 rounded flex-shrink-0"
+              <CheckboxCell checked={fdone} onToggle={() => checklist.toggle(f.code, f.userStories.map((u) => u.id))} size={16} />
+              <button
+                type="button"
+                onClick={() => onSelectFeature(f)}
+                className="font-mono text-[11px] font-semibold uppercase px-2 py-1 rounded flex-shrink-0 cursor-pointer"
                 style={{ background: 'var(--tfd-blue-50)', color: 'var(--tfd-blue-700)' }}
               >
                 {f.code}
-              </span>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-[15px] font-semibold mb-1" style={{ color: 'var(--tfd-text-primary)' }}>
-                  {f.title}
-                </h3>
+              </button>
+              <div className="flex-1 min-w-0" onClick={() => onSelectFeature(f)} style={{ cursor: 'pointer' }}>
+                <div className="flex items-center justify-between gap-3 mb-1">
+                  <h3
+                    className="text-[15px] font-semibold"
+                    style={{
+                      color: 'var(--tfd-text-primary)',
+                      textDecoration: fdone ? 'line-through' : 'none',
+                      opacity: fdone ? 0.7 : 1,
+                    }}
+                  >
+                    {f.title}
+                  </h3>
+                  <span
+                    className="text-[11px] font-mono font-semibold flex-shrink-0"
+                    style={{ color: fpct === 100 ? '#047857' : 'var(--tfd-text-muted)' }}
+                  >
+                    {fp.done}/{fp.total} · {fpct}%
+                  </span>
+                </div>
+                <div className="mb-2" style={{ height: 4, background: '#F1F5F9', borderRadius: 999, overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      width: `${fpct}%`,
+                      height: '100%',
+                      background: fpct === 100 ? '#10B981' : 'var(--tfd-blue-400, #60a5fa)',
+                    }}
+                  />
+                </div>
                 {f.description && (
                   <p className="text-[13px] mb-3" style={{ color: 'var(--tfd-text-secondary)', lineHeight: 1.5 }}>
                     {f.description}
@@ -634,41 +839,39 @@ function EpicOverview({
                 )}
                 {/* USs como chips */}
                 <div className="flex flex-wrap gap-1 mt-3">
-                  {f.userStories.map((u) => (
-                    <span
-                      key={u.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectUs(f, u);
-                      }}
-                      className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium cursor-pointer transition-colors"
-                      style={{
-                        background: '#F8FAFC',
-                        color: 'var(--tfd-text-secondary)',
-                        border: '1px solid var(--tfd-surface-border)',
-                        borderRadius: 6,
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'var(--tfd-blue-50)';
-                        e.currentTarget.style.color = 'var(--tfd-blue-700)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = '#F8FAFC';
-                        e.currentTarget.style.color = 'var(--tfd-text-secondary)';
-                      }}
-                      title={u.title}
-                    >
-                      <span style={{ fontFamily: 'var(--tfd-mono)', color: 'var(--tfd-text-muted)' }}>
-                        {u.id}
+                  {f.userStories.map((u) => {
+                    const udone = checklist.isDone(u.id);
+                    return (
+                      <span
+                        key={u.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectUs(f, u);
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium cursor-pointer transition-colors"
+                        style={{
+                          background: udone ? '#ECFDF5' : '#F8FAFC',
+                          color: udone ? '#047857' : 'var(--tfd-text-secondary)',
+                          border: '1px solid ' + (udone ? '#A7F3D0' : 'var(--tfd-surface-border)'),
+                          borderRadius: 6,
+                          textDecoration: udone ? 'line-through' : 'none',
+                        }}
+                        title={u.title}
+                      >
+                        {udone && <CheckCircle2 size={11} />}
+                        <span style={{ fontFamily: 'var(--tfd-mono)', color: udone ? '#059669' : 'var(--tfd-text-muted)' }}>
+                          {u.id}
+                        </span>
+                        <span className="truncate" style={{ maxWidth: 180 }}>{u.title}</span>
                       </span>
-                      <span className="truncate" style={{ maxWidth: 180 }}>{u.title}</span>
-                    </span>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
-          </button>
-        ))}
+          </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -677,12 +880,16 @@ function EpicOverview({
 function FeaturePanel({
   epic,
   feature,
+  checklist,
   onSelectUs,
 }: {
   epic: Epic;
   feature: Feature;
+  checklist: Checklist;
   onSelectUs: (u: UserStory) => void;
 }) {
+  const prog = featureProgress(feature, checklist.isDone);
+  const pct = prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0;
   return (
     <div>
       <Crumbs
@@ -695,15 +902,32 @@ function FeaturePanel({
 
       <div className="tfd-panel mb-6">
         <div className="tfd-panel-header">
-          <div>
-            <h2 className="text-[20px] font-bold" style={{ color: '#1A1D2B', letterSpacing: '-0.02em' }}>
-              {feature.code} — {feature.title}
-            </h2>
-            {feature.description && (
-              <p className="mt-2 text-[14px]" style={{ color: 'var(--tfd-text-secondary)', lineHeight: 1.6 }}>
-                {feature.description}
-              </p>
-            )}
+          <div className="flex items-start gap-3 w-full">
+            <CheckboxCell checked={checklist.isDone(feature.code)} onToggle={() => checklist.toggle(feature.code, feature.userStories.map((u) => u.id))} size={18} />
+            <div className="flex-1 min-w-0">
+              <h2 className="text-[20px] font-bold" style={{ color: '#1A1D2B', letterSpacing: '-0.02em' }}>
+                {feature.code} — {feature.title}
+              </h2>
+              {feature.description && (
+                <p className="mt-2 text-[14px]" style={{ color: 'var(--tfd-text-secondary)', lineHeight: 1.6 }}>
+                  {feature.description}
+                </p>
+              )}
+              <div className="mt-3 flex items-center gap-3">
+                <div className="flex-1" style={{ height: 6, background: '#F1F5F9', borderRadius: 999, overflow: 'hidden', maxWidth: 360 }}>
+                  <div
+                    style={{
+                      width: `${pct}%`,
+                      height: '100%',
+                      background: pct === 100 ? '#10B981' : 'var(--tfd-blue-500)',
+                    }}
+                  />
+                </div>
+                <span className="text-[12px] font-mono font-semibold" style={{ color: pct === 100 ? '#047857' : 'var(--tfd-blue-700)' }}>
+                  {prog.done}/{prog.total} · {pct}%
+                </span>
+              </div>
+            </div>
           </div>
         </div>
         {feature.meta.length > 0 && (
@@ -744,60 +968,124 @@ function FeaturePanel({
         User stories ({feature.userStories.length})
       </h3>
       <div className="flex flex-col gap-2">
-        {feature.userStories.map((u) => (
-          <button
-            key={u.id}
-            type="button"
-            onClick={() => onSelectUs(u)}
-            className="text-left p-3 transition-all"
-            style={{
-              background: 'white',
-              border: '1px solid var(--tfd-surface-border)',
-              borderRadius: 'var(--tfd-radius-md, 8px)',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'var(--tfd-blue-300)';
-              e.currentTarget.style.background = '#FAFCFF';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'var(--tfd-surface-border)';
-              e.currentTarget.style.background = 'white';
-            }}
-          >
-            <div className="flex items-baseline gap-3">
-              <span
-                className="font-mono text-[11px] font-semibold uppercase px-2 py-1 rounded flex-shrink-0"
-                style={{ background: 'var(--tfd-blue-50)', color: 'var(--tfd-blue-700)' }}
-              >
-                {u.id}
-              </span>
-              <div className="flex-1 min-w-0">
-                <div className="text-[14px] font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-                  {u.title}
-                </div>
-                {u.story && (
-                  <p className="text-[12.5px] mt-1 italic" style={{ color: 'var(--tfd-text-secondary)', lineHeight: 1.5 }}>
-                    <InlineMd text={u.story.length > 220 ? u.story.slice(0, 220) + '...' : u.story} />
-                  </p>
-                )}
-                <div className="flex gap-3 mt-2 text-[11px]" style={{ color: 'var(--tfd-text-muted)' }}>
-                  <span>{u.criterios.length} critérios</span>
-                  <span>·</span>
-                  <span>{u.regras.length} regras</span>
-                  {u.dependencias.length > 0 && (
-                    <>
-                      <span>·</span>
-                      <span>{u.dependencias.length} dependências</span>
-                    </>
+        {feature.userStories.map((u) => {
+          const udone = checklist.isDone(u.id);
+          const parsed = parseStory(u.story);
+          return (
+            <div
+              key={u.id}
+              className="p-3 transition-all"
+              style={{
+                background: udone ? '#F8FFFB' : 'white',
+                border: '1px solid ' + (udone ? '#A7F3D0' : 'var(--tfd-surface-border)'),
+                borderRadius: 'var(--tfd-radius-md, 8px)',
+              }}
+            >
+              <div className="flex items-start gap-3">
+                <CheckboxCell checked={udone} onToggle={() => checklist.toggle(u.id)} size={16} />
+                <span
+                  className="font-mono text-[11px] font-semibold uppercase px-2 py-1 rounded flex-shrink-0"
+                  style={{ background: 'var(--tfd-blue-50)', color: 'var(--tfd-blue-700)' }}
+                >
+                  {u.id}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onSelectUs(u)}
+                  className="flex-1 min-w-0 text-left"
+                >
+                  <div
+                    className="text-[14px] font-semibold"
+                    style={{
+                      color: 'var(--tfd-text-primary)',
+                      textDecoration: udone ? 'line-through' : 'none',
+                      opacity: udone ? 0.7 : 1,
+                    }}
+                  >
+                    {u.title}
+                  </div>
+                  {/* Story compacto em pills */}
+                  {parsed && (
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {parsed.persona && <StoryPill icon={<UserIcon size={10} />} label="Persona" value={parsed.persona} tone="purple" />}
+                      {parsed.quero && <StoryPill icon={<Zap size={10} />} label="Quer" value={parsed.quero} tone="blue" />}
+                      {parsed.paraQue && <StoryPill icon={<Target size={10} />} label="Para" value={parsed.paraQue} tone="green" />}
+                    </div>
                   )}
-                </div>
+                  <div className="flex gap-3 mt-2 text-[11px]" style={{ color: 'var(--tfd-text-muted)' }}>
+                    <span>{u.criterios.length} critérios</span>
+                    <span>·</span>
+                    <span>{u.regras.length} regras</span>
+                    {u.dependencias.length > 0 && (
+                      <>
+                        <span>·</span>
+                        <span>{u.dependencias.length} dependências</span>
+                      </>
+                    )}
+                  </div>
+                </button>
+                <ChevronRight size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0, marginTop: 4 }} />
               </div>
-              <ChevronRight size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
             </div>
-          </button>
-        ))}
+          );
+        })}
       </div>
     </div>
+  );
+}
+
+/**
+ * Parse de "**Como** X, **Quero** Y, **Para que** Z" para 3 pedaços. Aceita
+ * variações pequenas (com ou sem vírgulas, com **Para** ou **Para que**).
+ */
+function parseStory(story?: string): { persona: string; quero: string; paraQue: string } | null {
+  if (!story) return null;
+  // Normaliza: tira **, troca quebras de linha por espaço (substitui flag `s`).
+  const clean = story.replace(/\*\*/g, '').replace(/\s+/g, ' ');
+  const m = clean.match(/Como\s+(.+?),?\s*Quero\s+(.+?),?\s*Para(?:\s+que)?\s+(.+)/i);
+  if (!m) return null;
+  return {
+    persona: m[1].trim().replace(/[.,;]$/, ''),
+    quero: m[2].trim().replace(/[.,;]$/, ''),
+    paraQue: m[3].trim().replace(/[.,;]$/, ''),
+  };
+}
+
+function StoryPill({
+  icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  tone: 'purple' | 'blue' | 'green';
+}) {
+  const palette = {
+    purple: { bg: '#F5F3FF', fg: '#5B21B6', border: '#DDD6FE' },
+    blue: { bg: 'var(--tfd-blue-50)', fg: 'var(--tfd-blue-700)', border: '#BFDBFE' },
+    green: { bg: '#ECFDF5', fg: '#047857', border: '#A7F3D0' },
+  }[tone];
+  return (
+    <span
+      className="inline-flex items-start gap-1.5 px-2 py-1 text-[11px]"
+      style={{
+        background: palette.bg,
+        color: palette.fg,
+        border: `1px solid ${palette.border}`,
+        borderRadius: 6,
+        maxWidth: '100%',
+      }}
+    >
+      <span className="flex-shrink-0 mt-[2px]">{icon}</span>
+      <span>
+        <span className="font-semibold uppercase tracking-wider" style={{ fontSize: 9, opacity: 0.8, marginRight: 4 }}>
+          {label}
+        </span>
+        <span>{value}</span>
+      </span>
+    </span>
   );
 }
 
@@ -805,11 +1093,15 @@ function UserStoryPanel({
   epic,
   feature,
   us,
+  checklist,
 }: {
   epic: Epic;
   feature: Feature;
   us: UserStory;
+  checklist: Checklist;
 }) {
+  const parsed = parseStory(us.story);
+  const usDone = checklist.isDone(us.id);
   return (
     <div>
       <Crumbs
@@ -821,8 +1113,10 @@ function UserStoryPanel({
         ]}
       />
 
-      <div className="tfd-panel mb-5">
+      {/* Header da US — código + título + status + checkbox */}
+      <div className="tfd-panel mb-4">
         <div className="tfd-panel-header" style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <CheckboxCell checked={usDone} onToggle={() => checklist.toggle(us.id)} size={20} />
           <span
             className="font-mono text-[12px] font-semibold uppercase px-2.5 py-1 rounded"
             style={{ background: 'var(--tfd-blue-50)', color: 'var(--tfd-blue-700)', flexShrink: 0 }}
@@ -830,31 +1124,78 @@ function UserStoryPanel({
             {us.id}
           </span>
           <div className="flex-1 min-w-0">
-            <h2 className="text-[20px] font-bold" style={{ color: '#1A1D2B', letterSpacing: '-0.02em' }}>
-              {us.title}
-            </h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2
+                className="text-[20px] font-bold"
+                style={{
+                  color: '#1A1D2B',
+                  letterSpacing: '-0.02em',
+                  textDecoration: usDone ? 'line-through' : 'none',
+                  opacity: usDone ? 0.7 : 1,
+                }}
+              >
+                {us.title}
+              </h2>
+              {usDone && (
+                <span
+                  className="text-[10px] font-semibold uppercase tracking-wider px-2 py-[2px] rounded inline-flex items-center gap-1"
+                  style={{ background: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0' }}
+                >
+                  <CheckCircle2 size={11} /> Concluída
+                </span>
+              )}
+            </div>
             <p className="mt-0.5 text-[12.5px]" style={{ color: 'var(--tfd-text-muted)' }}>
               {epic.code} · {feature.code} — {feature.title}
             </p>
           </div>
         </div>
-        {us.story && (
-          <div
-            className="tfd-panel-content"
-            style={{
-              background: '#FAFCFF',
-              borderTop: 'none',
-              borderLeft: '3px solid var(--tfd-blue-500)',
-              fontStyle: 'italic',
-              fontSize: 14,
-              lineHeight: 1.6,
-              color: 'var(--tfd-text-primary)',
-            }}
-          >
-            <InlineMd text={us.story} />
-          </div>
-        )}
       </div>
+
+      {/* Canvas Persona / Quer / Para que — 3 colunas visuais */}
+      {parsed ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+          <StoryCanvasCard
+            title="Persona"
+            label="Como"
+            icon={<UserIcon size={14} />}
+            tone="purple"
+            value={parsed.persona}
+          />
+          <StoryCanvasCard
+            title="Quer fazer"
+            label="Quero"
+            icon={<Zap size={14} />}
+            tone="blue"
+            value={parsed.quero}
+          />
+          <StoryCanvasCard
+            title="Para que"
+            label="Para que"
+            icon={<Target size={14} />}
+            tone="green"
+            value={parsed.paraQue}
+          />
+        </div>
+      ) : (
+        us.story && (
+          <div className="tfd-panel mb-5">
+            <div
+              className="tfd-panel-content"
+              style={{
+                background: '#FAFCFF',
+                borderLeft: '3px solid var(--tfd-blue-500)',
+                fontStyle: 'italic',
+                fontSize: 14,
+                lineHeight: 1.6,
+                color: 'var(--tfd-text-primary)',
+              }}
+            >
+              <InlineMd text={us.story} />
+            </div>
+          </div>
+        )
+      )}
 
       {us.sections.map((sec, i) => (
         <SectionRenderer key={i} section={sec} />
@@ -863,24 +1204,318 @@ function UserStoryPanel({
   );
 }
 
+function StoryCanvasCard({
+  title,
+  label,
+  icon,
+  tone,
+  value,
+}: {
+  title: string;
+  label: string;
+  icon: React.ReactNode;
+  tone: 'purple' | 'blue' | 'green';
+  value: string;
+}) {
+  // Paleta unificada (cinza/azul) — tons antes eram saturados (roxo/verde),
+  // ficou poluído. Mantemos só uma pitada de azul para destacar como bloco.
+  void tone;
+  const palette = {
+    bg: 'white',
+    fg: 'var(--tfd-blue-700)',
+    border: 'var(--tfd-surface-border)',
+    accent: 'var(--tfd-blue-500)',
+  };
+  return (
+    <div
+      className="p-4 flex flex-col"
+      style={{
+        background: palette.bg,
+        border: `1px solid ${palette.border}`,
+        borderTop: `3px solid ${palette.accent}`,
+        borderRadius: 'var(--tfd-radius-lg)',
+        minHeight: 110,
+      }}
+    >
+      <div className="flex items-center gap-1.5 mb-2" style={{ color: palette.fg }}>
+        {icon}
+        <span className="text-[10px] font-bold uppercase tracking-wider">{title}</span>
+      </div>
+      <p className="text-[13.5px]" style={{ color: 'var(--tfd-text-primary)', lineHeight: 1.5 }}>
+        <span className="font-semibold" style={{ color: palette.fg }}>{label}</span>{' '}
+        <InlineMd text={value} />
+      </p>
+    </div>
+  );
+}
+
 /**
- * Renderiza qualquer seção de User Story de forma adequada ao conteúdo:
- * — Tabelas de markdown (`|`) viram tabela HTML;
- * — Listas com `-` viram lista com checkbox/bullet conforme a seção;
- * — Parágrafos viram parágrafos.
+ * Renderiza qualquer seção de User Story de forma adequada ao conteúdo.
+ * Para seções com semântica forte (Critérios de aceite, Regras de negócio,
+ * Side effects, Dependências, Estados visuais), usamos renderers visuais
+ * dedicados — o resto cai no SectionBody genérico (tabelas / listas / paragráfos).
  */
 function SectionRenderer({ section }: { section: UserStorySection }) {
   const title = section.title;
   const body = section.body;
-
-  // Pega ícone e estilo conforme o título da seção
+  const t = title.toLowerCase();
   const meta = sectionMeta(title);
+
+  // Listas estruturadas (cada item começa com `-` ou `[ ]`)
+  const items = parseListItems(body);
+  const hasOnlyList = items !== null && !hasTable(body);
+
+  if (hasOnlyList) {
+    if (t.startsWith('critérios')) {
+      return (
+        <Section title={title} icon={meta.icon}>
+          <CriteriaList items={items!} />
+        </Section>
+      );
+    }
+    if (t.startsWith('regras')) {
+      return (
+        <Section title={title} icon={meta.icon}>
+          <RulesList items={items!} />
+        </Section>
+      );
+    }
+    if (t.startsWith('side effects')) {
+      return (
+        <Section title={title} icon={meta.icon}>
+          <SideEffectsTimeline items={items!} />
+        </Section>
+      );
+    }
+    if (t.startsWith('dependências') || t.startsWith('dependencias')) {
+      return (
+        <Section title={title} icon={meta.icon}>
+          <DependencyChips items={items!} />
+        </Section>
+      );
+    }
+    if (t.startsWith('estados visuais') || t === 'estados') {
+      return (
+        <Section title={title} icon={meta.icon}>
+          <StatesGrid items={items!} />
+        </Section>
+      );
+    }
+  }
 
   return (
     <Section title={title} icon={meta.icon}>
       <SectionBody body={body} bulletStyle={meta.bulletStyle} />
     </Section>
   );
+}
+
+function parseListItems(body: string): string[] | null {
+  const lines = body.split('\n').map((l) => l.replace(/\s+$/, ''));
+  const items: string[] = [];
+  let buf: string | null = null;
+  for (const line of lines) {
+    if (/^\s*-\s+/.test(line)) {
+      if (buf !== null) items.push(buf);
+      buf = line.replace(/^\s*-\s+/, '').replace(/^\[\s*\]\s*/, '');
+    } else if (line.trim() === '' || /^\s*\|/.test(line)) {
+      if (buf !== null) {
+        items.push(buf);
+        buf = null;
+      }
+      if (/^\s*\|/.test(line)) return null;
+    } else if (buf !== null && /^\s{2,}/.test(line)) {
+      // continuação de item (linha indentada)
+      buf += ' ' + line.trim();
+    } else if (buf === null && line.trim() !== '') {
+      // texto fora de lista — abandona
+      return null;
+    }
+  }
+  if (buf !== null) items.push(buf);
+  return items.length > 0 ? items : null;
+}
+
+function hasTable(body: string): boolean {
+  return body.split('\n').some((l) => /^\s*\|/.test(l));
+}
+
+/**
+ * Critérios de aceite — cada item é uma "regra de aceite" que o dev valida.
+ * Mostramos com um checkbox decorativo verde e bordas suaves. Se o item começa
+ * com Dado/Quando/Então, destacamos o conector.
+ */
+function CriteriaList({ items }: { items: string[] }) {
+  return (
+    <ul className="flex flex-col gap-1.5">
+      {items.map((item, i) => {
+        const gherkin = item.match(/^(Dado|Quando|Então|Entao|E)\s+(.+)/i);
+        return (
+          <li
+            key={i}
+            className="flex items-start gap-2.5 p-2.5"
+            style={{
+              background: 'white',
+              border: '1px solid var(--tfd-surface-border)',
+              borderRadius: 6,
+              lineHeight: 1.5,
+            }}
+          >
+            <CheckCircle2 size={14} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0, marginTop: 2 }} />
+            <span className="text-[13px]" style={{ color: 'var(--tfd-text-primary)' }}>
+              {gherkin ? (
+                <>
+                  <span
+                    className="font-mono font-semibold text-[10.5px] uppercase tracking-wider mr-1.5 px-1 py-[1px] rounded"
+                    style={{ background: '#F1F5F9', color: 'var(--tfd-text-secondary)' }}
+                  >
+                    {gherkin[1]}
+                  </span>
+                  <InlineMd text={gherkin[2]} />
+                </>
+              ) : (
+                <InlineMd text={item} />
+              )}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** Regras de negócio — cada item recebe um número (RN-1, RN-2...) em chip azul. */
+function RulesList({ items }: { items: string[] }) {
+  return (
+    <ul className="flex flex-col gap-1.5">
+      {items.map((item, i) => (
+        <li
+          key={i}
+          className="flex items-start gap-2.5 p-2.5"
+          style={{
+            background: 'white',
+            border: '1px solid var(--tfd-surface-border)',
+            borderLeft: '3px solid var(--tfd-blue-500)',
+            borderRadius: 6,
+            lineHeight: 1.5,
+          }}
+        >
+          <span
+            className="font-mono text-[10.5px] font-bold flex-shrink-0 mt-[1px] px-1.5 py-[2px] rounded"
+            style={{ background: 'var(--tfd-blue-50)', color: 'var(--tfd-blue-700)' }}
+          >
+            RN-{String(i + 1).padStart(2, '0')}
+          </span>
+          <span className="text-[13px]" style={{ color: 'var(--tfd-text-primary)' }}>
+            <InlineMd text={item} />
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Side effects — timeline numerada (passos ordenados). */
+function SideEffectsTimeline({ items }: { items: string[] }) {
+  return (
+    <ol className="flex flex-col gap-1.5">
+      {items.map((item, i) => (
+        <li key={i} className="flex items-start gap-3">
+          <div className="flex flex-col items-center flex-shrink-0" style={{ width: 24 }}>
+            <span
+              className="font-mono text-[10.5px] font-bold flex items-center justify-center rounded-full"
+              style={{
+                width: 22,
+                height: 22,
+                background: '#F1F5F9',
+                color: 'var(--tfd-text-secondary)',
+                border: '1px solid var(--tfd-surface-border)',
+              }}
+            >
+              {i + 1}
+            </span>
+            {i < items.length - 1 && (
+              <span style={{ width: 1, flex: 1, background: 'var(--tfd-surface-border)', minHeight: 8 }} />
+            )}
+          </div>
+          <span className="text-[13px] pb-2" style={{ color: 'var(--tfd-text-primary)', lineHeight: 1.5 }}>
+            <InlineMd text={item} />
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** Dependências — chips com → para ficar claro que "depende disso". */
+function DependencyChips({ items }: { items: string[] }) {
+  return (
+    <ul className="flex flex-wrap gap-1.5">
+      {items.map((item, i) => (
+        <li
+          key={i}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[12px]"
+          style={{
+            background: '#F8FAFC',
+            border: '1px dashed var(--tfd-surface-border)',
+            borderRadius: 6,
+            color: 'var(--tfd-text-primary)',
+          }}
+        >
+          <ExternalLink size={11} style={{ color: 'var(--tfd-text-muted)', flexShrink: 0 }} />
+          <InlineMd text={item} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Estados visuais — destaca o nome do estado (antes do `:` ou primeira palavra
+ * em **negrito**) em chip colorido, e descrição ao lado. Ajuda a ler "ó isso é
+ * um mini-wireframe das variações da tela".
+ */
+function StatesGrid({ items }: { items: string[] }) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+      {items.map((item, i) => {
+        const stateName = extractStateName(item);
+        const rest = stateName ? item.replace(/^(\*\*[^*]+\*\*|[^:—-]+)([:—-])\s*/, '') : item;
+        return (
+          <div
+            key={i}
+            className="p-2.5"
+            style={{
+              background: 'white',
+              border: '1px solid var(--tfd-surface-border)',
+              borderRadius: 6,
+              borderLeft: '3px solid var(--tfd-text-muted)',
+            }}
+          >
+            {stateName && (
+              <span
+                className="inline-block text-[10.5px] font-semibold uppercase tracking-wider mb-1 px-1.5 py-[2px] rounded"
+                style={{ background: '#F1F5F9', color: 'var(--tfd-text-secondary)' }}
+              >
+                {stateName}
+              </span>
+            )}
+            <p className="text-[12.5px]" style={{ color: 'var(--tfd-text-secondary)', lineHeight: 1.5 }}>
+              <InlineMd text={rest} />
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function extractStateName(item: string): string | null {
+  const bold = item.match(/^\*\*([^*]+)\*\*/);
+  if (bold) return bold[1].replace(/[:—-]\s*$/, '').trim();
+  const colon = item.match(/^([^:—-]{2,40})\s*[:—-]/);
+  if (colon) return colon[1].trim();
+  return null;
 }
 
 function sectionMeta(title: string): {
@@ -1124,204 +1759,6 @@ function Section({
   );
 }
 
-/* ──────────────────────────────────────────────────────
-   Wireframe do fluxo (visualização ASCII-ish do épico)
-   ────────────────────────────────────────────────────── */
-
-function WireframePanel({ epic }: { epic: Epic }) {
-  return (
-    <div>
-      <Crumbs items={[{ label: 'Backlog' }, { label: epic.code }, { label: 'Wireframe do fluxo' }]} />
-
-      <div className="tfd-panel mb-5">
-        <div className="tfd-panel-header">
-          <div>
-            <h2 className="text-[18px] font-bold" style={{ color: '#1A1D2B' }}>
-              Fluxo de {epic.title}
-            </h2>
-            <p className="mt-1 text-[13px]" style={{ color: 'var(--tfd-text-secondary)' }}>
-              Mapa visual das telas e relação entre as user stories. Cada caixa equivale a uma feature do épico.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="tfd-panel">
-        <div className="tfd-panel-content" style={{ background: '#F8FAFC' }}>
-          <div className="flex flex-col gap-3">
-            {epic.features.map((f, idx) => (
-              <div key={f.code}>
-                <div
-                  className="flex items-center gap-3 p-3"
-                  style={{
-                    background: 'white',
-                    border: '1px solid var(--tfd-surface-border)',
-                    borderRadius: 8,
-                    boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
-                  }}
-                >
-                  <div
-                    className="flex-shrink-0 flex items-center justify-center font-mono text-[11px] font-bold"
-                    style={{
-                      width: 56,
-                      height: 56,
-                      background: 'var(--tfd-blue-50)',
-                      color: 'var(--tfd-blue-700)',
-                      borderRadius: 8,
-                    }}
-                  >
-                    {f.code}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[14px] font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-                      {f.title}
-                    </div>
-                    {f.description && (
-                      <div className="text-[12px] mt-0.5 truncate" style={{ color: 'var(--tfd-text-muted)' }}>
-                        {f.description}
-                      </div>
-                    )}
-                    <div
-                      className="flex flex-wrap gap-1 mt-2"
-                      style={{ fontFamily: 'var(--tfd-mono)', fontSize: 10 }}
-                    >
-                      {f.userStories.slice(0, 6).map((u) => (
-                        <span
-                          key={u.id}
-                          style={{
-                            padding: '1px 6px',
-                            background: '#F1F5F9',
-                            color: 'var(--tfd-text-secondary)',
-                            borderRadius: 4,
-                            border: '1px solid var(--tfd-surface-border)',
-                          }}
-                        >
-                          {u.id}
-                        </span>
-                      ))}
-                      {f.userStories.length > 6 && (
-                        <span style={{ color: 'var(--tfd-text-muted)' }}>+{f.userStories.length - 6}</span>
-                      )}
-                    </div>
-                  </div>
-                  {f.meta.find((m) => m.key.toLowerCase() === 'tela') && (
-                    <div
-                      className="flex-shrink-0 text-[11px] font-mono px-2 py-1 rounded"
-                      style={{
-                        background: '#F8FAFC',
-                        color: 'var(--tfd-text-muted)',
-                        border: '1px solid var(--tfd-surface-border)',
-                      }}
-                    >
-                      {f.meta.find((m) => m.key.toLowerCase() === 'tela')!.value.split('·')[0].trim()}
-                    </div>
-                  )}
-                </div>
-                {idx < epic.features.length - 1 && (
-                  <div className="flex justify-center py-1" aria-hidden>
-                    <span style={{ color: 'var(--tfd-text-muted)', fontFamily: 'var(--tfd-mono)' }}>↓</span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ──────────────────────────────────────────────────────
-   Painel de Markdown bruto (cronograma, README)
-   ────────────────────────────────────────────────────── */
-
-function MdPanel({ title, hint, raw }: { title: string; hint?: string; raw: string }) {
-  return (
-    <div>
-      <Crumbs items={[{ label: 'Backlog' }, { label: title }]} />
-      <div className="tfd-panel">
-        <div className="tfd-panel-header">
-          <div>
-            <h2 className="text-[18px] font-bold" style={{ color: '#1A1D2B' }}>
-              {title}
-            </h2>
-            {hint && <p className="mt-1 text-[13px]" style={{ color: 'var(--tfd-text-secondary)' }}>{hint}</p>}
-          </div>
-        </div>
-        <div className="tfd-panel-content">
-          <MarkdownView raw={raw} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MarkdownView({ raw }: { raw: string }) {
-  // Renderer simples — só o que precisamos pros MDs do backlog.
-  const stripped = raw.replace(/^---[\s\S]*?---\s*/m, '');
-  const lines = stripped.split('\n');
-  const out: React.ReactNode[] = [];
-  let listBuf: string[] = [];
-
-  const flushList = () => {
-    if (listBuf.length === 0) return;
-    out.push(
-      <ul key={out.length} className="list-disc pl-5 my-2 text-[13.5px]" style={{ color: 'var(--tfd-text-primary)', lineHeight: 1.6 }}>
-        {listBuf.map((l, i) => (
-          <li key={i}><InlineMd text={l} /></li>
-        ))}
-      </ul>,
-    );
-    listBuf = [];
-  };
-
-  for (const line of lines) {
-    if (/^\s*[-*]\s/.test(line)) {
-      listBuf.push(line.replace(/^\s*[-*]\s/, ''));
-      continue;
-    }
-    flushList();
-    if (/^#\s/.test(line)) {
-      out.push(
-        <h2 key={out.length} className="text-[18px] font-bold mt-4 mb-2" style={{ color: '#1A1D2B' }}>
-          {line.replace(/^#\s+/, '')}
-        </h2>,
-      );
-    } else if (/^##\s/.test(line)) {
-      out.push(
-        <h3 key={out.length} className="text-[15px] font-semibold mt-3 mb-1" style={{ color: 'var(--tfd-text-primary)' }}>
-          {line.replace(/^##\s+/, '')}
-        </h3>,
-      );
-    } else if (/^###\s/.test(line)) {
-      out.push(
-        <h4 key={out.length} className="text-[13px] font-semibold uppercase tracking-wider mt-3 mb-1" style={{ color: 'var(--tfd-text-muted)' }}>
-          {line.replace(/^###\s+/, '')}
-        </h4>,
-      );
-    } else if (/^>/.test(line)) {
-      out.push(
-        <blockquote
-          key={out.length}
-          className="my-2 px-3 py-2 text-[13px] italic"
-          style={{ borderLeft: '3px solid var(--tfd-blue-300)', background: '#F8FAFC', color: 'var(--tfd-text-secondary)' }}
-        >
-          <InlineMd text={line.replace(/^>\s?/, '')} />
-        </blockquote>,
-      );
-    } else if (line.trim() === '') {
-      // pula
-    } else {
-      out.push(
-        <p key={out.length} className="text-[13.5px] my-1.5" style={{ color: 'var(--tfd-text-primary)', lineHeight: 1.6 }}>
-          <InlineMd text={line} />
-        </p>,
-      );
-    }
-  }
-  flushList();
-  return <>{out}</>;
-}
 
 /**
  * Markdown inline mínimo: **bold**, *italic*, `code`, [link](url) e wikilinks

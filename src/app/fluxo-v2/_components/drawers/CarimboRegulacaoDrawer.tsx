@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Stamp, MessageSquare } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
+import FormSection from '@/shared/components/drawer/FormSection';
+import AnexosUploadField, { type AnexoLocal } from '@/shared/components/anexos-upload-field/AnexosUploadField';
+import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import StatusDot, { type StatusDotTone } from '../StatusDot';
 import {
@@ -22,6 +25,8 @@ interface Props {
     outrosInfo?: CarimboOutrosInfo,
   ) => void;
   snapshotPaciente?: SnapshotPacienteData;
+  /** Quando informado, permite anexar documentos ligados ao carimbo. */
+  solicitacaoId?: string;
 }
 
 interface CarimboOption {
@@ -83,9 +88,12 @@ export default function CarimboRegulacaoDrawer({
   outrosInfoAtual,
   onSalvar,
   snapshotPaciente,
+  solicitacaoId,
 }: Props) {
+  const { addAnexos } = useFluxoV2State();
   const [selecionado, setSelecionado] = useState<CarimboRegulacao | undefined>(carimboAtual);
   const [observacao, setObservacao] = useState(observacaoAtual ?? '');
+  const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
 
   useEffect(() => {
     if (open) {
@@ -114,6 +122,10 @@ export default function CarimboRegulacaoDrawer({
       observacao.trim() ? observacao.trim() : undefined,
       undefined,
     );
+    if (solicitacaoId && anexos.length > 0) {
+      addAnexos(solicitacaoId, anexos, 'carimbo');
+      setAnexos([]);
+    }
     onClose();
   }
 
@@ -141,8 +153,9 @@ export default function CarimboRegulacaoDrawer({
       }
     >
       {snapshotPaciente && <SnapshotPaciente data={snapshotPaciente} />}
+      <FormSection title="Encaminhamento" icon={<Stamp size={12} />} tone="primary">
       <label
-        className="block text-[12px] font-semibold uppercase tracking-wider mb-2"
+        className="block text-[12px] font-semibold mb-2"
         style={{ color: '#6B7280' }}
       >
         Encaminhamento
@@ -220,9 +233,11 @@ export default function CarimboRegulacaoDrawer({
           <strong>Agendamentos &amp; tentativas</strong>.
         </div>
       )}
+      </FormSection>
 
+      <FormSection title="Observação" icon={<MessageSquare size={12} />} tone="info">
       <label
-        className="block text-[12px] font-semibold uppercase tracking-wider mb-2"
+        className="block text-[12px] font-semibold mb-2"
         style={{ color: '#6B7280' }}
       >
         Observação geral <span style={{ color: '#9CA3AF', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(opcional)</span>
@@ -239,6 +254,9 @@ export default function CarimboRegulacaoDrawer({
           borderRadius: 8,
         }}
       />
+      </FormSection>
+
+      {solicitacaoId && <AnexosUploadField value={anexos} onChange={setAnexos} />}
     </Drawer>
   );
 }

@@ -66,9 +66,17 @@ export async function atualizarPaciente(
 
 export async function historicoProcessos(pacienteId: string) {
   const supabase = getSupabase();
+  // Inclui:
+  //  - origem_laudo_unidade: unidade que emitiu o laudo (FK na solicitação)
+  //  - agendamentos.unidade_destino: unidade onde o paciente foi agendado
+  // Cada uma rende uma tag de tipo de vínculo no card da solicitação.
   return supabase
     .from('solicitacoes')
-    .select('*, viagens(*), ajudas_custo(*)')
+    .select(
+      '*, viagens(*), ajudas_custo(*), ' +
+      'origem_laudo_unidade:unidades_destino!solicitacoes_origem_laudo_unidade_id_fkey(id, nome, cnes), ' +
+      'agendamentos(id, unidade_destino_id, unidades_destino!agendamentos_unidade_destino_id_fkey(id, nome, cnes))',
+    )
     .eq('paciente_id', pacienteId)
     .order('created_at', { ascending: false });
 }

@@ -94,11 +94,87 @@ export async function desativarUnidadeSaude(id: string) {
     .single();
 }
 
-/** Lista solicitacoes vinculadas a uma unidade via agendamentos */
-export async function listarSolicitacoesPorUnidade(unidadeId: string) {
-  return getSupabase()
-    .from('agendamentos')
-    .select('solicitacao_id, solicitacoes(*, pacientes(nome_completo))')
-    .eq('unidade_destino_id', unidadeId)
-    .order('created_at', { ascending: false });
+/**
+ * Tipo de vínculo entre uma solicitação e uma unidade de saúde. Uma mesma
+ * solicitação pode estar vinculada à unidade por dois caminhos distintos —
+ * essa distinção é importante para relatórios.
+ *
+ * - `origem_laudo`: a unidade emitiu o laudo médico da solicitação
+ *   (`solicitacoes.origem_laudo_unidade_id`).
+ * - `destino_agendamento`: a unidade é onde o paciente foi agendado para
+ *   realizar o procedimento (`agendamentos.unidade_destino_id`).
+ */
+export type VinculoSolicitacaoUnidade = 'origem_laudo' | 'destino_agendamento';
+
+export const VINCULO_SOLICITACAO_UNIDADE_LABEL: Record<VinculoSolicitacaoUnidade, string> = {
+  origem_laudo: 'Origem do laudo',
+  destino_agendamento: 'Destino de agendamento',
+};
+
+export interface SolicitacaoVinculadaUnidade {
+  solicitacao: Record<string, unknown>;
+  vinculos: VinculoSolicitacaoUnidade[];
+}
+
+/**
+ * Lista TODAS as solicitações vinculadas a uma unidade, considerando os dois
+ * tipos de vínculo possíveis (origem do laudo + destino de agendamento).
+ * Uma solicitação que estiver nas duas pontas aparece uma única vez com
+ * `vinculos: ['origem_laudo', 'destino_agendamento']`.
+ */
+export async function listarSolicitacoesPorUnidade(unidadeId: string): Promise<{
+  data: SolicitacaoVinculadaUnidade[];
+  error: { message: string } | null;
+}> {
+  const supabase = getSupabase();
+
+  const [agendamentosRes, laudoRes] = await Promise.all([
+    supabase
+      .from('agendamentos')
+      .select('solicitacao_id, solicitacoes(*, pacientes(nome_completo))')
+      .eq('unidade_destino_id', unidadeId)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('solicitacoes')
+      .select('*, pacientes(nome_completo)')
+      .eq('origem_laudo_unidade_id', unidadeId)
+      .order('created_at', { ascending: false }),
+  ]);
+
+  if (agendamentosRes.error) return { data: [], error: { message: agendamentosRes.error.message } };
+  if (laudoRes.error) return { data: [], error: { message: laudoRes.error.message } };
+
+  const byId = new Map<string, SolicitacaoVinculadaUnidade>();
+
+  // Destino de agendamento
+  for (const row of (agendamentosRes.data ?? []) as Record<string, unknown>[]) {
+    const sol = row.solicitacoes as Record<string, unknown> | null;
+    if (!sol) continue;
+    const solId = sol.id as string;
+    const existing = byId.get(solId);
+    if (existing) {
+      if (!existing.vinculos.includes('destino_agendamento')) existing.vinculos.push('destino_agendamento');
+    } else {
+      byId.set(solId, { solicitacao: sol, vinculos: ['destino_agendamento'] });
+    }
+  }
+
+  // Origem do laudo
+  for (const sol of (laudoRes.data ?? []) as Record<string, unknown>[]) {
+    const solId = sol.id as string;
+    const existing = byId.get(solId);
+    if (existing) {
+      if (!existing.vinculos.includes('origem_laudo')) existing.vinculos.unshift('origem_laudo');
+    } else {
+      byId.set(solId, { solicitacao: sol, vinculos: ['origem_laudo'] });
+    }
+  }
+
+  const lista = Array.from(byId.values()).sort((a, b) => {
+    const da = new Date((a.solicitacao.created_at as string) ?? '').getTime();
+    const db = new Date((b.solicitacao.created_at as string) ?? '').getTime();
+    return db - da;
+  });
+
+  return { data: lista, error: null };
 }

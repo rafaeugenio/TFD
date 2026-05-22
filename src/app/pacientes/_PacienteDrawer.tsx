@@ -9,10 +9,15 @@ import {
   Loader2,
   Paperclip,
   UserPlus,
+  User,
+  MapPin,
+  FileText,
+  Users,
 } from 'lucide-react';
 
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
+import FormSection from '@/shared/components/drawer/FormSection';
 import ConfirmDialog, { buildDiff, type DiffField } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useMunicipios } from '@/shared/hooks/useLookup';
@@ -24,9 +29,6 @@ import IdadeBadge from '@/shared/components/idade-badge';
 
 import { buscarPaciente, criarPaciente, atualizarPaciente } from '@/services/pacientes.service';
 import { buscarRegionalPorMunicipio, listarRegionaisSaude } from '@/services/regionais-saude.service';
-import {
-  buscarPorPaciente as buscarDadosBancariosPorPaciente,
-} from '@/services/dados-bancarios.service';
 import { listarPorPaciente, criarAcompanhante, atualizarAcompanhante, excluirAcompanhante } from '@/services/acompanhantes.service';
 import { uploadDocumento, listarDocumentosPaciente, excluirDocumento } from '@/services/documentos.service';
 import type { TipoDocumento, VinculoAcompanhante } from '@/lib/supabase/database.types';
@@ -169,18 +171,7 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
   const [regionaisOptions, setRegionaisOptions] = useState<{ id: string; codigo: string; nome: string; regiao_nome: string | null }[]>([]);
   const [regionaisLoading, setRegionaisLoading] = useState(true);
 
-  /* ---- Form: Dados Bancários ---- */
-  const [bancoNome, setBancoNome] = useState('');
-  const [bancoAgencia, setBancoAgencia] = useState('');
-  const [bancoConta, setBancoConta] = useState('');
-  const [bancoTipoConta, setBancoTipoConta] = useState<'CORRENTE' | 'POUPANCA' | ''>('');
-  const [bancoTitular, setBancoTitular] = useState('');
-  const [bancoCpfTitular, setBancoCpfTitular] = useState('');
-  const [bancoPixTipo, setBancoPixTipo] = useState<'' | 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA'>('');
-  const [bancoPixChave, setBancoPixChave] = useState('');
-  const [bancoRegistroId, setBancoRegistroId] = useState<string | null>(null);
-
-  /* ---- Documentos ---- */
+/* ---- Documentos ---- */
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [existingDocs, setExistingDocs] = useState<Record<string, unknown>[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -274,9 +265,6 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
     setPendingFiles([]); setExistingDocs([]);
     setAcompanhantes([]); setPendingAcomps([]);
     resetAcompForm();
-    setBancoNome(''); setBancoAgencia(''); setBancoConta(''); setBancoTipoConta('');
-    setBancoTitular(''); setBancoCpfTitular(''); setBancoPixTipo(''); setBancoPixChave('');
-    setBancoRegistroId(null);
   }
 
   function resetAcompForm() {
@@ -327,22 +315,8 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
     const { data: acomps } = await listarPorPaciente(id);
     setAcompanhantes((acomps ?? []) as Record<string, unknown>[]);
 
-    const { data: db } = await buscarDadosBancariosPorPaciente(id);
-    if (db) {
-      setBancoRegistroId(db.id);
-      setBancoNome(db.banco ?? '');
-      setBancoAgencia(db.agencia ?? '');
-      setBancoConta(db.conta ?? '');
-      setBancoTipoConta((db.tipo_conta as 'CORRENTE' | 'POUPANCA') ?? '');
-      setBancoTitular(db.nome_titular ?? '');
-      setBancoCpfTitular(maskCPF(db.cpf_titular ?? ''));
-      setBancoPixTipo(((db as Record<string, unknown>).pix_tipo as 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA' | null) ?? '');
-      setBancoPixChave(((db as Record<string, unknown>).pix_chave as string) ?? '');
-    } else {
-      setBancoRegistroId(null);
-      setBancoNome(''); setBancoAgencia(''); setBancoConta(''); setBancoTipoConta('');
-      setBancoTitular(''); setBancoCpfTitular(''); setBancoPixTipo(''); setBancoPixChave('');
-    }
+    // Dados bancários não são mais editados aqui — gerenciados pelo pool em
+    // /pacientes/[id] (seção Dados Bancários) ou inline na tela de Ajuda de Custo.
 
     resetAcompForm();
   }
@@ -485,12 +459,10 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
         }
       }
 
-      // Dados bancários NÃO são mais salvos pelo cadastro do paciente. A
-      // partir da migration 00053 eles passam a viver na solicitação (cada
-      // ciclo tem sua própria conta de recebimento). O cadastro/edição é
-      // feito pelo setor de Ajuda de Custo na aba Financeiro da solicitação.
-      // Campos do drawer permanecem visíveis como referência histórica, mas
-      // não disparam upsert.
+      // Dados bancários são gerenciados pelo pool por paciente (migration 00056):
+      // - CRUD na seção "Dados Bancários" em /pacientes/[id]
+      // - Criação inline no passo de Ajuda de Custo da solicitação
+      // O cadastro do paciente em si NÃO toca em dados_bancarios.
 
       if (pendingFiles.length > 0) {
         setUploading(true);
@@ -694,10 +666,7 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
         }
       >
         {/* ── Dados Pessoais ── */}
-        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
-          Dados Pessoais
-        </h3>
-
+        <FormSection title="Dados Pessoais" icon={<User size={12} />} tone="primary">
         <FormField label="CPF" required hint="campo principal de identificação">
           <input
             type="text"
@@ -748,11 +717,10 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
         <FormField label="Outros contatos">
           <textarea className="tfd-input" rows={2} placeholder="Informações adicionais de contato..." value={outrosContatos} onChange={(e) => setOutrosContatos(e.target.value)} />
         </FormField>
+        </FormSection>
 
         {/* ── Endereço ── */}
-        <hr className="tfd-divider" />
-        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Endereço</h3>
-
+        <FormSection title="Endereço" icon={<MapPin size={12} />} tone="success">
         <div className="grid grid-cols-3 gap-4">
           <CepAutofill
             initialCep={cep}
@@ -837,14 +805,15 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
             </div>
           );
         })()}
+        </FormSection>
 
         {/* ── Documentos ── */}
-        <hr className="tfd-divider" />
-        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Documentos Pessoais</h3>
-        <p className="text-xs mb-3" style={{ color: 'var(--tfd-text-muted)' }}>
-          Anexe os documentos pessoais do paciente (RG, CPF, comprovante de residência, Cartão SUS).
-        </p>
-
+        <FormSection
+          title="Documentos Pessoais"
+          icon={<FileText size={12} />}
+          tone="warning"
+          hint="Anexe os documentos pessoais do paciente (RG, CPF, comprovante de residência, Cartão SUS)."
+        >
         {existingDocs.length > 0 && (
           <div className="space-y-2 mb-3">
             <p className="text-xs font-medium" style={{ color: 'var(--tfd-text-secondary)' }}>
@@ -950,106 +919,21 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
           </div>
         )}
 
-        {/* ── Dados Bancários ── */}
-        <hr className="tfd-divider" />
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>Dados Bancários</h3>
-          <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full" style={{ background: '#FEF3C7', color: '#92400E', letterSpacing: '0.06em' }}>
-            Histórico — não editável aqui
-          </span>
-        </div>
-        <p className="text-xs mb-3" style={{ color: 'var(--tfd-text-muted)' }}>
-          A partir de maio/2026 os dados bancários são cadastrados por solicitação,
-          na aba <strong>Financeiro</strong>. Os campos abaixo mostram o último registro
-          deste paciente, apenas como referência. Edições aqui não serão salvas.
-        </p>
-
-        <LookupSelect
-          categoria="banco"
-          label="Banco"
-          value={bancoNome}
-          onChange={setBancoNome}
-          valueField="nome"
-          orderBy="ordem"
-          placeholder="Selecione o banco..."
-        />
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <FormField label="Agência">
-            <input type="text" className="tfd-input" placeholder="0000" value={bancoAgencia} onChange={(e) => setBancoAgencia(e.target.value)} style={{ fontFamily: 'var(--tfd-font-mono)' }} />
-          </FormField>
-          <FormField label="Conta (com dígito)">
-            <input type="text" className="tfd-input" placeholder="00000-0" value={bancoConta} onChange={(e) => setBancoConta(e.target.value)} style={{ fontFamily: 'var(--tfd-font-mono)' }} />
-          </FormField>
-          <FormField label="Tipo de conta">
-            <select className="tfd-input" value={bancoTipoConta} onChange={(e) => setBancoTipoConta(e.target.value as 'CORRENTE' | 'POUPANCA' | '')}>
-              <option value="">Selecione...</option>
-              <option value="CORRENTE">Conta corrente</option>
-              <option value="POUPANCA">Poupança</option>
-            </select>
-          </FormField>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <FormField label="Nome do titular">
-            <input type="text" className="tfd-input" placeholder="Nome do titular da conta" value={bancoTitular} onChange={(e) => setBancoTitular(e.target.value)} />
-          </FormField>
-          <FormField label="CPF do titular">
-            <input type="text" className="tfd-input" placeholder="000.000.000-00" value={bancoCpfTitular} onChange={(e) => setBancoCpfTitular(maskCPF(e.target.value))} style={{ fontFamily: 'var(--tfd-font-mono)' }} />
-          </FormField>
-        </div>
-
-        {bancoTitular.trim() && bancoCpfTitular.replace(/\D/g, '') !== cpf.replace(/\D/g, '') && bancoCpfTitular.replace(/\D/g, '').length === 11 && (
-          <p className="text-xs mb-3 px-3 py-2 rounded" style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
-            CPF do titular difere do CPF do paciente — confira se a conta é de terceiro autorizado.
-          </p>
-        )}
-
-        <div className="grid grid-cols-2 gap-4 mt-2">
-          <FormField label="Tipo de chave PIX" hint="opcional">
-            <select className="tfd-input" value={bancoPixTipo} onChange={(e) => setBancoPixTipo(e.target.value as typeof bancoPixTipo)}>
-              <option value="">— Sem PIX cadastrado —</option>
-              <option value="CPF">CPF</option>
-              <option value="CNPJ">CNPJ</option>
-              <option value="EMAIL">E-mail</option>
-              <option value="TELEFONE">Telefone</option>
-              <option value="ALEATORIA">Chave aleatória</option>
-            </select>
-          </FormField>
-          <FormField label="Chave PIX" hint={bancoPixTipo ? 'obrigatório se houver tipo' : 'opcional'}>
-            <input
-              type="text"
-              className="tfd-input"
-              placeholder={
-                bancoPixTipo === 'CPF' ? '000.000.000-00'
-                : bancoPixTipo === 'CNPJ' ? '00.000.000/0000-00'
-                : bancoPixTipo === 'EMAIL' ? 'email@exemplo.com'
-                : bancoPixTipo === 'TELEFONE' ? '(99) 99999-9999'
-                : bancoPixTipo === 'ALEATORIA' ? 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
-                : 'Selecione o tipo primeiro'
-              }
-              value={bancoPixChave}
-              onChange={(e) => setBancoPixChave(e.target.value)}
-              disabled={!bancoPixTipo}
-              style={['CPF', 'CNPJ', 'TELEFONE', 'ALEATORIA'].includes(bancoPixTipo) ? { fontFamily: 'var(--tfd-font-mono)' } : undefined}
-            />
-          </FormField>
-        </div>
-        <p className="text-[11px] mt-1 mb-3" style={{ color: 'var(--tfd-text-muted)' }}>
-          Atualmente o TFD não realiza transferências por PIX — o campo fica disponível para futuro uso.
-        </p>
+        </FormSection>
 
         {/* ── Acompanhantes ── */}
-        <hr className="tfd-divider" />
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>Acompanhantes</h3>
-          {!showAcompForm && (
-            <button className="tfd-btn tfd-btn-secondary tfd-btn--sm" onClick={() => { resetAcompForm(); setShowAcompForm(true); }}>
-              <UserPlus size={14} /> Adicionar Acompanhante
-            </button>
-          )}
-        </div>
-
+        <FormSection
+          title="Acompanhantes"
+          icon={<Users size={12} />}
+          tone="info"
+          action={
+            !showAcompForm ? (
+              <button className="tfd-btn tfd-btn-secondary tfd-btn--sm" onClick={() => { resetAcompForm(); setShowAcompForm(true); }}>
+                <UserPlus size={14} /> Adicionar
+              </button>
+            ) : undefined
+          }
+        >
         {(() => {
           const displayedAcomps = editandoId ? acompanhantes : pendingAcomps;
           return displayedAcomps.length > 0 ? (
@@ -1135,7 +1019,7 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
             </FormField>
             <div className="grid grid-cols-2 gap-4">
               <LookupSelect
-                categoria="vinculo_acompanhante"
+                categoria="vinculo"
                 label="Vínculo"
                 value={acompVinculo}
                 onChange={(v) => setAcompVinculo(v as VinculoAcompanhante | '')}
@@ -1164,6 +1048,7 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
             </div>
           </div>
         )}
+        </FormSection>
       </Drawer>
     </>
   );

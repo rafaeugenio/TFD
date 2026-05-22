@@ -555,7 +555,7 @@ export type Database = {
           snapshot_tipo_conta: TipoConta | null;
           snapshot_nome_titular: string | null;
           snapshot_cpf_titular: string | null;
-          snapshot_titular_vinculo: 'PROPRIO' | 'PAI' | 'MAE' | 'CONJUGE' | 'RESPONSAVEL_LEGAL' | 'OUTRO' | null;
+          snapshot_titular_vinculo: string | null;
           snapshot_pix_tipo: 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA' | null;
           snapshot_pix_chave: string | null;
           snapshot_at: string | null;
@@ -596,7 +596,7 @@ export type Database = {
           snapshot_tipo_conta?: TipoConta | null;
           snapshot_nome_titular?: string | null;
           snapshot_cpf_titular?: string | null;
-          snapshot_titular_vinculo?: 'PROPRIO' | 'PAI' | 'MAE' | 'CONJUGE' | 'RESPONSAVEL_LEGAL' | 'OUTRO' | null;
+          snapshot_titular_vinculo?: string | null;
           snapshot_pix_tipo?: 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA' | null;
           snapshot_pix_chave?: string | null;
           snapshot_at?: string | null;
@@ -637,7 +637,7 @@ export type Database = {
           snapshot_tipo_conta?: TipoConta | null;
           snapshot_nome_titular?: string | null;
           snapshot_cpf_titular?: string | null;
-          snapshot_titular_vinculo?: 'PROPRIO' | 'PAI' | 'MAE' | 'CONJUGE' | 'RESPONSAVEL_LEGAL' | 'OUTRO' | null;
+          snapshot_titular_vinculo?: string | null;
           snapshot_pix_tipo?: 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA' | null;
           snapshot_pix_chave?: string | null;
           snapshot_at?: string | null;
@@ -1158,12 +1158,11 @@ export type Database = {
           tipo_conta: TipoConta | null;
           nome_titular: string;
           cpf_titular: string;
-          titular_vinculo: 'PROPRIO' | 'PAI' | 'MAE' | 'CONJUGE' | 'RESPONSAVEL_LEGAL' | 'OUTRO' | null;
+          titular_vinculo: string | null;
           pix_tipo: 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA' | null;
           pix_chave: string | null;
           ativo: boolean;
           created_at: string;
-          updated_at: string;
         };
         Insert: {
           id?: string;
@@ -1174,12 +1173,11 @@ export type Database = {
           tipo_conta?: TipoConta | null;
           nome_titular: string;
           cpf_titular: string;
-          titular_vinculo?: 'PROPRIO' | 'PAI' | 'MAE' | 'CONJUGE' | 'RESPONSAVEL_LEGAL' | 'OUTRO' | null;
+          titular_vinculo?: string | null;
           pix_tipo?: 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA' | null;
           pix_chave?: string | null;
           ativo?: boolean;
           created_at?: string;
-          updated_at?: string;
         };
         Update: {
           id?: string;
@@ -1190,12 +1188,11 @@ export type Database = {
           tipo_conta?: TipoConta | null;
           nome_titular?: string;
           cpf_titular?: string;
-          titular_vinculo?: 'PROPRIO' | 'PAI' | 'MAE' | 'CONJUGE' | 'RESPONSAVEL_LEGAL' | 'OUTRO' | null;
+          titular_vinculo?: string | null;
           pix_tipo?: 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA' | null;
           pix_chave?: string | null;
           ativo?: boolean;
           created_at?: string;
-          updated_at?: string;
         };
         Relationships: [];
       };

@@ -102,15 +102,21 @@ function emptyPaciente(): PacienteMock {
 
 function acompanhantesFromRows(rows: Row[]): AcompanhanteMock[] {
   return rows
-    .map((r) => obj(r.acompanhantes))
-    .filter((a): a is Row => a !== null)
-    .map((a) => ({
-      id: str(a.id),
-      nome: str(a.nome_completo),
-      cpf: str(a.cpf),
-      dataNascimento: str(a.data_nascimento),
-      vinculo: str(a.vinculo) || 'Outro',
-    }));
+    .map((r) => {
+      const acomp = obj(r.acompanhantes);
+      if (!acomp) return null;
+      return {
+        id: str(acomp.id),
+        nome: str(acomp.nome_completo),
+        cpf: str(acomp.cpf),
+        dataNascimento: str(acomp.data_nascimento),
+        vinculo: str(acomp.vinculo) || 'Outro',
+        // `doador` agora vive na junção (solicitacao_acompanhantes), não no
+        // cadastro do acompanhante — é por solicitação.
+        doador: Boolean(r.doador),
+      } as AcompanhanteMock;
+    })
+    .filter((a): a is AcompanhanteMock => a !== null);
 }
 
 /* ------------------------------------------------------------------ */

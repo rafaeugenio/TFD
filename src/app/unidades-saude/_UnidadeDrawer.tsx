@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Building2, MapPin, Phone } from 'lucide-react';
 
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
+import FormSection from '@/shared/components/drawer/FormSection';
 import ConfirmDialog, { buildDiff, type DiffField } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import { useToast } from '@/shared/components/toast/Toast';
 import { maskPhone, maskCEP } from '@/shared/pipes/formatters';
@@ -319,10 +320,7 @@ export default function UnidadeDrawer({ open, editandoId, editandoData, onClose,
           </>
         }
       >
-        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
-          Dados da Unidade
-        </h3>
-
+        <FormSection title="Dados da Unidade" icon={<Building2 size={12} />} tone="primary">
         <FormField label="Nome" required>
           <input type="text" className="tfd-input" value={nome} onChange={(e) => setNome(e.target.value)} />
         </FormField>
@@ -364,13 +362,9 @@ export default function UnidadeDrawer({ open, editandoId, editandoData, onClose,
             orderBy="ordem"
           />
         </div>
+        </FormSection>
 
-        <hr className="tfd-divider" />
-
-        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
-          Endereço
-        </h3>
-
+        <FormSection title="Endereço" icon={<MapPin size={12} />} tone="success">
         <CepAutofill
           initialCep={cep}
           onAddressFound={(address) => {
@@ -405,13 +399,9 @@ export default function UnidadeDrawer({ open, editandoId, editandoData, onClose,
             onCidadeChange={setMunicipio}
           />
         </div>
+        </FormSection>
 
-        <hr className="tfd-divider" />
-
-        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
-          Contato
-        </h3>
-
+        <FormSection title="Contato" icon={<Phone size={12} />} tone="info">
         <FormField label="Telefone">
           <input
             type="tel"
@@ -429,6 +419,7 @@ export default function UnidadeDrawer({ open, editandoId, editandoData, onClose,
         <FormField label="Responsável">
           <input type="text" className="tfd-input" value={responsavel} onChange={(e) => setResponsavel(e.target.value)} />
         </FormField>
+        </FormSection>
       </Drawer>
     </>
   );

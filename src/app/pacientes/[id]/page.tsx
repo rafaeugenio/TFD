@@ -16,14 +16,22 @@ import {
   Mail,
   Landmark,
   Key,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 
 import StatusTag from '@/shared/components/status-tag/StatusTag';
 import { DetailPageSkeleton, CardListSkeleton } from '@/shared/components/skeleton';
+import { useToast } from '@/shared/components/toast/Toast';
 import { buscarPaciente, historicoProcessos } from '@/services/pacientes.service';
 import PacienteDrawer from '../_PacienteDrawer';
+import DadosBancariosDrawer from '../_DadosBancariosDrawer';
 import { listarPorPaciente } from '@/services/acompanhantes.service';
-import { listarPorPaciente as listarDadosBancariosPorPaciente, TITULAR_VINCULO_LABEL, type TitularVinculo } from '@/services/dados-bancarios.service';
+import {
+  listarPoolPorPaciente,
+  inativarConta,
+  type DadosBancariosRow,
+} from '@/services/dados-bancarios.service';
 import { formatCPF, formatCNS, formatDate } from '@/shared/pipes/formatters';
 import type { StatusSolicitacao } from '@/core/models';
 
@@ -105,13 +113,15 @@ export default function PacienteDetalhePage({ params }: { params: Promise<{ id: 
 function PacienteDetalheInner({ id }: { id: string }) {
   const router = useRouter();
 
+  const toast = useToast();
   const [paciente, setPaciente] = useState<Record<string, unknown> | null>(null);
   const [solicitacoes, setSolicitacoes] = useState<Record<string, unknown>[]>([]);
   const [acompanhantes, setAcompanhantes] = useState<Record<string, unknown>[]>([]);
-  const [dadosBancariosHistorico, setDadosBancariosHistorico] = useState<Record<string, unknown>[]>([]);
+  const [contas, setContas] = useState<DadosBancariosRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingSol, setLoadingSol] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
+  const [contaDrawer, setContaDrawer] = useState<{ open: boolean; conta: DadosBancariosRow | null }>({ open: false, conta: null });
   const [reloadFlag, setReloadFlag] = useState(0);
 
   useEffect(() => {
@@ -122,18 +132,31 @@ function PacienteDetalheInner({ id }: { id: string }) {
       setLoading(false);
 
       setLoadingSol(true);
-      const [solResult, acompResult, bancRes] = await Promise.all([
+      const [solResult, acompResult, contasRes] = await Promise.all([
         historicoProcessos(id),
         listarPorPaciente(id),
-        listarDadosBancariosPorPaciente(id),
+        listarPoolPorPaciente(id),
       ]);
-      if (solResult.data) setSolicitacoes(solResult.data as Record<string, unknown>[]);
+      if (solResult.data) setSolicitacoes(solResult.data as unknown as Record<string, unknown>[]);
       if (acompResult.data) setAcompanhantes(acompResult.data as Record<string, unknown>[]);
-      if (bancRes.data) setDadosBancariosHistorico(bancRes.data as Record<string, unknown>[]);
+      if (contasRes.data) setContas(contasRes.data as DadosBancariosRow[]);
       setLoadingSol(false);
     }
     load();
   }, [id, reloadFlag]);
+
+  async function handleInativarConta(c: DadosBancariosRow) {
+    if (!window.confirm(`Inativar conta "${c.banco ?? 'PIX'}" de ${c.nome_titular}?\nSolicitações antigas mantêm o histórico, mas ela some do select de novas solicitações.`)) {
+      return;
+    }
+    const { error } = await inativarConta(c.id);
+    if (error) {
+      toast.error('Erro ao inativar', error.message);
+      return;
+    }
+    toast.success('Conta inativada');
+    setReloadFlag((n) => n + 1);
+  }
 
   if (loading) {
     return <DetailPageSkeleton tabs={0} />;
@@ -348,6 +371,22 @@ function PacienteDetalheInner({ id }: { id: string }) {
                 const numeroProtocolo = sol.numero_protocolo as string | null;
                 const ciclo = solicitacoes.length - idx;
 
+                // Unidades vinculadas a esta solicitação — duas pontas distintas:
+                // origem do laudo (uma) + destinos de agendamento (várias possíveis).
+                const origemLaudo = sol.origem_laudo_unidade as { id: string; nome: string; cnes?: string } | null | undefined;
+                const agendamentos = (sol.agendamentos as Array<{ id: string; unidades_destino?: { id: string; nome: string; cnes?: string } | null }> | undefined) ?? [];
+                type UnidVinc = { id: string; nome: string; tipo: 'origem_laudo' | 'destino_agendamento' };
+                const unidadesVinculadas: UnidVinc[] = [];
+                if (origemLaudo?.id) {
+                  unidadesVinculadas.push({ id: origemLaudo.id, nome: origemLaudo.nome, tipo: 'origem_laudo' });
+                }
+                for (const ag of agendamentos) {
+                  const u = ag.unidades_destino;
+                  if (u?.id && !unidadesVinculadas.some((x) => x.id === u.id && x.tipo === 'destino_agendamento')) {
+                    unidadesVinculadas.push({ id: u.id, nome: u.nome, tipo: 'destino_agendamento' });
+                  }
+                }
+
                 return (
                   <Link
                     key={sol.id as string}
@@ -388,6 +427,32 @@ function PacienteDetalheInner({ id }: { id: string }) {
                             </span>
                           )}
                         </div>
+                        {unidadesVinculadas.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                            {unidadesVinculadas.map((u) => (
+                              <span
+                                key={`${u.id}-${u.tipo}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  window.open(`/unidades-saude/${u.id}`, '_blank');
+                                }}
+                                className="inline-flex items-center gap-1 px-1.5 py-[2px] text-[11px] rounded cursor-pointer hover:underline"
+                                style={{
+                                  background: u.tipo === 'origem_laudo' ? '#EEF2FF' : '#ECFDF5',
+                                  color: u.tipo === 'origem_laudo' ? '#3730A3' : '#047857',
+                                }}
+                                title={u.tipo === 'origem_laudo' ? 'Origem do laudo' : 'Destino de agendamento'}
+                              >
+                                <span className="text-[9px] font-bold uppercase tracking-wider">
+                                  {u.tipo === 'origem_laudo' ? 'Laudo' : 'Agendamento'}
+                                </span>
+                                <span style={{ opacity: 0.5 }}>·</span>
+                                <span className="truncate max-w-[220px]">{u.nome}</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <StatusTag status={status} />
@@ -416,54 +481,99 @@ function PacienteDetalheInner({ id }: { id: string }) {
           )}
         </Section>
 
-        {/* Dados Bancários — histórico por solicitação (read-only) */}
+        {/* Dados Bancários — POOL do paciente (CRUD) */}
         <Section
           title="Dados Bancários"
           icon={<Landmark size={18} />}
           badge={
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}>
-              {dadosBancariosHistorico.length}
+              {contas.length}
             </span>
           }
+          action={
+            <button
+              type="button"
+              className="tfd-btn tfd-btn-primary tfd-btn--sm"
+              onClick={() => setContaDrawer({ open: true, conta: null })}
+            >
+              <Plus size={13} /> Adicionar conta
+            </button>
+          }
         >
-          {dadosBancariosHistorico.length === 0 ? (
-            <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
-              Nenhuma conta cadastrada ainda. O cadastro é feito por solicitação, na aba Financeiro.
-            </p>
+          {contas.length === 0 ? (
+            <div className="py-6 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
+              <p className="text-sm mb-2">Nenhum dado bancário cadastrado.</p>
+              <p className="text-[12px]">As contas ficam disponíveis no select quando a Ajuda de Custo for criar uma nova solicitação.</p>
+            </div>
           ) : (
             <ul className="flex flex-col gap-2">
-              {dadosBancariosHistorico.map((d) => {
-                const sol = d.solicitacoes as Record<string, unknown> | null;
-                const numero = (sol?.numero_processo as string) ?? '—';
-                const banco = d.banco as string;
-                const agencia = d.agencia as string;
-                const conta = d.conta as string;
-                const tipoConta = d.tipo_conta as string;
-                const titular = d.nome_titular as string;
-                const cpfTitular = d.cpf_titular as string;
-                const vinculo = d.titular_vinculo as TitularVinculo | null;
-                const pixTipo = d.pix_tipo as string | null;
-                const pixChave = d.pix_chave as string | null;
+              {contas.map((c) => {
+                const banco = c.banco;
+                const agencia = c.agencia;
+                const conta = c.conta;
+                const tipoConta = c.tipo_conta;
+                const titular = c.nome_titular;
+                const cpfTitular = c.cpf_titular;
+                const vinculo = c.titular_vinculo;
+                const pixTipo = c.pix_tipo;
+                const pixChave = c.pix_chave;
+                const temConta = !!(banco || agencia || conta);
+                const temPix = !!(pixTipo || pixChave);
                 return (
-                  <li key={d.id as string} className="px-3 py-2.5" style={{ background: '#F8FAFC', borderRadius: 8, border: '1px solid var(--tfd-surface-border)' }}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[11.5px] font-mono" style={{ color: 'var(--tfd-primary-500)' }}>{numero}</span>
-                      {vinculo && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: '#EEF2FF', color: '#3730A3' }}>
-                          {TITULAR_VINCULO_LABEL[vinculo]}
-                        </span>
-                      )}
+                  <li
+                    key={c.id}
+                    className="px-3 py-2.5"
+                    style={{ background: '#F8FAFC', borderRadius: 8, border: '1px solid var(--tfd-surface-border)' }}
+                  >
+                    <div className="flex items-start justify-between gap-3 mb-1.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {vinculo && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase tracking-wider" style={{ backgroundColor: '#EEF2FF', color: '#3730A3' }}>
+                            {vinculo}
+                          </span>
+                        )}
+                        {temConta && (
+                          <span className="text-[9.5px] px-1.5 py-0.5 rounded font-semibold uppercase tracking-wider inline-flex items-center gap-1" style={{ backgroundColor: '#EFF6FF', color: '#1E40AF' }}>
+                            <Landmark size={9} /> Conta
+                          </span>
+                        )}
+                        {temPix && (
+                          <span className="text-[9.5px] px-1.5 py-0.5 rounded font-semibold uppercase tracking-wider inline-flex items-center gap-1" style={{ backgroundColor: '#ECFEFF', color: '#0E7490' }}>
+                            <Key size={9} /> PIX
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          type="button"
+                          className="tfd-btn tfd-btn-ghost tfd-btn--sm"
+                          onClick={() => setContaDrawer({ open: true, conta: c })}
+                          title="Editar"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          className="tfd-btn tfd-btn-ghost tfd-btn--sm"
+                          onClick={() => handleInativarConta(c)}
+                          title="Inativar (não aparece mais em novas solicitações)"
+                        >
+                          <Trash2 size={12} style={{ color: '#DC2626' }} />
+                        </button>
+                      </div>
                     </div>
-                    <div className="text-[12.5px] flex items-center gap-2 flex-wrap" style={{ color: '#0F172A' }}>
-                      <span style={{ fontWeight: 600 }}>{banco}</span>
-                      <span style={{ color: '#CBD5E1' }}>·</span>
-                      <span className="font-mono">Ag. {agencia} / Conta {conta}</span>
-                      {tipoConta && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: '#EFF6FF', color: '#1E40AF' }}>
-                          {TIPO_CONTA_LABELS[tipoConta] ?? tipoConta}
-                        </span>
-                      )}
-                    </div>
+                    {temConta && (
+                      <div className="text-[12.5px] flex items-center gap-2 flex-wrap" style={{ color: '#0F172A' }}>
+                        <span style={{ fontWeight: 600 }}>{banco}</span>
+                        <span style={{ color: '#CBD5E1' }}>·</span>
+                        <span className="font-mono">Ag. {agencia} / Conta {conta}</span>
+                        {tipoConta && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: '#EFF6FF', color: '#1E40AF' }}>
+                            {TIPO_CONTA_LABELS[tipoConta] ?? tipoConta}
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <div className="text-[11.5px] mt-0.5" style={{ color: '#475569' }}>
                       Titular: <strong style={{ color: '#0F172A' }}>{titular}</strong>
                       {cpfTitular && <span className="font-mono ml-2">{formatCPF(cpfTitular)}</span>}
@@ -554,6 +664,16 @@ function PacienteDetalheInner({ id }: { id: string }) {
         onClose={() => setEditOpen(false)}
         onSaved={() => setReloadFlag((n) => n + 1)}
       />
+
+      <DadosBancariosDrawer
+        open={contaDrawer.open}
+        conta={contaDrawer.conta}
+        pacienteId={id}
+        pacienteNome={nome}
+        pacienteCpf={cpf}
+        onClose={() => setContaDrawer({ open: false, conta: null })}
+        onSaved={() => setReloadFlag((n) => n + 1)}
+      />
     </div>
   );
 }
@@ -571,11 +691,13 @@ function Section({
   icon,
   children,
   badge,
+  action,
 }: {
   title: string;
   icon: React.ReactNode;
   children: React.ReactNode;
   badge?: React.ReactNode;
+  action?: React.ReactNode;
 }) {
   return (
     <div className="tfd-card tfd-card--flat">
@@ -583,6 +705,7 @@ function Section({
         <span style={{ color: 'var(--tfd-primary-500)' }}>{icon}</span>
         <h2 className="text-base font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>{title}</h2>
         {badge}
+        {action && <span className="ml-auto">{action}</span>}
       </div>
       {children}
     </div>

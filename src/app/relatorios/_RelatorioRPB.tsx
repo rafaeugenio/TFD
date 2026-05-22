@@ -80,6 +80,7 @@ export default function RelatorioRPB() {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<RPBRow[]>([]);
   const [lancados, setLancados] = useState<Set<string>>(new Set());
+  const [valoresSigtap, setValoresSigtap] = useState<Record<string, number>>({});
 
   const periodo = useMemo(() => {
     if (mes === 0) {
@@ -99,6 +100,7 @@ export default function RelatorioRPB() {
     setLoading(true);
     (async () => {
       const supabase = createClient();
+      let rowsLocal: RPBRow[] = [];
 
       if (tipo === 'ajuda_custo') {
         const { data, error } = await supabase
@@ -120,51 +122,62 @@ export default function RelatorioRPB() {
           return;
         }
 
-        // Para tipos ACOMPANHANTE, buscar acompanhantes do paciente
-        const pacienteIds = Array.from(
+        // Para tipos ACOMPANHANTE, buscar o vínculo desta solicitação
+        // (solicitacao_acompanhantes — aqui está o flag `doador` por solicitação).
+        const solicitacaoIds = Array.from(
           new Set(
             (data as unknown as Array<Record<string, unknown>>)
               .filter((r) => (r.tipo as string)?.toUpperCase() === 'ACOMPANHANTE')
-              .map((r) => ((r.solicitacoes as Record<string, unknown>)?.paciente_id as string))
+              .map((r) => r.solicitacao_id as string)
               .filter(Boolean)
           )
         );
-        const acompMap = new Map<string, { nome: string; cpf: string; cns: string | null; sexo: string | null; email: string | null; data_nascimento: string | null; telefone: string | null }>();
-        if (pacienteIds.length > 0) {
-          const { data: acomps } = await supabase
-            .from('acompanhantes')
-            .select('paciente_id, nome_completo, cpf, cns, sexo, email, data_nascimento, telefone')
-            .in('paciente_id', pacienteIds);
-          (acomps ?? []).forEach((a: Record<string, unknown>) => {
-            const pid = a.paciente_id as string;
-            if (!acompMap.has(pid)) {
-              acompMap.set(pid, {
-                nome: a.nome_completo as string,
-                cpf: a.cpf as string,
-                cns: (a.cns as string) ?? null,
-                sexo: (a.sexo as string) ?? null,
-                email: (a.email as string) ?? null,
-                data_nascimento: (a.data_nascimento as string) ?? null,
-                telefone: (a.telefone as string) ?? null,
-              });
-            }
+        // Indexado por solicitacao_id — pega o primeiro vínculo (na prática
+        // costuma haver 1 acompanhante por solicitação no fluxo BPA).
+        const acompMap = new Map<string, { nome: string; cpf: string; cns: string | null; sexo: string | null; email: string | null; data_nascimento: string | null; telefone: string | null; doador: boolean }>();
+        if (solicitacaoIds.length > 0) {
+          const { data: vinculos } = await supabase
+            .from('solicitacao_acompanhantes')
+            .select(
+              'solicitacao_id, doador, ' +
+              'acompanhantes(nome_completo, cpf, cns, sexo, email, data_nascimento, telefone)'
+            )
+            .in('solicitacao_id', solicitacaoIds);
+          (vinculos as unknown as Array<Record<string, unknown>> ?? []).forEach((v) => {
+            const sid = v.solicitacao_id as string;
+            const a = v.acompanhantes as Record<string, unknown> | null;
+            if (!a || acompMap.has(sid)) return;
+            acompMap.set(sid, {
+              nome: a.nome_completo as string,
+              cpf: a.cpf as string,
+              cns: (a.cns as string) ?? null,
+              sexo: (a.sexo as string) ?? null,
+              email: (a.email as string) ?? null,
+              data_nascimento: (a.data_nascimento as string) ?? null,
+              telefone: (a.telefone as string) ?? null,
+              doador: Boolean(v.doador),
+            });
           });
         }
 
         const mapped: RPBRow[] = (data as unknown as Array<Record<string, unknown>>).map((r) => {
           const sol = r.solicitacoes as Record<string, unknown> | null;
           const pac = sol?.pacientes as Record<string, unknown> | null;
-          const beneficiario: Beneficiario =
+          const beneficiarioOriginal: Beneficiario =
             (r.tipo as string)?.toUpperCase() === 'ACOMPANHANTE' ? 'acompanhante' : 'paciente';
           const dias = Number(r.dias_elegiveis ?? 0);
           const comPernoite = dias > 0;
-          const sig = resolveSigtapAjudaCusto({ beneficiario, comPernoite, cnrac: false });
 
           const enderecoFull = [pac?.logradouro, pac?.numero].filter(Boolean).join(', ');
           const acomp =
-            beneficiario === 'acompanhante' && sol?.paciente_id
-              ? acompMap.get(sol.paciente_id as string) ?? null
+            beneficiarioOriginal === 'acompanhante' && r.solicitacao_id
+              ? acompMap.get(r.solicitacao_id as string) ?? null
               : null;
+
+          // Acompanhante doador conta como PACIENTE para o SIGTAP/BPA.
+          const beneficiario: Beneficiario =
+            acomp?.doador ? 'paciente' : beneficiarioOriginal;
+          const sig = resolveSigtapAjudaCusto({ beneficiario, comPernoite, cnrac: false });
 
           const nome = acomp?.nome ?? (pac?.nome_completo as string) ?? '—';
           const cpfCns = acomp?.cpf ?? (pac?.cpf as string) ?? (pac?.cns as string) ?? '—';
@@ -191,6 +204,7 @@ export default function RelatorioRPB() {
             cid: (sol?.cid10_principal as string) ?? null,
           };
         });
+        rowsLocal = mapped;
         setRows(mapped);
       } else {
         // PASSAGENS — cada viagem já é um trecho único (IDA ou RETORNO).
@@ -198,7 +212,7 @@ export default function RelatorioRPB() {
         const { data, error } = await supabase
           .from('viagens')
           .select(
-            'id, tipo, modal, ' +
+            'id, tipo, modal, solicitacao_id, ' +
             'data_embarque_prevista, ' +
             'origem_cidade, origem_uf, destino_cidade, destino_uf, ativa, ' +
             'distancia_valor, distancia_unidade, ' +
@@ -218,23 +232,29 @@ export default function RelatorioRPB() {
           return;
         }
 
-        // Acompanhantes vinculados às solicitações (via solicitacao_acompanhantes)
-        const solicitacaoIds = Array.from(
+        // Acompanhante e flag doador vêm da junção `solicitacao_acompanhantes`
+        // (doador é por solicitação, não por pessoa).
+        const solicitacaoIdsViagem = Array.from(
           new Set(
             (data as unknown as Array<Record<string, unknown>>)
-              .map((v) => ((v.solicitacoes as Record<string, unknown>)?.paciente_id as string))
+              .map((v) => v.solicitacao_id as string)
               .filter(Boolean)
           )
         );
-        const acompPorPaciente = new Map<string, Record<string, unknown>>();
-        if (solicitacaoIds.length > 0) {
-          const { data: acomps } = await supabase
-            .from('acompanhantes')
-            .select('paciente_id, nome_completo, cpf, cns, sexo, email, data_nascimento, telefone')
-            .in('paciente_id', solicitacaoIds);
-          (acomps ?? []).forEach((a: Record<string, unknown>) => {
-            const pid = a.paciente_id as string;
-            if (!acompPorPaciente.has(pid)) acompPorPaciente.set(pid, a);
+        const acompPorSolicitacao = new Map<string, Record<string, unknown>>();
+        if (solicitacaoIdsViagem.length > 0) {
+          const { data: vinculos } = await supabase
+            .from('solicitacao_acompanhantes')
+            .select(
+              'solicitacao_id, doador, ' +
+              'acompanhantes(nome_completo, cpf, cns, sexo, email, data_nascimento, telefone)'
+            )
+            .in('solicitacao_id', solicitacaoIdsViagem);
+          (vinculos as unknown as Array<Record<string, unknown>> ?? []).forEach((v) => {
+            const sid = v.solicitacao_id as string;
+            const a = v.acompanhantes as Record<string, unknown> | null;
+            if (!a || acompPorSolicitacao.has(sid)) return;
+            acompPorSolicitacao.set(sid, { ...a, doador: Boolean(v.doador) });
           });
         }
 
@@ -247,15 +267,18 @@ export default function RelatorioRPB() {
 
           // Considera "acompanhante" quando a solicitação é para acompanhante
           const tipoSol = (sol?.tipo_solicitacao as string)?.toUpperCase();
-          const beneficiario: Beneficiario = tipoSol === 'ACOMPANHANTE' ? 'acompanhante' : 'paciente';
-          const acomp = beneficiario === 'acompanhante' && sol?.paciente_id
-            ? acompPorPaciente.get(sol.paciente_id as string)
+          const beneficiarioOriginal: Beneficiario = tipoSol === 'ACOMPANHANTE' ? 'acompanhante' : 'paciente';
+          const acomp = beneficiarioOriginal === 'acompanhante' && v.solicitacao_id
+            ? acompPorSolicitacao.get(v.solicitacao_id as string) ?? null
             : null;
 
           const nome = (acomp?.nome_completo as string) ?? (pac?.nome_completo as string) ?? '—';
           const cpfCns = (acomp?.cpf as string) ?? (pac?.cpf as string) ?? (pac?.cns as string) ?? '—';
           const enderecoFull = [pac?.logradouro, pac?.numero].filter(Boolean).join(', ');
 
+          // Acompanhante doador conta como PACIENTE para o SIGTAP/BPA.
+          const beneficiario: Beneficiario =
+            (acomp as Record<string, unknown> | null)?.doador ? 'paciente' : beneficiarioOriginal;
           const sig = resolveSigtapPassagem({ beneficiario, modal, cnrac: false });
 
           const distancia = v.distancia_valor as number | null;
@@ -298,7 +321,28 @@ export default function RelatorioRPB() {
           };
         });
 
+        rowsLocal = mapped;
         setRows(mapped);
+      }
+
+      // Carrega valores SIGTAP dos códigos presentes
+      const codigosUnicos = Array.from(
+        new Set(rowsLocal.map((r) => r.codigo_sigtap).filter(Boolean))
+      );
+      if (codigosUnicos.length > 0) {
+        const { data: sigtaps } = await supabase
+          .from('sigtap_procedimentos')
+          .select('codigo, valor_unitario')
+          .in('codigo', codigosUnicos);
+        if (!cancel) {
+          const map: Record<string, number> = {};
+          (sigtaps ?? []).forEach((s: Record<string, unknown>) => {
+            map[s.codigo as string] = Number(s.valor_unitario) || 0;
+          });
+          setValoresSigtap(map);
+        }
+      } else if (!cancel) {
+        setValoresSigtap({});
       }
 
       // Carrega "lançados" do tipo atual
@@ -478,10 +522,34 @@ export default function RelatorioRPB() {
     </div>
   );
 
+  const fmtMoney = (v: number) =>
+    v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  const valorLinha = (r: RPBRow): number | null => {
+    const v = valoresSigtap[r.codigo_sigtap];
+    if (v == null || r.quantidade == null) return null;
+    return v * r.quantidade;
+  };
+
+  const valorCell = (r: RPBRow) => {
+    const total = valorLinha(r);
+    if (total == null) return <span style={{ color: '#94A3B8' }}>—</span>;
+    const unit = valoresSigtap[r.codigo_sigtap];
+    const tooltip = unit != null && r.quantidade != null
+      ? `${fmtMoney(unit)} × ${r.quantidade} = ${fmtMoney(total)}`
+      : undefined;
+    return (
+      <span title={tooltip} style={{ fontFamily: 'var(--tfd-font-mono)', whiteSpace: 'nowrap' }}>
+        {fmtMoney(total)}
+      </span>
+    );
+  };
+
   const columnsAjuda: ReportColumn<RPBRow>[] = [
     { key: 'cod', header: 'SIGTAP', width: '210px', render: sigtapCell },
     { key: 'qtd', header: 'Diárias', width: '70px', align: 'right', render: (r) => r.quantidade ?? '—' },
     { key: 'cid', header: 'CID', width: '64px', mono: true, render: (r) => r.cid ?? '—' },
+    { key: 'valor', header: 'Valor SIGTAP', width: '110px', align: 'right', render: valorCell },
   ];
 
   const columnsPassagem: ReportColumn<RPBRow>[] = [
@@ -525,6 +593,7 @@ export default function RelatorioRPB() {
       },
     },
     { key: 'cid', header: 'CID', width: '64px', mono: true, render: (r) => r.cid ?? '—' },
+    { key: 'valor', header: 'Valor SIGTAP', width: '110px', align: 'right', render: valorCell },
   ];
 
   const columns = tipo === 'ajuda_custo'
@@ -534,6 +603,7 @@ export default function RelatorioRPB() {
   const totalLancados = rows.filter(isLancado).length;
   const totalPendentes = rows.length - totalLancados;
   const totalQtd = rows.reduce((s, r) => s + (r.quantidade ?? 0), 0);
+  const totalValor = rows.reduce((s, r) => s + (valorLinha(r) ?? 0), 0);
 
   return (
     <div className="space-y-4">
@@ -605,6 +675,7 @@ export default function RelatorioRPB() {
           { label: 'Lançadas no BPA', value: String(totalLancados), tone: 'success', icon: <CheckCircle2 size={11} /> },
           { label: 'Pendentes', value: String(totalPendentes), tone: 'warning', icon: <AlertCircle size={11} /> },
           { label: tipo === 'ajuda_custo' ? 'Total de diárias' : 'Total de unidades', value: String(totalQtd) },
+          { label: 'Valor total SIGTAP', value: fmtMoney(totalValor) },
         ]}
       />
 

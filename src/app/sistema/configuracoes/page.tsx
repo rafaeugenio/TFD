@@ -96,7 +96,7 @@ const SECOES: SecaoConfig[] = [
     title: 'Pacientes e Acompanhantes',
     icon: Users,
     categorias: [
-      { key: 'vinculo_acompanhante', label: 'Vínculos de Acompanhante', icon: Users, desc: 'Tipos de vínculo com o paciente' },
+      { key: 'vinculo', label: 'Vínculo', icon: Users, desc: 'Tipos de vínculo com o paciente (acompanhante, titular de conta bancária, etc.)' },
     ],
   },
   {
@@ -119,7 +119,7 @@ const SECOES: SecaoConfig[] = [
     title: 'Sistema e Acesso',
     icon: Settings,
     categorias: [
-      { key: '_regioes', label: 'Regiões do Maranhão', icon: MapPin, desc: 'Agrupamentos geográficos das regionais (Sul, Leste, Norte)' },
+      { key: '_regioes', label: 'Região', icon: MapPin, desc: 'Agrupamentos geográficos das regionais de saúde' },
     ],
   },
 ];

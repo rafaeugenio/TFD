@@ -60,8 +60,8 @@ export function resolveSigtapPassagem(input: {
   return PASSAGEM_MAP[key] ?? PASSAGEM_MAP[`${input.beneficiario}_terrestre_false`];
 }
 
-/** Calcula a quantidade SIGTAP (arredonda pra cima) a partir da distância. */
+/** Calcula a quantidade SIGTAP (arredondamento padrão) a partir da distância. */
 export function calcularQuantidadePassagem(distancia: number | null, divisor: number): number | null {
   if (!distancia || distancia <= 0) return null;
-  return Math.ceil(distancia / divisor);
+  return Math.round(distancia / divisor);
 }

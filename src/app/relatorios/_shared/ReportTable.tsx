@@ -151,6 +151,24 @@ export function TipoBeneficiarioBadge({ tipo }: { tipo: 'paciente' | 'acompanhan
   );
 }
 
+export function DoadorBadge() {
+  return (
+    <span
+      title="Acompanhante doador (órgão/tecido) — conta como paciente no SIGTAP"
+      className="inline-flex items-center justify-center text-[10px] font-bold"
+      style={{
+        width: 18,
+        height: 18,
+        borderRadius: 4,
+        background: '#FFE4E6',
+        color: '#9F1239',
+      }}
+    >
+      D
+    </span>
+  );
+}
+
 export function TipoPercursoBadge({ tipo }: { tipo: 'IDA' | 'VOLTA' | 'IDA_E_VOLTA' | string }) {
   const MAP: Record<string, { label: string; bg: string; fg: string }> = {
     IDA:         { label: 'Ida',       bg: '#DBEAFE', fg: '#1E40AF' },

@@ -1,13 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Landmark, Pencil, Save, X, AlertTriangle, Check } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 import {
-  buscarPorSolicitacao,
-  upsertPorSolicitacao,
-  TITULAR_VINCULO_LABEL,
-  type TitularVinculo,
+  Landmark,
+  AlertTriangle,
+  Check,
+  Plus,
+  Key,
+  X,
+  ChevronDown,
+} from 'lucide-react';
+import {
+  listarPoolPorPaciente,
+  vincularASolicitacao,
+  desvincularDaSolicitacao,
+  buscarVinculoDaSolicitacao,
+  type DadosBancariosRow,
 } from '@/services/dados-bancarios.service';
+import DadosBancariosDrawer from '@/app/pacientes/_DadosBancariosDrawer';
 import { useToast } from '@/shared/components/toast/Toast';
 
 interface Props {
@@ -23,119 +33,113 @@ interface Props {
   onChange?: () => void;
 }
 
-type PixTipo = 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA' | '';
-type TipoConta = 'CORRENTE' | 'POUPANCA' | '';
-
-interface FormState {
-  banco: string;
-  agencia: string;
-  conta: string;
-  tipo_conta: TipoConta;
-  nome_titular: string;
-  cpf_titular: string;
-  titular_vinculo: TitularVinculo | '';
-  pix_tipo: PixTipo;
-  pix_chave: string;
+interface VinculoSnapshot {
+  dados_bancarios_id: string | null;
+  snapshot_banco: string | null;
+  snapshot_agencia: string | null;
+  snapshot_conta: string | null;
+  snapshot_tipo_conta: string | null;
+  snapshot_nome_titular: string | null;
+  snapshot_cpf_titular: string | null;
+  snapshot_titular_vinculo: string | null;
+  snapshot_pix_tipo: string | null;
+  snapshot_pix_chave: string | null;
 }
 
-const EMPTY: FormState = {
-  banco: '', agencia: '', conta: '', tipo_conta: '', nome_titular: '',
-  cpf_titular: '', titular_vinculo: '', pix_tipo: '', pix_chave: '',
-};
+function onlyDigits(v: string) {
+  return v.replace(/\D/g, '');
+}
 
-function onlyDigits(v: string) { return v.replace(/\D/g, ''); }
-function fmtCpf(v: string) {
-  const d = onlyDigits(v).slice(0, 11);
-  if (d.length <= 3) return d;
-  if (d.length <= 6) return `${d.slice(0,3)}.${d.slice(3)}`;
-  if (d.length <= 9) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`;
-  return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`;
+function descreverConta(c: DadosBancariosRow): string {
+  const partes: string[] = [];
+  if (c.banco) {
+    partes.push(`${c.banco}${c.agencia && c.conta ? ` Ag.${c.agencia}/${c.conta}` : ''}`);
+  }
+  if (c.pix_chave) {
+    partes.push(`PIX ${c.pix_tipo ?? ''}`);
+  }
+  const head = c.titular_vinculo ? `[${c.titular_vinculo}] ` : '';
+  return `${head}${partes.join(' · ')} — ${c.nome_titular}`;
 }
 
 export default function DadosBancariosBlock({
-  solicitacaoId, pacienteId, pacienteCpf, pacienteNome,
-  locked = false, lockedTip, onChange,
+  solicitacaoId,
+  pacienteId,
+  pacienteCpf,
+  pacienteNome,
+  locked = false,
+  lockedTip,
+  onChange,
 }: Props) {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState<FormState>(EMPTY);
+  const [pool, setPool] = useState<DadosBancariosRow[]>([]);
+  const [vinculo, setVinculo] = useState<VinculoSnapshot | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [trocando, setTrocando] = useState(false);
 
-  function setField<K extends keyof FormState>(k: K, v: FormState[K]) {
-    setForm((s) => ({ ...s, [k]: v }));
-  }
+  const carregar = useCallback(async () => {
+    setLoading(true);
+    const [poolRes, vincRes] = await Promise.all([
+      listarPoolPorPaciente(pacienteId),
+      buscarVinculoDaSolicitacao(solicitacaoId),
+    ]);
+    if (poolRes.data) setPool(poolRes.data as DadosBancariosRow[]);
+    setVinculo((vincRes.data ?? null) as VinculoSnapshot | null);
+    setLoading(false);
+  }, [pacienteId, solicitacaoId]);
 
   useEffect(() => {
-    let cancel = false;
-    (async () => {
-      setLoading(true);
-      const { data } = await buscarPorSolicitacao(solicitacaoId);
-      if (cancel) return;
-      if (data) {
-        setForm({
-          banco: (data as { banco?: string }).banco ?? '',
-          agencia: (data as { agencia?: string }).agencia ?? '',
-          conta: (data as { conta?: string }).conta ?? '',
-          tipo_conta: ((data as { tipo_conta?: TipoConta }).tipo_conta ?? '') as TipoConta,
-          nome_titular: (data as { nome_titular?: string }).nome_titular ?? '',
-          cpf_titular: fmtCpf((data as { cpf_titular?: string }).cpf_titular ?? ''),
-          titular_vinculo: ((data as { titular_vinculo?: TitularVinculo | null }).titular_vinculo ?? '') as TitularVinculo | '',
-          pix_tipo: ((data as { pix_tipo?: PixTipo }).pix_tipo ?? '') as PixTipo,
-          pix_chave: (data as { pix_chave?: string }).pix_chave ?? '',
-        });
-        setEditing(false);
-      } else {
-        setForm(EMPTY);
-        setEditing(false);
-      }
-      setLoading(false);
-    })();
-    return () => { cancel = true; };
-  }, [solicitacaoId]);
+    carregar();
+  }, [carregar]);
 
-  const hasRecord = form.banco !== '' && !editing && !loading;
-  const titularEhPaciente = onlyDigits(form.cpf_titular) === onlyDigits(pacienteCpf);
+  const temVinculo = !!vinculo?.dados_bancarios_id;
 
-  async function handleSalvar() {
-    if (!form.banco || !form.agencia || !form.conta || !form.tipo_conta || !form.nome_titular || !form.cpf_titular) {
-      toast.error('Preencha banco, agência, conta, tipo, nome e CPF do titular.');
-      return;
-    }
-    setSaving(true);
-    const { error } = await upsertPorSolicitacao(solicitacaoId, pacienteId, {
-      banco: form.banco,
-      agencia: form.agencia,
-      conta: form.conta,
-      tipo_conta: form.tipo_conta as 'CORRENTE' | 'POUPANCA',
-      nome_titular: form.nome_titular,
-      cpf_titular: onlyDigits(form.cpf_titular),
-      titular_vinculo: (form.titular_vinculo || null) as TitularVinculo | null,
-      pix_tipo: (form.pix_tipo || null) as PixTipo extends '' ? null : Exclude<PixTipo, ''>,
-      pix_chave: form.pix_chave || null,
-    });
-    setSaving(false);
+  async function selecionar(contaId: string) {
+    if (locked) return;
+    const conta = pool.find((c) => c.id === contaId);
+    if (!conta) return;
+    const { error } = await vincularASolicitacao(solicitacaoId, conta);
     if (error) {
-      toast.error('Erro ao salvar', error.message);
+      toast.error('Erro ao vincular conta', error.message);
       return;
     }
-    toast.success('Dados bancários salvos');
-    setEditing(false);
+    toast.success('Dados bancários vinculados à solicitação');
+    setTrocando(false);
+    await carregar();
     onChange?.();
   }
 
-  function iniciarEdicao() {
-    // Se for primeiro cadastro, pré-popula com paciente como titular
-    if (!form.banco) {
-      setForm({
-        ...EMPTY,
-        nome_titular: pacienteNome,
-        cpf_titular: fmtCpf(pacienteCpf),
-        titular_vinculo: 'PROPRIO',
-      });
+  async function desvincular() {
+    if (locked) return;
+    if (!window.confirm('Desvincular a conta desta solicitação? O snapshot atual será apagado.')) {
+      return;
     }
-    setEditing(true);
+    const { error } = await desvincularDaSolicitacao(solicitacaoId);
+    if (error) {
+      toast.error('Erro ao desvincular', error.message);
+      return;
+    }
+    toast.success('Conta desvinculada');
+    await carregar();
+    onChange?.();
   }
+
+  async function onContaCriada(novaConta: DadosBancariosRow) {
+    // Após criar inline, já vincula automaticamente à solicitação.
+    const { error } = await vincularASolicitacao(solicitacaoId, novaConta);
+    if (!error) {
+      toast.success('Conta cadastrada e vinculada à solicitação');
+    }
+    await carregar();
+    onChange?.();
+  }
+
+  const snapshot = vinculo;
+  const titularEhPaciente = snapshot
+    ? onlyDigits(snapshot.snapshot_cpf_titular ?? '') === onlyDigits(pacienteCpf)
+    : false;
+  const vinculoLabel = snapshot?.snapshot_titular_vinculo ?? null;
 
   return (
     <div className="mt-5 pt-4" style={{ borderTop: '1px dashed var(--tfd-surface-border)' }}>
@@ -153,53 +157,136 @@ export default function DadosBancariosBlock({
         <p className="text-[12px]" style={{ color: '#9CA3AF' }}>Carregando…</p>
       )}
 
-      {!loading && !hasRecord && !editing && (
-        <div className="flex items-center justify-between gap-3 px-3 py-3" style={{ background: '#F8FAFC', borderRadius: 8, border: '1px dashed #CBD5E1' }}>
+      {/* Nenhuma conta no pool — operador cria inline */}
+      {!loading && pool.length === 0 && !temVinculo && (
+        <div
+          className="flex items-center justify-between gap-3 px-3 py-3"
+          style={{ background: '#F8FAFC', borderRadius: 8, border: '1px dashed #CBD5E1' }}
+        >
           <p className="text-[12px]" style={{ color: '#64748B' }}>
-            Nenhum dado bancário cadastrado para esta solicitação.
+            Este paciente ainda não tem dados bancários cadastrados.
           </p>
           <button
             type="button"
             className="tfd-btn tfd-btn-primary tfd-btn--sm"
-            onClick={iniciarEdicao}
+            onClick={() => setDrawerOpen(true)}
             disabled={locked}
             title={locked ? lockedTip : undefined}
           >
-            Cadastrar
+            <Plus size={13} /> Cadastrar dados bancários
           </button>
         </div>
       )}
 
-      {hasRecord && (
+      {/* Sem vínculo, mas com pool disponível — operador escolhe */}
+      {!loading && pool.length > 0 && (!temVinculo || trocando) && (
+        <div
+          className="px-3 py-3"
+          style={{ background: '#F8FAFC', borderRadius: 8, border: '1px solid var(--tfd-surface-border)' }}
+        >
+          <label className="block text-[11px] font-semibold mb-1" style={{ color: '#475569' }}>
+            Selecione a conta de recebimento
+          </label>
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <select
+                className="tfd-input"
+                style={{ paddingRight: 28, appearance: 'none' }}
+                defaultValue=""
+                onChange={(e) => selecionar(e.target.value)}
+                disabled={locked}
+              >
+                <option value="">— Escolha uma conta —</option>
+                {pool.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {descreverConta(c)}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={14}
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#94A3B8' }}
+              />
+            </div>
+            <button
+              type="button"
+              className="tfd-btn tfd-btn-ghost tfd-btn--sm"
+              onClick={() => setDrawerOpen(true)}
+              disabled={locked}
+              title="Cadastrar nova conta para este paciente"
+            >
+              <Plus size={13} /> Nova conta
+            </button>
+            {trocando && (
+              <button
+                type="button"
+                className="tfd-btn tfd-btn-ghost tfd-btn--sm"
+                onClick={() => setTrocando(false)}
+              >
+                <X size={13} /> Cancelar
+              </button>
+            )}
+          </div>
+          <p className="text-[11px] mt-1.5" style={{ color: '#94A3B8' }}>
+            Confira no documento anexado à solicitação qual conta o paciente indicou. Se faltar, use <strong>Nova conta</strong> para cadastrar.
+          </p>
+        </div>
+      )}
+
+      {/* Conta vinculada — mostra snapshot */}
+      {!loading && temVinculo && !trocando && snapshot && (
         <div className="flex items-start gap-3 px-3 py-3" style={{ background: '#F8FAFC', borderRadius: 8 }}>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap text-[13px]" style={{ color: '#0F172A' }}>
-              <span style={{ fontWeight: 600 }}>{form.banco}</span>
-              <span style={{ color: '#CBD5E1' }}>·</span>
-              <span className="font-mono">Ag. {form.agencia} / Conta {form.conta}</span>
-              <span style={{ color: '#CBD5E1' }}>·</span>
-              <span style={{ color: '#475569' }}>{form.tipo_conta === 'POUPANCA' ? 'Poupança' : 'Corrente'}</span>
+            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+              {vinculoLabel && (
+                <span
+                  className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                  style={{ background: '#EEF2FF', color: '#3730A3' }}
+                >
+                  {vinculoLabel}
+                </span>
+              )}
+              {snapshot.snapshot_banco && (
+                <span className="text-[9.5px] px-1.5 py-0.5 rounded font-semibold uppercase tracking-wider inline-flex items-center gap-1" style={{ background: '#EFF6FF', color: '#1E40AF' }}>
+                  <Landmark size={9} /> Conta
+                </span>
+              )}
+              {snapshot.snapshot_pix_chave && (
+                <span className="text-[9.5px] px-1.5 py-0.5 rounded font-semibold uppercase tracking-wider inline-flex items-center gap-1" style={{ background: '#ECFEFF', color: '#0E7490' }}>
+                  <Key size={9} /> PIX
+                </span>
+              )}
             </div>
-            <div className="flex items-center gap-2 mt-1 text-[11.5px]" style={{ color: '#475569' }}>
-              <span>Titular: <strong style={{ color: '#0F172A' }}>{form.nome_titular}</strong></span>
-              <span style={{ color: '#CBD5E1' }}>·</span>
-              <span className="font-mono">{form.cpf_titular}</span>
-              {form.titular_vinculo && (
+            {snapshot.snapshot_banco && (
+              <div className="flex items-center gap-2 flex-wrap text-[13px]" style={{ color: '#0F172A' }}>
+                <span style={{ fontWeight: 600 }}>{snapshot.snapshot_banco}</span>
+                <span style={{ color: '#CBD5E1' }}>·</span>
+                <span className="font-mono">Ag. {snapshot.snapshot_agencia} / Conta {snapshot.snapshot_conta}</span>
+                <span style={{ color: '#CBD5E1' }}>·</span>
+                <span style={{ color: '#475569' }}>
+                  {snapshot.snapshot_tipo_conta === 'POUPANCA' ? 'Poupança' : 'Corrente'}
+                </span>
+              </div>
+            )}
+            <div className="flex items-center gap-2 mt-1 text-[11.5px] flex-wrap" style={{ color: '#475569' }}>
+              <span>Titular: <strong style={{ color: '#0F172A' }}>{snapshot.snapshot_nome_titular}</strong></span>
+              {snapshot.snapshot_cpf_titular && (
                 <>
                   <span style={{ color: '#CBD5E1' }}>·</span>
-                  <span>{TITULAR_VINCULO_LABEL[form.titular_vinculo as TitularVinculo]}</span>
+                  <span className="font-mono">{snapshot.snapshot_cpf_titular}</span>
                 </>
               )}
             </div>
-            {form.pix_chave && (
+            {snapshot.snapshot_pix_chave && (
               <div className="text-[11.5px] mt-0.5" style={{ color: '#475569' }}>
-                PIX <strong style={{ color: '#0F172A' }}>{form.pix_tipo}</strong>: <span className="font-mono">{form.pix_chave}</span>
+                PIX <strong style={{ color: '#0F172A' }}>{snapshot.snapshot_pix_tipo}</strong>:{' '}
+                <span className="font-mono">{snapshot.snapshot_pix_chave}</span>
               </div>
             )}
             {!titularEhPaciente ? (
               <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 text-[11px]" style={{ background: '#FEF3C7', color: '#92400E', borderRadius: 6 }}>
                 <AlertTriangle size={12} />
-                Titular diferente do paciente — verifique se o <strong>Termo de Autorização</strong> está nos anexos da solicitação.
+                Titular diferente do paciente — verifique se o <strong>Termo de Autorização</strong> está nos anexos.
               </div>
             ) : (
               <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 text-[11px]" style={{ background: '#DCFCE7', color: '#166534', borderRadius: 6 }}>
@@ -207,96 +294,45 @@ export default function DadosBancariosBlock({
                 Titular é o próprio paciente.
               </div>
             )}
+            <p className="text-[10.5px] mt-2" style={{ color: '#94A3B8' }}>
+              Snapshot congelado nesta solicitação. Edições futuras na conta-mãe não afetam o histórico financeiro.
+            </p>
           </div>
-          <button
-            type="button"
-            className="tfd-btn tfd-btn-ghost tfd-btn--sm"
-            onClick={iniciarEdicao}
-            disabled={locked}
-            title={locked ? lockedTip : 'Editar dados bancários'}
-          >
-            <Pencil size={13} /> Editar
-          </button>
-        </div>
-      )}
-
-      {editing && (
-        <div className="px-3 py-3 mt-1" style={{ background: '#F8FAFC', borderRadius: 8, border: '1px solid var(--tfd-surface-border)' }}>
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-            <Field label="Banco" cls="sm:col-span-6">
-              <input className="tfd-input" value={form.banco} onChange={(e) => setField('banco', e.target.value)} placeholder="Ex.: Banco do Brasil" />
-            </Field>
-            <Field label="Tipo de conta" cls="sm:col-span-3">
-              <select className="tfd-input" value={form.tipo_conta} onChange={(e) => setField('tipo_conta', e.target.value as TipoConta)}>
-                <option value="">—</option>
-                <option value="CORRENTE">Corrente</option>
-                <option value="POUPANCA">Poupança</option>
-              </select>
-            </Field>
-            <Field label="Agência" cls="sm:col-span-3">
-              <input className="tfd-input font-mono" value={form.agencia} onChange={(e) => setField('agencia', e.target.value)} placeholder="0000" />
-            </Field>
-            <Field label="Conta" cls="sm:col-span-3">
-              <input className="tfd-input font-mono" value={form.conta} onChange={(e) => setField('conta', e.target.value)} placeholder="00000-0" />
-            </Field>
-            <Field label="Nome do titular" cls="sm:col-span-6">
-              <input className="tfd-input" value={form.nome_titular} onChange={(e) => setField('nome_titular', e.target.value)} />
-            </Field>
-            <Field label="CPF do titular" cls="sm:col-span-3">
-              <input className="tfd-input font-mono" value={form.cpf_titular} onChange={(e) => setField('cpf_titular', fmtCpf(e.target.value))} placeholder="000.000.000-00" />
-            </Field>
-            <Field label="Vínculo com o paciente" cls="sm:col-span-6">
-              <select className="tfd-input" value={form.titular_vinculo} onChange={(e) => setField('titular_vinculo', e.target.value as TitularVinculo | '')}>
-                <option value="">—</option>
-                <option value="PROPRIO">Próprio paciente</option>
-                <option value="PAI">Pai</option>
-                <option value="MAE">Mãe</option>
-                <option value="CONJUGE">Cônjuge</option>
-                <option value="RESPONSAVEL_LEGAL">Responsável legal</option>
-                <option value="OUTRO">Outro</option>
-              </select>
-            </Field>
-            <Field label="PIX — tipo" cls="sm:col-span-3">
-              <select className="tfd-input" value={form.pix_tipo} onChange={(e) => setField('pix_tipo', e.target.value as PixTipo)}>
-                <option value="">—</option>
-                <option value="CPF">CPF</option>
-                <option value="CNPJ">CNPJ</option>
-                <option value="EMAIL">E-mail</option>
-                <option value="TELEFONE">Telefone</option>
-                <option value="ALEATORIA">Aleatória</option>
-              </select>
-            </Field>
-            <Field label="PIX — chave" cls="sm:col-span-9">
-              <input className="tfd-input" value={form.pix_chave} onChange={(e) => setField('pix_chave', e.target.value)} />
-            </Field>
-          </div>
-
-          {form.cpf_titular && !titularEhPaciente && (
-            <div className="mt-3 inline-flex items-center gap-1.5 px-2 py-1 text-[11px]" style={{ background: '#FEF3C7', color: '#92400E', borderRadius: 6 }}>
-              <AlertTriangle size={12} />
-              Titular diferente do paciente. Lembre de verificar o Termo de Autorização nos anexos.
-            </div>
-          )}
-
-          <div className="flex items-center justify-end gap-2 mt-3">
-            <button type="button" className="tfd-btn tfd-btn-ghost tfd-btn--sm" onClick={() => setEditing(false)} disabled={saving}>
-              <X size={13} /> Cancelar
+          <div className="flex flex-col gap-1 flex-shrink-0">
+            <button
+              type="button"
+              className="tfd-btn tfd-btn-ghost tfd-btn--sm"
+              onClick={() => setTrocando(true)}
+              disabled={locked}
+              title={locked ? lockedTip : 'Trocar por outra conta'}
+            >
+              Trocar
             </button>
-            <button type="button" className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={handleSalvar} disabled={saving}>
-              <Save size={13} /> {saving ? 'Salvando…' : 'Salvar'}
+            <button
+              type="button"
+              className="tfd-btn tfd-btn-ghost tfd-btn--sm"
+              onClick={desvincular}
+              disabled={locked}
+              title="Desvincular"
+            >
+              <X size={13} />
             </button>
           </div>
         </div>
       )}
+
+      <DadosBancariosDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        pacienteId={pacienteId}
+        pacienteNome={pacienteNome}
+        pacienteCpf={pacienteCpf}
+        conta={null}
+        onSaved={(c) => {
+          setDrawerOpen(false);
+          onContaCriada(c);
+        }}
+      />
     </div>
-  );
-}
-
-function Field({ label, cls, children }: { label: string; cls?: string; children: React.ReactNode }) {
-  return (
-    <label className={`flex flex-col gap-1 ${cls ?? ''}`}>
-      <span className="text-[11px] font-semibold" style={{ color: '#475569' }}>{label}</span>
-      {children}
-    </label>
   );
 }

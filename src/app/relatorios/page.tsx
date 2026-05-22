@@ -2,14 +2,15 @@
 
 import { Suspense, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { BarChart3, Receipt, ClipboardList } from 'lucide-react';
+import { BarChart3, Receipt, ClipboardList, FileSpreadsheet } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import RelatorioFinanceiro from './_RelatorioFinanceiro';
 import RelatorioFaturamento from './_RelatorioFaturamento';
 import RelatorioRPB from './_RelatorioRPB';
+import RelatorioGestao from './_RelatorioGestao';
 
-type TabKey = 'financeiro' | 'faturamento' | 'rpb';
+type TabKey = 'financeiro' | 'faturamento' | 'rpb' | 'gestao';
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode; desc: string }[] = [
   {
@@ -29,6 +30,12 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode; desc: string }[
     label: 'BPA',
     icon: <ClipboardList size={15} />,
     desc: 'Dados para lançamento no BPA',
+  },
+  {
+    key: 'gestao',
+    label: 'Gestão',
+    icon: <FileSpreadsheet size={15} />,
+    desc: 'Visão consolidada por paciente — paciente, diagnóstico, origem do laudo, destino e parecer',
   },
 ];
 
@@ -100,6 +107,7 @@ function RelatoriosInner() {
         {activeTab === 'financeiro' && <RelatorioFinanceiro />}
         {activeTab === 'faturamento' && <RelatorioFaturamento />}
         {activeTab === 'rpb' && <RelatorioRPB />}
+        {activeTab === 'gestao' && <RelatorioGestao />}
       </div>
 
       <style jsx>{`

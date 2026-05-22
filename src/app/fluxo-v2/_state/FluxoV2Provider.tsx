@@ -25,6 +25,7 @@ import {
   type ObservacaoChat,
   type DevolucaoFinanceiroParaRegulacao,
   type UltimaTramitacao,
+  type AnexoMock,
 } from '@/core/mocks/fluxo-v2-v3-seed';
 import { createClient } from '@/lib/supabase/client';
 import { solicitacoesFromSupabase } from '../_adapters/fromSupabase';
@@ -57,6 +58,17 @@ interface FluxoV2ContextValue {
   createSolicitacao: (input: NewSolicitacaoInput) => Promise<string>; // returns id real do banco
   updateSolicitacao: (id: string, patch: Partial<SolicitacaoMock>) => void;
   setStatus: (id: string, status: StatusGlobalV2) => void;
+
+  /**
+   * Adiciona anexos à solicitação carimbando a origem (parecer, agendamento,
+   * tentativa, etc.) para aparecerem categorizados na aba Anexos. Usado pelos
+   * drawers de fluxo que têm o componente `AnexosUploadField`.
+   */
+  addAnexos: (
+    id: string,
+    anexos: Array<{ nome: string; tipo: string; tipoDocumento?: string; tamanhoKB?: number }>,
+    origem: NonNullable<AnexoMock['origem']>,
+  ) => void;
 
   addParecer: (id: string, p: Omit<ParecerMock, 'id' | 'data'>) => void;
   /** T2.AL — Edita um parecer existente. */
@@ -467,6 +479,29 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     setSolicitacoes((prev) => [novo, ...prev]);
     return id;
   }, [solicitacoes.length]);
+
+  /**
+   * Anexa arquivos à solicitação carimbando origem + data atual. Usado pelos
+   * drawers de fluxo (parecer, passagem, agendamento, tentativa, etc.) para
+   * que os documentos apareçam categorizados na aba Anexos.
+   */
+  const addAnexos = useCallback<FluxoV2ContextValue['addAnexos']>((id, anexos, origem) => {
+    if (!anexos.length) return;
+    const agora = nowIso();
+    mutate(id, (s) => {
+      const novos: AnexoMock[] = anexos.map((a) => ({
+        id: uid('an'),
+        nome: a.nome,
+        tipo: a.tipo,
+        tipoDocumento: a.tipoDocumento,
+        tamanhoKB: a.tamanhoKB,
+        origem,
+        data: agora,
+      }));
+      s.anexos = [...(s.anexos ?? []), ...novos];
+      return s;
+    });
+  }, [mutate]);
 
   const addParecer = useCallback<FluxoV2ContextValue['addParecer']>((id, p) => {
     const tempId = uid('pa');
@@ -1275,6 +1310,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     createSolicitacao,
     updateSolicitacao,
     setStatus,
+    addAnexos,
     addParecer,
     editarParecer,
     removerParecer,
@@ -1312,6 +1348,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     trocarPaciente,
   }), [
     solicitacoes, isLoading, getById, createSolicitacao, updateSolicitacao, setStatus,
+    addAnexos,
     addParecer, editarParecer, removerParecer,
     setCarimbo,
     addTentativa, editarTentativa, removerTentativa, setAgendamento, registrarSegundoDeferimento,

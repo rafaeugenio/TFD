@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Drawer from '@/shared/components/drawer/Drawer';
 import { useToast } from '@/shared/components/toast/Toast';
 import IdadeBadge from '@/shared/components/idade-badge';
+import FormSection from '@/shared/components/drawer/FormSection';
 import {
   Paperclip,
   Trash2,
@@ -20,6 +21,13 @@ import {
   Mail,
   IdCard,
   CalendarPlus,
+  ClipboardList,
+  User,
+  Users,
+  CalendarCheck,
+  Stethoscope,
+  Hash,
+  Paperclip as PaperclipIcon,
 } from 'lucide-react';
 import { type TipoProcedimento } from '@/core/mocks/fluxo-v2-v3-seed';
 import { useTiposProcedimento } from '@/shared/hooks/useTiposProcedimento';
@@ -384,7 +392,7 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
       onClose={() => { reset(); onClose(); }}
       title="Nova solicitação"
       subtitle="Crie uma solicitação a partir de um paciente cadastrado."
-      width="560px"
+      width="min(680px, 95vw)"
       footer={
         <>
           <button type="button" className="tfd-btn tfd-btn-ghost" onClick={() => { reset(); onClose(); }}>
@@ -396,12 +404,9 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
         </>
       }
     >
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col">
         {/* Tipo de solicitação */}
-        <section>
-          <h3 className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Tipo da solicitação
-          </h3>
+        <FormSection title="Tipo da solicitação" icon={<ClipboardList size={12} />} tone="primary">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <TipoCard
               active={tipoSolicitacao === 'normal'}
@@ -419,14 +424,14 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
               }}
             />
           </div>
-        </section>
+        </FormSection>
 
-        {/* Paciente */}
-        <section>
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
-              Paciente
-            </h3>
+        {/* Paciente e Acompanhantes — unificados num mesmo bloco visual */}
+        <FormSection
+          title="Paciente e Acompanhantes"
+          icon={<Users size={12} />}
+          tone="info"
+          action={
             <a
               href="/pacientes"
               target="_blank"
@@ -437,7 +442,8 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
               <ExternalLink size={11} />
               Cadastrar novo paciente
             </a>
-          </div>
+          }
+        >
           <select
             value={pacienteId}
             onChange={(e) => setPacienteId(e.target.value)}
@@ -455,26 +461,26 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
             ))}
           </select>
           {paciente && <ResumoPaciente paciente={paciente} />}
-        </section>
 
-        {/* Acompanhantes */}
-        <section>
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
-              Acompanhantes
-            </h3>
-            {pacienteId && !novoAcompForm && (
-              <button
-                type="button"
-                onClick={() => setNovoAcompForm(true)}
-                className="text-[11px] inline-flex items-center gap-1 hover:underline"
-                style={{ color: 'var(--tfd-blue)' }}
-              >
-                <UserPlus size={11} />
-                Novo acompanhante
-              </button>
-            )}
-          </div>
+          {/* Acompanhantes — sub-bloco dentro do agrupamento Paciente */}
+          <div className="mt-4 pt-3" style={{ borderTop: '1px dashed var(--tfd-surface-border)' }}>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[12px] font-semibold inline-flex items-center gap-1.5" style={{ color: 'var(--tfd-text-primary)' }}>
+                <Users size={12} style={{ color: '#64748B' }} />
+                Acompanhantes
+              </p>
+              {pacienteId && !novoAcompForm && (
+                <button
+                  type="button"
+                  onClick={() => setNovoAcompForm(true)}
+                  className="text-[11px] inline-flex items-center gap-1 hover:underline"
+                  style={{ color: 'var(--tfd-blue)' }}
+                >
+                  <UserPlus size={11} />
+                  Novo acompanhante
+                </button>
+              )}
+            </div>
           {!pacienteId ? (
             <p
               className="px-3 py-3 text-[12px] text-center"
@@ -640,7 +646,7 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
 
               <div className="grid grid-cols-2 gap-3">
                 <LookupSelect
-                  categoria="vinculo_acompanhante"
+                  categoria="vinculo"
                   label="Vínculo"
                   value={novoAcompVinculo}
                   onChange={setNovoAcompVinculo}
@@ -683,15 +689,13 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
               </div>
             </div>
           )}
-        </section>
+          </div>
+        </FormSection>
 
         {/* Agendamento — vale tanto para solicitação normal quanto para
             ajuda de custo. Ambos os tipos podem ter ou não ter agendamento;
             o checkbox "sem agendamento" cobre o caso de exceção. */}
-        <section>
-          <h3 className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Agendamento
-          </h3>
+        <FormSection title="Agendamento" icon={<CalendarCheck size={12} />} tone="success">
           <label className="flex items-center gap-2 mb-2 cursor-pointer">
             <input
               type="checkbox"
@@ -706,10 +710,10 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
             Marque apenas quando o paciente ainda não tem unidade/data definidas — o caso seguirá para a Regulação registrar o agendamento posteriormente (CNRAC, CET ou Outros).
           </p>
           {!semAgendamento && (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 min-w-0">
               {/* Unidade — compartilhada entre todos os procedimentos */}
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-1 min-w-0">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className="text-[11px]" style={{ color: '#94A3B8' }}>
                     Selecione a unidade cadastrada
                   </span>
@@ -717,7 +721,7 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
                     href="/unidades-saude"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[11px] inline-flex items-center gap-1 hover:underline"
+                    className="text-[11px] inline-flex items-center gap-1 hover:underline flex-shrink-0"
                     style={{ color: 'var(--tfd-blue)' }}
                   >
                     <ExternalLink size={11} />
@@ -728,7 +732,7 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
                   value={unidadeId}
                   onChange={(e) => setUnidadeId(e.target.value)}
                   disabled={loadingUnidades}
-                  className="px-3 py-2 text-[13px]"
+                  className="w-full px-3 py-2 text-[13px] min-w-0"
                   style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
                 >
                   <option value="">
@@ -844,15 +848,12 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
               </div>
             </div>
           )}
-        </section>
+        </FormSection>
 
         {/* Laudo médico — origem (unidade de saúde) + data */}
-        <section>
-          <h3 className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Laudo médico
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-            <div className="md:col-span-2">
+        <FormSection title="Laudo médico" icon={<Stethoscope size={12} />} tone="warning">
+          <div className="grid grid-cols-3 gap-2 min-w-0">
+            <div className="col-span-2 min-w-0">
               <label className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8', letterSpacing: '0.04em' }}>
                 Origem do laudo
               </label>
@@ -882,14 +883,16 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
               />
             </div>
           </div>
-        </section>
+        </FormSection>
 
         {/* Processo SEI */}
-        <section>
-          <h3 className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-            Processo SEI <span className="font-normal normal-case" style={{ color: '#94A3B8' }}>(opcional)</span>
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <FormSection
+          title="Processo SEI"
+          icon={<Hash size={12} />}
+          tone="default"
+          hint="Opcional — informe se o processo já tem número SEI."
+        >
+          <div className="grid grid-cols-2 gap-2 min-w-0">
             <input
               value={numeroSEI}
               onChange={(e) => setNumeroSEI(e.target.value)}
@@ -914,14 +917,15 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
               URL inválida — comece com http:// ou https://
             </p>
           )}
-        </section>
+        </FormSection>
 
         {/* Anexos */}
-        <section>
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
-              Documentos anexos <span className="font-normal normal-case" style={{ color: '#94A3B8' }}>(opcional, múltiplos arquivos)</span>
-            </h3>
+        <FormSection
+          title="Documentos anexos"
+          icon={<PaperclipIcon size={12} />}
+          tone="info"
+          hint="Opcional — múltiplos arquivos permitidos."
+          action={
             <a
               href="/sistema/configuracoes"
               target="_blank"
@@ -932,8 +936,8 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
               <ExternalLink size={11} />
               Cadastrar novo tipo
             </a>
-          </div>
-
+          }
+        >
           <input
             ref={fileInputRef}
             type="file"
@@ -1011,7 +1015,7 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
               ))}
             </ul>
           )}
-        </section>
+        </FormSection>
       </div>
     </Drawer>
   );

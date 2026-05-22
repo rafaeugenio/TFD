@@ -138,7 +138,7 @@ function RegionaisSaudePage() {
     <>
       <PageHeader
         title="Regionais"
-        subtitle="Unidades Regionais de Saúde (URS) do estado do Maranhão"
+        subtitle="Unidades Regionais de Saúde (URS) — agrupamentos geográficos das regionais"
         actions={
           <Can action="regionais_saude.criar">
             <button

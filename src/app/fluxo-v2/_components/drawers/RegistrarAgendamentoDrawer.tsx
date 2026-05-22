@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, CalendarCheck, ListPlus } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
+import FormSection from '@/shared/components/drawer/FormSection';
+import AnexosUploadField, { type AnexoLocal } from '@/shared/components/anexos-upload-field/AnexosUploadField';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
@@ -47,7 +49,8 @@ export default function RegistrarAgendamentoDrawer({
   agendamentoAtual,
   snapshotPaciente,
 }: Props) {
-  const { setAgendamento, getById } = useFluxoV2State();
+  const { setAgendamento, getById, addAnexos } = useFluxoV2State();
+  const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
   const toast = useToast();
   const firstInputRef = useRef<HTMLSelectElement>(null);
   const { tipos: tiposProcedimento, loading: tiposLoading } = useTiposProcedimento();
@@ -127,6 +130,10 @@ export default function RegistrarAgendamentoDrawer({
       observacoesChegada: observacoesChegada || undefined,
     });
     toast.success('Agendamento registrado', `${unidadeNome} — ${data} ${hora}`);
+    if (anexos.length > 0) {
+      addAnexos(solicitacaoId, anexos, 'agendamento');
+      setAnexos([]);
+    }
     onClose();
   }
 
@@ -156,8 +163,9 @@ export default function RegistrarAgendamentoDrawer({
       }
     >
       {snapshotPaciente && <SnapshotPaciente data={snapshotPaciente} />}
+      <FormSection title="Agendamento confirmado" icon={<CalendarCheck size={12} />} tone="primary">
       <div className="flex items-center justify-between mb-2">
-        <label className="block text-[12px] font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
+        <label className="block text-[12px] font-semibold" style={{ color: '#6B7280' }}>
           Unidade que aceitou
         </label>
         <a
@@ -197,7 +205,7 @@ export default function RegistrarAgendamentoDrawer({
 
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div>
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+          <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
             Data
           </label>
           <input
@@ -209,7 +217,7 @@ export default function RegistrarAgendamentoDrawer({
           />
         </div>
         <div>
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+          <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
             Hora
           </label>
           <input
@@ -222,16 +230,11 @@ export default function RegistrarAgendamentoDrawer({
         </div>
       </div>
 
-      {/* T2.AJ — Campos adicionais opcionais, agrupados visualmente */}
-      <div
-        className="mt-2 pt-4"
-        style={{ borderTop: '1px dashed var(--tfd-surface-border)' }}
-      >
-        <p className="text-[10.5px] font-semibold uppercase tracking-wider mb-3" style={{ color: '#94A3B8', letterSpacing: '0.08em' }}>
-          Detalhes adicionais (opcionais)
-        </p>
+      </FormSection>
 
-        <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+      {/* T2.AJ — Campos adicionais opcionais */}
+      <FormSection title="Detalhes adicionais" icon={<ListPlus size={12} />} tone="info" hint="Opcionais — preencha se já souber agora.">
+        <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
           Tipo de procedimento
         </label>
         <select
@@ -249,7 +252,7 @@ export default function RegistrarAgendamentoDrawer({
           ))}
         </select>
 
-        <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+        <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
           Contato da unidade
         </label>
         <input
@@ -261,7 +264,7 @@ export default function RegistrarAgendamentoDrawer({
           style={inputStyle}
         />
 
-        <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+        <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
           Observações de chegada
         </label>
         <textarea
@@ -272,7 +275,9 @@ export default function RegistrarAgendamentoDrawer({
           className="w-full px-3 py-2 text-[13px]"
           style={inputStyle}
         />
-      </div>
+      </FormSection>
+
+      <AnexosUploadField value={anexos} onChange={setAnexos} hint="Confirmação por e-mail, voucher de internação, guia de exame (opcional)." />
     </Drawer>
   );
 }

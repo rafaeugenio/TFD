@@ -381,6 +381,7 @@ export default function RegulacaoListPage() {
             carimboAtual={ativo.carimboRegulacao}
             observacaoAtual={ativo.carimboObservacao}
             outrosInfoAtual={ativo.carimboOutrosInfo}
+            solicitacaoId={ativo.id}
             onSalvar={(c, obs, info) => setCarimbo(ativo.id, c, obs, info)}
             snapshotPaciente={snapshotFromSolicitacao(ativo)}
           />

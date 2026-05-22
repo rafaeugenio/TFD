@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Paperclip, X } from 'lucide-react';
+import { Paperclip, X, FileText, DollarSign } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
+import FormSection from '@/shared/components/drawer/FormSection';
+import AnexosUploadField, { type AnexoLocal } from '@/shared/components/anexos-upload-field/AnexosUploadField';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
@@ -26,7 +28,8 @@ interface Props {
 }
 
 export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar }: Props) {
-  const { addAdicional, editarAdicional, getById } = useFluxoV2State();
+  const { addAdicional, editarAdicional, getById, addAnexos } = useFluxoV2State();
+  const [anexosExtras, setAnexosExtras] = useState<AnexoLocal[]>([]);
   const toast = useToast();
   const isEdicao = !!editar;
   const firstInputRef = useRef<HTMLSelectElement>(null);
@@ -139,6 +142,10 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
       });
     }
     toast.success(isEdicao ? 'Adicional atualizado' : 'Adicional registrado', descricao.trim());
+    if (anexosExtras.length > 0) {
+      addAnexos(solicitacaoId, anexosExtras, 'adicional');
+      setAnexosExtras([]);
+    }
     onClose();
   }
 
@@ -168,7 +175,8 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
       {snapshotPaciente && <SnapshotPaciente data={snapshotPaciente} />}
 
       {/* Beneficiário — mesmo padrão de NewPassagemDrawer / NewAjudaCustoDrawer */}
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+      <FormSection title="Descrição do adicional" icon={<FileText size={12} />} tone="primary">
+      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         Beneficiário
       </label>
       <select
@@ -185,12 +193,12 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
         )}
         {solicitacao?.acompanhantes.map((a) => (
           <option key={a.id} value={`a:${a.id}`}>
-            Acompanhante — {a.nome} ({calcularIdade(a.dataNascimento)} anos) — {a.vinculo}
+            {a.doador ? "Acompanhante Doador" : "Acompanhante"} — {a.nome} ({calcularIdade(a.dataNascimento)} anos) — {a.vinculo}
           </option>
         ))}
       </select>
 
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         Descrição
       </label>
       <textarea
@@ -214,7 +222,7 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
 
       {!isAjudaCusto && (
         <>
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+          <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
             Vincular a passagem
           </label>
           <select
@@ -244,9 +252,12 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
         </>
       )}
 
+      </FormSection>
+
+      <FormSection title="Pagamento" icon={<DollarSign size={12} />} tone="success">
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div>
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+          <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
             Data de pagamento
           </label>
           <input
@@ -258,7 +269,7 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
           />
         </div>
         <div>
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+          <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
             Valor (R$)
           </label>
           <input
@@ -274,7 +285,7 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
         </div>
       </div>
 
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         Anexo
       </label>
       {anexoNome ? (
@@ -305,8 +316,16 @@ export default function NewAdicionalDrawer({ open, onClose, solicitacaoId, snaps
         </label>
       )}
       <p className="text-[11px]" style={{ color: '#9CA3AF' }}>
-        Comprovante (opcional)
+        Comprovante principal (opcional)
       </p>
+      </FormSection>
+
+      <AnexosUploadField
+        value={anexosExtras}
+        onChange={setAnexosExtras}
+        title="Anexos extras"
+        hint="Documentos adicionais ligados a este adicional (notas fiscais, autorizações). Opcional."
+      />
     </Drawer>
   );
 }

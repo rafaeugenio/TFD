@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, Loader2, Mail, Phone, Search } from 'lucide-react';
+import { Building2, Loader2, Mail, Phone, Search, FileText, MapPin } from 'lucide-react';
 
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
+import FormSection from '@/shared/components/drawer/FormSection';
 import ConfirmDialog, { buildDiff, type DiffField } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import { useToast } from '@/shared/components/toast/Toast';
 import { maskPhone } from '@/shared/pipes/formatters';
@@ -348,10 +349,7 @@ export default function RegionalDrawer({
         }
       >
         {/* ── Identificação ── */}
-        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
-          Identificação
-        </h3>
-
+        <FormSection title="Identificação" icon={<FileText size={12} />} tone="primary">
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Código" required>
             <input
@@ -407,14 +405,10 @@ export default function RegionalDrawer({
             </p>
           </FormField>
         </div>
-
-        <hr className="tfd-divider" />
+        </FormSection>
 
         {/* ── Endereço do escritório ── */}
-        <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>
-          Endereço do Escritório
-        </h3>
-
+        <FormSection title="Endereço do Escritório" icon={<MapPin size={12} />} tone="success">
         <FormField label="Logradouro">
           <input
             type="text"
@@ -443,17 +437,15 @@ export default function RegionalDrawer({
             />
           </FormField>
         </div>
-
-        <hr className="tfd-divider" />
+        </FormSection>
 
         {/* ── Contato ── */}
-        <h3 className="text-sm font-semibold mb-1 flex items-center gap-2" style={{ color: 'var(--tfd-text-primary)' }}>
-          <Phone size={14} /> Contato
-        </h3>
-        <p className="text-xs mb-3" style={{ color: 'var(--tfd-text-muted)' }}>
-          Informe até dois telefones e dois e-mails (institucional e secundário).
-        </p>
-
+        <FormSection
+          title="Contato"
+          icon={<Phone size={12} />}
+          tone="info"
+          hint="Informe até dois telefones e dois e-mails (institucional e secundário)."
+        >
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Telefone 1">
             <input
@@ -503,26 +495,25 @@ export default function RegionalDrawer({
             </div>
           </FormField>
         </div>
-
-        <hr className="tfd-divider" />
+        </FormSection>
 
         {/* ── Municípios ── */}
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--tfd-text-primary)' }}>
-            <Building2 size={14} /> Municípios da Regional
-          </h3>
-          {selectedMunicipios.size > 0 && (
-            <span
-              className="text-xs font-bold px-2 py-0.5 rounded-full"
-              style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}
-            >
-              {selectedMunicipios.size} selecionado{selectedMunicipios.size !== 1 && 's'}
-            </span>
-          )}
-        </div>
-        <p className="text-xs mb-3" style={{ color: 'var(--tfd-text-muted)' }}>
-          Selecione os municípios que pertencem a esta regional. Você pode adicionar ou remover a qualquer momento.
-        </p>
+        <FormSection
+          title="Municípios da Regional"
+          icon={<Building2 size={12} />}
+          tone="warning"
+          hint="Selecione os municípios que pertencem a esta regional. Você pode adicionar ou remover a qualquer momento."
+          action={
+            selectedMunicipios.size > 0 ? (
+              <span
+                className="text-xs font-bold px-2 py-0.5 rounded-full"
+                style={{ backgroundColor: 'var(--tfd-primary-50)', color: 'var(--tfd-primary-500)' }}
+              >
+                {selectedMunicipios.size} selecionado{selectedMunicipios.size !== 1 && 's'}
+              </span>
+            ) : undefined
+          }
+        >
 
         <div className="relative mb-2">
           <Search size={14} className="tfd-input-leading-icon" style={{ color: 'var(--tfd-text-muted)' }} />
@@ -587,6 +578,7 @@ export default function RegionalDrawer({
             </ul>
           )}
         </div>
+        </FormSection>
       </Drawer>
     </>
   );

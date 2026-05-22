@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { CalendarRange, Calculator } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
+import FormSection from '@/shared/components/drawer/FormSection';
+import AnexosUploadField, { type AnexoLocal } from '@/shared/components/anexos-upload-field/AnexosUploadField';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
@@ -34,7 +37,8 @@ interface Props {
 }
 
 export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar }: Props) {
-  const { addAjudaCusto, editarAjudaCusto, getById } = useFluxoV2State();
+  const { addAjudaCusto, editarAjudaCusto, getById, addAnexos } = useFluxoV2State();
+  const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
   const toast = useToast();
   const isEdicao = !!editar;
   const firstInputRef = useRef<HTMLSelectElement>(null);
@@ -106,6 +110,10 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
       });
     }
     toast.success(isEdicao ? 'Ajuda de custo atualizada' : 'Ajuda de custo registrada', `${dataInicio} → ${dataFim}`);
+    if (anexos.length > 0) {
+      addAnexos(solicitacaoId, anexos, 'ajuda_custo');
+      setAnexos([]);
+    }
     onClose();
   }
 
@@ -135,7 +143,8 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
       {snapshotPaciente && <SnapshotPaciente data={snapshotPaciente} />}
 
       {/* T2.AQ — Select de beneficiário (mesmo padrão de NewPassagemDrawer). */}
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+      <FormSection title="Beneficiário e Período" icon={<CalendarRange size={12} />} tone="primary">
+      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         Beneficiário
       </label>
       <select
@@ -152,14 +161,14 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         )}
         {solicitacao?.acompanhantes.map((a) => (
           <option key={a.id} value={`a:${a.id}`}>
-            Acompanhante — {a.nome} ({calcularIdade(a.dataNascimento)} anos) — {a.vinculo}
+            {a.doador ? "Acompanhante Doador" : "Acompanhante"} — {a.nome} ({calcularIdade(a.dataNascimento)} anos) — {a.vinculo}
           </option>
         ))}
       </select>
 
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div>
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+          <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
             Data início
           </label>
           <input
@@ -171,7 +180,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
           />
         </div>
         <div>
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+          <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
             Data fim
           </label>
           <input
@@ -210,6 +219,9 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         </span>
       </label>
 
+      </FormSection>
+
+      <FormSection title="Cálculo e Status" icon={<Calculator size={12} />} tone="info">
       <div
         className="p-3 mb-4"
         style={{ background: '#F8FAFC', borderRadius: 8, border: '1px solid var(--tfd-surface-border)' }}
@@ -246,7 +258,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         )}
       </div>
 
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         Status
       </label>
       <select
@@ -261,6 +273,9 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
           </option>
         ))}
       </select>
+      </FormSection>
+
+      <AnexosUploadField value={anexos} onChange={setAnexos} />
     </Drawer>
   );
 }

@@ -97,6 +97,23 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import Drawer from '@/shared/components/drawer/Drawer';
+import FormSection from '@/shared/components/drawer/FormSection';
+import FormField from '@/shared/components/drawer/FormField';
+import StatsRow from '@/shared/components/stats-row/StatsRow';
+import StatusTag from '@/shared/components/status-tag/StatusTag';
+import EmptyState from '@/shared/components/empty-state/EmptyState';
+import IdadeBadge from '@/shared/components/idade-badge';
+import Pagination from '@/shared/components/pagination/Pagination';
+import {
+  TableSkeleton,
+  CardListSkeleton,
+  FormSkeleton,
+  KpiBarSkeleton,
+} from '@/shared/components/skeleton';
+import Autocomplete from '@/shared/components/autocomplete/Autocomplete';
+import AnexosUploadField from '@/shared/components/anexos-upload-field/AnexosUploadField';
+import CepAutofill from '@/shared/components/cep-autofill/CepAutofill';
+import UfCidadeSelect from '@/shared/components/uf-cidade-select/UfCidadeSelect';
 
 /* ──────────────────────────────────────────────────────
    TFD Design System — Página de referência para devs
@@ -118,6 +135,7 @@ type TabKey =
   | 'feedback'
   | 'overlays'
   | 'data'
+  | 'tfd-components'
   | 'patterns';
 
 interface Tab {
@@ -142,6 +160,7 @@ const TABS: Tab[] = [
   { key: 'feedback',      label: 'Mensagens',       icon: Bell,       group: 'Componentes' },
   { key: 'overlays',      label: 'Diálogos',        icon: Component,  group: 'Componentes' },
   { key: 'data',          label: 'Tabelas & KPIs',  icon: Component,  group: 'Componentes' },
+  { key: 'tfd-components', label: 'Componentes TFD', icon: Component, group: 'Componentes' },
   { key: 'patterns',      label: 'Padrões de Página', icon: LayoutGrid, group: 'Padrões' },
 ];
 
@@ -220,6 +239,7 @@ export default function DesignSystemPage() {
           {tab === 'feedback'      && <FeedbackSection />}
           {tab === 'overlays'      && <OverlaysSection />}
           {tab === 'data'          && <DataSection />}
+          {tab === 'tfd-components' && <TfdComponentsSection />}
           {tab === 'patterns'      && <PatternsSection />}
         </section>
       </div>
@@ -2238,3 +2258,928 @@ function DrawerDemo() {
     </>
   );
 }
+
+/* ──────────────────────────────────────────────────────
+   TFD Components — componentes próprios do projeto
+   Documentação viva dos componentes em src/shared/components/.
+   ────────────────────────────────────────────────────── */
+
+function PropRow({
+  name,
+  type,
+  required,
+  defaultValue,
+  description,
+}: {
+  name: string;
+  type: string;
+  required?: boolean;
+  defaultValue?: string;
+  description: string;
+}) {
+  return (
+    <tr>
+      <td>
+        <code
+          className="text-[12px]"
+          style={{ fontFamily: 'var(--tfd-mono)', color: 'var(--tfd-blue-700)' }}
+        >
+          {name}
+          {required && <span style={{ color: 'var(--tfd-status-danger)' }}>*</span>}
+        </code>
+      </td>
+      <td>
+        <code className="text-[12px]" style={{ fontFamily: 'var(--tfd-mono)', color: 'var(--tfd-text-secondary)' }}>
+          {type}
+        </code>
+      </td>
+      <td>
+        <span className="text-[12px]" style={{ color: 'var(--tfd-text-muted)', fontFamily: 'var(--tfd-mono)' }}>
+          {defaultValue ?? '—'}
+        </span>
+      </td>
+      <td>
+        <span className="text-[13px]" style={{ color: 'var(--tfd-text-secondary)' }}>
+          {description}
+        </span>
+      </td>
+    </tr>
+  );
+}
+
+function PropsTable({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="tfd-table-wrap">
+      <table className="tfd-table">
+        <thead>
+          <tr>
+            <th>Prop</th>
+            <th>Tipo</th>
+            <th>Default</th>
+            <th>Descrição</th>
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+
+function ComponentBlock({
+  title,
+  description,
+  filePath,
+  children,
+}: {
+  title: string;
+  description: string;
+  filePath: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="tfd-card mb-6">
+      <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
+        <h3 className="text-[16px] font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+          {title}
+        </h3>
+        <code
+          className="text-[11px] px-2 py-1 rounded"
+          style={{
+            fontFamily: 'var(--tfd-mono)',
+            background: 'var(--tfd-50)',
+            color: 'var(--tfd-text-muted)',
+            border: '1px solid var(--tfd-200)',
+          }}
+        >
+          {filePath}
+        </code>
+      </div>
+      <p className="mb-4 text-[13px]" style={{ color: 'var(--tfd-text-secondary)' }}>
+        {description}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function PreviewBox({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="rounded-lg p-4 mt-3"
+      style={{
+        border: '1px dashed var(--tfd-200)',
+        background: 'var(--tfd-50)',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function TfdComponentsSection() {
+  return (
+    <>
+      <SectionHeader
+        title="Componentes TFD"
+        description="Componentes próprios do projeto em src/shared/components/. Inclui exemplos renderizados, props e caminho do arquivo."
+      />
+
+      <FormSectionDemo />
+      <AnexosUploadFieldDemo />
+      <LookupSelectDemo />
+      <AuxSelectInlineDemo />
+      <CepAutofillDemo />
+      <UfCidadeSelectDemo />
+      <AutocompleteDemo />
+      <ConfirmDialogDemo />
+      <PageHeaderDemo />
+      <StatsRowDemo />
+      <StatusTagDemo />
+      <EmptyStateDemo />
+      <IdadeBadgeDemo />
+      <ToastDemo />
+      <PaginationDemo />
+      <SortThDemo />
+      <SkeletonDemo />
+    </>
+  );
+}
+
+/* -------------------- FormSection -------------------- */
+
+function FormSectionDemo() {
+  return (
+    <ComponentBlock
+      title="FormSection"
+      description="Fieldset com legend uppercase azul, padrão visual de agrupamento usado nos drawers. Substitui o antigo <hr> + <h3>. Aceita ícone, action (botão à direita) e hint (texto auxiliar abaixo do título)."
+      filePath="src/shared/components/drawer/FormSection.tsx"
+    >
+      <PreviewBox>
+        <FormSection title="Dados básicos" icon={<User size={12} />}>
+          <FormField label="Nome">
+            <input className="tfd-input" placeholder="Digite o nome" />
+          </FormField>
+          <FormField label="CPF">
+            <input className="tfd-input" placeholder="000.000.000-00" />
+          </FormField>
+        </FormSection>
+
+        <FormSection
+          title="Endereço"
+          icon={<MapPin size={12} />}
+          hint="Preenchimento opcional. Campos serão validados no save."
+        >
+          <FormField label="CEP">
+            <input className="tfd-input" placeholder="00000-000" />
+          </FormField>
+        </FormSection>
+
+        <FormSection
+          title="Documentos"
+          icon={<Paperclip size={12} />}
+          action={
+            <button className="tfd-btn tfd-btn-outline tfd-btn--sm">
+              <Plus size={12} /> Adicionar
+            </button>
+          }
+        >
+          <p className="text-[12px]" style={{ color: 'var(--tfd-text-muted)' }}>
+            Nenhum documento anexado.
+          </p>
+        </FormSection>
+      </PreviewBox>
+
+      <PropsTable>
+        <PropRow name="title" type="string" required description="Texto da legend em uppercase tracked." />
+        <PropRow name="icon" type="ReactNode" description="Ícone à esquerda do título (use 12px para alinhar)." />
+        <PropRow name="tone" type="'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info'" defaultValue="'default'" description="Mantido na API por compatibilidade — atualmente todos tons resolvem para o azul primário (decisão 2026-05)." />
+        <PropRow name="action" type="ReactNode" description="Botão/link à direita do hint (ex: 'Adicionar', 'Cadastrar novo')." />
+        <PropRow name="hint" type="string" description="Texto auxiliar pequeno abaixo do título." />
+        <PropRow name="className" type="string" description="Classes extras no fieldset." />
+        <PropRow name="children" type="ReactNode" required description="Conteúdo da seção (geralmente FormFields)." />
+      </PropsTable>
+
+      <CodeBlock code={`import FormSection from '@/shared/components/drawer/FormSection';
+import { User } from 'lucide-react';
+
+<FormSection title="Dados básicos" icon={<User size={12} />}>
+  <FormField label="Nome"><input className="tfd-input" /></FormField>
+</FormSection>`} />
+    </ComponentBlock>
+  );
+}
+
+/* -------------------- AnexosUploadField -------------------- */
+
+function AnexosUploadFieldDemo() {
+  const [anexos, setAnexos] = useState<{ nome: string; tipo: string; tipoDocumento?: string }[]>([
+    { nome: 'laudo-medico.pdf', tipo: 'application/pdf', tipoDocumento: 'LAUDO' },
+  ]);
+
+  return (
+    <ComponentBlock
+      title="AnexosUploadField"
+      description="Bloco de upload de múltiplos arquivos com seletor de tipo de documento por item. Já vem dentro de um FormSection. Lista os anexos com nome, select de tipo (lookup `tipo_documento`) e botão remover."
+      filePath="src/shared/components/anexos-upload-field/AnexosUploadField.tsx"
+    >
+      <PreviewBox>
+        <AnexosUploadField value={anexos} onChange={setAnexos} />
+      </PreviewBox>
+
+      <PropsTable>
+        <PropRow name="value" type="AnexoLocal[]" required description="Lista controlada de anexos { nome, tipo, tipoDocumento?, file? }." />
+        <PropRow name="onChange" type="(anexos: AnexoLocal[]) => void" required description="Callback ao adicionar/remover/editar tipo do anexo." />
+        <PropRow name="title" type="string" defaultValue="'Documentos anexos'" description="Título do FormSection wrapper." />
+        <PropRow name="hint" type="string" defaultValue="'Opcional — múltiplos arquivos permitidos.'" description="Hint abaixo do título." />
+        <PropRow name="tone" type="FormSection['tone']" defaultValue="'info'" description="Repassado ao FormSection (atualmente noop)." />
+      </PropsTable>
+
+      <CodeBlock code={`import AnexosUploadField, { AnexoLocal } from '@/shared/components/anexos-upload-field/AnexosUploadField';
+
+const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
+
+<AnexosUploadField value={anexos} onChange={setAnexos} />`} />
+    </ComponentBlock>
+  );
+}
+
+/* -------------------- LookupSelect -------------------- */
+
+function LookupSelectDemo() {
+  return (
+    <ComponentBlock
+      title="LookupSelect"
+      description="Select que carrega opções de uma tabela auxiliar (categoria) e expõe um botão '+' inline para cadastrar novo item sem sair do form. Versão dentro de FormField (com label). Atualiza o cache do useLookup e auto-seleciona o item criado."
+      filePath="src/shared/components/lookup-select/LookupSelect.tsx"
+    >
+      <PreviewBox>
+        <FormField label="Especialidade (exemplo estático)">
+          <div className="flex gap-1.5">
+            <select className="tfd-input flex-1" defaultValue="">
+              <option value="">Selecione...</option>
+              <option value="CARDIOLOGIA">Cardiologia</option>
+              <option value="ONCOLOGIA">Oncologia</option>
+            </select>
+            <button
+              type="button"
+              className="tfd-btn tfd-btn-secondary tfd-btn--icon-only shrink-0"
+              style={{ minWidth: 36, height: 36 }}
+              title="Adicionar"
+            >
+              <Plus size={16} />
+            </button>
+          </div>
+        </FormField>
+        <p className="text-[11px]" style={{ color: 'var(--tfd-text-muted)' }}>
+          Preview estático — o componente real carrega via Supabase.
+        </p>
+      </PreviewBox>
+
+      <PropsTable>
+        <PropRow name="categoria" type="string" required description="Categoria na tabela `tabelas_auxiliares` (ex: 'especialidade', 'tipo_unidade')." />
+        <PropRow name="label" type="string" required description="Label do FormField." />
+        <PropRow name="value" type="string" required description="Valor selecionado." />
+        <PropRow name="onChange" type="(value: string) => void" required description="Callback ao mudar a seleção." />
+        <PropRow name="valueField" type="'codigo' | 'nome' | 'id'" defaultValue="'codigo'" description="Campo usado como value do select." />
+        <PropRow name="orderBy" type="'nome' | 'ordem'" defaultValue="'nome'" description="Coluna de ordenação." />
+        <PropRow name="required" type="boolean" defaultValue="false" description="Asterisco no label." />
+        <PropRow name="disabled" type="boolean" defaultValue="false" description="Desabilita select e oculta botão '+'." />
+        <PropRow name="placeholder" type="string" defaultValue="'Selecione...'" description="Texto da option vazia." />
+      </PropsTable>
+
+      <CodeBlock code={`import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
+
+<LookupSelect
+  categoria="especialidade"
+  label="Especialidade"
+  value={especialidade}
+  onChange={setEspecialidade}
+  required
+/>`} />
+    </ComponentBlock>
+  );
+}
+
+/* -------------------- AuxSelectInline -------------------- */
+
+function AuxSelectInlineDemo() {
+  return (
+    <ComponentBlock
+      title="AuxSelectInline"
+      description="Variante inline (sem FormField wrapping) do LookupSelect. Tem label superior com link 'Cadastrar' no canto direito, e expande um mini-form embaixo quando clicado. Use em drawers densos onde FormField gera muito espaço vertical."
+      filePath="src/shared/components/aux-select-inline/AuxSelectInline.tsx"
+    >
+      <PreviewBox>
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-[12px] font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
+            Meio de contato
+          </label>
+          <button className="text-[11px] inline-flex items-center gap-1 hover:underline" style={{ color: 'var(--tfd-blue)' }}>
+            <Plus size={11} /> Cadastrar
+          </button>
+        </div>
+        <select className="w-full px-3 py-2 text-[13px]" style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}>
+          <option>Selecione...</option>
+          <option>Telefone</option>
+          <option>Email</option>
+        </select>
+        <p className="text-[11px] mt-2" style={{ color: 'var(--tfd-text-muted)' }}>
+          Preview estático — em produção carrega da tabela auxiliar.
+        </p>
+      </PreviewBox>
+
+      <PropsTable>
+        <PropRow name="categoria" type="string" required description="Categoria na tabela `tabelas_auxiliares`." />
+        <PropRow name="label" type="string" description="Label uppercase (e link 'Cadastrar' à direita)." />
+        <PropRow name="value" type="string" required description="Código selecionado." />
+        <PropRow name="onChange" type="(codigo: string) => void" required description="Callback ao mudar." />
+        <PropRow name="placeholder" type="string" defaultValue="'Selecione...'" description="Texto da option vazia." />
+        <PropRow name="disableAdd" type="boolean" defaultValue="false" description="Oculta o botão 'Cadastrar'." />
+        <PropRow name="className" type="string" description="Classes extras no wrapper." />
+      </PropsTable>
+    </ComponentBlock>
+  );
+}
+
+/* -------------------- CepAutofill -------------------- */
+
+function CepAutofillDemo() {
+  const [cep, setCep] = useState('');
+
+  return (
+    <ComponentBlock
+      title="CepAutofill"
+      description="Input de CEP com máscara, busca automática no ViaCEP quando completa 8 dígitos, ícone de loading enquanto consulta e check verde quando o endereço é encontrado. Dispara onAddressFound com o objeto completo (logradouro, bairro, cidade, uf, IBGE)."
+      filePath="src/shared/components/cep-autofill/CepAutofill.tsx"
+    >
+      <PreviewBox>
+        <div className="max-w-xs">
+          <CepAutofill
+            initialCep={cep}
+            onAddressFound={(addr) => setCep(addr.cep)}
+          />
+        </div>
+        <p className="text-[11px]" style={{ color: 'var(--tfd-text-muted)' }}>
+          Digite um CEP válido (ex: 01310-100) para ver o autofill.
+        </p>
+      </PreviewBox>
+
+      <PropsTable>
+        <PropRow name="onAddressFound" type="(addr: ViaCepAddress) => void" required description="Disparado quando o ViaCEP retorna { cep, logradouro, bairro, cidade, uf, codigo_ibge }." />
+        <PropRow name="initialCep" type="string" defaultValue="''" description="CEP inicial; se já tiver 8 dígitos, dispara fetch ao montar." />
+        <PropRow name="label" type="string" defaultValue="'CEP'" description="Label do FormField." />
+        <PropRow name="required" type="boolean" defaultValue="false" description="Asterisco." />
+        <PropRow name="disabled" type="boolean" defaultValue="false" description="Desabilita input." />
+        <PropRow name="size" type="'sm' | 'md'" defaultValue="'md'" description="Tamanho do input." />
+      </PropsTable>
+    </ComponentBlock>
+  );
+}
+
+/* -------------------- UfCidadeSelect -------------------- */
+
+function UfCidadeSelectDemo() {
+  const [uf, setUf] = useState('');
+  const [cidade, setCidade] = useState('');
+
+  return (
+    <ComponentBlock
+      title="UfCidadeSelect"
+      description="Par de selects UF + Cidade. Carrega municípios do IBGE quando a UF é trocada. Reseta cidade automaticamente ao trocar UF. Renderiza dois FormFields em sequência (use dentro de um grid)."
+      filePath="src/shared/components/uf-cidade-select/UfCidadeSelect.tsx"
+    >
+      <PreviewBox>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <UfCidadeSelect
+            uf={uf}
+            cidade={cidade}
+            onUfChange={setUf}
+            onCidadeChange={setCidade}
+          />
+        </div>
+      </PreviewBox>
+
+      <PropsTable>
+        <PropRow name="uf" type="string" required description="UF selecionada (sigla, ex: 'MA')." />
+        <PropRow name="cidade" type="string" required description="Nome da cidade selecionada." />
+        <PropRow name="onUfChange" type="(uf: string) => void" required description="Callback ao mudar UF (cidade é zerada automaticamente)." />
+        <PropRow name="onCidadeChange" type="(cidade: string) => void" required description="Callback ao mudar cidade." />
+        <PropRow name="ufLabel" type="string" defaultValue="'UF'" description="Label do campo UF." />
+        <PropRow name="cidadeLabel" type="string" defaultValue="'Cidade'" description="Label do campo Cidade." />
+        <PropRow name="required" type="boolean" defaultValue="false" description="Asterisco em ambos." />
+        <PropRow name="size" type="'sm' | 'md'" defaultValue="'md'" description="Tamanho dos selects." />
+      </PropsTable>
+    </ComponentBlock>
+  );
+}
+
+/* -------------------- Autocomplete -------------------- */
+
+function AutocompleteDemo() {
+  const [, setSelected] = useState<{ value: string; label: string } | null>(null);
+
+  const search = async (q: string) => {
+    const mock = ['Maria Silva', 'João Pereira', 'Ana Souza', 'Carlos Mendes', 'Beatriz Lima'];
+    return mock
+      .filter((n) => n.toLowerCase().includes(q.toLowerCase()))
+      .map((n) => ({ value: n, label: n }));
+  };
+
+  return (
+    <ComponentBlock
+      title="Autocomplete"
+      description="Combobox com busca remota (debounced 300ms), suporte a teclado (↑↓/Enter/Esc), renderização custom de opção e máximo 20 resultados. Use onSearch para retornar uma Promise<AutocompleteOption[]>."
+      filePath="src/shared/components/autocomplete/Autocomplete.tsx"
+    >
+      <PreviewBox>
+        <div className="max-w-md">
+          <Autocomplete
+            label="Buscar paciente"
+            placeholder="Digite o nome..."
+            onSearch={search}
+            onSelect={(item) => setSelected(item)}
+          />
+        </div>
+      </PreviewBox>
+
+      <PropsTable>
+        <PropRow name="onSearch" type="(q: string) => Promise<AutocompleteOption[]>" required description="Função de busca; chamada após 300ms de debounce." />
+        <PropRow name="onSelect" type="(item: AutocompleteOption) => void" required description="Disparado ao clicar/Enter num item." />
+        <PropRow name="label" type="string" description="Se informado, envolve em FormField." />
+        <PropRow name="placeholder" type="string" defaultValue="'Buscar...'" description="Placeholder do input." />
+        <PropRow name="value" type="string" description="Valor controlado externamente." />
+        <PropRow name="onChange" type="(value: string) => void" description="Callback ao digitar (antes de selecionar)." />
+        <PropRow name="renderOption" type="(item) => ReactNode" description="Render custom da opção na lista." />
+        <PropRow name="disabled" type="boolean" defaultValue="false" description="Desabilita input." />
+        <PropRow name="required" type="boolean" defaultValue="false" description="Asterisco no label." />
+        <PropRow name="size" type="'sm' | 'md'" defaultValue="'md'" description="Tamanho do input." />
+      </PropsTable>
+    </ComponentBlock>
+  );
+}
+
+/* -------------------- ConfirmDialog -------------------- */
+
+function ConfirmDialogDemo() {
+  return (
+    <ComponentBlock
+      title="ConfirmDialog + buildDiff"
+      description="Diálogo de confirmação com 3 tons (create / edit / delete). No tom 'edit', exibe um diff antes → depois dos campos que mudaram. No 'create', mostra resumo dos campos preenchidos. Use buildDiff() para gerar o array de DiffField a partir de dois objetos."
+      filePath="src/shared/components/confirm-dialog/ConfirmDialog.tsx"
+    >
+      <PreviewBox>
+        <div
+          className="rounded-lg p-4 max-w-md mx-auto"
+          style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', boxShadow: '0 8px 24px rgba(0,0,0,0.06)' }}
+        >
+          <div className="flex items-start gap-3 mb-3">
+            <div className="flex items-center justify-center w-10 h-10 rounded-full shrink-0" style={{ background: 'var(--tfd-primary-50, #EBF0FF)' }}>
+              <Pencil size={18} style={{ color: 'var(--tfd-primary-600, #146BFA)' }} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+                Confirmar alterações
+              </h3>
+              <p className="text-sm font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
+                Maria Silva
+              </p>
+            </div>
+          </div>
+          <div className="rounded-lg p-3 mb-3" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+            <ul className="flex flex-col gap-1.5 text-[13px]">
+              <li>
+                <span className="font-medium" style={{ color: 'var(--tfd-text-secondary)' }}>Telefone:</span>{' '}
+                <span style={{ color: '#94A3B8', textDecoration: 'line-through' }}>(11) 9000-0000</span>{' '}
+                <ArrowRight size={11} className="inline-block align-middle mx-1" style={{ color: '#94A3B8' }} />{' '}
+                <span style={{ color: 'var(--tfd-text-primary)', fontWeight: 500 }}>(11) 9999-9999</span>
+              </li>
+            </ul>
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <button className="tfd-btn tfd-btn-secondary">Cancelar</button>
+            <button className="tfd-btn tfd-btn-primary">Confirmar alterações</button>
+          </div>
+        </div>
+      </PreviewBox>
+
+      <PropsTable>
+        <PropRow name="open" type="boolean" required description="Controla visibilidade." />
+        <PropRow name="onClose" type="() => void" required description="ESC, clique no backdrop ou Cancelar." />
+        <PropRow name="onConfirm" type="() => void" required description="Click no botão primário." />
+        <PropRow name="tone" type="'create' | 'edit' | 'delete'" required description="Define ícone, cor do botão e texto default." />
+        <PropRow name="title" type="string" required description="Cabeçalho." />
+        <PropRow name="subject" type="string" description="Subtítulo (nome do registro afetado)." />
+        <PropRow name="description" type="ReactNode" description="Descrição livre acima dos diffs." />
+        <PropRow name="diff" type="DiffField[]" description="Array { label, before, after }. Use buildDiff() para gerar." />
+        <PropRow name="confirmLabel" type="string" description="Texto do botão primário (default varia por tone)." />
+        <PropRow name="cancelLabel" type="string" defaultValue="'Cancelar'" description="Texto do botão secundário." />
+        <PropRow name="busy" type="boolean" description="Loading state (spinner + botões disabled)." />
+      </PropsTable>
+
+      <CodeBlock code={`import ConfirmDialog, { buildDiff } from '@/shared/components/confirm-dialog/ConfirmDialog';
+
+const diff = buildDiff(antes, depois, [
+  { key: 'nome', label: 'Nome' },
+  { key: 'cpf', label: 'CPF', format: maskCPF },
+]);
+
+<ConfirmDialog
+  open={open}
+  onClose={() => setOpen(false)}
+  onConfirm={save}
+  tone="edit"
+  title="Confirmar alterações"
+  subject={antes.nome}
+  diff={diff}
+/>`} />
+    </ComponentBlock>
+  );
+}
+
+/* -------------------- PageHeader -------------------- */
+
+function PageHeaderDemo() {
+  return (
+    <ComponentBlock
+      title="PageHeader"
+      description="Header padrão de página com breadcrumbs (auto-gerados a partir da rota ou customizados), título grande, subtítulo opcional e área de actions à direita. Breadcrumbs derivam de um mapa rota → label interno; sobrescreva passando breadcrumbs manualmente."
+      filePath="src/shared/components/page-header/PageHeader.tsx"
+    >
+      <PreviewBox>
+        <PageHeader
+          title="Pacientes"
+          subtitle="Gestão de pacientes elegíveis ao TFD"
+          breadcrumbs={[{ label: 'Cadastros', href: '#' }]}
+          actions={
+            <button className="tfd-btn tfd-btn-primary tfd-btn--sm">
+              <Plus size={14} /> Novo paciente
+            </button>
+          }
+        />
+      </PreviewBox>
+
+      <PropsTable>
+        <PropRow name="title" type="string" required description="Título grande (22px bold)." />
+        <PropRow name="subtitle" type="string" description="Texto pequeno abaixo do título." />
+        <PropRow name="breadcrumbs" type="{ label, href? }[]" description="Migalhas — se omitido, gera automaticamente da rota." />
+        <PropRow name="actions" type="ReactNode" description="Botões/ações alinhados à direita do título." />
+      </PropsTable>
+    </ComponentBlock>
+  );
+}
+
+/* -------------------- StatsRow -------------------- */
+
+function StatsRowDemo() {
+  const [active, setActive] = useState<number | null>(null);
+
+  return (
+    <ComponentBlock
+      title="StatsRow"
+      description="Mini-dashboard horizontal de métricas. Cells lado-a-lado com label uppercase + valor mono + hint. Cells clicáveis (com onClick) viram filtros; o estado `active` ganha borda superior azul. Suporta linha secundária menor (ex: 'Por carimbo' na regulação)."
+      filePath="src/shared/components/stats-row/StatsRow.tsx"
+    >
+      <PreviewBox>
+        <StatsRow
+          stats={[
+            { label: 'Total', value: '1.245', hint: 'do mês corrente', onClick: () => setActive(0), active: active === 0 },
+            { label: 'Aprovadas', value: '982', hint: '79%', onClick: () => setActive(1), active: active === 1 },
+            { label: 'Pendentes', value: '184', hint: '15%', onClick: () => setActive(2), active: active === 2 },
+            { label: 'Indeferidas', value: '79', hint: '6%', onClick: () => setActive(3), active: active === 3 },
+          ]}
+        />
+      </PreviewBox>
+
+      <PropsTable>
+        <PropRow name="stats" type="Stat[]" required description="Array { label, value, hint?, onClick?, active?, title? }." />
+        <PropRow name="secondLine" type="Stat[]" description="Linha secundária de cells menores (regulação por carimbo)." />
+        <PropRow name="secondLineLabel" type="string" description="Header pequeno acima da linha secundária." />
+      </PropsTable>
+    </ComponentBlock>
+  );
+}
+
+/* -------------------- StatusTag -------------------- */
+
+function StatusTagDemo() {
+  const statuses: { key: string; label: string }[] = [
+    { key: 'NOVO', label: 'NOVO' },
+    { key: 'EM_ANALISE', label: 'EM_ANALISE' },
+    { key: 'EXIGENCIA', label: 'EXIGENCIA' },
+    { key: 'AGUARDANDO_REGULACAO', label: 'AGUARDANDO_REGULACAO' },
+    { key: 'EMITIDA', label: 'EMITIDA' },
+    { key: 'EM_VIAGEM', label: 'EM_VIAGEM' },
+    { key: 'CONCLUIDO', label: 'CONCLUIDO' },
+    { key: 'INDEFERIDO', label: 'INDEFERIDO' },
+    { key: 'CANCELADO', label: 'CANCELADO' },
+  ];
+
+  return (
+    <ComponentBlock
+      title="StatusTag"
+      description="Tag pill com dot indicator para status de solicitação. O mapeamento status → cor/label vive dentro do componente (statusMap). Não tem variantes — sempre rende a tradução PT-BR do enum StatusSolicitacao."
+      filePath="src/shared/components/status-tag/StatusTag.tsx"
+    >
+      <PreviewBox>
+        <div className="flex flex-wrap gap-2">
+          {statuses.map((s) => (
+            <StatusTag key={s.key} status={s.key as never} />
+          ))}
+        </div>
+      </PreviewBox>
+
+      <PropsTable>
+        <PropRow name="status" type="StatusSolicitacao" required description="Enum vindo de @/core/models. Mapeia automaticamente para cor + label PT-BR." />
+      </PropsTable>
+    </ComponentBlock>
+  );
+}
+
+/* -------------------- EmptyState -------------------- */
+
+function EmptyStateDemo() {
+  return (
+    <ComponentBlock
+      title="EmptyState"
+      description="Placeholder centralizado para listas vazias ou resultados de busca sem matches. Ícone grande (48px, muted), título, descrição opcional e action opcional (geralmente um botão de criar)."
+      filePath="src/shared/components/empty-state/EmptyState.tsx"
+    >
+      <PreviewBox>
+        <div style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}>
+          <EmptyState
+            icon={<Search />}
+            title="Nenhum paciente encontrado"
+            description="Tente ajustar os filtros ou cadastrar um novo paciente."
+            action={
+              <button className="tfd-btn tfd-btn-primary tfd-btn--sm">
+                <Plus size={14} /> Novo paciente
+              </button>
+            }
+          />
+        </div>
+      </PreviewBox>
+
+      <PropsTable>
+        <PropRow name="icon" type="ReactNode" required description="Ícone lucide; o componente força tamanho 48px." />
+        <PropRow name="title" type="string" required description="Título principal." />
+        <PropRow name="description" type="string" description="Texto explicativo, max-w-sm." />
+        <PropRow name="action" type="ReactNode" description="Botão de CTA (geralmente 'Criar primeiro X')." />
+      </PropsTable>
+    </ComponentBlock>
+  );
+}
+
+/* -------------------- IdadeBadge -------------------- */
+
+function IdadeBadgeDemo() {
+  return (
+    <ComponentBlock
+      title="IdadeBadge"
+      description="Pill cinza pequena (10px, height 18) que calcula a idade a partir de uma data de nascimento. Retorna null se a data for inválida/null. Use ao lado do nome do paciente."
+      filePath="src/shared/components/idade-badge.tsx"
+    >
+      <PreviewBox>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[14px] font-medium">Maria Silva</span>
+          <IdadeBadge dataNascimento="1985-03-12" />
+          <span className="mx-3" style={{ color: 'var(--tfd-text-muted)' }}>|</span>
+          <span className="text-[14px] font-medium">João Pereira</span>
+          <IdadeBadge dataNascimento="2018-07-22" />
+        </div>
+      </PreviewBox>
+
+      <PropsTable>
+        <PropRow name="dataNascimento" type="string | Date | null" required description="Data de nascimento — aceita ISO string ou Date. Null retorna null." />
+        <PropRow name="className" type="string" description="Classes extras no span." />
+      </PropsTable>
+    </ComponentBlock>
+  );
+}
+
+/* -------------------- Toast -------------------- */
+
+function ToastDemo() {
+  return (
+    <ComponentBlock
+      title="Toast / ToastProvider / useToast"
+      description="Sistema de notificações empilhadas no canto superior direito. ToastProvider deve envolver a árvore (já vive no layout). Cada toast tem 4s de duração, slide-in animado, border-left colorido por tipo e botão de fechar. Hook useToast() expõe success/error/warning/info."
+      filePath="src/shared/components/toast/Toast.tsx"
+    >
+      <PreviewBox>
+        <div className="flex flex-col gap-2">
+          {(['success', 'error', 'warning', 'info'] as const).map((type) => {
+            const styles = {
+              success: { color: 'var(--tfd-status-success)', icon: <CheckCircle2 size={18} />, title: 'Sucesso', desc: 'Solicitação aprovada com sucesso.' },
+              error:   { color: 'var(--tfd-status-danger)',  icon: <XCircle size={18} />,      title: 'Erro',    desc: 'Falha ao salvar. Tente novamente.' },
+              warning: { color: 'var(--tfd-status-warning)', icon: <AlertTriangle size={18} />,title: 'Atenção', desc: 'Há campos com exigência pendente.' },
+              info:    { color: 'var(--tfd-status-info)',    icon: <Info size={18} />,         title: 'Aviso',   desc: 'Novo painel de regulação disponível.' },
+            }[type];
+            return (
+              <div
+                key={type}
+                className="flex items-start gap-3 px-4 py-3 rounded-xl"
+                style={{
+                  backgroundColor: 'var(--tfd-surface-card)',
+                  border: `1px solid ${styles.color}`,
+                  borderLeft: `4px solid ${styles.color}`,
+                  maxWidth: 420,
+                }}
+              >
+                <span style={{ color: styles.color }}>{styles.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold">{styles.title}</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--tfd-text-secondary)' }}>{styles.desc}</p>
+                </div>
+                <button style={{ color: 'var(--tfd-text-muted)' }}>
+                  <X size={14} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </PreviewBox>
+
+      <PropsTable>
+        <PropRow name="useToast()" type="hook" description="Retorna { toast, success, error, warning, info }." />
+        <PropRow name="success(title, desc?)" type="(string, string?) => void" description="Dispara toast verde." />
+        <PropRow name="error(title, desc?)" type="(string, string?) => void" description="Dispara toast vermelho." />
+        <PropRow name="warning(title, desc?)" type="(string, string?) => void" description="Dispara toast amarelo." />
+        <PropRow name="info(title, desc?)" type="(string, string?) => void" description="Dispara toast azul." />
+      </PropsTable>
+
+      <CodeBlock code={`import { useToast } from '@/shared/components/toast/Toast';
+
+const toast = useToast();
+
+await save();
+toast.success('Paciente salvo', 'Maria Silva foi atualizada.');`} />
+    </ComponentBlock>
+  );
+}
+
+/* -------------------- Pagination -------------------- */
+
+function PaginationDemo() {
+  const [page, setPage] = useState(3);
+  const [pageSize, setPageSize] = useState(25);
+
+  return (
+    <ComponentBlock
+      title="Pagination"
+      description="Paginação estilo Supabase — pill horizontal com setas, input numérico para a página atual, seletor de page size opcional e contador total à direita. Não renderiza nada quando total === 0."
+      filePath="src/shared/components/pagination/Pagination.tsx"
+    >
+      <PreviewBox>
+        <div style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8, overflow: 'hidden' }}>
+          <div className="px-4 py-3 text-[13px]" style={{ color: 'var(--tfd-text-muted)' }}>
+            (Conteúdo da tabela acima…)
+          </div>
+          <Pagination
+            total={1245}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            recordLabel="pacientes"
+          />
+        </div>
+      </PreviewBox>
+
+      <PropsTable>
+        <PropRow name="total" type="number" required description="Total de registros. Se 0, retorna null." />
+        <PropRow name="page" type="number" required description="Página atual (1-based)." />
+        <PropRow name="pageSize" type="number" required description="Itens por página." />
+        <PropRow name="onPageChange" type="(page: number) => void" required description="Callback ao mudar página." />
+        <PropRow name="onPageSizeChange" type="(size: number) => void" description="Se informado, mostra dropdown de page size." />
+        <PropRow name="pageSizeOptions" type="number[]" defaultValue="[10, 25, 50, 100, 200]" description="Opções do dropdown." />
+        <PropRow name="recordLabel" type="string" defaultValue="'registros'" description="Label do contador total." />
+      </PropsTable>
+    </ComponentBlock>
+  );
+}
+
+/* -------------------- SortTh -------------------- */
+
+function SortThDemo() {
+  const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'nome', dir: 'asc' });
+  const rows = useMemo(() => {
+    const base = [
+      { nome: 'Maria Silva', idade: 38 },
+      { nome: 'João Pereira', idade: 52 },
+      { nome: 'Ana Souza', idade: 27 },
+    ];
+    if (!sort.dir) return base;
+    return [...base].sort((a, b) => {
+      const cmp = compareValues(a[sort.field as keyof typeof a], b[sort.field as keyof typeof b]);
+      return sort.dir === 'asc' ? cmp : -cmp;
+    });
+  }, [sort]);
+
+  return (
+    <ComponentBlock
+      title="SortTh + nextSort + compareValues"
+      description="Header de coluna ordenável para tabelas. Ciclo: null → asc → desc → null. Use nextSort(field, prev) para calcular o próximo estado e compareValues(a, b) como comparator default (lida com numbers, strings e null)."
+      filePath="src/shared/components/sort-th/SortTh.tsx"
+    >
+      <PreviewBox>
+        <div className="tfd-table-wrap">
+          <table className="tfd-table">
+            <thead>
+              <tr>
+                <SortTh
+                  label="Nome"
+                  field="nome"
+                  currentField={sort.field}
+                  currentDir={sort.dir}
+                  onToggle={(f) => setSort(nextSort(f, sort))}
+                />
+                <SortTh
+                  label="Idade"
+                  field="idade"
+                  currentField={sort.field}
+                  currentDir={sort.dir}
+                  onToggle={(f) => setSort(nextSort(f, sort))}
+                  align="right"
+                />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.nome}>
+                  <td>{r.nome}</td>
+                  <td style={{ textAlign: 'right' }}>{r.idade}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </PreviewBox>
+
+      <PropsTable>
+        <PropRow name="label" type="string" required description="Texto exibido no header (uppercase tracked)." />
+        <PropRow name="field" type="string" required description="Identificador da coluna." />
+        <PropRow name="currentField" type="string" required description="Campo atualmente ordenado (do state externo)." />
+        <PropRow name="currentDir" type="'asc' | 'desc' | null" required description="Direção atual." />
+        <PropRow name="onToggle" type="(field: string) => void" required description="Disparado no click; chame nextSort() pra obter o próximo estado." />
+        <PropRow name="align" type="'left' | 'right'" defaultValue="'left'" description="Alinhamento do conteúdo." />
+      </PropsTable>
+    </ComponentBlock>
+  );
+}
+
+/* -------------------- Skeleton -------------------- */
+
+function SkeletonDemo() {
+  return (
+    <ComponentBlock
+      title="Skeletons (Table / CardList / Form / Kpi / DetailPage)"
+      description="Primitivas de skeleton para usar no carregamento inicial de dados (no lugar de Loader2). Estrutura espelhada da UI real: TableSkeleton replica colunas, CardListSkeleton replica cards, KpiBarSkeleton replica StatsRow. Use Loader2 apenas em ações inline (submits)."
+      filePath="src/shared/components/skeleton/index.tsx"
+    >
+      <PreviewBox>
+        <div className="grid grid-cols-1 gap-4">
+          <div>
+            <div className="tfd-label mb-2">TableSkeleton</div>
+            <TableSkeleton rows={3} columns={4} />
+          </div>
+          <div>
+            <div className="tfd-label mb-2">KpiBarSkeleton</div>
+            <KpiBarSkeleton items={4} />
+          </div>
+          <div>
+            <div className="tfd-label mb-2">CardListSkeleton</div>
+            <CardListSkeleton rows={2} />
+          </div>
+          <div>
+            <div className="tfd-label mb-2">FormSkeleton</div>
+            <FormSkeleton fields={3} />
+          </div>
+        </div>
+      </PreviewBox>
+
+      <div className="tfd-table-wrap mt-4">
+        <table className="tfd-table">
+          <thead>
+            <tr>
+              <th>Componente</th>
+              <th>Props</th>
+              <th>Quando usar</th>
+            </tr>
+          </thead>
+          <tbody>
+            <TokenRow token="TableSkeleton" value="{ rows?, columns?, showHeader? }" description="Tabela vazia em loading inicial" />
+            <TokenRow token="TableRowsSkeleton" value="{ rows?, columns?, lastColRight? }" description="Linhas dentro de um <tbody> existente" />
+            <TokenRow token="CardListSkeleton" value="{ rows? }" description="Listagem em formato de cards (mobile / timeline)" />
+            <TokenRow token="KpiBarSkeleton" value="{ items? }" description="Loading do StatsRow" />
+            <TokenRow token="DetailHeaderSkeleton" value="—" description="Header de página de detalhe (paciente, regional)" />
+            <TokenRow token="TabsSkeleton" value="{ tabs? }" description="Linha de tabs em loading" />
+            <TokenRow token="SectionSkeleton" value="{ rows? }" description="Card de seção (label + valor)" />
+            <TokenRow token="DetailPageSkeleton" value="{ withKpis?, tabs? }" description="Página de detalhe completa (combina todos acima)" />
+            <TokenRow token="FormSkeleton" value="{ fields? }" description="Form em loading (label + input)" />
+          </tbody>
+        </table>
+      </div>
+    </ComponentBlock>
+  );
+}
+

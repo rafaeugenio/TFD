@@ -2,8 +2,10 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, FileText, Paperclip, Sparkles, Stethoscope, UserCircle2, Users, X } from 'lucide-react';
+import { AlertTriangle, FileText, Paperclip, Sparkles, Stethoscope, UserCircle2, Users, X, Gavel, BookOpen } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
+import FormSection from '@/shared/components/drawer/FormSection';
+import AnexosUploadField, { type AnexoLocal } from '@/shared/components/anexos-upload-field/AnexosUploadField';
 import Autocomplete, { type AutocompleteOption } from '@/shared/components/autocomplete/Autocomplete';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
@@ -54,13 +56,14 @@ interface Props {
 }
 
 export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar }: Props) {
-  const { addParecer, editarParecer, getById } = useFluxoV2State();
+  const { addParecer, editarParecer, getById, addAnexos } = useFluxoV2State();
   const toast = useToast();
   const solicitacao = getById(solicitacaoId);
   const isEdicao = !!editar;
   const { user: currentUser, loading: loadingUser } = useCurrentUser();
   const { isAdmin } = usePermissions();
 
+  const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
   const [decisao, setDecisao] = useState<DecisaoParecer>('deferido');
   // `tipo` ainda é gravado no ParecerMock pra retrocompat — fixado em
   // 'tfd_completo' já que a UI de seleção foi removida (só temos 2 templates).
@@ -190,6 +193,10 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
       addParecer(solicitacaoId, payload);
       toast.success('Parecer registrado', `Decisão: ${decisao}.`);
     }
+    if (anexos.length > 0) {
+      addAnexos(solicitacaoId, anexos, 'parecer');
+    }
+    setAnexos([]);
     onClose();
   }
 
@@ -234,7 +241,8 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
       {solicitacao && <ResumoSolicitacaoCard sol={solicitacao} />}
 
       {/* T2.AH — Decisão (segmented control com 2 opções) */}
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+      <FormSection title="Decisão" icon={<Gavel size={12} />} tone="primary">
+      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         Decisão
       </label>
       <div className="grid grid-cols-2 gap-2 mb-4">
@@ -264,7 +272,7 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
           A escolha aqui muda o parágrafo inserido pelo "Inserir template". */}
       {exigeVariante && (
         <>
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+          <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
             Situação do serviço no Maranhão
           </label>
           <select
@@ -308,8 +316,11 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
         </button>
       </div>
 
-      {/* T2.AI — Versão CID (pills) */}
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+      </FormSection>
+
+      {/* T2.AI — Versão CID + CIDs (autocomplete) */}
+      <FormSection title="Diagnóstico (CIDs)" icon={<BookOpen size={12} />} tone="info">
+      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         Versão CID
       </label>
       <div
@@ -347,7 +358,7 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
           o diagnóstico manualmente quando precisar variar.
           Wrapper [&_input] padroniza o input do autocomplete pra casar com os
           selects do drawer (mesma fonte 13px, padding 8/12, raio 8, borda). */}
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         CID principal
       </label>
       <div className={cidWrapperClass + ' mb-1'}>
@@ -375,7 +386,7 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
         className="mb-5"
       />
 
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         CID secundário <span style={{ color: '#94A3B8', fontWeight: 400 }}>(opcional)</span>
       </label>
       <div className={cidWrapperClass + ' mb-1'}>
@@ -402,8 +413,11 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
         className="mb-6"
       />
 
-      {/* Observação */}
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2 mt-6" style={{ color: '#6B7280' }}>
+      </FormSection>
+
+      {/* Parecer + Médico */}
+      <FormSection title="Parecer" icon={<FileText size={12} />} tone="success">
+      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         Observação
       </label>
       <textarea
@@ -416,7 +430,7 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
       />
 
       {/* Médico — preenchido automaticamente a partir do usuário logado */}
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         Médico responsável
       </label>
       <div
@@ -484,6 +498,9 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
           </span>
         </div>
       )}
+      </FormSection>
+
+      <AnexosUploadField value={anexos} onChange={setAnexos} />
     </Drawer>
   );
 }
@@ -591,8 +608,17 @@ function ResumoSolicitacaoCard({
           </div>
           <ul className="flex flex-col gap-0.5 text-[12px]" style={{ color: '#334155' }}>
             {sol.acompanhantes.map((a) => (
-              <li key={a.id}>
-                <span style={{ fontWeight: 500 }}>{a.nome}</span>{' '}
+              <li key={a.id} className="flex items-center gap-1.5">
+                <span style={{ fontWeight: 500 }}>{a.nome}</span>
+                {a.doador && (
+                  <span
+                    title="Doador (órgão/tecido) — conta como paciente no BPA"
+                    className="inline-flex items-center text-[10px] font-semibold"
+                    style={{ background: '#FFE4E6', color: '#9F1239', borderRadius: 3, padding: '1px 5px', whiteSpace: 'nowrap' }}
+                  >
+                    Doador
+                  </span>
+                )}
                 <span style={{ color: '#64748B' }}>· {a.vinculo} · {calcularIdade(a.dataNascimento)} anos</span>
               </li>
             ))}

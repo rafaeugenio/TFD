@@ -11,7 +11,7 @@ import {
 } from '@/app/relatorios/_shared/ReportShell';
 import { ReportTable, type ReportColumn } from '@/app/relatorios/_shared/ReportTable';
 import { fmtBRL, fmtDataBR, valorPorExtenso } from '@/app/relatorios/_shared/format';
-import { TITULAR_VINCULO_LABEL, type TitularVinculo } from '@/services/dados-bancarios.service';
+// Vínculo do titular agora é texto livre vindo da tabela auxiliar `vinculo`.
 
 interface PacienteRow {
   nome_completo: string;
@@ -62,7 +62,7 @@ interface AdicionalRow {
 interface BancarioRow {
   banco: string; agencia: string; conta: string; tipo_conta: string | null;
   nome_titular: string; cpf_titular: string;
-  titular_vinculo: TitularVinculo | null;
+  titular_vinculo: string | null;
   pix_tipo: string | null; pix_chave: string | null;
 }
 
@@ -97,13 +97,30 @@ export default function RelatorioTfdPage({ params }: { params: Promise<{ id: str
         supabase.from('viagens').select('id, tipo, modal, numero_bilhete, origem_cidade, origem_uf, destino_cidade, destino_uf, data_embarque_prevista, valor, valor_reembolso, ativa').eq('solicitacao_id', id).order('data_embarque_prevista', { ascending: true }),
         supabase.from('ajudas_custo').select('id, tipo, data_inicio, data_fim, dias_elegiveis, valor_total, valor_reembolso, ativa').eq('solicitacao_id', id).order('data_inicio', { ascending: true }),
         supabase.from('adicionais').select('id, descricao, data, valor').eq('solicitacao_id', id),
-        supabase.from('dados_bancarios').select('banco, agencia, conta, tipo_conta, nome_titular, cpf_titular, titular_vinculo, pix_tipo, pix_chave').eq('solicitacao_id', id).maybeSingle(),
+        // Snapshot de dados bancários congelado na solicitação (modelo pool por paciente, migration 00056).
+        supabase.from('solicitacoes').select('snapshot_banco, snapshot_agencia, snapshot_conta, snapshot_tipo_conta, snapshot_nome_titular, snapshot_cpf_titular, snapshot_titular_vinculo, snapshot_pix_tipo, snapshot_pix_chave').eq('id', id).maybeSingle(),
       ]);
       if (cancel) return;
       setViagens((v as unknown as ViagemRow[]) ?? []);
       setAjudas((a as unknown as AjudaRow[]) ?? []);
       setAdicionais((ad as unknown as AdicionalRow[]) ?? []);
-      setBanc((b as unknown as BancarioRow) ?? null);
+      // Mapeia snapshot_* para o formato BancarioRow esperado pelo restante da página.
+      const snap = b as unknown as Record<string, unknown> | null;
+      setBanc(
+        snap && snap.snapshot_banco
+          ? ({
+              banco: snap.snapshot_banco,
+              agencia: snap.snapshot_agencia,
+              conta: snap.snapshot_conta,
+              tipo_conta: snap.snapshot_tipo_conta,
+              nome_titular: snap.snapshot_nome_titular,
+              cpf_titular: snap.snapshot_cpf_titular,
+              titular_vinculo: snap.snapshot_titular_vinculo,
+              pix_tipo: snap.snapshot_pix_tipo,
+              pix_chave: snap.snapshot_pix_chave,
+            } as unknown as BancarioRow)
+          : null,
+      );
       setLoading(false);
     })();
     return () => { cancel = true; };
@@ -245,7 +262,7 @@ export default function RelatorioTfdPage({ params }: { params: Promise<{ id: str
             <Field label="Conta" mono>{banc.conta} {banc.tipo_conta && `(${banc.tipo_conta === 'POUPANCA' ? 'Poupança' : 'Corrente'})`}</Field>
             <Field label="Titular">{banc.nome_titular}</Field>
             <Field label="CPF do titular" mono>{banc.cpf_titular}</Field>
-            <Field label="Vínculo">{banc.titular_vinculo ? TITULAR_VINCULO_LABEL[banc.titular_vinculo] : '—'}</Field>
+            <Field label="Vínculo">{banc.titular_vinculo || '—'}</Field>
             {banc.pix_chave && (
               <Field label={`PIX (${banc.pix_tipo})`} mono>{banc.pix_chave}</Field>
             )}

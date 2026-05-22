@@ -600,6 +600,7 @@ export default function RegulacaoTab({ s }: Props) {
         carimboAtual={s.carimboRegulacao}
         observacaoAtual={s.carimboObservacao}
         outrosInfoAtual={s.carimboOutrosInfo}
+        solicitacaoId={s.id}
         onSalvar={(c, obs, info) => {
           setCarimbo(s.id, c, obs, info);
           toast.success('Carimbo aplicado', CARIMBO_VISUAL[c]?.label ?? c);

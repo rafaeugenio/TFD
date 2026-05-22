@@ -10,8 +10,14 @@ import {
   Trash2,
   Upload,
   UserPlus,
+  User,
+  Users,
+  CalendarCheck,
+  Stethoscope,
+  Hash,
 } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
+import FormSection from '@/shared/components/drawer/FormSection';
 import { useToast } from '@/shared/components/toast/Toast';
 import IdadeBadge from '@/shared/components/idade-badge';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
@@ -386,7 +392,7 @@ export default function NewEditarSolicitacaoDrawer({
         onClose={onClose}
         title="Editar solicitação"
         subtitle={`Atualize os dados da solicitação ${solicitacao.numero}.`}
-        width="560px"
+        width="min(680px, 95vw)"
         footer={
           <>
             <button type="button" className="tfd-btn tfd-btn-ghost" onClick={onClose}>
@@ -405,16 +411,13 @@ export default function NewEditarSolicitacaoDrawer({
       >
         {snapshotPaciente && <SnapshotPaciente data={snapshotPaciente} />}
 
-        <div className="flex flex-col gap-6">
-          {/* ─── Paciente ─────────────────────────────────────────────── */}
-          <section>
-            <div className="flex items-center justify-between mb-2">
-              <h3
-                className="text-[12px] font-semibold uppercase tracking-wider"
-                style={{ color: '#6B7280' }}
-              >
-                Paciente
-              </h3>
+        <div className="flex flex-col">
+          {/* ─── Paciente e Acompanhantes (unificados) ─────────────────── */}
+          <FormSection
+            title="Paciente e Acompanhantes"
+            icon={<Users size={12} />}
+            tone="primary"
+            action={
               <a
                 href="/pacientes"
                 target="_blank"
@@ -425,7 +428,8 @@ export default function NewEditarSolicitacaoDrawer({
                 <ExternalLink size={11} />
                 Cadastrar novo paciente
               </a>
-            </div>
+            }
+          >
             <select
               value={pacienteId}
               onChange={(e) => setPacienteId(e.target.value)}
@@ -479,29 +483,26 @@ export default function NewEditarSolicitacaoDrawer({
                 </div>
               </div>
             )}
-          </section>
 
-          {/* ─── Acompanhantes ────────────────────────────────────────── */}
-          <section>
-            <div className="flex items-center justify-between mb-2">
-              <h3
-                className="text-[12px] font-semibold uppercase tracking-wider"
-                style={{ color: '#6B7280' }}
-              >
-                Acompanhantes
-              </h3>
-              {pacienteId && !novoAcompForm && (
-                <button
-                  type="button"
-                  onClick={() => setNovoAcompForm(true)}
-                  className="text-[11px] inline-flex items-center gap-1 hover:underline"
-                  style={{ color: 'var(--tfd-blue)' }}
-                >
-                  <UserPlus size={11} />
-                  Novo acompanhante
-                </button>
-              )}
-            </div>
+            {/* Acompanhantes — sub-bloco dentro do agrupamento Paciente */}
+            <div className="mt-4 pt-3" style={{ borderTop: '1px dashed var(--tfd-surface-border)' }}>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[12px] font-semibold inline-flex items-center gap-1.5" style={{ color: 'var(--tfd-text-primary)' }}>
+                  <Users size={12} style={{ color: '#64748B' }} />
+                  Acompanhantes
+                </p>
+                {pacienteId && !novoAcompForm && (
+                  <button
+                    type="button"
+                    onClick={() => setNovoAcompForm(true)}
+                    className="text-[11px] inline-flex items-center gap-1 hover:underline"
+                    style={{ color: 'var(--tfd-blue)' }}
+                  >
+                    <UserPlus size={11} />
+                    Novo acompanhante
+                  </button>
+                )}
+              </div>
             {!pacienteId ? (
               <p
                 className="px-3 py-3 text-[12px] text-center"
@@ -674,7 +675,7 @@ export default function NewEditarSolicitacaoDrawer({
 
                 <div className="grid grid-cols-2 gap-3">
                   <LookupSelect
-                    categoria="vinculo_acompanhante"
+                    categoria="vinculo"
                     label="Vínculo"
                     value={novoAcompVinculo}
                     onChange={setNovoAcompVinculo}
@@ -726,17 +727,15 @@ export default function NewEditarSolicitacaoDrawer({
                 </div>
               </div>
             )}
-          </section>
+            </div>
+          </FormSection>
 
           {/* ─── Agendamento (abre drawer dedicado) ──────────────────── */}
-          <section>
-            <div className="flex items-center justify-between mb-2">
-              <h3
-                className="text-[12px] font-semibold uppercase tracking-wider"
-                style={{ color: '#6B7280' }}
-              >
-                Agendamento
-              </h3>
+          <FormSection
+            title="Agendamento"
+            icon={<CalendarCheck size={12} />}
+            tone="success"
+            action={
               <button
                 type="button"
                 onClick={() => setAgendamentoOpen(true)}
@@ -746,7 +745,8 @@ export default function NewEditarSolicitacaoDrawer({
                 <Pencil size={11} />
                 {agendamentoAtual ? 'Editar agendamento' : 'Registrar agendamento'}
               </button>
-            </div>
+            }
+          >
             {agendamentoAtual ? (
               <div
                 className="px-3 py-2.5 text-[12.5px]"
@@ -775,16 +775,13 @@ export default function NewEditarSolicitacaoDrawer({
                 Sem agendamento confirmado. Clique em "Registrar agendamento" para criar.
               </p>
             )}
-          </section>
+          </FormSection>
 
           {/* ─── Data do laudo ───────────────────────────────────────── */}
-          <section>
-            <h3
-              className="text-[12px] font-semibold uppercase tracking-wider mb-2"
-              style={{ color: '#6B7280' }}
-            >
+          <FormSection title="Laudo médico" icon={<Stethoscope size={12} />} tone="warning">
+            <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
               Data do laudo
-            </h3>
+            </label>
             <input
               type="date"
               value={dataLaudo}
@@ -792,19 +789,10 @@ export default function NewEditarSolicitacaoDrawer({
               className="px-3 py-2 text-[13px]"
               style={inputStyle}
             />
-          </section>
+          </FormSection>
 
           {/* ─── Processo SEI ─────────────────────────────────────────── */}
-          <section>
-            <h3
-              className="text-[12px] font-semibold uppercase tracking-wider mb-2"
-              style={{ color: '#6B7280' }}
-            >
-              Processo SEI{' '}
-              <span className="font-normal normal-case" style={{ color: '#94A3B8' }}>
-                (opcional)
-              </span>
-            </h3>
+          <FormSection title="Processo SEI" icon={<Hash size={12} />} tone="default" hint="Opcional — informe se o processo já tem número SEI.">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <input
                 value={numeroSEI}
@@ -830,20 +818,15 @@ export default function NewEditarSolicitacaoDrawer({
                 URL inválida — comece com http:// ou https://
               </p>
             )}
-          </section>
+          </FormSection>
 
           {/* ─── Anexos ──────────────────────────────────────────────── */}
-          <section>
-            <div className="flex items-center justify-between mb-2">
-              <h3
-                className="text-[12px] font-semibold uppercase tracking-wider"
-                style={{ color: '#6B7280' }}
-              >
-                Documentos anexos{' '}
-                <span className="font-normal normal-case" style={{ color: '#94A3B8' }}>
-                  (opcional, múltiplos arquivos)
-                </span>
-              </h3>
+          <FormSection
+            title="Documentos anexos"
+            icon={<Paperclip size={12} />}
+            tone="info"
+            hint="Opcional — múltiplos arquivos permitidos."
+            action={
               <a
                 href="/sistema/configuracoes"
                 target="_blank"
@@ -854,8 +837,8 @@ export default function NewEditarSolicitacaoDrawer({
                 <ExternalLink size={11} />
                 Cadastrar novo tipo
               </a>
-            </div>
-
+            }
+          >
             <input
               ref={fileInputRef}
               type="file"
@@ -943,7 +926,7 @@ export default function NewEditarSolicitacaoDrawer({
                 ))}
               </ul>
             )}
-          </section>
+          </FormSection>
         </div>
       </Drawer>
 

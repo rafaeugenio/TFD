@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, User, Route, Ticket } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
+import FormSection from '@/shared/components/drawer/FormSection';
+import AnexosUploadField, { type AnexoLocal } from '@/shared/components/anexos-upload-field/AnexosUploadField';
 import UfCidadeSelect from '@/shared/components/uf-cidade-select/UfCidadeSelect';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
@@ -63,7 +65,8 @@ interface Props {
 }
 
 export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar }: Props) {
-  const { addViagem, addViagensIdaEVolta, editarViagem, getById } = useFluxoV2State();
+  const { addViagem, addViagensIdaEVolta, editarViagem, getById, addAnexos } = useFluxoV2State();
+  const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
   const toast = useToast();
   const isEdicao = !!editar;
   const firstInputRef = useRef<HTMLSelectElement>(null);
@@ -372,6 +375,10 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       });
       toast.success('Passagem registrada', `${origemStr} → ${destinoStr}`);
     }
+    if (anexos.length > 0) {
+      addAnexos(solicitacaoId, anexos, 'passagem');
+      setAnexos([]);
+    }
     onClose();
   }
 
@@ -407,7 +414,8 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       {snapshotPaciente && <SnapshotPaciente data={snapshotPaciente} />}
 
       {/* Beneficiário */}
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+      <FormSection title="Beneficiário" icon={<User size={12} />} tone="primary">
+      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         Beneficiário
       </label>
       <select
@@ -424,7 +432,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         )}
         {solicitacao?.acompanhantes.map((a) => (
           <option key={a.id} value={`a:${a.id}`}>
-            Acompanhante — {a.nome} ({calcularIdade(a.dataNascimento)} anos) — {a.vinculo}
+            {a.doador ? "Acompanhante Doador" : "Acompanhante"} — {a.nome} ({calcularIdade(a.dataNascimento)} anos) — {a.vinculo}
           </option>
         ))}
       </select>
@@ -485,8 +493,10 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
           </select>
         </div>
       </div>
+      </FormSection>
 
       {/* Origem / Destino: aeroporto (aéreo) ou UF+cidade (terrestre/fluvial). */}
+      <FormSection title="Trajeto" icon={<Route size={12} />} tone="info">
       {isAereo ? (
         <>
           {!loadingAeroportos && (aeroportosErro || aeroportos.length === 0) && (
@@ -513,7 +523,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
               )}
             </div>
           )}
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+          <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
             Aeroporto de origem <span style={{ color: '#DC2626' }}>*</span>
           </label>
           <select
@@ -538,7 +548,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
             ))}
           </select>
 
-          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+          <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
             Aeroporto de destino <span style={{ color: '#DC2626' }}>*</span>
           </label>
           <select
@@ -565,7 +575,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         </>
       ) : (
         <>
-          <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--tfd-text-primary)' }}>Origem</h3>
+          <p className="text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>Origem</p>
           <UfCidadeSelect
             ufLabel="UF"
             cidadeLabel="Cidade"
@@ -575,7 +585,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
             onCidadeChange={setOrigemCidade}
             required
           />
-          <h3 className="text-sm font-semibold mb-3 mt-4" style={{ color: 'var(--tfd-text-primary)' }}>Destino</h3>
+          <p className="text-[12px] font-semibold mb-2 mt-4" style={{ color: '#6B7280' }}>Destino</p>
           <UfCidadeSelect
             ufLabel="UF"
             cidadeLabel="Cidade"
@@ -589,7 +599,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       )}
 
       {/* Distância (calculada) */}
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         Distância ({unidade})
       </label>
       <div className="relative mb-1">
@@ -659,12 +669,15 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         </p>
       )}
 
-      {/* Data / Valor */}
+      </FormSection>
+
+      {/* Datas, valor e companhia */}
+      <FormSection title="Detalhes da passagem" icon={<Ticket size={12} />} tone="success">
       {isIdaEVolta ? (
         <>
           <div className="grid grid-cols-2 gap-3 mb-2">
             <div>
-              <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+              <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
                 Data ida
               </label>
               <input
@@ -676,7 +689,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
               />
             </div>
             <div>
-              <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+              <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
                 Data volta
               </label>
               <input
@@ -689,7 +702,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
             </div>
           </div>
           <div className="mb-4">
-            <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+            <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
               Valor total da ida e volta (R$)
             </label>
             <input
@@ -709,7 +722,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       ) : (
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div>
-            <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+            <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
               Data
             </label>
             <input
@@ -721,7 +734,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
             />
           </div>
           <div>
-            <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+            <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
               Valor (R$)
             </label>
             <input
@@ -737,7 +750,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       )}
 
       {/* Companhia */}
-      <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         Companhia de transporte
       </label>
       <select
@@ -758,9 +771,9 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         ))}
       </select>
 
-      <p className="text-[11px]" style={{ color: '#9CA3AF' }}>
-        Anexo do bilhete poderá ser adicionado após salvar.
-      </p>
+      </FormSection>
+
+      <AnexosUploadField value={anexos} onChange={setAnexos} hint="Bilhete, voucher ou comprovante de embarque (opcional)." />
     </Drawer>
   );
 }

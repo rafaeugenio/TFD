@@ -18,7 +18,13 @@ import {
 import { DetailPageSkeleton, CardListSkeleton } from '@/shared/components/skeleton';
 
 import StatusTag from '@/shared/components/status-tag/StatusTag';
-import { buscarUnidadeSaude, listarSolicitacoesPorUnidade } from '@/services/unidades-saude.service';
+import {
+  buscarUnidadeSaude,
+  listarSolicitacoesPorUnidade,
+  VINCULO_SOLICITACAO_UNIDADE_LABEL,
+  type SolicitacaoVinculadaUnidade,
+  type VinculoSolicitacaoUnidade,
+} from '@/services/unidades-saude.service';
 import UnidadeDrawer from '../_UnidadeDrawer';
 import { formatDate } from '@/shared/pipes/formatters';
 import type { StatusSolicitacao } from '@/core/models';
@@ -40,7 +46,7 @@ function UnidadeSaudeDetalheInner({ id }: { id: string }) {
   const router = useRouter();
 
   const [unidade, setUnidade] = useState<Record<string, unknown> | null>(null);
-  const [solicitacoes, setSolicitacoes] = useState<Record<string, unknown>[]>([]);
+  const [solicitacoes, setSolicitacoes] = useState<SolicitacaoVinculadaUnidade[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingSol, setLoadingSol] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
@@ -55,18 +61,7 @@ function UnidadeSaudeDetalheInner({ id }: { id: string }) {
 
       setLoadingSol(true);
       const solResult = await listarSolicitacoesPorUnidade(id);
-      if (solResult.data) {
-        const seen = new Set<string>();
-        const unique: Record<string, unknown>[] = [];
-        for (const row of solResult.data as Record<string, unknown>[]) {
-          const sol = row.solicitacoes as Record<string, unknown> | null;
-          if (sol && !seen.has(sol.id as string)) {
-            seen.add(sol.id as string);
-            unique.push(sol);
-          }
-        }
-        setSolicitacoes(unique);
-      }
+      if (solResult.data) setSolicitacoes(solResult.data);
       setLoadingSol(false);
     }
     load();
@@ -109,14 +104,16 @@ function UnidadeSaudeDetalheInner({ id }: { id: string }) {
   const cidadeFull = municipio ? `${municipio} — ${uf}` : null;
 
   const totalSolicitacoes = solicitacoes.length;
-  const emAndamento = solicitacoes.filter((s) => {
+  const emAndamento = solicitacoes.filter(({ solicitacao: s }) => {
     const st = s.status as string;
     return !['CONCLUIDO', 'CANCELADO', 'ENCERRADO'].includes(st);
   }).length;
-  const concluidas = solicitacoes.filter((s) => {
+  const concluidas = solicitacoes.filter(({ solicitacao: s }) => {
     const st = s.status as string;
     return st === 'CONCLUIDO' || st === 'ENCERRADO';
   }).length;
+  const totalOrigemLaudo = solicitacoes.filter((v) => v.vinculos.includes('origem_laudo')).length;
+  const totalDestinoAgendamento = solicitacoes.filter((v) => v.vinculos.includes('destino_agendamento')).length;
 
   return (
     <div>
@@ -235,6 +232,8 @@ function UnidadeSaudeDetalheInner({ id }: { id: string }) {
       <KpiBar
         items={[
           { label: 'Total de Solicitações', value: loadingSol ? '...' : String(totalSolicitacoes) },
+          { label: 'Origem do Laudo',       value: loadingSol ? '...' : String(totalOrigemLaudo) },
+          { label: 'Destino Agendamento',   value: loadingSol ? '...' : String(totalDestinoAgendamento) },
           { label: 'Em Andamento',          value: loadingSol ? '...' : String(emAndamento) },
           { label: 'Concluídas',            value: loadingSol ? '...' : String(concluidas) },
         ]}
@@ -261,7 +260,7 @@ function UnidadeSaudeDetalheInner({ id }: { id: string }) {
             </p>
           ) : (
             <div className="space-y-2">
-              {solicitacoes.map((sol) => {
+              {solicitacoes.map(({ solicitacao: sol, vinculos }) => {
                 const status = sol.status as StatusSolicitacao;
                 const numProcesso = sol.numero_processo as string;
                 const dataCriacao = sol.created_at as string;
@@ -280,9 +279,14 @@ function UnidadeSaudeDetalheInner({ id }: { id: string }) {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
-                        <span className="text-sm font-semibold" style={{ color: 'var(--tfd-primary-500)' }}>
-                          {numProcesso}
-                        </span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold" style={{ color: 'var(--tfd-primary-500)' }}>
+                            {numProcesso}
+                          </span>
+                          {vinculos.map((v) => (
+                            <VinculoTag key={v} vinculo={v} />
+                          ))}
+                        </div>
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5">
                           {nomePaciente && (
                             <span className="text-xs flex items-center gap-1" style={{ color: 'var(--tfd-text-secondary)' }}>
@@ -359,10 +363,16 @@ function KpiBar({ items }: { items: { label: string; value: string; sub?: string
       className="mb-6 overflow-hidden"
       style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 10, boxShadow: '0 1px 0 rgba(15,23,42,0.02)' }}
     >
-      <div className="grid grid-cols-1 sm:grid-cols-3 kpi-bar">
+      <div
+        className="kpi-bar"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`,
+        }}
+      >
         {items.map((it, i) => (
-          <div key={i} className="px-5 py-4 kpi-cell">
-            <p className="text-[11px] font-medium uppercase" style={{ color: '#94A3B8', letterSpacing: '0.08em' }}>
+          <div key={i} className="px-5 py-4 kpi-cell min-w-0">
+            <p className="text-[11px] font-medium uppercase whitespace-nowrap overflow-hidden text-ellipsis" style={{ color: '#94A3B8', letterSpacing: '0.08em' }}>
               {it.label}
             </p>
             <p className="text-[22px] font-semibold leading-tight mt-1" style={{ color: '#0F172A' }}>
@@ -375,10 +385,32 @@ function KpiBar({ items }: { items: { label: string; value: string; sub?: string
         ))}
       </div>
       <style jsx>{`
-        @media (min-width: 640px) {
-          .kpi-cell + .kpi-cell { border-left: 1px solid #F1F5F9; }
-        }
+        .kpi-cell + .kpi-cell { border-left: 1px solid #F1F5F9; }
       `}</style>
     </div>
+  );
+}
+
+/**
+ * Tag de diferenciação visual do tipo de vínculo entre uma solicitação e
+ * a unidade. Usada na listagem da tela de unidade e dentro do detalhe do
+ * paciente, para o pessoal de relatórios separar:
+ *  - Origem do laudo: solicitação cujo laudo veio desta unidade
+ *  - Destino de agendamento: solicitação cujo agendamento foi feito aqui
+ */
+function VinculoTag({ vinculo }: { vinculo: VinculoSolicitacaoUnidade }) {
+  const palette: Record<VinculoSolicitacaoUnidade, { bg: string; fg: string }> = {
+    origem_laudo: { bg: '#EEF2FF', fg: '#3730A3' },
+    destino_agendamento: { bg: '#ECFDF5', fg: '#047857' },
+  };
+  const p = palette[vinculo];
+  return (
+    <span
+      className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-[2px] rounded"
+      style={{ background: p.bg, color: p.fg }}
+      title={VINCULO_SOLICITACAO_UNIDADE_LABEL[vinculo]}
+    >
+      {VINCULO_SOLICITACAO_UNIDADE_LABEL[vinculo]}
+    </span>
   );
 }
