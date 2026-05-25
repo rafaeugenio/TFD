@@ -70,6 +70,8 @@ import {
   // Domínio (saúde / TFD)
   Activity,
   Heart,
+  HeartPulse,
+  AlertCircle,
   Calendar,
   Clock,
   Timer,
@@ -2163,6 +2165,451 @@ function PatternsSection() {
           <button className="tfd-btn tfd-btn-primary tfd-btn--sm mt-4">
             <Plus size={14} /> Nova solicitação
           </button>
+        </div>
+      </SubSection>
+
+      <SubSection
+        title="Tela de Login (split institucional)"
+        hint="Padrão recomendado para páginas fora do app autenticado: login, cadastro, recuperação e redefinição de senha, primeiro acesso."
+      >
+        <p className="text-[13px] mb-4" style={{ color: 'var(--tfd-text-secondary)' }}>
+          Layout split-screen em 2 colunas. O painel esquerdo (visível apenas em <code>lg+</code>)
+          carrega a identidade visual institucional com gradient azul, orbs decorativos blurados,
+          logo, lista de features e texto de rodapé. O painel direito concentra o formulário e
+          ocupa 100% da largura em mobile.
+        </p>
+
+        {/* Mini preview */}
+        <div
+          className="rounded-lg border overflow-hidden mb-4"
+          style={{
+            borderColor: 'var(--tfd-300)',
+            background: 'var(--tfd-50)',
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              width: 600,
+              height: 360,
+              maxWidth: '100%',
+              transform: 'scale(0.95)',
+              transformOrigin: 'top left',
+              borderRadius: 12,
+              overflow: 'hidden',
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+              border: '1px solid var(--tfd-300)',
+              background: '#fff',
+            }}
+          >
+            {/* Painel esquerdo institucional */}
+            <div
+              style={{
+                position: 'relative',
+                background:
+                  'radial-gradient(120% 90% at 0% 0%, var(--tfd-blue-400) 0%, var(--tfd-blue-600) 45%, var(--tfd-blue-700) 100%)',
+                color: '#fff',
+                padding: 20,
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+              }}
+            >
+              {/* Orbs decorativos */}
+              <div
+                aria-hidden
+                style={{
+                  position: 'absolute',
+                  top: -40,
+                  right: -40,
+                  width: 160,
+                  height: 160,
+                  borderRadius: '50%',
+                  background:
+                    'radial-gradient(circle, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0) 70%)',
+                  filter: 'blur(20px)',
+                  pointerEvents: 'none',
+                }}
+              />
+              <div
+                aria-hidden
+                style={{
+                  position: 'absolute',
+                  bottom: -60,
+                  left: -40,
+                  width: 200,
+                  height: 200,
+                  borderRadius: '50%',
+                  background:
+                    'radial-gradient(circle, rgba(34,211,238,0.45) 0%, rgba(34,211,238,0) 70%)',
+                  filter: 'blur(30px)',
+                  pointerEvents: 'none',
+                }}
+              />
+
+              {/* Logo card */}
+              <div
+                style={{
+                  position: 'relative',
+                  width: 56,
+                  height: 56,
+                  borderRadius: 12,
+                  background: 'rgba(255,255,255,0.18)',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: 14,
+                  backdropFilter: 'blur(8px)',
+                }}
+              >
+                TFD
+              </div>
+
+              {/* Features */}
+              <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {[
+                  { Icon: ShieldCheck, t: 'Segurança', d: 'Dados protegidos LGPD' },
+                  { Icon: HeartPulse, t: 'Saúde', d: 'Cuidado em primeiro lugar' },
+                  { Icon: MapPin, t: 'Maranhão', d: 'Cobertura estadual' },
+                ].map(({ Icon, t, d }) => (
+                  <div key={t} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <div
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 8,
+                        background: 'rgba(255,255,255,0.18)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Icon size={14} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600 }}>{t}</div>
+                      <div style={{ fontSize: 10, opacity: 0.8 }}>{d}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ position: 'relative', fontSize: 10, opacity: 0.75 }}>
+                Sistema TFD · Secretaria de Estado da Saúde
+              </div>
+            </div>
+
+            {/* Painel direito formulário */}
+            <div
+              style={{
+                padding: 24,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                gap: 12,
+                background: '#fff',
+              }}
+            >
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--tfd-text-primary)' }}>
+                Acessar sua conta
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--tfd-text-muted)' }}>
+                Entre com seu CPF e senha
+              </div>
+              <div style={{ marginTop: 4 }}>
+                <div style={{ fontSize: 10, color: 'var(--tfd-text-muted)', marginBottom: 4 }}>CPF</div>
+                <div
+                  style={{
+                    height: 32,
+                    border: '1px solid var(--tfd-300)',
+                    borderRadius: 6,
+                    padding: '0 10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    fontSize: 12,
+                    color: 'var(--tfd-text-secondary)',
+                  }}
+                >
+                  000.000.000-00
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--tfd-text-muted)', marginBottom: 4 }}>Senha</div>
+                <div
+                  style={{
+                    height: 32,
+                    border: '1px solid var(--tfd-300)',
+                    borderRadius: 6,
+                    padding: '0 10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: 12,
+                    color: 'var(--tfd-text-secondary)',
+                  }}
+                >
+                  ••••••••
+                  <Eye size={12} />
+                </div>
+              </div>
+              <div
+                style={{
+                  marginTop: 6,
+                  height: 34,
+                  borderRadius: 6,
+                  background: 'var(--tfd-blue-600)',
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                Entrar
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <div className="text-[12px] font-semibold mb-2" style={{ color: 'var(--tfd-text-primary)' }}>
+              Tokens visuais
+            </div>
+            <ul className="space-y-1.5 text-[12px]" style={{ color: 'var(--tfd-text-secondary)' }}>
+              <li>
+                <code style={{ fontFamily: 'var(--tfd-mono)' }}>
+                  radial-gradient(120% 90% at 0% 0%, var(--tfd-blue-400) 0%, var(--tfd-blue-600) 45%, var(--tfd-blue-700) 100%)
+                </code>{' '}
+                — fundo do painel esquerdo
+              </li>
+              <li>
+                Orb superior-direito: <code>rgba(255,255,255,0.35)</code> com{' '}
+                <code>filter: blur(20px)</code>
+              </li>
+              <li>
+                Orb inferior-esquerdo: <code>rgba(34,211,238,0.45)</code> (ciano) com{' '}
+                <code>filter: blur(30px)</code>
+              </li>
+              <li>
+                Logo / icon-bg: <code>rgba(255,255,255,0.18)</code> +{' '}
+                <code>backdrop-filter: blur(8px)</code>
+              </li>
+              <li>
+                Breakpoint: painel esquerdo <code>hidden lg:flex</code> (≥ 1024px)
+              </li>
+            </ul>
+          </div>
+          <div>
+            <div className="text-[12px] font-semibold mb-2" style={{ color: 'var(--tfd-text-primary)' }}>
+              Arquivo
+            </div>
+            <code
+              className="block text-[12px] mb-3 p-2 rounded"
+              style={{
+                fontFamily: 'var(--tfd-mono)',
+                background: 'var(--tfd-50)',
+                color: 'var(--tfd-blue-700)',
+                border: '1px solid var(--tfd-200)',
+              }}
+            >
+              src/app/login/page.tsx
+            </code>
+            <div className="text-[12px] font-semibold mb-2" style={{ color: 'var(--tfd-text-primary)' }}>
+              Ícones (lucide-react)
+            </div>
+            <ul className="space-y-1 text-[12px]" style={{ color: 'var(--tfd-text-secondary)' }}>
+              <li>
+                <ShieldCheck size={12} style={{ display: 'inline', verticalAlign: 'middle' }} />{' '}
+                <code>ShieldCheck</code> — segurança / LGPD
+              </li>
+              <li>
+                <HeartPulse size={12} style={{ display: 'inline', verticalAlign: 'middle' }} />{' '}
+                <code>HeartPulse</code> — saúde
+              </li>
+              <li>
+                <MapPin size={12} style={{ display: 'inline', verticalAlign: 'middle' }} />{' '}
+                <code>MapPin</code> — abrangência regional
+              </li>
+              <li>
+                <Loader2 size={12} style={{ display: 'inline', verticalAlign: 'middle' }} />{' '}
+                <code>Loader2</code> — estado de loading do botão
+              </li>
+              <li>
+                <AlertCircle size={12} style={{ display: 'inline', verticalAlign: 'middle' }} />{' '}
+                <code>AlertCircle</code> — mensagem de erro inline
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div
+          className="mt-4 p-3 rounded-md text-[12px]"
+          style={{
+            background: 'var(--tfd-blue-50)',
+            border: '1px solid var(--tfd-blue-200)',
+            color: 'var(--tfd-text-secondary)',
+          }}
+        >
+          <strong style={{ color: 'var(--tfd-blue-700)' }}>Reutilize este padrão</strong> em todas
+          as telas <em>fora do app autenticado</em>: cadastro, recuperação de senha, primeiro
+          acesso, redefinição de senha. Mantenha o mesmo painel esquerdo (gradient + orbs + logo +
+          features) e troque apenas o formulário à direita.
+        </div>
+      </SubSection>
+
+      <SubSection
+        title="RBAC — Permissões Granulares"
+        hint="Matriz de permissões alimentada por 2 tabelas joinadas. Migration: 00058_permissoes_remap_prototipo.sql"
+      >
+        <div className="text-[12px] font-semibold mb-2" style={{ color: 'var(--tfd-text-primary)' }}>
+          Modelo relacional
+        </div>
+        <pre
+          className="text-[12px] p-3 rounded mb-4 overflow-x-auto"
+          style={{
+            fontFamily: 'var(--tfd-mono)',
+            background: 'var(--tfd-50)',
+            color: 'var(--tfd-text-primary)',
+            border: '1px solid var(--tfd-200)',
+            lineHeight: 1.6,
+          }}
+        >
+{`papeis ──< papel_tela_acoes >── telas_sistema
+                  │                     │
+                  └──── acao_id ────────┴──< acoes_catalogo
+                                            (tela_id FK)
+
+  papeis              → ex: master, admin_municipal, regulador, financeiro
+  telas_sistema       → 16 telas (id, rota, modulo, acoes_disponiveis[])
+  acoes_catalogo      → ações granulares (codigo, tela_id, label)
+  papel_tela_acoes    → quem pode o quê (papel_id × tela_id × acao_id)`}
+        </pre>
+
+        <div className="text-[12px] font-semibold mb-2" style={{ color: 'var(--tfd-text-primary)' }}>
+          Telas registradas (16)
+        </div>
+        <div className="tfd-table-wrap mb-4">
+          <table className="tfd-table">
+            <thead>
+              <tr>
+                <th>Módulo</th>
+                <th>ID da tela</th>
+                <th>Rota</th>
+                <th style={{ textAlign: 'right' }}>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { mod: 'Documentação', id: 'backlog', rota: '/backlog', acoes: 1 },
+                { mod: 'Documentação', id: 'design_system', rota: '/design-system', acoes: 1 },
+                { mod: 'Operacional', id: 'painel', rota: '/painel', acoes: 1 },
+                { mod: 'Operacional', id: 'solicitacoes', rota: '/solicitacoes', acoes: 8 },
+                { mod: 'Operacional', id: 'regulacao', rota: '/regulacao', acoes: 7 },
+                { mod: 'Operacional', id: 'financeiro', rota: '/financeiro', acoes: 13 },
+                { mod: 'Operacional', id: 'acompanhamento', rota: '/acompanhamento', acoes: 1 },
+                { mod: 'Operacional', id: 'tramitacao', rota: '/tramitacao', acoes: 5 },
+                { mod: 'Cadastros', id: 'pacientes', rota: '/pacientes', acoes: 7 },
+                { mod: 'Cadastros', id: 'unidades_saude', rota: '/unidades-saude', acoes: 5 },
+                { mod: 'Cadastros', id: 'regionais_saude', rota: '/regionais-saude', acoes: 5 },
+                { mod: 'Gestão', id: 'relatorios', rota: '/relatorios', acoes: 7 },
+                { mod: 'Sistema', id: 'sys_configuracoes', rota: '/sistema/configuracoes', acoes: 5 },
+                { mod: 'Sistema', id: 'sys_papeis', rota: '/sistema/papeis', acoes: 4 },
+                { mod: 'Sistema', id: 'sys_usuarios', rota: '/sistema/usuarios', acoes: 5 },
+                { mod: 'Sistema', id: 'sys_logs', rota: '/sistema/logs', acoes: 1 },
+              ].map((t) => (
+                <tr key={t.id}>
+                  <td>
+                    <span
+                      className="tfd-tag"
+                      style={{ fontSize: 11 }}
+                    >
+                      {t.mod}
+                    </span>
+                  </td>
+                  <td>
+                    <code style={{ fontFamily: 'var(--tfd-mono)', color: 'var(--tfd-blue-700)', fontSize: 12 }}>
+                      {t.id}
+                    </code>
+                  </td>
+                  <td>
+                    <code style={{ fontFamily: 'var(--tfd-mono)', color: 'var(--tfd-text-secondary)', fontSize: 12 }}>
+                      {t.rota}
+                    </code>
+                  </td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                    {t.acoes}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="text-[12px] font-semibold mb-2" style={{ color: 'var(--tfd-text-primary)' }}>
+          Consultando permissões no front
+        </div>
+        <CodeBlock code={`// 1. Hook usePermissions — leitura programática
+import { usePermissions } from '@/shared/auth/PermissionsProvider';
+
+function MinhaSecao() {
+  const { can, isAdmin, isLoading, user } = usePermissions();
+
+  if (isLoading) return null;
+
+  return (
+    <>
+      {can('solicitacoes.criar') && (
+        <button className="tfd-btn tfd-btn-primary">Nova solicitação</button>
+      )}
+      {isAdmin && <DebugPanel />}
+    </>
+  );
+}
+
+// 2. Componente <Can /> — gate declarativo
+import { Can } from '@/shared/auth/Can';
+
+<Can action="financeiro.aprovar_lote">
+  <button className="tfd-btn tfd-btn-primary">Aprovar em lote</button>
+</Can>
+
+<Can anyOf={['solicitacoes.editar', 'solicitacoes.cancelar']}>
+  <ActionsMenu />
+</Can>
+
+// 3. <PageGate /> — protege a rota inteira
+import { PageGate } from '@/shared/auth/PageGate';
+
+export default function Page() {
+  return (
+    <PageGate action="relatorios.acessar">
+      <RelatoriosScreen />
+    </PageGate>
+  );
+}`} />
+
+        <div
+          className="mt-4 p-3 rounded-md text-[12px]"
+          style={{
+            background: 'var(--tfd-warning-bg, var(--tfd-50))',
+            border: '1px solid var(--tfd-warning-border, var(--tfd-300))',
+            color: 'var(--tfd-text-secondary)',
+          }}
+        >
+          <strong style={{ color: 'var(--tfd-blue-700)' }}>Ao adicionar nova feature</strong> que
+          requer permissão: (1) insira uma nova linha em <code>acoes_catalogo</code> com{' '}
+          <code>tela_id</code> apontando para a tela correspondente, (2) atualize o array{' '}
+          <code>acoes_disponiveis</code> da tela em <code>telas_sistema</code>, (3) conceda o
+          acesso aos papéis adequados via <code>papel_tela_acoes</code>. Tudo em uma única
+          migration numerada na pasta <code>supabase/migrations/</code>.
         </div>
       </SubSection>
 
