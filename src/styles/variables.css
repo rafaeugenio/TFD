@@ -142,4 +142,26 @@
   --tfd-status-success: var(--tfd-success);
   --tfd-status-warning: var(--tfd-warning);
   --tfd-status-danger:  var(--tfd-danger);
+
+  /* ═══ BRAND GRADIENT (animado) ══════════════════════════
+   * Gradiente azul oficial da marca TFD, usado em superfícies
+   * "hero" (tela de login, banners de onboarding, splashes).
+   * É declarado em 200% × 200% e animado via keyframes
+   * `tfd-gradient-shift` para um efeito de "respiração" sutil.
+   * ───────────────────────────────────────────────────────── */
+  --tfd-gradient-brand:
+    linear-gradient(
+      135deg,
+      var(--tfd-blue-400) 0%,
+      var(--tfd-blue-500) 30%,
+      var(--tfd-blue-600) 65%,
+      var(--tfd-blue-700) 100%
+    );
+  --tfd-gradient-brand-size:     300% 300%;  /* mais "viagem" por ciclo */
+  --tfd-gradient-brand-duration: 8s;         /* tempo de 1 ciclo completo */
+  --tfd-gradient-brand-easing:   ease-in-out;
+
+  /* Glows decorativos sobrepostos ao gradiente (orbs) */
+  --tfd-gradient-brand-glow-1:   radial-gradient(circle at 30% 30%, rgba(255,255,255,0.35), transparent 60%);
+  --tfd-gradient-brand-glow-2:   radial-gradient(circle at 50% 50%, rgba(125, 211, 252, 0.45), transparent 65%);
 }

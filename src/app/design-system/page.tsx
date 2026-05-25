@@ -860,6 +860,87 @@ function MotionSection() {
           </div>
         </div>
       </SubSection>
+
+      <SubSection
+        title="Brand gradient (animado)"
+        hint="Gradiente azul da marca usado em superfícies hero — telas de login, splashes, banners de onboarding. Anima continuamente em loop com easing suave; respeita prefers-reduced-motion."
+      >
+        {/* Preview animado */}
+        <div
+          className="rounded-lg overflow-hidden mb-4"
+          style={{
+            height: 160,
+            backgroundImage: 'var(--tfd-gradient-brand)',
+            backgroundSize: 'var(--tfd-gradient-brand-size)',
+            animation:
+              'tfd-gradient-shift var(--tfd-gradient-brand-duration) var(--tfd-gradient-brand-easing) infinite',
+          }}
+        />
+
+        <div className="tfd-table-wrap mb-4">
+          <table className="tfd-table">
+            <thead>
+              <tr>
+                <th>Token</th>
+                <th>Valor</th>
+                <th>Uso</th>
+              </tr>
+            </thead>
+            <tbody>
+              <TokenRow
+                token="--tfd-gradient-brand"
+                value="linear-gradient(135deg, blue-400 → 500 → 600 → 700)"
+                description="Gradient principal da marca"
+              />
+              <TokenRow
+                token="--tfd-gradient-brand-size"
+                value="300% 300%"
+                description="Tamanho do background — necessário > 100% para animar background-position"
+              />
+              <TokenRow
+                token="--tfd-gradient-brand-duration"
+                value="8s"
+                description="Duração de 1 ciclo completo"
+              />
+              <TokenRow
+                token="--tfd-gradient-brand-easing"
+                value="ease-in-out"
+                description="Easing do shift de posição"
+              />
+              <TokenRow
+                token="--tfd-gradient-brand-glow-1"
+                value="radial-gradient (branco translúcido)"
+                description="Orb decorativo superior (sobrepor com filter: blur)"
+              />
+              <TokenRow
+                token="--tfd-gradient-brand-glow-2"
+                value="radial-gradient (cyan-300 translúcido)"
+                description="Orb decorativo inferior (sobrepor com filter: blur)"
+              />
+              <TokenRow
+                token="@keyframes tfd-gradient-shift"
+                value="0% → 50% → 100% (4 waypoints)"
+                description="Circula por 4 pontos do background, sensação de fluxo contínuo"
+              />
+            </tbody>
+          </table>
+        </div>
+
+        <CodeBlock
+          code={`/* Aplicar em qualquer surface hero */
+.minha-surface {
+  background-image: var(--tfd-gradient-brand);
+  background-size: var(--tfd-gradient-brand-size);
+  animation: tfd-gradient-shift
+             var(--tfd-gradient-brand-duration)
+             var(--tfd-gradient-brand-easing)
+             infinite;
+}
+
+/* prefers-reduced-motion é respeitado automaticamente
+   quando usado dentro das classes .tfd-auth-shell */`}
+        />
+      </SubSection>
     </>
   );
 }
@@ -2169,15 +2250,37 @@ function PatternsSection() {
       </SubSection>
 
       <SubSection
-        title="Tela de Login (split institucional)"
+        title="Tela de Login (Auth Shell)"
         hint="Padrão recomendado para páginas fora do app autenticado: login, cadastro, recuperação e redefinição de senha, primeiro acesso."
       >
         <p className="text-[13px] mb-4" style={{ color: 'var(--tfd-text-secondary)' }}>
-          Layout split-screen em 2 colunas. O painel esquerdo (visível apenas em <code>lg+</code>)
-          carrega a identidade visual institucional com gradient azul, orbs decorativos blurados,
-          logo, lista de features e texto de rodapé. O painel direito concentra o formulário e
-          ocupa 100% da largura em mobile.
+          Composto pelas classes <code>.tfd-auth-shell</code> (página inteira com o brand gradient
+          animado), <code>.tfd-auth-brand</code> (texto institucional sobre o gradiente, lado
+          esquerdo em lg+), <code>.tfd-auth-card</code> (card branco flutuante com o formulário,
+          alinhado ao início do col-2) e <code>.tfd-auth-card__footer</code> com a logo Citiesoft.
+          Em mobile o card ocupa 100% da largura e o painel da marca é ocultado.
         </p>
+
+        <div className="tfd-table-wrap mb-4">
+          <table className="tfd-table">
+            <thead>
+              <tr>
+                <th>Classe</th>
+                <th>Função</th>
+              </tr>
+            </thead>
+            <tbody>
+              <TokenRow token=".tfd-auth-shell"        value=""  description="Página inteira (100dvh) com brand gradient animado, grid 1↔2 colunas em lg+" />
+              <TokenRow token=".tfd-auth-shell__glow" value="" description="Orb decorativo posicionado absolutamente (variantes --tr e --bl)" />
+              <TokenRow token=".tfd-auth-brand"        value=""  description="Bloco de marketing sobre o gradiente, com space-between vertical" />
+              <TokenRow token=".tfd-auth-pill"         value=""  description="Pílula glassmorphism (badge translúcido com blur) para o aside" />
+              <TokenRow token=".tfd-auth-card"         value=""  description="Card branco flutuante (radius-xl, shadow-lg), alinhado à esquerda do col-2 em lg+" />
+              <TokenRow token=".tfd-auth-card__body"   value=""  description="Coluna interna do card (~440px) centralizada vertical e horizontalmente" />
+              <TokenRow token=".tfd-auth-card__stack"  value=""  description="Stack vertical Header / Form / Link (gap 32px)" />
+              <TokenRow token=".tfd-auth-card__footer" value=""  description="Footer full-width do card com divider; conteúdo: '© ano SES-MA · vX' + logo Citiesoft" />
+            </tbody>
+          </table>
+        </div>
 
         {/* Mini preview */}
         <div
@@ -2199,23 +2302,30 @@ function PatternsSection() {
               overflow: 'hidden',
               display: 'grid',
               gridTemplateColumns: '1fr 1fr',
+              alignItems: 'center',
+              justifyItems: 'center',
+              padding: 24,
               boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
               border: '1px solid var(--tfd-300)',
-              background: '#fff',
+              position: 'relative',
+              backgroundImage: 'var(--tfd-gradient-brand)',
+              backgroundSize: 'var(--tfd-gradient-brand-size)',
+              animation:
+                'tfd-gradient-shift var(--tfd-gradient-brand-duration) var(--tfd-gradient-brand-easing) infinite',
             }}
           >
-            {/* Painel esquerdo institucional */}
+            {/* Painel esquerdo institucional (transparente sobre o gradiente do shell) */}
             <div
               style={{
                 position: 'relative',
-                background:
-                  'radial-gradient(120% 90% at 0% 0%, var(--tfd-blue-400) 0%, var(--tfd-blue-600) 45%, var(--tfd-blue-700) 100%)',
                 color: '#fff',
                 padding: 20,
                 overflow: 'hidden',
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'space-between',
+                alignSelf: 'stretch',
+                width: '100%',
               }}
             >
               {/* Orbs decorativos */}
@@ -2305,7 +2415,7 @@ function PatternsSection() {
               </div>
             </div>
 
-            {/* Painel direito formulário */}
+            {/* Painel direito — card branco flutuante */}
             <div
               style={{
                 padding: 24,
@@ -2314,6 +2424,13 @@ function PatternsSection() {
                 justifyContent: 'center',
                 gap: 12,
                 background: '#fff',
+                border: '1px solid rgba(255,255,255,0.6)',
+                borderRadius: 12,
+                boxShadow: 'var(--tfd-shadow-lg)',
+                justifySelf: 'start',
+                alignSelf: 'stretch',
+                width: '100%',
+                maxWidth: 260,
               }}
             >
               <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--tfd-text-primary)' }}>
@@ -2385,25 +2502,35 @@ function PatternsSection() {
             </div>
             <ul className="space-y-1.5 text-[12px]" style={{ color: 'var(--tfd-text-secondary)' }}>
               <li>
-                <code style={{ fontFamily: 'var(--tfd-mono)' }}>
-                  radial-gradient(120% 90% at 0% 0%, var(--tfd-blue-400) 0%, var(--tfd-blue-600) 45%, var(--tfd-blue-700) 100%)
-                </code>{' '}
-                — fundo do painel esquerdo
+                Fundo da página: <code>var(--tfd-gradient-brand)</code> animado pelo keyframe{' '}
+                <code>tfd-gradient-shift</code> (ver seção <strong>Motion</strong>)
               </li>
               <li>
-                Orb superior-direito: <code>rgba(255,255,255,0.35)</code> com{' '}
-                <code>filter: blur(20px)</code>
+                Orbs decorativos: <code>--tfd-gradient-brand-glow-1</code> (top-right) e{' '}
+                <code>--tfd-gradient-brand-glow-2</code> (bottom-left), sobrepostos via{' '}
+                <code>.tfd-auth-shell__glow</code> com <code>filter: blur(40px)</code>
               </li>
               <li>
-                Orb inferior-esquerdo: <code>rgba(34,211,238,0.45)</code> (ciano) com{' '}
-                <code>filter: blur(30px)</code>
+                Card flutuante: branco, <code>border-radius: var(--tfd-radius-xl)</code> (12px),
+                <code> box-shadow: var(--tfd-shadow-lg)</code>, <code>max-width: 760px</code>,{' '}
+                <code>justify-self: start</code> no col-2
               </li>
               <li>
-                Logo / icon-bg: <code>rgba(255,255,255,0.18)</code> +{' '}
-                <code>backdrop-filter: blur(8px)</code>
+                Body interno do card: <code>max-width: 440px</code>, centralizado vertical e
+                horizontalmente; sections separadas por <code>gap: 32px</code>
               </li>
               <li>
-                Breakpoint: painel esquerdo <code>hidden lg:flex</code> (≥ 1024px)
+                Pílulas glassmorphism (<code>.tfd-auth-pill</code>):{' '}
+                <code>rgba(255,255,255,0.14)</code> + <code>backdrop-filter: blur(8px)</code>
+              </li>
+              <li>
+                Footer do card: divider <code>#E5E7EB</code>, ©/versão à esquerda, logo Citiesoft
+                em SVG (<code>/brand/citiesoft-logo.svg</code> — variante texto preto + logomark
+                azul) à direita
+              </li>
+              <li>
+                Breakpoint: painel da marca <code>hidden lg:flex</code> (≥ 1024px); shell respeita{' '}
+                <code>prefers-reduced-motion</code>
               </li>
             </ul>
           </div>
