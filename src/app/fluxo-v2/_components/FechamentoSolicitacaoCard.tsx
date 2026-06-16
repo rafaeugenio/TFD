@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CheckCircle2, AlertCircle, FileSignature } from 'lucide-react';
+import { CheckCircle2, AlertCircle, FileSignature, Eye, Pencil, Loader2 } from 'lucide-react';
 import { buscarPorSolicitacao as buscarDadosBancarios } from '@/services/dados-bancarios.service';
+import { buscarPorSolicitacao as buscarDespacho } from '@/services/despachos-financeiros.service';
 import DespachoFinanceiroDrawer from '@/shared/components/despacho/DespachoFinanceiroDrawer';
 import { REPRESENTANTES_PADRAO } from '@/core/despacho/representantes';
 import { montarCorpoDespacho } from '../_utils/corpoDespacho';
@@ -18,13 +19,16 @@ interface Props {
 
 /**
  * Card no topo da aba Financeiro que consolida o "fechamento" da solicitação:
- * checklist do que está pronto + botão de Emitir Despacho. O botão fica sempre
- * visível, mas desabilita-se com tooltip listando o que falta até todos os
- * itens estarem ok. Ao clicar, abre o drawer de cadastro do despacho.
+ * checklist do que está pronto + ação de despacho. Enquanto não há despacho,
+ * mostra "Emitir despacho" (gated pelo checklist), que abre o drawer de
+ * cadastro. Depois de emitido, mostra "Visualizar" (abre o documento pronto
+ * para imprimir/PDF em nova aba) e "Editar" (reabre o mesmo drawer em edição).
  */
 export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Props) {
   const [temBancario, setTemBancario] = useState<boolean | null>(null);
   const [drawerAberto, setDrawerAberto] = useState(false);
+  const [despachoId, setDespachoId] = useState<string | null>(null);
+  const [carregandoDespacho, setCarregandoDespacho] = useState(true);
 
   const isAjudaCusto = s.tipoSolicitacao === 'ajuda_custo';
   const viagensAtivas = s.viagens.filter((v) => v.ativa !== false);
@@ -33,8 +37,15 @@ export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Prop
   useEffect(() => {
     let cancel = false;
     (async () => {
-      const { data } = await buscarDadosBancarios(s.id);
-      if (!cancel) setTemBancario(!!data);
+      const [bancario, despacho] = await Promise.all([
+        buscarDadosBancarios(s.id),
+        buscarDespacho(s.id),
+      ]);
+      if (!cancel) {
+        setTemBancario(!!bancario.data);
+        setDespachoId((despacho.data?.id as string | undefined) ?? null);
+        setCarregandoDespacho(false);
+      }
     })();
     return () => { cancel = true; };
   }, [s.id]);
@@ -53,13 +64,13 @@ export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Prop
     ? `Faltam: ${faltando.join(' · ')}`
     : 'Pronto para fechamento';
 
-  function abrirDespacho() {
-    if (!tudoPronto || locked) return;
-    setDrawerAberto(true);
-  }
+  const emitirDisabled = locked || !tudoPronto;
+  const tipEmitir = locked ? lockedTip : (tudoPronto ? undefined : tooltipFaltando);
 
-  const disabled = locked || !tudoPronto;
-  const tipFinal = locked ? lockedTip : (tudoPronto ? undefined : tooltipFaltando);
+  function visualizarDespacho() {
+    if (!despachoId) return;
+    window.open(`/despacho/${despachoId}`, '_blank');
+  }
 
   return (
     <div
@@ -97,28 +108,60 @@ export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Prop
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={abrirDespacho}
-            disabled={disabled}
-            title={tipFinal ?? 'Cadastrar e emitir o despacho financeiro para anexar ao SEI'}
-            className="tfd-btn tfd-btn-primary tfd-btn--sm"
-          >
-            <FileSignature size={13} /> Emitir despacho
-          </button>
+          {carregandoDespacho ? (
+            <Loader2 size={16} className="animate-spin" style={{ color: '#94A3B8' }} />
+          ) : despachoId ? (
+            <>
+              <button
+                type="button"
+                onClick={visualizarDespacho}
+                disabled={locked}
+                title="Abrir o despacho em nova aba, pronto para imprimir ou salvar como PDF"
+                className="tfd-btn tfd-btn-primary tfd-btn--sm"
+              >
+                <Eye size={13} /> Visualizar
+              </button>
+              <button
+                type="button"
+                onClick={() => { if (!locked) setDrawerAberto(true); }}
+                disabled={locked}
+                title="Editar os dados do despacho"
+                className="tfd-btn tfd-btn-secondary tfd-btn--sm"
+              >
+                <Pencil size={13} /> Editar
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => { if (!emitirDisabled) setDrawerAberto(true); }}
+              disabled={emitirDisabled}
+              title={tipEmitir ?? 'Cadastrar e emitir o despacho financeiro para anexar ao SEI'}
+              className="tfd-btn tfd-btn-primary tfd-btn--sm"
+            >
+              <FileSignature size={13} /> Emitir despacho
+            </button>
+          )}
         </div>
       </div>
 
       <DespachoFinanceiroDrawer
         open={drawerAberto}
-        criar={{
+        despachoId={despachoId ?? undefined}
+        criar={despachoId ? undefined : {
           solicitacaoId: s.id,
           numeroSEI: s.numeroSEI ?? '',
           texto: drawerAberto ? montarCorpoDespacho(s) : '',
           representantes: REPRESENTANTES_PADRAO,
         }}
+        corpoPadrao={drawerAberto ? montarCorpoDespacho(s) : undefined}
         onClose={() => setDrawerAberto(false)}
-        aposSalvar={(id) => window.open(`/despacho/${id}`, '_blank')}
+        aposSalvar={(id) => {
+          const eraCriacao = !despachoId;
+          setDespachoId(id);
+          // Na emissão, abre o documento direto; na edição, só atualiza o card.
+          if (eraCriacao) window.open(`/despacho/${id}`, '_blank');
+        }}
       />
     </div>
   );

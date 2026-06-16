@@ -318,6 +318,8 @@ export type Database = {
           crm: string | null;
           crm_uf: string | null;
           especialidade_medica: string | null;
+          matricula: string | null;
+          cargo: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -341,6 +343,8 @@ export type Database = {
           crm?: string | null;
           crm_uf?: string | null;
           especialidade_medica?: string | null;
+          matricula?: string | null;
+          cargo?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -364,6 +368,8 @@ export type Database = {
           crm?: string | null;
           crm_uf?: string | null;
           especialidade_medica?: string | null;
+          matricula?: string | null;
+          cargo?: string | null;
           created_at?: string;
           updated_at?: string;
         };

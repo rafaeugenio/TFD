@@ -50,7 +50,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
   // T2.AQ — beneficiário no formato dos passagens: "p" = paciente, "a:<id>" = acompanhante.
   const [beneficiario, setBeneficiario] = useState<string>('p');
   const [pernoiteRetorno, setPernoiteRetorno] = useState(false);
-  const [status, setStatus] = useState<StatusAjuda>('em_analise');
+  const [status, setStatus] = useState<StatusAjuda>('emitido');
 
   useEffect(() => {
     if (open) {
@@ -69,7 +69,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         setDataFim('');
         setBeneficiario('p');
         setPernoiteRetorno(false);
-        setStatus('em_analise');
+        setStatus('emitido');
       }
       setTimeout(() => firstInputRef.current?.focus(), 100);
     }
@@ -92,11 +92,18 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
 
   function handleSalvar() {
     if (!valid) return;
+    // Data de conclusão: gravada ao marcar como "Concluído". Em edição,
+    // preserva a data já registrada; senão usa hoje. Limpa se sair de concluído.
+    const hoje = new Date().toISOString().slice(0, 10);
+    const dataConclusao = status === 'concluido'
+      ? (isEdicao && editar?.status === 'concluido' && editar.dataConclusao ? editar.dataConclusao : hoje)
+      : undefined;
     if (isEdicao && editar) {
       editarAjudaCusto(solicitacaoId, editar.id, {
         dataInicio,
         dataFim,
         status,
+        dataConclusao,
         ...beneficiarioPayload,
         pernoiteRetorno: pernoiteRetorno || undefined,
       });
@@ -105,6 +112,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         dataInicio,
         dataFim,
         status,
+        dataConclusao,
         ...beneficiarioPayload,
         pernoiteRetorno: pernoiteRetorno || undefined,
       });

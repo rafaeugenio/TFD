@@ -118,6 +118,8 @@ export function UsuariosPanel({ showHeader = true }: { showHeader?: boolean }) {
   const [createCpf, setCreateCpf] = useState('');
   const [createEmail, setCreateEmail] = useState('');
   const [createPapelId, setCreatePapelId] = useState('');
+  const [createMatricula, setCreateMatricula] = useState('');
+  const [createCargo, setCreateCargo] = useState('');
   const [createSaving, setCreateSaving] = useState(false);
 
   /* ---- Reset password confirmation ---- */
@@ -334,11 +336,21 @@ export function UsuariosPanel({ showHeader = true }: { showHeader?: boolean }) {
       toast.warning('Campo obrigatório', 'Informe um e-mail válido.');
       return;
     }
+    if (!createMatricula.trim()) {
+      toast.warning('Campo obrigatório', 'Informe a matrícula (somente números).');
+      return;
+    }
+    if (!createCargo.trim()) {
+      toast.warning('Campo obrigatório', 'Informe o cargo do usuário.');
+      return;
+    }
     const papelNome = createPapelId ? (papeis.find((p) => p.id === createPapelId)?.nome ?? '') : '';
     const diff: DiffField[] = [
       { label: 'Nome', after: createNome.trim() },
       { label: 'CPF', after: createCpf },
       { label: 'E-mail', after: createEmail.trim() },
+      { label: 'Matrícula', after: createMatricula.trim() },
+      { label: 'Cargo', after: createCargo.trim() },
       { label: 'Papel', after: papelNome || '(sem papel)' },
     ];
     setCreateConfirm({ diff });
@@ -357,6 +369,8 @@ export function UsuariosPanel({ showHeader = true }: { showHeader?: boolean }) {
           cpf: createCpf,
           email: createEmail.trim(),
           papelId: createPapelId || null,
+          matricula: createMatricula.trim(),
+          cargo: createCargo.trim(),
         }),
       });
 
@@ -814,6 +828,28 @@ export function UsuariosPanel({ showHeader = true }: { showHeader?: boolean }) {
             placeholder="email@exemplo.gov.br"
             value={createEmail}
             onChange={(e) => setCreateEmail(e.target.value)}
+          />
+        </FormField>
+
+        <FormField label="Matrícula" required>
+          <input
+            type="text"
+            inputMode="numeric"
+            className="tfd-input"
+            placeholder="Somente números"
+            value={createMatricula}
+            onChange={(e) => setCreateMatricula(e.target.value.replace(/\D/g, ''))}
+            style={{ fontFamily: 'var(--tfd-font-mono)' }}
+          />
+        </FormField>
+
+        <FormField label="Cargo" required>
+          <input
+            type="text"
+            className="tfd-input"
+            placeholder="Ex.: Coordenação Estadual do TFD"
+            value={createCargo}
+            onChange={(e) => setCreateCargo(e.target.value)}
           />
         </FormField>
 

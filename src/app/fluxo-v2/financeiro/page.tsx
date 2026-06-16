@@ -20,10 +20,8 @@ import { isLocked, setorAtual, tooltipLocked } from '../_utils/lock';
 import Pagination from '@/shared/components/pagination/Pagination';
 import StatsRow from '@/shared/components/stats-row/StatsRow';
 import {
-  contarViagensAguardandoEmissao,
-  contarViagensProximas7Dias,
-  contarAdicionaisPendentes,
-  contarAjudasPendentes,
+  contarSolicitacoesAguardandoEmissao,
+  contarSolicitacoesAjudaPendente,
   totalEmitidoNoMes,
   totalDiariasNoMes,
   formatBRL,
@@ -103,10 +101,8 @@ export default function FinanceiroListPage() {
   const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'tempo', dir: 'desc' });
 
   const stats = useMemo(() => ({
-    aguardandoEmissao: contarViagensAguardandoEmissao(solicitacoes),
-    proximas7: contarViagensProximas7Dias(solicitacoes),
-    adicionaisPendentes: contarAdicionaisPendentes(solicitacoes),
-    ajudasPendentes: contarAjudasPendentes(solicitacoes),
+    aguardandoEmissao: contarSolicitacoesAguardandoEmissao(solicitacoes),
+    ajudasPendentes: contarSolicitacoesAjudaPendente(solicitacoes),
     totalEmitido: totalEmitidoNoMes(solicitacoes),
     totalDiarias: totalDiariasNoMes(solicitacoes),
   }), [solicitacoes]);
@@ -202,37 +198,26 @@ export default function FinanceiroListPage() {
           {
             label: 'Aguardando emissão',
             value: stats.aguardandoEmissao,
-            onClick: () =>
-              setFiltro((f) => (f === 'passagens_pendentes' ? 'all' : 'passagens_pendentes')),
-            active: filtro === 'passagens_pendentes',
-          },
-          {
-            label: 'Próximas 7 dias',
-            value: stats.proximas7,
-            hint: 'viagens próximas',
-            title: 'Viagens com data nos próximos 7 dias',
-          },
-          {
-            label: 'Adicionais pendentes',
-            value: stats.adicionaisPendentes,
-            onClick: () =>
-              setFiltro((f) => (f === 'adicional_pendente' ? 'all' : 'adicional_pendente')),
-            active: filtro === 'adicional_pendente',
+            hint: 'sem passagem',
+            title: 'Solicitações com passagem prevista ainda sem passagem cadastrada',
           },
           {
             label: 'Ajudas pendentes',
             value: stats.ajudasPendentes,
-            title: 'Ajudas de custo aprovadas ou em pagamento',
+            hint: 'sem ajuda',
+            title: 'Solicitações com passagem e sem ajuda de custo cadastrada',
           },
           {
             label: 'Total emitido no mês',
             value: formatBRL(stats.totalEmitido),
-            hint: 'passagens emitidas',
+            hint: 'passagens + adicionais',
+            title: 'Passagens emitidas no mês (líquido de reembolso) mais adicionais vinculados a passagem',
           },
           {
             label: 'Total em diárias mês',
             value: formatBRL(stats.totalDiarias),
             hint: 'ajudas concluídas',
+            title: 'Ajudas de custo concluídas no mês',
           },
         ]}
       />
@@ -497,7 +482,7 @@ function ResumoSolicitacao({
   const qtdAjudas = ajudasAtivas.length;
 
   const viagensAgendadas = viagensAtivas.filter((v) => v.status === 'agendada').length;
-  const ajudaEmAnalise = ajudasAtivas.filter((a) => a.status === 'em_analise').length;
+  const ajudaEmitida = ajudasAtivas.filter((a) => a.status === 'emitido').length;
 
   const statusPassagem =
     qtdPassagens === 0
@@ -506,7 +491,7 @@ function ResumoSolicitacao({
         ? `${viagensAgendadas} a emitir`
         : null;
 
-  const statusAjuda = ajudaEmAnalise > 0 ? `${ajudaEmAnalise} em análise` : null;
+  const statusAjuda = ajudaEmitida > 0 ? `${ajudaEmitida} emitida${ajudaEmitida > 1 ? 's' : ''}` : null;
 
   if (qtdPassagens === 0 && qtdAjudas === 0) {
     return <span style={{ color: '#CBD5E1', fontSize: 12 }}>—</span>;
@@ -719,10 +704,8 @@ function AjudaTooltipItem({
 
   const chipColor = (() => {
     switch (a.status) {
-      case 'aprovada':
-      case 'em_pagamento':
-      case 'concluida': return { bg: 'rgba(16,185,129,0.18)', fg: '#86EFAC' };
-      case 'em_analise': return { bg: 'rgba(245,158,11,0.18)', fg: '#FCD34D' };
+      case 'concluido': return { bg: 'rgba(16,185,129,0.18)', fg: '#86EFAC' };
+      case 'emitido': return { bg: 'rgba(20,107,250,0.18)', fg: '#93C5FD' };
       case 'glosada': return { bg: 'rgba(239,68,68,0.18)', fg: '#FCA5A5' };
       default: return { bg: 'rgba(148,163,184,0.18)', fg: '#CBD5E1' };
     }

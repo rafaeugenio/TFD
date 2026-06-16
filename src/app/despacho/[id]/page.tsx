@@ -4,6 +4,7 @@ import {
   REPRESENTANTES_PADRAO,
   type RepresentanteDespacho,
 } from '@/core/despacho/representantes';
+import { montarCorpoDespachoTemplate } from '@/core/despacho/corpoTemplate';
 import DespachoToolbar from './DespachoToolbar';
 import './print.css';
 
@@ -83,6 +84,15 @@ export default async function DespachoFinanceiroPage({ params }: { params: Promi
 
   const corpoTexto = despacho.texto_despacho?.trim();
 
+  // Modelo do corpo a partir dos dados da solicitação — usado como prefill no
+  // drawer de edição quando o despacho ainda não tem texto salvo. O valor fica
+  // como lacuna aqui (a tela de financeiro já grava o valor calculado ao criar).
+  const corpoPadrao = montarCorpoDespachoTemplate({
+    nome: nomePaciente,
+    processo: numeroProcesso || '____',
+    valor: 'R$ ______',
+  });
+
   // Representantes salvos no despacho; cai nos padrões em documentos antigos.
   const reps =
     despacho.representantes && despacho.representantes.length
@@ -94,7 +104,7 @@ export default async function DespachoFinanceiroPage({ params }: { params: Promi
 
   return (
     <div className="print-root">
-      <DespachoToolbar despachoId={despacho.id} />
+      <DespachoToolbar despachoId={despacho.id} corpoPadrao={corpoPadrao} />
 
       <div className="print-page sei-page">
         {/* ── Cabeçalho oficial ─────────────────────────── */}

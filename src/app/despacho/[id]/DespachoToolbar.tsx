@@ -4,7 +4,13 @@ import { useState } from 'react';
 import { Printer, Link2, Check, ArrowLeft, Pencil } from 'lucide-react';
 import DespachoFinanceiroDrawer from '@/shared/components/despacho/DespachoFinanceiroDrawer';
 
-export default function DespachoToolbar({ despachoId }: { despachoId: string }) {
+export default function DespachoToolbar({
+  despachoId,
+  corpoPadrao,
+}: {
+  despachoId: string;
+  corpoPadrao?: string;
+}) {
   const [copiado, setCopiado] = useState(false);
   const [editar, setEditar] = useState(false);
 
@@ -52,6 +58,7 @@ export default function DespachoToolbar({ despachoId }: { despachoId: string }) 
         <DespachoFinanceiroDrawer
           open={editar}
           despachoId={despachoId}
+          corpoPadrao={corpoPadrao}
           onClose={() => setEditar(false)}
           aposSalvar={() => window.location.reload()}
         />

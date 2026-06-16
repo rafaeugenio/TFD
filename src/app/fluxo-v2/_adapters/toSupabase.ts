@@ -298,10 +298,8 @@ export function buildViagem(
 /* ------------------------------------------------------------------ */
 
 const STATUS_AJUDA_TO_DB: Record<string, string> = {
-  em_analise: 'EM_ANALISE',
-  aprovada: 'APROVADA',
-  em_pagamento: 'EM_PAGAMENTO',
-  concluida: 'CONCLUIDA',
+  emitido: 'EMITIDO',
+  concluido: 'CONCLUIDO',
   glosada: 'GLOSADA',
 };
 
@@ -311,6 +309,7 @@ export interface AjudaDb {
   data_inicio: string;
   data_fim: string;
   status: string;
+  concluido_em?: string | null;
   valor_diaria: number;
   valor_total?: number;
   observacoes?: string;
@@ -330,7 +329,8 @@ export function buildAjudaCusto(
     tipo: a.beneficiarioTipo === 'acompanhante' ? 'ACOMPANHANTE' : 'PACIENTE',
     data_inicio: a.dataInicio,
     data_fim: a.dataFim,
-    status: STATUS_AJUDA_TO_DB[a.status] ?? 'EM_ANALISE',
+    status: STATUS_AJUDA_TO_DB[a.status] ?? 'EMITIDO',
+    concluido_em: a.dataConclusao ?? null,
     valor_diaria: 0,
     observacoes: a.observacao,
     valor_reembolso: a.valorReembolso ?? null,

@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
 
     // 2) Validação do body.
     const body = await req.json();
-    const { nome, cpf, email, papelId, perfil } = body;
+    const { nome, cpf, email, papelId, perfil, matricula, cargo } = body;
 
     if (!nome?.trim() || !cpf || !email?.trim()) {
       return Response.json({ error: 'Campos obrigatórios não preenchidos' }, { status: 400 });
@@ -49,6 +49,15 @@ export async function POST(req: NextRequest) {
     const cpfLimpo = cpf.replace(/\D/g, '');
     if (cpfLimpo.length !== 11) {
       return Response.json({ error: 'CPF inválido' }, { status: 400 });
+    }
+
+    // Matrícula: obrigatória, somente números. Cargo: obrigatório, texto livre.
+    const matriculaLimpa = String(matricula ?? '').replace(/\D/g, '');
+    if (!matriculaLimpa) {
+      return Response.json({ error: 'Matrícula é obrigatória (somente números)' }, { status: 400 });
+    }
+    if (!cargo?.trim()) {
+      return Response.json({ error: 'Cargo é obrigatório' }, { status: 400 });
     }
 
     const perfilFinal = (perfil && PERFIS_VALIDOS.has(perfil)) ? perfil : 'ATENDENTE_MUNICIPAL';
@@ -111,6 +120,8 @@ export async function POST(req: NextRequest) {
         ativo: true,
         primeiro_acesso: true,
         papel_id: papelId || null,
+        matricula: matriculaLimpa,
+        cargo: cargo.trim(),
       } as never);
     if (dbError) {
       await supabaseAdmin.auth.admin.deleteUser(userId);

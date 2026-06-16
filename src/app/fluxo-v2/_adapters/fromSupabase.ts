@@ -283,6 +283,7 @@ function viagensFromRows(rows: Row[]): ViagemMock[] {
     tipo: TIPO_VIAGEM_FROM_DB[str(r.tipo)] ?? 'ida',
     status: statusViagemFromDb(str(r.situacao), Boolean(r.embarcou)),
     valor: num(r.valor),
+    dataCriacao: str(r.created_at),
     bilheteUrl: opt(r.numero_bilhete),
     beneficiarioTipo: 'paciente',
   }));
@@ -292,13 +293,16 @@ function viagensFromRows(rows: Row[]): ViagemMock[] {
 /*  Ajudas de custo                                                    */
 /* ------------------------------------------------------------------ */
 
+// Status novo (3 valores) + mapeamento dos legados do banco para eles.
 const STATUS_AJUDA_FROM_DB: Record<string, StatusAjuda> = {
-  EM_ANALISE: 'em_analise',
-  APROVADA: 'aprovada',
-  EM_PAGAMENTO: 'em_pagamento',
-  CONCLUIDA: 'concluida',
+  EMITIDO: 'emitido',
+  EM_ANALISE: 'emitido',
+  APROVADA: 'emitido',
+  EM_PAGAMENTO: 'emitido',
+  PAGO_PARCIALMENTE: 'emitido',
+  CONCLUIDO: 'concluido',
+  CONCLUIDA: 'concluido',
   GLOSADA: 'glosada',
-  PAGO_PARCIALMENTE: 'em_pagamento',
 };
 
 function ajudasFromRows(rows: Row[]): AjudaCustoMock[] {
@@ -307,7 +311,8 @@ function ajudasFromRows(rows: Row[]): AjudaCustoMock[] {
     beneficiarioTipo: (str(r.tipo) === 'ACOMPANHANTE' ? 'acompanhante' : 'paciente'),
     dataInicio: str(r.data_inicio),
     dataFim: str(r.data_fim),
-    status: STATUS_AJUDA_FROM_DB[str(r.status)] ?? 'em_analise',
+    status: STATUS_AJUDA_FROM_DB[str(r.status)] ?? 'emitido',
+    dataConclusao: opt(r.concluido_em),
     observacao: opt(r.observacoes),
   }));
 }

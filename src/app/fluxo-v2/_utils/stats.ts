@@ -129,6 +129,31 @@ export function contarPorCarimbo(solicitacoes: SolicitacaoMock[]): DistribuicaoC
  * Financeiro
  * ------------------------------------------------------------------ */
 
+export function contarSolicitacoesAguardandoEmissao(solicitacoes: SolicitacaoMock[]): number {
+  // Solicitações do tipo normal (que preveem passagem) ainda sem passagem ativa.
+  let n = 0;
+  for (const s of solicitacoes) {
+    if (s.status !== 'em_financeiro') continue;
+    if (s.tipoSolicitacao === 'ajuda_custo') continue;
+    const temPassagem = s.viagens.some((v) => v.ativa !== false);
+    if (!temPassagem) n += 1;
+  }
+  return n;
+}
+
+export function contarSolicitacoesAjudaPendente(solicitacoes: SolicitacaoMock[]): number {
+  // Solicitações com passagem ativa, mas sem nenhuma ajuda de custo ativa.
+  let n = 0;
+  for (const s of solicitacoes) {
+    if (s.status !== 'em_financeiro') continue;
+    const temPassagem = s.viagens.some((v) => v.ativa !== false);
+    const temAjuda = s.ajudasCusto.some((a) => a.ativa !== false);
+    if (temPassagem && !temAjuda) n += 1;
+  }
+  return n;
+}
+
+// ── Funções legadas (ainda usadas pelo dashboard geral) ─────────────
 export function contarViagensAguardandoEmissao(solicitacoes: SolicitacaoMock[]): number {
   let n = 0;
   for (const s of solicitacoes) {
@@ -164,41 +189,51 @@ export function contarAdicionaisPendentes(solicitacoes: SolicitacaoMock[]): numb
 }
 
 export function contarAjudasPendentes(solicitacoes: SolicitacaoMock[]): number {
+  // No modelo novo, "pendente" = emitido (ainda não concluído nem glosado).
   let n = 0;
   for (const s of solicitacoes) {
-    n += s.ajudasCusto.filter(
-      (a) => a.status === 'aprovada' || a.status === 'em_pagamento',
-    ).length;
+    n += s.ajudasCusto.filter((a) => a.status === 'emitido').length;
   }
   return n;
 }
 
 /**
- * Total de passagens emitidas no mês corrente (status confirmada/utilizada).
- * Note: 'utilizada' não é um status declarado no enum atual (StatusViagem) — então
- * consideramos apenas o que existe: 'confirmada'. Mantemos a checagem por string
- * pra ser tolerante caso o seed ganhe novos status mais tarde.
+ * Total emitido no mês: valor líquido (valor menos reembolso) das passagens
+ * ativas criadas no mês corrente, mais os adicionais vinculados a uma passagem
+ * (viagemId) lançados no mês. Adicionais indeferidos não contam.
  */
 export function totalEmitidoNoMes(solicitacoes: SolicitacaoMock[]): number {
   let total = 0;
   for (const s of solicitacoes) {
     for (const v of s.viagens) {
-      if (!dentroDoMesAtual(v.data)) continue;
-      if (v.status === 'confirmada' || (v.status as string) === 'utilizada') {
-        total += v.valor;
-      }
+      if (v.ativa === false) continue;
+      const dataRef = v.dataCriacao ?? v.data;
+      if (!dentroDoMesAtual(dataRef)) continue;
+      total += v.valor - (v.valorReembolso ?? 0);
+    }
+    for (const ad of s.adicionais) {
+      if (!ad.viagemId) continue;
+      if (ad.status === 'indeferido') continue;
+      if (!dentroDoMesAtual(ad.data)) continue;
+      total += ad.valor;
     }
   }
   return total;
 }
 
+/**
+ * Total em diárias no mês: soma das ajudas de custo concluídas cuja data de
+ * conclusão caiu no mês corrente (valor calculado menos reembolso).
+ */
 export function totalDiariasNoMes(solicitacoes: SolicitacaoMock[]): number {
   let total = 0;
   for (const s of solicitacoes) {
     for (const a of s.ajudasCusto) {
-      if (!dentroDoMesAtual(a.dataInicio)) continue;
-      if (a.status !== 'aprovada' && a.status !== 'concluida') continue;
-      total += calcularValorAjuda(a.dataInicio, a.dataFim, a.pernoiteRetorno).valor;
+      if (a.ativa === false) continue;
+      if (a.status !== 'concluido') continue;
+      if (!a.dataConclusao || !dentroDoMesAtual(a.dataConclusao)) continue;
+      const calc = calcularValorAjuda(a.dataInicio, a.dataFim, a.pernoiteRetorno).valor;
+      total += calc - (a.valorReembolso ?? 0);
     }
   }
   return total;

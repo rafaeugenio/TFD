@@ -69,17 +69,20 @@ function round2(v: number): number {
 export function totaisFinanceiros(s: SolicitacaoMock): TotaisFinanceiros {
   const passagens: TotaisCategoria = { ...ZERO };
   for (const v of s.viagens) {
+    if (v.ativa === false) continue; // passagem inativada não conta
+    const liquido = v.valor - (v.valorReembolso ?? 0);
     switch (v.status) {
       case 'confirmada':
       case 'remarcada':
       case 'nao_compareceu':
-        passagens.realizado += v.valor;
+      case 'reembolso':
+        // Reembolso entra pelo valor líquido (custo real menos o reembolsado).
+        passagens.realizado += liquido;
         break;
       case 'agendada':
         passagens.aConfirmar += v.valor;
         break;
       case 'cancelada':
-      case 'reembolso':
         passagens.semCusto += v.valor;
         break;
     }
@@ -88,14 +91,13 @@ export function totaisFinanceiros(s: SolicitacaoMock): TotaisFinanceiros {
   const ajudas: TotaisCategoria = { ...ZERO };
   for (const a of s.ajudasCusto) {
     const calc = calcularValorAjuda(a.dataInicio, a.dataFim, a.pernoiteRetorno).valor;
+    const liquido = calc - (a.valorReembolso ?? 0);
     switch (a.status) {
-      case 'concluida':
-        ajudas.realizado += a.valorPago ?? calc;
+      case 'concluido':
+        ajudas.realizado += liquido;
         break;
-      case 'em_analise':
-      case 'aprovada':
-      case 'em_pagamento':
-        ajudas.aConfirmar += calc;
+      case 'emitido':
+        ajudas.aConfirmar += liquido;
         break;
       case 'glosada':
         ajudas.semCusto += calc;

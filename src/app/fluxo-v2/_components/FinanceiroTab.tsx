@@ -40,7 +40,6 @@ export default function FinanceiroTab({ s }: Props) {
   const {
     cancelarViagem,
     cancelarAjudaCusto,
-    reembolsarViagem,
     reembolsarAjudaCusto,
     removerAdicional,
   } = useFluxoV2State();
@@ -60,7 +59,6 @@ export default function FinanceiroTab({ s }: Props) {
   const [adicionalExcluir, setAdicionalExcluir] = useState<AdicionalMock | null>(null);
 
   /** Modais de reembolso (passagem + ajuda). */
-  const [passagemReembolso, setPassagemReembolso] = useState<ViagemMock | null>(null);
   const [ajudaReembolso, setAjudaReembolso] = useState<AjudaCustoMock | null>(null);
 
   const locked = isLocked(s, 'financeiro');
@@ -254,11 +252,8 @@ export default function FinanceiroTab({ s }: Props) {
                       <td className="px-3 py-2 text-right">
                         <ItemRowActions
                           onEditar={() => abrirEditarPassagem(v)}
-                          onReembolso={v.ativa === false ? undefined : () => setPassagemReembolso(v)}
                           onExcluir={() => setPassagemCancelar(v)}
                           labelExcluir={v.ativa === false ? 'Já cancelada' : 'Cancelar passagem'}
-                          labelReembolso={v.valorReembolso != null ? 'Editar reembolso' : 'Reembolsar'}
-                          reembolsado={v.valorReembolso != null && v.valorReembolso > 0}
                           disabled={locked}
                           tooltipDisabled={lockedTip}
                         />
@@ -499,27 +494,7 @@ export default function FinanceiroTab({ s }: Props) {
         }}
       />
 
-      {/* Modais de reembolso */}
-      <ReembolsoModal
-        open={!!passagemReembolso}
-        titulo="Reembolsar passagem"
-        subtitulo={
-          passagemReembolso
-            ? `${passagemReembolso.origem} → ${passagemReembolso.destino} · ${fmtDataBR(passagemReembolso.data)}`
-            : undefined
-        }
-        valorTotal={passagemReembolso?.valor ?? 0}
-        valorAtual={passagemReembolso?.valorReembolso}
-        dataAtual={passagemReembolso?.dataReembolso}
-        onClose={() => setPassagemReembolso(null)}
-        onConfirm={(valor, data) => {
-          if (passagemReembolso) {
-            reembolsarViagem(s.id, passagemReembolso.id, valor, data);
-            toast.success('Reembolso registrado', `${fmtBRL(valor)} em ${fmtDataBR(data)}`);
-          }
-          setPassagemReembolso(null);
-        }}
-      />
+      {/* Reembolso de ajuda de custo (passagem é tratada no próprio drawer) */}
       <ReembolsoModal
         open={!!ajudaReembolso}
         titulo="Reembolsar ajuda de custo"
@@ -581,11 +556,9 @@ function ViagemStatusBadge({ status }: { status: StatusViagem }) {
 }
 
 const AJUDA_TONE: Record<StatusAjuda, StatusDotTone> = {
-  em_analise:    'warning',
-  aprovada:      'info',
-  em_pagamento:  'info',
-  concluida:     'success',
-  glosada:       'danger',
+  emitido:   'info',
+  concluido: 'success',
+  glosada:   'danger',
 };
 function AjudaStatusBadge({ status }: { status: StatusAjuda }) {
   return <StatusDot tone={AJUDA_TONE[status]}>{STATUS_AJUDA_LABEL[status]}</StatusDot>;

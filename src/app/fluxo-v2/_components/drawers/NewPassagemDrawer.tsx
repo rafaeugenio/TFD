@@ -94,6 +94,9 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
   const [valor, setValor] = useState('');
   const [status, setStatus] = useState<StatusViagem>('agendada');
   const [beneficiario, setBeneficiario] = useState<string>('p');
+  // Reembolso — preenchido só quando status === 'reembolso'.
+  const [valorReembolso, setValorReembolso] = useState('');
+  const [dataReembolso, setDataReembolso] = useState('');
 
   // Companhia de transporte
   const [companhias, setCompanhias] = useState<CompanhiaRow[]>([]);
@@ -252,6 +255,8 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
           : `a:${editar.beneficiarioId ?? ''}`,
       );
       setCompanhiaId('');
+      setValorReembolso(editar.valorReembolso != null ? String(editar.valorReembolso) : '');
+      setDataReembolso(editar.dataReembolso ?? '');
     } else {
       setOrigemCidade(''); setOrigemUf('MA');
       setDestinoCidade(''); setDestinoUf('');
@@ -260,6 +265,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       setModal('aereo'); setTipo('ida');
       setValor(''); setStatus('agendada');
       setBeneficiario('p'); setCompanhiaId('');
+      setValorReembolso(''); setDataReembolso('');
     }
     setTimeout(() => firstInputRef.current?.focus(), 100);
   }, [open, editar]);
@@ -324,6 +330,14 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         }
       : {};
 
+    // Reembolso só vale quando o status é 'reembolso'; senão limpa os campos.
+    const reembolsoExtras = status === 'reembolso'
+      ? {
+          valorReembolso: valorReembolso ? Number(valorReembolso) : 0,
+          dataReembolso: dataReembolso || undefined,
+        }
+      : { valorReembolso: undefined, dataReembolso: undefined };
+
     if (isEdicao && editar) {
       editarViagem(solicitacaoId, editar.id, {
         origem: origemStr,
@@ -338,6 +352,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         companhia: companhiaNome,
         ...beneficiarioPayload,
         ...distExtras,
+        ...reembolsoExtras,
       });
       toast.success('Passagem atualizada', `${origemStr} → ${destinoStr}`);
       onClose();
@@ -356,6 +371,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         valorTotal: Number(valor),
         ...beneficiarioPayload,
         ...distExtras,
+        ...reembolsoExtras,
       });
       toast.success('Passagens criadas', `Ida e volta — ${origemStr} ⇄ ${destinoStr}`);
     } else {
@@ -372,6 +388,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         companhia: companhiaNome,
         ...beneficiarioPayload,
         ...distExtras,
+        ...reembolsoExtras,
       });
       toast.success('Passagem registrada', `${origemStr} → ${destinoStr}`);
     }
@@ -493,6 +510,41 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
           </select>
         </div>
       </div>
+
+      {status === 'reembolso' && (
+        <div className="grid grid-cols-2 gap-3 mt-3">
+          <div>
+            <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+              Valor reembolsado (R$)
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={valorReembolso}
+              onChange={(e) => setValorReembolso(e.target.value)}
+              placeholder="0,00"
+              className="w-full px-3 py-2 text-[13px]"
+              style={inputStyle}
+            />
+          </div>
+          <div>
+            <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+              Data do reembolso
+            </label>
+            <input
+              type="date"
+              value={dataReembolso}
+              onChange={(e) => setDataReembolso(e.target.value)}
+              className="w-full px-3 py-2 text-[13px]"
+              style={inputStyle}
+            />
+          </div>
+          <p className="col-span-2 text-[11px]" style={{ color: '#94A3B8' }}>
+            O valor reembolsado é subtraído do custo da passagem nos totais e KPIs.
+          </p>
+        </div>
+      )}
       </FormSection>
 
       {/* Origem / Destino: aeroporto (aéreo) ou UF+cidade (terrestre/fluvial). */}

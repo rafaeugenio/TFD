@@ -718,7 +718,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
   const addViagem = useCallback<FluxoV2ContextValue['addViagem']>((id, v) => {
     const tempId = uid('v');
     mutate(id, (s) => {
-      s.viagens = [...s.viagens, { ...v, id: tempId }];
+      s.viagens = [...s.viagens, { ...v, id: tempId, dataCriacao: v.dataCriacao ?? nowIso() }];
       return s;
     });
     void persistInsert('viagens', buildViagem(id, v)).then((realId) => {

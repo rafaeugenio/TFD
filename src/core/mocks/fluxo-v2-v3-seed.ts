@@ -268,6 +268,8 @@ export interface ViagemMock {
   tipo: TipoViagem;
   status: StatusViagem;
   valor: number;
+  /** Data de criação/emissão da passagem (ISO). Usada no KPI "Total emitido no mês". */
+  dataCriacao?: string;
   bilheteUrl?: string;
   /** Nome da companhia de transporte (vinculada à `companhias_transporte`). */
   companhia?: string;
@@ -293,7 +295,13 @@ export interface ViagemMock {
   motivoCancelamentoTexto?: string;
 }
 
-export type StatusAjuda = 'em_analise' | 'aprovada' | 'em_pagamento' | 'concluida' | 'glosada';
+/**
+ * Status da ajuda de custo — apenas controle interno, sem ciclo de aprovação.
+ *  - emitido:  ajuda registrada/lançada (estado inicial).
+ *  - concluido: ajuda paga/finalizada (guarda `dataConclusao`).
+ *  - glosada:  ajuda recusada/cortada, sem custo.
+ */
+export type StatusAjuda = 'emitido' | 'concluido' | 'glosada';
 
 export interface AjudaCustoMock {
   id: string;
@@ -308,6 +316,9 @@ export interface AjudaCustoMock {
   dataInicio: string;
   dataFim: string;
   status: StatusAjuda;
+  /** Data em que a ajuda foi concluída (ISO). Preenchida ao mudar status para
+   *  'concluido'. Usada no KPI "Total em diárias mês". */
+  dataConclusao?: string;
   observacao?: string;
   /**
    * T2.Y — Pernoite no retorno (paciente chegou ao destino após meia-noite no
@@ -698,7 +709,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       { id: 'v2', origem: 'São Paulo - SP', destino: 'São Luís - MA', data: '2025-05-25', modal: 'aereo', tipo: 'volta', status: 'confirmada', valor: 1320, beneficiarioTipo: 'paciente' },
     ],
     ajudasCusto: [
-      { id: 'ac1', beneficiarioTipo: 'paciente', dataInicio: '2025-05-19', dataFim: '2025-05-23', status: 'concluida' },
+      { id: 'ac1', beneficiarioTipo: 'paciente', dataInicio: '2025-05-19', dataFim: '2025-05-23', status: 'concluido', dataConclusao: '2025-05-23' },
     ],
     adicionais: [],
     encerramento: { data: '2025-05-26', motivo: 'alta_medica', observacao: 'Paciente recebeu alta após procedimento.' },
@@ -744,7 +755,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       { id: 'v3', origem: 'Caxias - MA', destino: 'Curitiba - PR', data: '2025-06-01', modal: 'aereo', tipo: 'ida', status: 'confirmada', valor: 1450, beneficiarioTipo: 'paciente' },
     ],
     ajudasCusto: [
-      { id: 'ac2', beneficiarioTipo: 'paciente', dataInicio: '2025-06-01', dataFim: '2025-06-10', status: 'aprovada' },
+      { id: 'ac2', beneficiarioTipo: 'paciente', dataInicio: '2025-06-01', dataFim: '2025-06-10', status: 'emitido' },
     ],
     adicionais: [],
     observacoes: [],
@@ -818,7 +829,8 @@ export const seedFluxoV2: SolicitacaoMock[] = [
         beneficiarioTipo: 'paciente',
         dataInicio: ini.toISOString().slice(0, 10),
         dataFim: fim.toISOString().slice(0, 10),
-        status: i < 18 ? 'concluida' : i < 19 ? 'em_pagamento' : 'em_analise',
+        status: i < 18 ? 'concluido' : 'emitido',
+        dataConclusao: i < 18 ? fim.toISOString().slice(0, 10) : undefined,
       });
       cursor = new Date(fim);
       cursor.setDate(cursor.getDate() + 1);
@@ -895,7 +907,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       { id: 'v5d', origem: 'Rio de Janeiro - RJ', destino: 'Bacabal - MA',  data: '2025-05-30', modal: 'aereo',     tipo: 'volta',    status: 'agendada',       valor: 1520, beneficiarioTipo: 'acompanhante', beneficiarioId: 'a5' },
     ],
     ajudasCusto: [
-      { id: 'ac5', beneficiarioTipo: 'acompanhante', beneficiarioId: 'a5', dataInicio: '2025-05-04', dataFim: '2025-05-12', status: 'aprovada' },
+      { id: 'ac5', beneficiarioTipo: 'acompanhante', beneficiarioId: 'a5', dataInicio: '2025-05-04', dataFim: '2025-05-12', status: 'emitido' },
     ],
     adicionais: [
       { id: 'ad5a', categoria: 'transfer', descricao: 'Transfer Aeroporto GIG → INCA', data: '2025-05-04', valor: 180, status: 'pago',     beneficiarioTipo: 'paciente' },
@@ -940,7 +952,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       { id: 'v6a', origem: 'Timon - MA', destino: 'São Paulo - SP', data: '2025-03-21', modal: 'aereo', tipo: 'ida', status: 'confirmada', valor: 1290, beneficiarioTipo: 'paciente' },
     ],
     ajudasCusto: [
-      { id: 'ac6', beneficiarioTipo: 'paciente', dataInicio: '2025-03-21', dataFim: '2025-04-02', status: 'concluida' },
+      { id: 'ac6', beneficiarioTipo: 'paciente', dataInicio: '2025-03-21', dataFim: '2025-04-02', status: 'concluido', dataConclusao: '2025-04-02' },
     ],
     adicionais: [],
     encerramento: { data: '2025-04-03', motivo: 'obito', observacao: 'Paciente faleceu durante o tratamento.' },
@@ -978,7 +990,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       { id: 'v7a', origem: 'Açailândia - MA', destino: 'São Paulo - SP', data: '2025-06-09', modal: 'aereo', tipo: 'ida', status: 'confirmada', valor: 1340, beneficiarioTipo: 'paciente' },
     ],
     ajudasCusto: [
-      { id: 'ac7', beneficiarioTipo: 'paciente', dataInicio: '2025-06-09', dataFim: '2025-06-15', status: 'aprovada' },
+      { id: 'ac7', beneficiarioTipo: 'paciente', dataInicio: '2025-06-09', dataFim: '2025-06-15', status: 'emitido' },
     ],
     adicionais: [
       { id: 'ad7a', categoria: 'bagagem',         descricao: 'Bagagem extra (cadeira de rodas)',    data: '2025-06-09', valor: 90,  status: 'aprovado' },
@@ -1113,10 +1125,8 @@ export const STATUS_VIAGEM_LABEL: Record<StatusViagem, string> = {
 };
 
 export const STATUS_AJUDA_LABEL: Record<StatusAjuda, string> = {
-  em_analise: 'Em análise',
-  aprovada: 'Aprovada',
-  em_pagamento: 'Em pagamento',
-  concluida: 'Concluída',
+  emitido: 'Emitido',
+  concluido: 'Concluído',
   glosada: 'Glosada',
 };
 

@@ -39,6 +39,12 @@ interface Props {
   despachoId?: string;
   /** Criação/edição a partir da solicitação (tela financeiro), já com prefill. */
   criar?: CriarPrefill;
+  /**
+   * Corpo modelo montado pela página (dados do banco). Usado como prefill na
+   * edição quando o despacho ainda não tem `texto_despacho` salvo, para o
+   * campo nunca abrir em branco.
+   */
+  corpoPadrao?: string;
   onClose: () => void;
   /** Chamado após salvar com sucesso, recebendo o id do despacho. */
   aposSalvar?: (despachoId: string) => void;
@@ -76,6 +82,7 @@ export default function DespachoFinanceiroDrawer({
   open,
   despachoId,
   criar,
+  corpoPadrao,
   onClose,
   aposSalvar,
 }: Props) {
@@ -100,9 +107,15 @@ export default function DespachoFinanceiroDrawer({
     if (!open) return;
     let cancelado = false;
 
+    // Corpo usado quando o registro não tem texto salvo: o prefill da criação
+    // (tela financeiro) ou o modelo montado pela página (edição). Evita o campo
+    // abrir em branco em despachos antigos.
+    const fallbackTexto = criar?.texto || corpoPadrao || '';
+
     function carregar(data: DespachoData) {
       setNumeroSEI(data.numero_sei ?? '');
-      setTexto(data.texto_despacho ?? '');
+      const salvo = data.texto_despacho?.trim();
+      setTexto(salvo ? (data.texto_despacho as string) : fallbackTexto);
       setObservacoes(data.observacoes ?? '');
       const reps = data.representantes ?? [];
       setRepresentantes(reps.length ? reps : REPRESENTANTES_PADRAO);
@@ -151,7 +164,7 @@ export default function DespachoFinanceiroDrawer({
       cancelado = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, despachoId, criar?.solicitacaoId]);
+  }, [open, despachoId, criar?.solicitacaoId, corpoPadrao]);
 
   async function buscarUsuarios(query: string) {
     const { data } = await listarUsuarios({ search: query, pageSize: 20 });
@@ -164,15 +177,29 @@ export default function DespachoFinanceiroDrawer({
         value: u.id as string,
         label: (u.nome_completo as string) ?? '',
         perfil: (u.perfil as string) ?? '',
+        cargo: (u.cargo as string | null) ?? '',
+        matricula: (u.matricula as string | null) ?? '',
       }));
   }
 
-  function adicionarRepresentante(item: { value: string; label: string }) {
+  function adicionarRepresentante(item: {
+    value: string;
+    label: string;
+    cargo?: string;
+    matricula?: string;
+  }) {
     setRepresentantes((rs) => {
       if (rs.some((r) => r.usuario_id === item.value)) return rs;
+      // ID e Cargo vêm preenchidos do usuário; ficam editáveis no drawer.
+      const matricula = item.matricula?.trim() ?? '';
       return [
         ...rs,
-        { usuario_id: item.value, nome: item.label, cargo: '', id_funcional: '' },
+        {
+          usuario_id: item.value,
+          nome: item.label,
+          cargo: item.cargo?.trim() ?? '',
+          id_funcional: matricula ? `ID ${matricula}` : '',
+        },
       ];
     });
     setBuscaKey((k) => k + 1);
@@ -321,7 +348,14 @@ export default function DespachoFinanceiroDrawer({
                 placeholder="Buscar usuário por nome…"
                 size="sm"
                 onSearch={buscarUsuarios}
-                onSelect={(item) => adicionarRepresentante(item)}
+                onSelect={(item) =>
+                  adicionarRepresentante({
+                    value: item.value,
+                    label: item.label,
+                    cargo: typeof item.cargo === 'string' ? item.cargo : '',
+                    matricula: typeof item.matricula === 'string' ? item.matricula : '',
+                  })
+                }
                 renderOption={(item) => (
                   <div className="flex flex-col">
                     <span className="text-[13px]" style={{ color: '#1A1D2B' }}>
