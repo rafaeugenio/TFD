@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CheckCircle2, AlertCircle, FileText, FileSignature, Loader2 } from 'lucide-react';
+import { CheckCircle2, AlertCircle, FileSignature } from 'lucide-react';
 import { buscarPorSolicitacao as buscarDadosBancarios } from '@/services/dados-bancarios.service';
-import { buscarPorSolicitacao as buscarDespacho, criarDespacho } from '@/services/despachos-financeiros.service';
-import { useToast } from '@/shared/components/toast/Toast';
+import DespachoFinanceiroDrawer from '@/shared/components/despacho/DespachoFinanceiroDrawer';
+import { REPRESENTANTES_PADRAO } from '@/core/despacho/representantes';
+import { montarCorpoDespacho } from '../_utils/corpoDespacho';
 import type { SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
 
 interface Props {
@@ -17,14 +18,13 @@ interface Props {
 
 /**
  * Card no topo da aba Financeiro que consolida o "fechamento" da solicitação:
- * checklist do que está pronto + botões de Gerar Relatório TFD e Emitir
- * Despacho. Os botões ficam sempre visíveis, mas desabilitam-se com tooltip
- * listando o que falta até todos os itens estarem ok.
+ * checklist do que está pronto + botão de Emitir Despacho. O botão fica sempre
+ * visível, mas desabilita-se com tooltip listando o que falta até todos os
+ * itens estarem ok. Ao clicar, abre o drawer de cadastro do despacho.
  */
 export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Props) {
-  const toast = useToast();
   const [temBancario, setTemBancario] = useState<boolean | null>(null);
-  const [loadingDespacho, setLoadingDespacho] = useState(false);
+  const [drawerAberto, setDrawerAberto] = useState(false);
 
   const isAjudaCusto = s.tipoSolicitacao === 'ajuda_custo';
   const viagensAtivas = s.viagens.filter((v) => v.ativa !== false);
@@ -53,33 +53,9 @@ export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Prop
     ? `Faltam: ${faltando.join(' · ')}`
     : 'Pronto para fechamento';
 
-  async function emitirDespacho() {
+  function abrirDespacho() {
     if (!tudoPronto || locked) return;
-    setLoadingDespacho(true);
-    try {
-      const { data: existente } = await buscarDespacho(s.id);
-      let despachoId = (existente?.id as string | undefined) ?? undefined;
-      if (!despachoId) {
-        const { data: criado, error } = await criarDespacho({
-          solicitacao_id: s.id,
-          numero_sei: s.numeroSEI || null,
-        });
-        if (error || !criado) {
-          toast.error('Erro ao gerar despacho', error?.message ?? 'Tente novamente.');
-          return;
-        }
-        despachoId = (criado as { id: string }).id;
-      }
-      window.open(`/despacho/${despachoId}`, '_blank');
-    } finally {
-      setLoadingDespacho(false);
-    }
-  }
-
-  function gerarRelatorio() {
-    if (!tudoPronto || locked) return;
-    // Abre o relatório TFD por solicitação em nova aba (implementado na US-REL-04)
-    window.open(`/fluxo-v2/solicitacoes/${s.id}/relatorio-tfd`, '_blank');
+    setDrawerAberto(true);
   }
 
   const disabled = locked || !tudoPronto;
@@ -123,25 +99,27 @@ export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Prop
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={gerarRelatorio}
+            onClick={abrirDespacho}
             disabled={disabled}
-            title={tipFinal ?? 'Gerar Relatório TFD consolidado da solicitação'}
-            className="tfd-btn tfd-btn-secondary tfd-btn--sm"
-          >
-            <FileText size={13} /> Relatório TFD
-          </button>
-          <button
-            type="button"
-            onClick={emitirDespacho}
-            disabled={disabled || loadingDespacho}
-            title={tipFinal ?? 'Gerar / abrir despacho financeiro para anexar ao SEI'}
+            title={tipFinal ?? 'Cadastrar e emitir o despacho financeiro para anexar ao SEI'}
             className="tfd-btn tfd-btn-primary tfd-btn--sm"
           >
-            {loadingDespacho ? <Loader2 size={13} className="animate-spin" /> : <FileSignature size={13} />}
-            Emitir despacho
+            <FileSignature size={13} /> Emitir despacho
           </button>
         </div>
       </div>
+
+      <DespachoFinanceiroDrawer
+        open={drawerAberto}
+        criar={{
+          solicitacaoId: s.id,
+          numeroSEI: s.numeroSEI ?? '',
+          texto: drawerAberto ? montarCorpoDespacho(s) : '',
+          representantes: REPRESENTANTES_PADRAO,
+        }}
+        onClose={() => setDrawerAberto(false)}
+        aposSalvar={(id) => window.open(`/despacho/${id}`, '_blank')}
+      />
     </div>
   );
 }

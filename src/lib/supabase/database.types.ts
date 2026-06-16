@@ -1421,6 +1421,9 @@ export type Database = {
           numero_sei: string | null;
           texto_despacho: string | null;
           observacoes: string | null;
+          representantes:
+            | { usuario_id: string | null; nome: string; cargo: string; id_funcional: string }[]
+            | null;
           created_at: string;
           updated_at: string;
         };
@@ -1431,6 +1434,9 @@ export type Database = {
           numero_sei?: string | null;
           texto_despacho?: string | null;
           observacoes?: string | null;
+          representantes?:
+            | { usuario_id: string | null; nome: string; cargo: string; id_funcional: string }[]
+            | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1441,6 +1447,9 @@ export type Database = {
           numero_sei?: string | null;
           texto_despacho?: string | null;
           observacoes?: string | null;
+          representantes?:
+            | { usuario_id: string | null; nome: string; cargo: string; id_funcional: string }[]
+            | null;
           created_at?: string;
           updated_at?: string;
         };

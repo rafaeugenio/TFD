@@ -1,5 +1,9 @@
 import { notFound } from 'next/navigation';
 import { createServerSupabase } from '@/lib/supabase/server';
+import {
+  REPRESENTANTES_PADRAO,
+  type RepresentanteDespacho,
+} from '@/core/despacho/representantes';
 import DespachoToolbar from './DespachoToolbar';
 import './print.css';
 
@@ -26,30 +30,11 @@ interface DespachoRow {
   numero_sei: string | null;
   texto_despacho: string | null;
   observacoes: string | null;
+  representantes: RepresentanteDespacho[] | null;
   created_at: string;
   solicitacao: SolicitacaoRow | null;
   responsavel: ResponsavelRow | null;
 }
-
-// Assinantes oficiais do TFD/SES-MA — fonte: Despacho 2163/COORDTFD/SES
-// Mantidos como constantes até o sistema permitir gestão dinâmica desses papéis.
-const ASSINANTES = {
-  tecnico: {
-    nome: 'Nubia Maria Silva Rocha',
-    cargo: 'Tratamento Fora do Domicílio',
-    id: 'ID 00303550-00',
-  },
-  chefe: {
-    nome: 'Hilneth Pereira Passos Buna',
-    cargo: 'Chefe do Departamento do TFD',
-    id: 'ID 00891427-00',
-  },
-  superintendente: {
-    nome: 'Thalita Pereira Veiga',
-    cargo: 'Superintendente Estadual de Regulação SES/MA',
-    id: 'ID 89352700',
-  },
-};
 
 function formatarProcessoCurto(numero: string | undefined): string {
   if (!numero) return '____/____';
@@ -73,7 +58,7 @@ export default async function DespachoFinanceiroPage({ params }: { params: Promi
   const { data, error } = await supabase
     .from('despachos_financeiros')
     .select(
-      `id, numero_sei, texto_despacho, observacoes, created_at,
+      `id, numero_sei, texto_despacho, observacoes, representantes, created_at,
        solicitacao:solicitacoes(
          numero_processo, created_at,
          paciente:pacientes(nome_completo, cpf, municipio, uf)
@@ -97,6 +82,15 @@ export default async function DespachoFinanceiroPage({ params }: { params: Promi
   const assunto = `DE PASSAGEM E AJUDA DE CUSTO PARA ${nomePaciente}`;
 
   const corpoTexto = despacho.texto_despacho?.trim();
+
+  // Representantes salvos no despacho; cai nos padrões em documentos antigos.
+  const reps =
+    despacho.representantes && despacho.representantes.length
+      ? despacho.representantes
+      : REPRESENTANTES_PADRAO;
+  // Último representante entra como bloco "De acordo," quando há mais de um.
+  const repsPrincipais = reps.length > 1 ? reps.slice(0, -1) : reps;
+  const repDeAcordo = reps.length > 1 ? reps[reps.length - 1] : null;
 
   return (
     <div className="print-root">
@@ -162,34 +156,30 @@ export default async function DespachoFinanceiroPage({ params }: { params: Promi
             <strong>Atenciosamente,</strong>
           </p>
 
-          <div className="sei-bloco-assinatura">
-            <p className="sei-nome">
-              <strong>{ASSINANTES.tecnico.nome}</strong>
-            </p>
-            <p>{ASSINANTES.tecnico.cargo}</p>
-            <p>{ASSINANTES.tecnico.id}</p>
-          </div>
+          {repsPrincipais.map((r, i) => (
+            <div className="sei-bloco-assinatura" key={`${r.usuario_id ?? 'manual'}-${i}`}>
+              <p className="sei-nome">
+                <strong>{r.nome}</strong>
+              </p>
+              {r.cargo && <p>{r.cargo}</p>}
+              {r.id_funcional && <p>{r.id_funcional}</p>}
+            </div>
+          ))}
 
-          <div className="sei-bloco-assinatura">
-            <p className="sei-nome">
-              <strong>{ASSINANTES.chefe.nome}</strong>
-              <br />
-              <strong>{ASSINANTES.chefe.cargo}</strong>
-            </p>
-            <p>{ASSINANTES.chefe.id}</p>
-          </div>
-
-          <p className="sei-saudacao">
-            <strong>De acordo,</strong>
-          </p>
-
-          <div className="sei-bloco-assinatura">
-            <p className="sei-nome">
-              <strong>{ASSINANTES.superintendente.nome}</strong>
-            </p>
-            <p>{ASSINANTES.superintendente.cargo}</p>
-            <p>{ASSINANTES.superintendente.id}</p>
-          </div>
+          {repDeAcordo && (
+            <>
+              <p className="sei-saudacao">
+                <strong>De acordo,</strong>
+              </p>
+              <div className="sei-bloco-assinatura">
+                <p className="sei-nome">
+                  <strong>{repDeAcordo.nome}</strong>
+                </p>
+                {repDeAcordo.cargo && <p>{repDeAcordo.cargo}</p>}
+                {repDeAcordo.id_funcional && <p>{repDeAcordo.id_funcional}</p>}
+              </div>
+            </>
+          )}
         </section>
 
         {/* ── Rodapé institucional ──────────────────────── */}

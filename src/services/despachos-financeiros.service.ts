@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
+import type { RepresentanteDespacho } from '@/core/despacho/representantes';
 
 function getSupabase() {
   return createClient();
@@ -27,6 +28,7 @@ export async function criarDespacho(data: {
   numero_sei?: string | null;
   texto_despacho?: string | null;
   observacoes?: string | null;
+  representantes?: RepresentanteDespacho[] | null;
 }) {
   return getSupabase()
     .from('despachos_financeiros')
@@ -39,6 +41,7 @@ export async function atualizarDespacho(id: string, patch: {
   numero_sei?: string | null;
   texto_despacho?: string | null;
   observacoes?: string | null;
+  representantes?: RepresentanteDespacho[] | null;
 }) {
   return getSupabase()
     .from('despachos_financeiros')

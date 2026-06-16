@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Printer, Link2, Check, ArrowLeft, Pencil } from 'lucide-react';
-import EditarDespachoDrawer from './EditarDespachoDrawer';
+import DespachoFinanceiroDrawer from '@/shared/components/despacho/DespachoFinanceiroDrawer';
 
 export default function DespachoToolbar({ despachoId }: { despachoId: string }) {
   const [copiado, setCopiado] = useState(false);
@@ -37,7 +37,7 @@ export default function DespachoToolbar({ despachoId }: { despachoId: string }) 
 
         <div className="print-toolbar-actions">
           <button type="button" className="print-btn print-btn-secondary" onClick={() => setEditar(true)}>
-            <Pencil size={14} /> Editar texto
+            <Pencil size={14} /> Editar despacho
           </button>
           <button type="button" className="print-btn print-btn-secondary" onClick={copiarLink}>
             {copiado ? <><Check size={14} /> Link copiado</> : <><Link2 size={14} /> Copiar link</>}
@@ -48,12 +48,14 @@ export default function DespachoToolbar({ despachoId }: { despachoId: string }) 
         </div>
       </div>
 
-      {editar && (
-        <EditarDespachoDrawer
+      <div className="no-print">
+        <DespachoFinanceiroDrawer
+          open={editar}
           despachoId={despachoId}
           onClose={() => setEditar(false)}
+          aposSalvar={() => window.location.reload()}
         />
-      )}
+      </div>
     </>
   );
 }
