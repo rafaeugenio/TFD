@@ -266,9 +266,21 @@ export function ReportPrintStyles() {
           border: none !important;
           box-shadow: none !important;
         }
+        /* Compactação de impressão específica do BPA de Ajuda de Custo (14
+           colunas). Não aplicada aos demais relatórios que usam ReportTable. */
+        .report-table--compact {
+          width: 100% !important;
+          table-layout: fixed !important;
+        }
+        .report-table--compact th,
+        .report-table--compact td {
+          padding: 4px 5px !important;
+          font-size: 9px !important;
+          line-height: 1.2 !important;
+        }
         @page {
           size: A4 landscape;
-          margin: 1cm;
+          margin: 0.7cm;
         }
       }
     `}</style>

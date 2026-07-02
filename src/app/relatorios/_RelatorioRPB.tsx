@@ -62,6 +62,13 @@ interface RPBRow {
   sigtap_descricao: string;
   quantidade: number | null;
   cid: string | null;
+  // específicas de ajuda de custo (novo padrão, com/sem pernoite lado a lado)
+  codigo_sigtap_pernoite?: string;
+  descricao_pernoite?: string;
+  qtd_pernoite?: number;
+  codigo_sigtap_sem_pernoite?: string;
+  descricao_sem_pernoite?: string;
+  qtd_sem_pernoite?: number;
   // específicas de passagens
   modal?: Modal;
   trecho_label?: string;
@@ -165,8 +172,12 @@ export default function RelatorioRPB() {
           const pac = sol?.pacientes as Record<string, unknown> | null;
           const beneficiarioOriginal: Beneficiario =
             (r.tipo as string)?.toUpperCase() === 'ACOMPANHANTE' ? 'acompanhante' : 'paciente';
+          // `dias_elegiveis` já representa as noites da viagem, descontando internação.
+          // Padrão do relatório oficial: as diárias com pernoite ficam em uma coluna e a
+          // diária de retorno (sempre presente, sem pernoite) em outra, lado a lado.
           const dias = Number(r.dias_elegiveis ?? 0);
-          const comPernoite = dias > 0;
+          const qtdComPernoite = dias;
+          const qtdSemPernoite = 1;
 
           const enderecoFull = [pac?.logradouro, pac?.numero].filter(Boolean).join(', ');
           const acomp =
@@ -177,7 +188,8 @@ export default function RelatorioRPB() {
           // Acompanhante doador conta como PACIENTE para o SIGTAP/BPA.
           const beneficiario: Beneficiario =
             acomp?.doador ? 'paciente' : beneficiarioOriginal;
-          const sig = resolveSigtapAjudaCusto({ beneficiario, comPernoite, cnrac: false });
+          const sigComPernoite = resolveSigtapAjudaCusto({ beneficiario, comPernoite: true, cnrac: false });
+          const sigSemPernoite = resolveSigtapAjudaCusto({ beneficiario, comPernoite: false, cnrac: false });
 
           const nome = acomp?.nome ?? (pac?.nome_completo as string) ?? '—';
           const cpfCns = acomp?.cpf ?? (pac?.cpf as string) ?? (pac?.cns as string) ?? '—';
@@ -198,10 +210,18 @@ export default function RelatorioRPB() {
             bairro: (pac?.bairro as string) ?? null,
             telefone: acomp ? acomp.telefone : ((pac?.telefone_celular as string) ?? null),
             email: acomp ? acomp.email : ((pac?.email as string) ?? null),
-            codigo_sigtap: sig.codigo,
-            sigtap_descricao: sig.descricao,
-            quantidade: comPernoite ? dias : 1,
+            // Campos legados mantidos por compatibilidade (não exibidos diretamente na
+            // tabela de ajuda de custo, que passa a discriminar os dois procedimentos).
+            codigo_sigtap: qtdComPernoite > 0 ? sigComPernoite.codigo : sigSemPernoite.codigo,
+            sigtap_descricao: qtdComPernoite > 0 ? sigComPernoite.descricao : sigSemPernoite.descricao,
+            quantidade: qtdComPernoite > 0 ? qtdComPernoite : qtdSemPernoite,
             cid: (sol?.cid10_principal as string) ?? null,
+            codigo_sigtap_pernoite: qtdComPernoite > 0 ? sigComPernoite.codigo : undefined,
+            descricao_pernoite: qtdComPernoite > 0 ? sigComPernoite.descricao : undefined,
+            qtd_pernoite: qtdComPernoite > 0 ? qtdComPernoite : undefined,
+            codigo_sigtap_sem_pernoite: sigSemPernoite.codigo,
+            descricao_sem_pernoite: sigSemPernoite.descricao,
+            qtd_sem_pernoite: qtdSemPernoite,
           };
         });
         rowsLocal = mapped;
@@ -325,9 +345,16 @@ export default function RelatorioRPB() {
         setRows(mapped);
       }
 
-      // Carrega valores SIGTAP dos códigos presentes
+      // Carrega valores SIGTAP dos códigos presentes (inclui os códigos com/sem
+      // pernoite da ajuda de custo, que não passam mais por `codigo_sigtap`).
       const codigosUnicos = Array.from(
-        new Set(rowsLocal.map((r) => r.codigo_sigtap).filter(Boolean))
+        new Set(
+          rowsLocal.flatMap((r) => [
+            r.codigo_sigtap,
+            r.codigo_sigtap_pernoite,
+            r.codigo_sigtap_sem_pernoite,
+          ]).filter((c): c is string => Boolean(c))
+        )
       );
       if (codigosUnicos.length > 0) {
         const { data: sigtaps } = await supabase
@@ -545,11 +572,65 @@ export default function RelatorioRPB() {
     );
   };
 
+  const valorPernoiteLinha = (r: RPBRow): number | null => {
+    if (!r.codigo_sigtap_pernoite || !r.qtd_pernoite) return null;
+    const v = valoresSigtap[r.codigo_sigtap_pernoite];
+    if (v == null) return null;
+    return v * r.qtd_pernoite;
+  };
+
+  const valorSemPernoiteLinha = (r: RPBRow): number | null => {
+    if (!r.codigo_sigtap_sem_pernoite || !r.qtd_sem_pernoite) return null;
+    const v = valoresSigtap[r.codigo_sigtap_sem_pernoite];
+    if (v == null) return null;
+    return v * r.qtd_sem_pernoite;
+  };
+
+  const totalIndividualizadoLinha = (r: RPBRow): number =>
+    (valorPernoiteLinha(r) ?? 0) + (valorSemPernoiteLinha(r) ?? 0);
+
+  // Célula única por lado (com/sem pernoite): código, quantidade e parcial
+  // empilhados, já que as três informações sempre andam juntas na leitura.
+  const procedimentoResumoCell = (
+    codigo: string | undefined,
+    descricao: string | undefined,
+    qtd: number | undefined,
+    parcial: number | null,
+  ) => {
+    if (!codigo || !qtd) return <span style={{ color: '#94A3B8' }}>—</span>;
+    return (
+      <div title={descricao} style={{ display: 'flex', flexDirection: 'column', gap: 0, lineHeight: 1.25 }}>
+        <span style={{ fontFamily: 'var(--tfd-font-mono)', fontSize: 12, color: '#0F172A', whiteSpace: 'nowrap' }}>
+          {codigo}
+        </span>
+        <span style={{ fontSize: 10, color: '#64748B', whiteSpace: 'nowrap' }}>
+          {qtd} dia{qtd > 1 ? 's' : ''} · {parcial != null ? fmtMoney(parcial) : '—'}
+        </span>
+      </div>
+    );
+  };
+
   const columnsAjuda: ReportColumn<RPBRow>[] = [
-    { key: 'cod', header: 'SIGTAP', width: '210px', render: sigtapCell },
-    { key: 'qtd', header: 'Diárias', width: '70px', align: 'right', render: (r) => r.quantidade ?? '—' },
-    { key: 'cid', header: 'CID', width: '64px', mono: true, render: (r) => r.cid ?? '—' },
-    { key: 'valor', header: 'Valor SIGTAP', width: '110px', align: 'right', render: valorCell },
+    { key: 'cid', header: 'CID', width: '52px', mono: true, render: (r) => r.cid ?? '—' },
+    {
+      key: 'proc_pernoite',
+      header: 'Proced. c/ Pernoite',
+      width: '150px',
+      render: (r) => procedimentoResumoCell(r.codigo_sigtap_pernoite, r.descricao_pernoite, r.qtd_pernoite, valorPernoiteLinha(r)),
+    },
+    {
+      key: 'proc_sem_pernoite',
+      header: 'Proced. s/ Pernoite',
+      width: '150px',
+      render: (r) => procedimentoResumoCell(r.codigo_sigtap_sem_pernoite, r.descricao_sem_pernoite, r.qtd_sem_pernoite, valorSemPernoiteLinha(r)),
+    },
+    {
+      key: 'total_individualizado',
+      header: 'Total',
+      width: '90px',
+      align: 'right',
+      render: (r) => <span style={{ fontFamily: 'var(--tfd-font-mono)', whiteSpace: 'nowrap', fontWeight: 600 }}>{fmtMoney(totalIndividualizadoLinha(r))}</span>,
+    },
   ];
 
   const columnsPassagem: ReportColumn<RPBRow>[] = [
@@ -602,8 +683,14 @@ export default function RelatorioRPB() {
 
   const totalLancados = rows.filter(isLancado).length;
   const totalPendentes = rows.length - totalLancados;
+  // Passagens: mantém o cálculo legado (código/quantidade únicos).
   const totalQtd = rows.reduce((s, r) => s + (r.quantidade ?? 0), 0);
-  const totalValor = rows.reduce((s, r) => s + (valorLinha(r) ?? 0), 0);
+  const totalValorPassagem = rows.reduce((s, r) => s + (valorLinha(r) ?? 0), 0);
+  // Ajuda de custo: soma os dois procedimentos (com e sem pernoite) por linha.
+  // O detalhamento por lado não vai mais pro rodapé da tabela, só o total geral
+  // (já exibido no KPI "Valor total SIGTAP" no topo).
+  const totalIndividualizadoGeral = rows.reduce((s, r) => s + totalIndividualizadoLinha(r), 0);
+  const totalValor = tipo === 'ajuda_custo' ? totalIndividualizadoGeral : totalValorPassagem;
 
   return (
     <div className="space-y-4">
@@ -674,7 +761,7 @@ export default function RelatorioRPB() {
           { label: 'Total de linhas', value: String(rows.length), icon: <ClipboardList size={11} /> },
           { label: 'Lançadas no BPA', value: String(totalLancados), tone: 'success', icon: <CheckCircle2 size={11} /> },
           { label: 'Pendentes', value: String(totalPendentes), tone: 'warning', icon: <AlertCircle size={11} /> },
-          { label: tipo === 'ajuda_custo' ? 'Total de diárias' : 'Total de unidades', value: String(totalQtd) },
+          ...(tipo === 'ajuda_custo' ? [] : [{ label: 'Total de unidades', value: String(totalQtd) }]),
           { label: 'Valor total SIGTAP', value: fmtMoney(totalValor) },
         ]}
       />
@@ -694,6 +781,7 @@ export default function RelatorioRPB() {
             rows={rows}
             rowStyle={(r) => isLancado(r) ? { opacity: 0.55 } : undefined}
             emptyLabel={`Nenhum item em ${periodo.label.toLowerCase()}.`}
+            compact={tipo === 'ajuda_custo'}
           />
         )}
       </TableCard>

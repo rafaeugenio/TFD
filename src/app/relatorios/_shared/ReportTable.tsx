@@ -1,6 +1,7 @@
 'use client';
 
-import type { CSSProperties, ReactNode } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 
 /**
  * Tabela tipográfica padrão dos relatórios — densa, com header sticky-ish,
@@ -21,21 +22,43 @@ export interface ReportColumn<T> {
   render: (row: T, index: number) => ReactNode;
 }
 
+const DEFAULT_PAGE_SIZE = 20;
+
 export function ReportTable<T>({
   columns,
   rows,
   emptyLabel = 'Nenhum registro para os filtros aplicados.',
   footerRow,
   rowStyle,
+  compact = false,
+  pageSize = DEFAULT_PAGE_SIZE,
 }: {
   columns: ReportColumn<T>[];
   rows: T[];
   emptyLabel?: string;
   footerRow?: ReactNode;
   rowStyle?: (row: T, index: number) => CSSProperties | undefined;
+  /** Impressão compacta (fonte menor, padding reduzido) para tabelas largas. */
+  compact?: boolean;
+  /** Itens por página. A tabela inteira continua disponível na impressão. */
+  pageSize?: number;
 }) {
+  const [page, setPage] = useState(1);
+  // Volta pra primeira página sempre que o conjunto de dados muda (novo filtro/período).
+  useEffect(() => { setPage(1); }, [rows]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pagedRows = rows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const inicio = rows.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const fim = Math.min(currentPage * pageSize, rows.length);
+
   return (
-    <table className="report-table w-full" style={{ borderCollapse: 'collapse' }}>
+    <div>
+    <table
+      className={compact ? 'report-table report-table--compact w-full' : 'report-table w-full'}
+      style={{ borderCollapse: 'collapse' }}
+    >
       <thead>
         <tr>
           {columns.map((c) => (
@@ -45,15 +68,15 @@ export function ReportTable<T>({
               style={{
                 background: '#F8FAFC',
                 borderBottom: '1px solid var(--tfd-surface-border)',
-                padding: '10px 12px',
-                fontSize: 10.5,
+                padding: compact ? '7px 8px' : '10px 12px',
+                fontSize: compact ? 9.5 : 10.5,
                 fontWeight: 700,
                 color: '#475569',
                 textTransform: 'uppercase',
-                letterSpacing: '0.06em',
+                letterSpacing: '0.04em',
                 textAlign: c.align ?? 'left',
                 width: c.width,
-                whiteSpace: 'nowrap',
+                whiteSpace: compact ? 'normal' : 'nowrap',
               }}
             >
               {c.header}
@@ -61,8 +84,41 @@ export function ReportTable<T>({
           ))}
         </tr>
       </thead>
-      <tbody>
-        {rows.length === 0 ? (
+      {(() => {
+        const renderRow = (row: T, idx: number) => (
+          <tr
+            key={(row as { id?: string }).id ?? idx}
+            className="report-row"
+            style={{
+              borderBottom: '1px solid var(--tfd-surface-border)',
+              background: idx % 2 === 1 ? 'rgba(248,250,252,0.5)' : 'white',
+              ...(rowStyle?.(row, idx) ?? {}),
+            }}
+          >
+            {columns.map((c) => {
+              const useMono = c.mono ?? c.align === 'right';
+              return (
+                <td
+                  key={c.key}
+                  className={c.printHide ? 'no-print' : undefined}
+                  style={{
+                    padding: compact ? '6px 8px' : '8px 10px',
+                    fontSize: compact ? 11.5 : 12.5,
+                    color: '#1A1D2B',
+                    textAlign: c.align ?? 'left',
+                    fontFamily: useMono ? 'var(--tfd-font-mono)' : undefined,
+                    fontVariantNumeric: useMono ? 'tabular-nums' : undefined,
+                    verticalAlign: 'top',
+                    whiteSpace: c.align === 'right' ? 'nowrap' : undefined,
+                  }}
+                >
+                  {c.render(row, idx)}
+                </td>
+              );
+            })}
+          </tr>
+        );
+        const emptyRow = (
           <tr>
             <td
               colSpan={columns.length}
@@ -71,42 +127,21 @@ export function ReportTable<T>({
               {emptyLabel}
             </td>
           </tr>
-        ) : (
-          rows.map((row, idx) => (
-            <tr
-              key={(row as { id?: string }).id ?? idx}
-              className="report-row"
-              style={{
-                borderBottom: '1px solid var(--tfd-surface-border)',
-                background: idx % 2 === 1 ? 'rgba(248,250,252,0.5)' : 'white',
-                ...(rowStyle?.(row, idx) ?? {}),
-              }}
-            >
-              {columns.map((c) => {
-                const useMono = c.mono ?? c.align === 'right';
-                return (
-                  <td
-                    key={c.key}
-                    className={c.printHide ? 'no-print' : undefined}
-                    style={{
-                      padding: '8px 10px',
-                      fontSize: 12.5,
-                      color: '#1A1D2B',
-                      textAlign: c.align ?? 'left',
-                      fontFamily: useMono ? 'var(--tfd-font-mono)' : undefined,
-                      fontVariantNumeric: useMono ? 'tabular-nums' : undefined,
-                      verticalAlign: 'top',
-                      whiteSpace: c.align === 'right' ? 'nowrap' : undefined,
-                    }}
-                  >
-                    {c.render(row, idx)}
-                  </td>
-                );
-              })}
-            </tr>
-          ))
-        )}
-      </tbody>
+        );
+        return (
+          <>
+            {/* Tela: só a página atual. A impressão precisa do relatório completo,
+                então existe um segundo corpo com todas as linhas, oculto na tela
+                e exibido só no @media print (ver .report-table-print-body abaixo). */}
+            <tbody className="no-print">
+              {rows.length === 0 ? emptyRow : pagedRows.map(renderRow)}
+            </tbody>
+            <tbody className="report-table-print-body">
+              {rows.length > 0 && rows.map(renderRow)}
+            </tbody>
+          </>
+        );
+      })()}
       {footerRow && (
         <tfoot>
           {footerRow}
@@ -114,6 +149,14 @@ export function ReportTable<T>({
       )}
 
       <style jsx>{`
+        .report-table-print-body {
+          display: none;
+        }
+        @media print {
+          .report-table-print-body {
+            display: table-row-group !important;
+          }
+        }
         :global(.report-table tbody tr.report-row:hover) {
           background: var(--tfd-primary-50, #EBF0FF) !important;
         }
@@ -125,6 +168,42 @@ export function ReportTable<T>({
         }
       `}</style>
     </table>
+    {totalPages > 1 && (
+      <div
+        className="no-print flex items-center justify-between gap-3"
+        style={{ padding: '8px 10px', borderTop: '1px solid var(--tfd-surface-border)', fontSize: 12, color: '#64748B' }}
+      >
+        <span>
+          Mostrando {inicio}–{fim} de {rows.length}
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="tfd-btn tfd-btn-ghost"
+            style={{ padding: '4px 8px' }}
+            disabled={currentPage <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            aria-label="Página anterior"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <span style={{ minWidth: 88, textAlign: 'center' }}>
+            Página {currentPage} de {totalPages}
+          </span>
+          <button
+            type="button"
+            className="tfd-btn tfd-btn-ghost"
+            style={{ padding: '4px 8px' }}
+            disabled={currentPage >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            aria-label="Próxima página"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      </div>
+    )}
+    </div>
   );
 }
 
