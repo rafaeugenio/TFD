@@ -171,7 +171,6 @@ export default function WikiHomePage() {
         <main className="pb-16">
           <ol className="tfd-stagger list-none">
             {WIKI_CHAPTERS.map((chapter) => {
-              const Icon = CHAPTER_ICONS[chapter.id];
               const topics = chapterTopics(chapter);
               return (
                 <li
@@ -226,15 +225,18 @@ export default function WikiHomePage() {
                     <Link
                       href={`/wiki/${chapter.id}`}
                       aria-label={`Abrir capítulo ${chapter.titulo}`}
-                      className="group flex h-[180px] items-center justify-center rounded-xl transition-shadow hover:shadow-[var(--tfd-shadow-sm)] sm:h-[210px]"
-                      style={{ background: 'var(--tfd-blue-50)' }}
+                      className="group block overflow-hidden rounded-xl border transition-shadow hover:shadow-[var(--tfd-shadow-md)]"
+                      style={{
+                        borderColor: 'var(--tfd-surface-border)',
+                        background: 'var(--tfd-blue-50)',
+                      }}
                     >
-                      <Icon
-                        size={44}
-                        strokeWidth={1.5}
-                        aria-hidden="true"
-                        className="transition-transform group-hover:scale-105"
-                        style={{ color: 'var(--tfd-blue-500)' }}
+                      {/* eslint-disable-next-line @next/next/no-img-element -- print estático local */}
+                      <img
+                        src={chapter.imagem.src}
+                        alt={chapter.imagem.alt}
+                        loading="lazy"
+                        className="h-[180px] w-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.02] sm:h-[240px]"
                       />
                     </Link>
                     <ul className="mt-4 space-y-1.5">

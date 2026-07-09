@@ -46,6 +46,8 @@ export interface WikiChapter {
   descricao: string;
   /** Tag curta exibida como badge no card do capítulo (ex.: "Básico"). */
   tag: string;
+  /** Print real do sistema exibido no card do capítulo na home. */
+  imagem: { src: string; alt: string };
   /** Ids dos tópicos, na ordem de leitura. */
   topicos: string[];
 }
@@ -53,6 +55,7 @@ export interface WikiChapter {
 export const WIKI_CHAPTERS: WikiChapter[] = [
   {
     id: 'introducao',
+    imagem: { src: '/wiki/media/capitulos/cap-01-introducao.jpg', alt: 'Tela de login do sistema TFD' },
     numero: 1,
     titulo: 'Introdução ao sistema',
     descricao: 'Uma visão geral do TFD, como entrar, navegar e se orientar nas telas.',
@@ -61,6 +64,7 @@ export const WIKI_CHAPTERS: WikiChapter[] = [
   },
   {
     id: 'cadastros',
+    imagem: { src: '/wiki/media/capitulos/cap-02-cadastros.jpg', alt: 'Listagem de pacientes com busca e ações' },
     numero: 2,
     titulo: 'Cadastros',
     descricao: 'Pacientes, dados bancários, unidades de saúde e regionais: a base de toda solicitação.',
@@ -69,6 +73,7 @@ export const WIKI_CHAPTERS: WikiChapter[] = [
   },
   {
     id: 'solicitacoes',
+    imagem: { src: '/wiki/media/capitulos/cap-03-solicitacoes.jpg', alt: 'Lista de solicitações com status consolidado' },
     numero: 3,
     titulo: 'Solicitações',
     descricao: 'Como abrir, acompanhar, tramitar e encerrar uma solicitação de TFD.',
@@ -77,6 +82,7 @@ export const WIKI_CHAPTERS: WikiChapter[] = [
   },
   {
     id: 'regulacao',
+    imagem: { src: '/wiki/media/capitulos/cap-04-regulacao.jpg', alt: 'Fila de regulação com carimbos e pareceres' },
     numero: 4,
     titulo: 'Regulação',
     descricao: 'Parecer médico, carimbo de regulação e agendamento: a análise do caso.',
@@ -85,6 +91,7 @@ export const WIKI_CHAPTERS: WikiChapter[] = [
   },
   {
     id: 'financeiro',
+    imagem: { src: '/wiki/media/capitulos/cap-05-financeiro.jpg', alt: 'Fila do financeiro com passagens e ajudas de custo' },
     numero: 5,
     titulo: 'Financeiro',
     descricao: 'Passagens, ajuda de custo, adicionais e o checklist de fechamento.',
@@ -93,6 +100,7 @@ export const WIKI_CHAPTERS: WikiChapter[] = [
   },
   {
     id: 'gestao',
+    imagem: { src: '/wiki/media/capitulos/cap-06-gestao.jpg', alt: 'Painel com indicadores por setor' },
     numero: 6,
     titulo: 'Gestão e Configurações',
     descricao: 'Painel, relatórios, usuários, permissões, tabelas auxiliares e auditoria.',
