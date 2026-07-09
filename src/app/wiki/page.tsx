@@ -1,10 +1,9 @@
 'use client';
 
-import { ArrowRight, ArrowUpRight, Search, SearchX, X } from 'lucide-react';
+import { ArrowRight, Search, SearchX, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import { CHAPTER_ICONS } from './components/chapterIcons';
 import {
   chapterOfTopic,
   chapterTopics,
@@ -33,8 +32,8 @@ export default function WikiHomePage() {
       {/* Hero */}
       <header className="tfd-reveal pb-10 pt-8 text-center sm:pt-14">
         <p
-          className="text-[11px] font-semibold uppercase tracking-[0.12em]"
-          style={{ color: 'var(--tfd-blue-600)' }}
+          className="text-[12px] font-medium uppercase tracking-[0.1em]"
+          style={{ color: 'var(--tfd-400)' }}
         >
           TFD · SES-MA
         </p>
@@ -130,33 +129,20 @@ export default function WikiHomePage() {
             <ul className="tfd-stagger grid gap-3 sm:grid-cols-2">
               {results.map((topic) => {
                 const chapter = chapterOfTopic(topic.id);
-                const Icon = chapter ? CHAPTER_ICONS[chapter.id] : null;
                 return (
                   <li key={topic.id}>
                     <button
                       type="button"
                       onClick={() => openTopic(topic.id)}
-                      className="tfd-card group flex h-full w-full flex-col gap-2 p-4 text-left transition-shadow hover:shadow-[var(--tfd-shadow-md)]"
+                      className="tfd-card flex h-full w-full flex-col gap-1.5 p-4 text-left transition-shadow hover:shadow-[var(--tfd-shadow-md)]"
                     >
-                      <span
-                        className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em]"
-                        style={{ color: 'var(--tfd-blue-600)' }}
-                      >
-                        {Icon && <Icon size={12} aria-hidden="true" />}
+                      <span className="text-[12px]" style={{ color: 'var(--tfd-400)' }}>
                         {chapter ? `Capítulo ${String(chapter.numero).padStart(2, '0')} · ${chapter.titulo}` : ''}
                       </span>
-                      <span className="flex items-start justify-between gap-2">
-                        <span className="text-[14px] font-semibold" style={{ color: 'var(--tfd-900)' }}>
-                          {topic.titulo}
-                        </span>
-                        <ArrowUpRight
-                          size={15}
-                          className="mt-0.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-                          style={{ color: 'var(--tfd-blue-500)' }}
-                          aria-hidden="true"
-                        />
+                      <span className="text-[14.5px] font-semibold" style={{ color: 'var(--tfd-900)' }}>
+                        {topic.titulo}
                       </span>
-                      <span className="text-[12.5px] leading-relaxed" style={{ color: 'var(--tfd-500)' }}>
+                      <span className="text-[13px] leading-relaxed" style={{ color: 'var(--tfd-500)' }}>
                         {topic.descricao}
                       </span>
                     </button>
@@ -175,19 +161,19 @@ export default function WikiHomePage() {
               return (
                 <li
                   key={chapter.id}
-                  className="grid gap-6 border-t py-10 sm:grid-cols-[240px_1fr] sm:gap-10"
+                  className="grid gap-6 border-t py-14 sm:grid-cols-[240px_1fr] sm:gap-12"
                   style={{ borderColor: 'var(--tfd-surface-border)' }}
                 >
                   {/* Coluna esquerda: identificação do capítulo */}
                   <div className="flex flex-col items-start">
                     <p
-                      className="text-[11px] font-semibold uppercase tracking-[0.14em]"
-                      style={{ color: 'var(--tfd-blue-600)' }}
+                      className="text-[12px] font-medium uppercase tracking-[0.1em]"
+                      style={{ color: 'var(--tfd-400)' }}
                     >
                       Capítulo {String(chapter.numero).padStart(2, '0')}
                     </p>
                     <h2
-                      className="mt-1.5 text-[18px] font-bold leading-snug tracking-[-0.01em]"
+                      className="mt-2 text-[19px] font-semibold leading-snug tracking-[-0.01em]"
                       style={{ color: 'var(--tfd-900)' }}
                     >
                       <Link
@@ -198,25 +184,15 @@ export default function WikiHomePage() {
                         {chapter.titulo}
                       </Link>
                     </h2>
-                    <p className="mt-2 text-[13px] leading-relaxed" style={{ color: 'var(--tfd-500)' }}>
+                    <p className="mt-2.5 text-[13.5px] leading-[1.65]" style={{ color: 'var(--tfd-500)' }}>
                       {chapter.descricao}
                     </p>
-                    <span
-                      className="mt-3 rounded-full border px-2.5 py-0.5 text-[11px] font-medium"
-                      style={{
-                        borderColor: 'var(--tfd-surface-border)',
-                        color: 'var(--tfd-600)',
-                        background: 'var(--tfd-surface-card)',
-                      }}
-                    >
-                      {chapter.tag}
-                    </span>
                     <Link
                       href={`/wiki/${chapter.id}`}
-                      className="tfd-btn tfd-btn-primary tfd-btn--sm mt-6 inline-flex items-center gap-1.5"
+                      className="mt-5 text-[13.5px] font-medium transition-colors hover:underline"
+                      style={{ color: 'var(--tfd-blue-600)' }}
                     >
-                      Acessar capítulo
-                      <ArrowRight size={13} aria-hidden="true" />
+                      Acessar capítulo →
                     </Link>
                   </div>
 
@@ -239,26 +215,14 @@ export default function WikiHomePage() {
                         className="h-[180px] w-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.02] sm:h-[240px]"
                       />
                     </Link>
-                    <ul className="mt-4 space-y-1.5">
+                    <ul className="mt-5 space-y-2">
                       {topics.map((topic) => (
                         <li key={topic.id}>
                           <Link
                             href={`/wiki/${chapter.id}#${topic.id}`}
-                            className="group inline-flex items-baseline gap-2 text-[13px] transition-colors"
-                            style={{ color: 'var(--tfd-700)' }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.color = 'var(--tfd-blue-600)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.color = 'var(--tfd-700)';
-                            }}
+                            className="text-[13.5px] underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
+                            style={{ color: 'var(--tfd-600)' }}
                           >
-                            <ArrowRight
-                              size={12}
-                              className="shrink-0 translate-y-0.5"
-                              style={{ color: 'var(--tfd-blue-500)' }}
-                              aria-hidden="true"
-                            />
                             {topic.titulo}
                           </Link>
                         </li>

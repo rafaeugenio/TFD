@@ -1,11 +1,10 @@
 'use client';
 
-import { ArrowLeft, ArrowRight, ChevronUp, ListTree } from 'lucide-react';
+import { ChevronUp, ListTree } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ChapterSidebar from '../components/ChapterSidebar';
-import { CHAPTER_ICONS } from '../components/chapterIcons';
 import TopicArticle from '../components/TopicArticle';
 import {
   chapterOfTopic,
@@ -22,7 +21,6 @@ export default function ChapterView({ chapterId }: ChapterViewProps) {
   const router = useRouter();
   const chapter = getChapter(chapterId)!;
   const topics = useMemo(() => chapterTopics(chapter), [chapter]);
-  const Icon = CHAPTER_ICONS[chapter.id];
 
   const chapterIndex = WIKI_CHAPTERS.findIndex((c) => c.id === chapter.id);
   const prevChapter = WIKI_CHAPTERS[chapterIndex - 1];
@@ -44,7 +42,7 @@ export default function ChapterView({ chapterId }: ChapterViewProps) {
         }
         return;
       }
-      // Tópico de outro capítulo (link "relacionados"): troca de página.
+      // Tópico de outro capítulo (link "ver também"): troca de página.
       const target = chapterOfTopic(topicId);
       if (target) router.push(`/wiki/${target.id}#${topicId}`);
     },
@@ -99,7 +97,7 @@ export default function ChapterView({ chapterId }: ChapterViewProps) {
   return (
     <div className="mx-auto w-full max-w-[1280px]">
       {/* Barra de progresso de leitura */}
-      <div className="fixed inset-x-0 top-0 z-50 h-[3px]" aria-hidden="true">
+      <div className="fixed inset-x-0 top-0 z-50 h-[2px]" aria-hidden="true">
         <div
           className="h-full"
           style={{
@@ -110,16 +108,15 @@ export default function ChapterView({ chapterId }: ChapterViewProps) {
         />
       </div>
 
-      {/* Breadcrumb */}
-      <nav aria-label="Trilha de navegação" className="tfd-reveal mb-6 pt-2">
-        <ol className="flex flex-wrap items-center gap-1.5 text-[13px]">
+      {/* Trilha de navegação */}
+      <nav aria-label="Trilha de navegação" className="mb-10 pt-2">
+        <ol className="flex flex-wrap items-center gap-2 text-[13.5px]">
           <li>
             <Link
               href="/wiki"
-              className="inline-flex items-center gap-1.5 transition-colors hover:underline"
+              className="transition-colors hover:underline"
               style={{ color: 'var(--tfd-500)' }}
             >
-              <ArrowLeft size={13} aria-hidden="true" />
               Manual do Usuário
             </Link>
           </li>
@@ -132,10 +129,10 @@ export default function ChapterView({ chapterId }: ChapterViewProps) {
         </ol>
       </nav>
 
-      <div className="lg:grid lg:grid-cols-[236px_minmax(0,1fr)] lg:gap-10 xl:grid-cols-[236px_minmax(0,1fr)_200px]">
-        {/* Sidebar de capítulos (desktop) */}
+      <div className="lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-12 xl:grid-cols-[220px_minmax(0,1fr)_190px] xl:gap-14">
+        {/* Sumário de capítulos (desktop) */}
         <aside className="hidden lg:block">
-          <div className="sticky top-8 max-h-[calc(100vh-4rem)] overflow-y-auto pb-8 pr-1">
+          <div className="sticky top-10 max-h-[calc(100vh-5rem)] overflow-y-auto pb-8">
             <ChapterSidebar
               currentChapter={chapter}
               activeTopicId={activeTopicId}
@@ -145,12 +142,16 @@ export default function ChapterView({ chapterId }: ChapterViewProps) {
         </aside>
 
         {/* Sumário compacto (mobile) */}
-        <details ref={mobileTocRef} className="tfd-card mb-6 overflow-hidden p-0 lg:hidden">
+        <details
+          ref={mobileTocRef}
+          className="mb-8 overflow-hidden rounded-lg border lg:hidden"
+          style={{ borderColor: 'var(--tfd-surface-border)', background: 'var(--tfd-surface-card)' }}
+        >
           <summary
-            className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-[13px] font-semibold"
+            className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-[13.5px] font-medium"
             style={{ color: 'var(--tfd-800)' }}
           >
-            <ListTree size={16} style={{ color: 'var(--tfd-blue-500)' }} aria-hidden="true" />
+            <ListTree size={15} style={{ color: 'var(--tfd-400)' }} aria-hidden="true" />
             Capítulos do manual
           </summary>
           <div className="border-t px-3 pb-3 pt-2" style={{ borderColor: 'var(--tfd-surface-border)' }}>
@@ -163,102 +164,73 @@ export default function ChapterView({ chapterId }: ChapterViewProps) {
         </details>
 
         {/* Conteúdo do capítulo */}
-        <main className="min-w-0 pb-16">
-          <header className="tfd-reveal mb-7">
+        <main className="min-w-0 max-w-[720px] pb-20">
+          <header>
             <p
-              className="text-[11px] font-semibold uppercase tracking-[0.14em]"
-              style={{ color: 'var(--tfd-blue-600)' }}
+              className="text-[12px] font-medium uppercase tracking-[0.1em]"
+              style={{ color: 'var(--tfd-400)' }}
             >
               Capítulo {String(chapter.numero).padStart(2, '0')}
             </p>
-            <div className="mt-1.5 flex items-center gap-3">
-              <span
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-                style={{ background: 'var(--tfd-blue-50)', color: 'var(--tfd-blue-600)' }}
-                aria-hidden="true"
-              >
-                <Icon size={20} />
-              </span>
-              <h1
-                className="text-[26px] font-bold tracking-[-0.02em]"
-                style={{ color: 'var(--tfd-900)' }}
-              >
-                {chapter.titulo}
-              </h1>
-            </div>
-            <p className="mt-2 max-w-[620px] text-[14px] leading-relaxed" style={{ color: 'var(--tfd-500)' }}>
+            <h1
+              className="mt-2 text-[30px] font-bold tracking-[-0.02em]"
+              style={{ color: 'var(--tfd-900)' }}
+            >
+              {chapter.titulo}
+            </h1>
+            <p className="mt-3 text-[15.5px] leading-[1.7]" style={{ color: 'var(--tfd-500)' }}>
               {chapter.descricao}
             </p>
           </header>
 
-          <div className="space-y-5">
-            {topics.map((topic, i) => (
-              <TopicArticle
-                key={topic.id}
-                topic={topic}
-                prev={topics[i - 1]}
-                next={topics[i + 1]}
-                onNavigate={scrollToTopic}
-              />
+          <div className="mt-12 divide-y divide-[var(--tfd-surface-border)]">
+            {topics.map((topic) => (
+              <div key={topic.id} className="py-14 first:pt-0 last:pb-0">
+                <TopicArticle topic={topic} onNavigate={scrollToTopic} />
+              </div>
             ))}
           </div>
 
           {/* Capítulo anterior / próximo */}
-          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+          <nav
+            aria-label="Navegação entre capítulos"
+            className="mt-20 flex items-baseline justify-between gap-4 border-t pt-6 text-[14px]"
+            style={{ borderColor: 'var(--tfd-surface-border)' }}
+          >
             {prevChapter ? (
               <Link
                 href={`/wiki/${prevChapter.id}`}
-                className="tfd-card flex items-center gap-3 p-4 transition-shadow hover:shadow-[var(--tfd-shadow-md)]"
+                className="transition-colors hover:underline"
+                style={{ color: 'var(--tfd-500)' }}
               >
-                <ArrowLeft size={16} className="shrink-0" style={{ color: 'var(--tfd-400)' }} aria-hidden="true" />
-                <span className="min-w-0">
-                  <span className="block text-[11px]" style={{ color: 'var(--tfd-400)' }}>
-                    Capítulo anterior
-                  </span>
-                  <span className="block truncate text-[14px] font-semibold" style={{ color: 'var(--tfd-800)' }}>
-                    {prevChapter.titulo}
-                  </span>
-                </span>
+                ← {prevChapter.titulo}
               </Link>
             ) : (
-              <span className="hidden sm:block" />
+              <span />
             )}
             {nextChapter && (
               <Link
                 href={`/wiki/${nextChapter.id}`}
-                className="tfd-card flex items-center justify-end gap-3 p-4 text-right transition-shadow hover:shadow-[var(--tfd-shadow-md)]"
+                className="text-right font-medium transition-colors hover:underline"
+                style={{ color: 'var(--tfd-blue-600)' }}
               >
-                <span className="min-w-0">
-                  <span className="block text-[11px]" style={{ color: 'var(--tfd-400)' }}>
-                    Próximo capítulo
-                  </span>
-                  <span className="block truncate text-[14px] font-semibold" style={{ color: 'var(--tfd-blue-600)' }}>
-                    {nextChapter.titulo}
-                  </span>
-                </span>
-                <ArrowRight size={16} className="shrink-0" style={{ color: 'var(--tfd-blue-500)' }} aria-hidden="true" />
+                {nextChapter.titulo} →
               </Link>
             )}
-          </div>
+          </nav>
 
-          <footer
-            className="mt-10 border-t pt-6 text-center text-[12px]"
-            style={{ borderColor: 'var(--tfd-surface-border)', color: 'var(--tfd-400)' }}
-          >
+          <footer className="mt-12 text-[12.5px]" style={{ color: 'var(--tfd-400)' }}>
             Guia do Usuário TFD · SES-MA · Desenvolvido por Citiesoft
           </footer>
         </main>
 
         {/* "Nesta página" (telas largas) */}
         <aside className="hidden xl:block">
-          <nav aria-label="Nesta página" className="sticky top-8">
-            <p
-              className="mb-2 text-[12px] font-semibold uppercase tracking-[0.08em]"
-              style={{ color: 'var(--tfd-500)' }}
-            >
+          <nav aria-label="Nesta página" className="sticky top-10">
+            <p className="mb-3 text-[12.5px] font-medium" style={{ color: 'var(--tfd-800)' }}>
               Nesta página
             </p>
-            <ul className="space-y-1 border-l" style={{ borderColor: 'var(--tfd-surface-border)' }}>
+            <ul className="space-y-0.5 border-l" style={{ borderColor: 'var(--tfd-surface-border)' }}>
               {topics.map((topic) => {
                 const active = topic.id === activeTopicId;
                 return (
@@ -267,12 +239,11 @@ export default function ChapterView({ chapterId }: ChapterViewProps) {
                       type="button"
                       onClick={() => scrollToTopic(topic.id)}
                       aria-current={active ? 'true' : undefined}
-                      className="block w-full py-1 pl-3 text-left text-[12.5px] transition-colors"
+                      className="-ml-px block w-full border-l py-1 pl-3.5 text-left text-[12.5px] leading-snug transition-colors"
                       style={{
                         color: active ? 'var(--tfd-blue-600)' : 'var(--tfd-500)',
-                        fontWeight: active ? 600 : 400,
-                        borderLeft: `2px solid ${active ? 'var(--tfd-blue-500)' : 'transparent'}`,
-                        marginLeft: '-1px',
+                        fontWeight: active ? 500 : 400,
+                        borderColor: active ? 'var(--tfd-blue-500)' : 'transparent',
                       }}
                     >
                       {topic.titulo}
@@ -291,15 +262,15 @@ export default function ChapterView({ chapterId }: ChapterViewProps) {
           type="button"
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           aria-label="Voltar ao início da página"
-          className="fixed bottom-6 right-6 z-40 flex h-11 w-11 items-center justify-center rounded-full border transition-transform hover:-translate-y-0.5"
+          className="fixed bottom-6 right-6 z-40 flex h-10 w-10 items-center justify-center rounded-full border transition-transform hover:-translate-y-0.5"
           style={{
             background: 'var(--tfd-surface-card)',
             borderColor: 'var(--tfd-surface-border)',
-            color: 'var(--tfd-blue-600)',
-            boxShadow: 'var(--tfd-shadow-lg)',
+            color: 'var(--tfd-600)',
+            boxShadow: 'var(--tfd-shadow-md)',
           }}
         >
-          <ChevronUp size={20} />
+          <ChevronUp size={18} />
         </button>
       )}
     </div>
