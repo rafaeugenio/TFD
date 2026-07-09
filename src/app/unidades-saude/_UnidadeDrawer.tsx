@@ -249,6 +249,9 @@ export default function UnidadeDrawer({ open, editandoId, editandoData, onClose,
       numero: numero.trim() || null,
       bairro: bairro.trim() || null,
       municipio: municipio.trim() || null,
+      // unidades_destino.cidade é NOT NULL — sem espelhar o município aqui o
+      // INSERT falha ("null value in column cidade") e o cadastro nunca salva
+      cidade: municipio.trim() || null,
       uf: uf || 'MA',
       telefone: cleanPhone || null,
       email: email.trim() || null,
