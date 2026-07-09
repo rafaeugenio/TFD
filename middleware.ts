@@ -13,6 +13,7 @@ const PUBLIC_PATHS = [
   '/consulta',
   '/design-system',
   '/backlog',
+  '/wiki',
 ];
 
 function isPublic(pathname: string): boolean {
