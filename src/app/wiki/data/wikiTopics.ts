@@ -8,13 +8,8 @@
  * Fonte da verdade: telas reais do protótipo (branch fluxo-v2-mvp).
  */
 
+/** Agrupamento interno legado; a navegação real é por capítulo (WIKI_CHAPTERS). */
 export type WikiCategoryId = 'primeiros-passos' | 'cadastros' | 'fluxo' | 'gestao';
-
-export interface WikiCategory {
-  id: WikiCategoryId;
-  titulo: string;
-  descricao: string;
-}
 
 export interface WikiVideo {
   src: string;
@@ -42,26 +37,67 @@ export interface WikiTopic {
   relacionados?: string[];
 }
 
-export const WIKI_CATEGORIES: WikiCategory[] = [
+/** Capítulo = módulo do sistema. A home da wiki lista os capítulos;
+ *  cada capítulo tem sua própria página em /wiki/[capitulo]. */
+export interface WikiChapter {
+  id: string;
+  numero: number;
+  titulo: string;
+  descricao: string;
+  /** Tag curta exibida como badge no card do capítulo (ex.: "Básico"). */
+  tag: string;
+  /** Ids dos tópicos, na ordem de leitura. */
+  topicos: string[];
+}
+
+export const WIKI_CHAPTERS: WikiChapter[] = [
   {
-    id: 'primeiros-passos',
-    titulo: 'Primeiros passos',
-    descricao: 'Acesso ao sistema, visão geral e como se orientar nas telas.',
+    id: 'introducao',
+    numero: 1,
+    titulo: 'Introdução ao sistema',
+    descricao: 'Uma visão geral do TFD, como entrar, navegar e se orientar nas telas.',
+    tag: 'Básico',
+    topicos: ['login', 'visao-geral', 'navegacao', 'busca-filtros'],
   },
   {
     id: 'cadastros',
+    numero: 2,
     titulo: 'Cadastros',
-    descricao: 'Pacientes, unidades de saúde, regionais e dados bancários.',
+    descricao: 'Pacientes, dados bancários, unidades de saúde e regionais: a base de toda solicitação.',
+    tag: 'Cadastros',
+    topicos: ['pacientes', 'dados-bancarios', 'unidades-saude', 'regionais'],
   },
   {
-    id: 'fluxo',
-    titulo: 'Fluxo da solicitação',
-    descricao: 'Da abertura da solicitação ao encerramento: regulação, financeiro e tramitação.',
+    id: 'solicitacoes',
+    numero: 3,
+    titulo: 'Solicitações',
+    descricao: 'Como abrir, acompanhar, tramitar e encerrar uma solicitação de TFD.',
+    tag: 'Principal',
+    topicos: ['solicitacoes', 'nova-solicitacao', 'detalhe-solicitacao', 'enviar-para-setor', 'encerramento'],
+  },
+  {
+    id: 'regulacao',
+    numero: 4,
+    titulo: 'Regulação',
+    descricao: 'Parecer médico, carimbo de regulação e agendamento: a análise do caso.',
+    tag: 'Análise',
+    topicos: ['regulacao', 'parecer-medico', 'carimbo-regulacao', 'agendamento-tentativas'],
+  },
+  {
+    id: 'financeiro',
+    numero: 5,
+    titulo: 'Financeiro',
+    descricao: 'Passagens, ajuda de custo, adicionais e o checklist de fechamento.',
+    tag: 'Execução',
+    topicos: ['financeiro', 'passagens', 'ajuda-de-custo', 'adicionais'],
   },
   {
     id: 'gestao',
-    titulo: 'Gestão',
-    descricao: 'Painel, relatórios, usuários, permissões, configurações e auditoria.',
+    numero: 6,
+    titulo: 'Gestão e Configurações',
+    descricao: 'Painel, relatórios, usuários, permissões, tabelas auxiliares e auditoria.',
+    tag: 'Administração',
+    topicos: ['dashboard', 'relatorios', 'usuarios', 'papeis-permissoes', 'configuracoes', 'logs'],
   },
 ];
 
@@ -809,8 +845,18 @@ export function getTopic(id: string): WikiTopic | undefined {
   return WIKI_TOPICS.find((t) => t.id === id);
 }
 
-export function topicsByCategory(cat: WikiCategoryId): WikiTopic[] {
-  return WIKI_TOPICS.filter((t) => t.categoria === cat);
+export function getChapter(id: string): WikiChapter | undefined {
+  return WIKI_CHAPTERS.find((c) => c.id === id);
+}
+
+export function chapterTopics(chapter: WikiChapter): WikiTopic[] {
+  return chapter.topicos
+    .map((id) => getTopic(id))
+    .filter((t): t is WikiTopic => Boolean(t));
+}
+
+export function chapterOfTopic(topicId: string): WikiChapter | undefined {
+  return WIKI_CHAPTERS.find((c) => c.topicos.includes(topicId));
 }
 
 export function searchTopics(query: string): WikiTopic[] {
@@ -826,8 +872,8 @@ export function searchTopics(query: string): WikiTopic[] {
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '');
   return WIKI_TOPICS.filter((t) => {
-    const cat = WIKI_CATEGORIES.find((c) => c.id === t.categoria);
-    const haystack = [t.titulo, t.descricao, cat?.titulo ?? '', ...t.keywords].map(norm).join(' ');
+    const chapter = chapterOfTopic(t.id);
+    const haystack = [t.titulo, t.descricao, chapter?.titulo ?? '', ...t.keywords].map(norm).join(' ');
     return q.split(/\s+/).every((term) => haystack.includes(term));
   });
 }

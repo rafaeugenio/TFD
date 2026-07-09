@@ -1,126 +1,65 @@
 'use client';
 
-import { ArrowUpRight, BookOpen, ChevronUp, ListTree, Search, SearchX, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { WikiTopic } from './data/wikiTopics';
-import { searchTopics, topicsByCategory, WIKI_CATEGORIES, WIKI_TOPICS } from './data/wikiTopics';
-import TopicArticle from './components/TopicArticle';
-import WikiSidebar, { CATEGORY_ICONS } from './components/WikiSidebar';
+import { ArrowRight, ArrowUpRight, Search, SearchX, X } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useMemo, useState } from 'react';
+import { CHAPTER_ICONS } from './components/chapterIcons';
+import {
+  chapterOfTopic,
+  chapterTopics,
+  searchTopics,
+  WIKI_CHAPTERS,
+} from './data/wikiTopics';
 
-/** Ordem linear dos tópicos (para "anterior/próximo"), seguindo as categorias. */
-const ORDERED_TOPICS: WikiTopic[] = WIKI_CATEGORIES.flatMap((cat) => topicsByCategory(cat.id));
-
-export default function WikiPage() {
+/**
+ * Home do Guia do Usuário TFD: hero funcional + capítulos por módulo.
+ * Cada capítulo leva à sua própria página em /wiki/[capitulo].
+ */
+export default function WikiHomePage() {
+  const router = useRouter();
   const [query, setQuery] = useState('');
-  const [activeTopicId, setActiveTopicId] = useState<string | null>(ORDERED_TOPICS[0]?.id ?? null);
-  const [progress, setProgress] = useState(0);
-  const [showBackToTop, setShowBackToTop] = useState(false);
-  const mobileTocRef = useRef<HTMLDetailsElement>(null);
 
   const searching = query.trim().length > 0;
   const results = useMemo(() => (searching ? searchTopics(query) : []), [query, searching]);
 
-  const scrollToTopic = useCallback((topicId: string) => {
-    setQuery('');
-    if (mobileTocRef.current) mobileTocRef.current.open = false;
-    // Aguarda o modo manual voltar a renderizar antes de rolar.
-    requestAnimationFrame(() => {
-      const el = document.getElementById(topicId);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        setActiveTopicId(topicId);
-      }
-    });
-  }, []);
-
-  const scrollToTop = useCallback(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
-
-  // Tópico ativo conforme a rolagem (indicador no sumário).
-  useEffect(() => {
-    if (searching) return;
-    const sections = Array.from(document.querySelectorAll<HTMLElement>('[data-wiki-topic]'));
-    if (sections.length === 0) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-        if (visible[0]) {
-          setActiveTopicId(visible[0].target.getAttribute('data-wiki-topic'));
-        }
-      },
-      { rootMargin: '-15% 0px -65% 0px' },
-    );
-    sections.forEach((s) => observer.observe(s));
-    return () => observer.disconnect();
-  }, [searching]);
-
-  // Progresso de leitura + botão "voltar ao início".
-  useEffect(() => {
-    const onScroll = () => {
-      const doc = document.documentElement;
-      const max = doc.scrollHeight - window.innerHeight;
-      setProgress(max > 0 ? Math.min(100, (window.scrollY / max) * 100) : 0);
-      setShowBackToTop(window.scrollY > 600);
-    };
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
+  const openTopic = (topicId: string) => {
+    const chapter = chapterOfTopic(topicId);
+    if (chapter) router.push(`/wiki/${chapter.id}#${topicId}`);
+  };
 
   return (
-    <div className="mx-auto w-full max-w-[1240px]">
-      {/* Barra de progresso de leitura */}
-      <div
-        className="fixed inset-x-0 top-0 z-50 h-[3px]"
-        style={{ background: 'transparent' }}
-        aria-hidden="true"
-      >
-        <div
-          className="h-full"
-          style={{
-            width: `${progress}%`,
-            background: 'var(--tfd-blue-500)',
-            transition: 'width 120ms linear',
-          }}
-        />
-      </div>
-
-      {/* Hero funcional */}
-      <header className="tfd-reveal mb-8 pt-2">
-        <div className="flex items-center gap-2.5">
-          <span
-            className="flex h-10 w-10 items-center justify-center rounded-xl"
-            style={{ background: 'var(--tfd-blue-500)', color: '#fff' }}
-            aria-hidden="true"
-          >
-            <BookOpen size={20} />
-          </span>
-          <div>
-            <p
-              className="text-[11px] font-semibold uppercase tracking-[0.1em]"
-              style={{ color: 'var(--tfd-blue-600)' }}
-            >
-              TFD · SES-MA
-            </p>
-            <h1
-              className="text-[24px] font-bold leading-tight tracking-[-0.02em]"
-              style={{ color: 'var(--tfd-900)' }}
-            >
-              Guia do Usuário TFD
-            </h1>
-          </div>
-        </div>
-        <p className="mt-3 max-w-[640px] text-[14px] leading-relaxed" style={{ color: 'var(--tfd-600)' }}>
-          Manual de operação do sistema de Tratamento Fora do Domicílio: como navegar, executar os
-          principais fluxos e evitar erros comuns em cadastros, solicitações, regulação, financeiro
-          e encerramento.
+    <div className="mx-auto w-full max-w-[880px]">
+      {/* Hero */}
+      <header className="tfd-reveal pb-10 pt-8 text-center sm:pt-14">
+        <p
+          className="text-[11px] font-semibold uppercase tracking-[0.12em]"
+          style={{ color: 'var(--tfd-blue-600)' }}
+        >
+          TFD · SES-MA
+        </p>
+        <h1
+          className="mt-2 text-[32px] font-bold tracking-[-0.02em] sm:text-[38px]"
+          style={{ color: 'var(--tfd-900)' }}
+        >
+          Guia do Usuário TFD
+        </h1>
+        <p className="mx-auto mt-2 max-w-[480px] text-[14.5px]" style={{ color: 'var(--tfd-500)' }}>
+          Aprenda a operar o sistema de Tratamento Fora do Domicílio, capítulo por capítulo.
         </p>
 
+        <div className="mt-6 flex justify-center">
+          <Link
+            href={`/wiki/${WIKI_CHAPTERS[0].id}`}
+            className="tfd-btn tfd-btn-primary inline-flex items-center gap-2"
+          >
+            Começar do início
+            <ArrowRight size={15} aria-hidden="true" />
+          </Link>
+        </div>
+
         {/* Busca local */}
-        <div className="relative mt-5 max-w-[560px]">
+        <div className="relative mx-auto mt-8 max-w-[520px] text-left">
           <Search
             size={16}
             className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2"
@@ -132,8 +71,8 @@ export default function WikiPage() {
             role="searchbox"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar no guia: parecer, passagem, encerramento..."
-            aria-label="Buscar tópicos do guia"
+            placeholder="Buscar no manual: parecer, passagem, encerramento..."
+            aria-label="Buscar tópicos do manual"
             className="w-full rounded-xl border py-3 pl-10 pr-10 text-[14px] outline-none transition-shadow focus:shadow-[0_0_0_3px_var(--tfd-blue-100)]"
             style={{
               borderColor: 'var(--tfd-surface-border)',
@@ -146,7 +85,7 @@ export default function WikiPage() {
               type="button"
               onClick={() => setQuery('')}
               aria-label="Limpar busca"
-              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1"
               style={{ color: 'var(--tfd-500)' }}
             >
               <X size={15} />
@@ -156,8 +95,8 @@ export default function WikiPage() {
       </header>
 
       {searching ? (
-        /* ─────────────── Modo busca: cards de resultado ─────────────── */
-        <section aria-label="Resultados da busca" aria-live="polite">
+        /* ───────────── Resultados da busca ───────────── */
+        <section aria-label="Resultados da busca" aria-live="polite" className="pb-16">
           <p className="mb-4 text-[13px]" style={{ color: 'var(--tfd-500)' }}>
             {results.length === 0
               ? 'Nenhum resultado'
@@ -166,10 +105,7 @@ export default function WikiPage() {
           </p>
 
           {results.length === 0 ? (
-            <div
-              className="tfd-card flex flex-col items-center gap-3 px-6 py-14 text-center"
-              role="status"
-            >
+            <div className="tfd-card flex flex-col items-center gap-3 px-6 py-14 text-center" role="status">
               <span
                 className="flex h-12 w-12 items-center justify-center rounded-full"
                 style={{ background: 'var(--tfd-50)', color: 'var(--tfd-400)' }}
@@ -179,7 +115,7 @@ export default function WikiPage() {
               </span>
               <div>
                 <p className="text-[14px] font-semibold" style={{ color: 'var(--tfd-900)' }}>
-                  Nada encontrado no guia
+                  Nada encontrado no manual
                 </p>
                 <p className="mt-1 text-[13px]" style={{ color: 'var(--tfd-500)' }}>
                   Tente outra palavra, como &ldquo;parecer&rdquo;, &ldquo;diária&rdquo; ou
@@ -193,21 +129,21 @@ export default function WikiPage() {
           ) : (
             <ul className="tfd-stagger grid gap-3 sm:grid-cols-2">
               {results.map((topic) => {
-                const cat = WIKI_CATEGORIES.find((c) => c.id === topic.categoria);
-                const Icon = CATEGORY_ICONS[topic.categoria];
+                const chapter = chapterOfTopic(topic.id);
+                const Icon = chapter ? CHAPTER_ICONS[chapter.id] : null;
                 return (
                   <li key={topic.id}>
                     <button
                       type="button"
-                      onClick={() => scrollToTopic(topic.id)}
+                      onClick={() => openTopic(topic.id)}
                       className="tfd-card group flex h-full w-full flex-col gap-2 p-4 text-left transition-shadow hover:shadow-[var(--tfd-shadow-md)]"
                     >
                       <span
                         className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em]"
                         style={{ color: 'var(--tfd-blue-600)' }}
                       >
-                        <Icon size={12} aria-hidden="true" />
-                        {cat?.titulo}
+                        {Icon && <Icon size={12} aria-hidden="true" />}
+                        {chapter ? `Capítulo ${String(chapter.numero).padStart(2, '0')} · ${chapter.titulo}` : ''}
                       </span>
                       <span className="flex items-start justify-between gap-2">
                         <span className="text-[14px] font-semibold" style={{ color: 'var(--tfd-900)' }}>
@@ -231,104 +167,114 @@ export default function WikiPage() {
           )}
         </section>
       ) : (
-        /* ─────────────── Modo manual: sumário + tópicos ─────────────── */
-        <div className="lg:grid lg:grid-cols-[248px_minmax(0,1fr)] lg:gap-10">
-          {/* Sumário fixo (desktop) */}
-          <aside className="hidden lg:block">
-            <div className="sticky top-8 max-h-[calc(100vh-4rem)] overflow-y-auto pb-8 pr-1">
-              <WikiSidebar activeTopicId={activeTopicId} onNavigate={scrollToTopic} />
-            </div>
-          </aside>
-
-          {/* Sumário compacto (mobile) */}
-          <details
-            ref={mobileTocRef}
-            className="tfd-card mb-6 overflow-hidden p-0 lg:hidden"
-          >
-            <summary
-              className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-[13px] font-semibold"
-              style={{ color: 'var(--tfd-800)' }}
-            >
-              <ListTree size={16} style={{ color: 'var(--tfd-blue-500)' }} aria-hidden="true" />
-              Sumário do guia
-            </summary>
-            <div className="border-t px-3 pb-3 pt-2" style={{ borderColor: 'var(--tfd-surface-border)' }}>
-              <WikiSidebar activeTopicId={activeTopicId} onNavigate={scrollToTopic} />
-            </div>
-          </details>
-
-          {/* Conteúdo */}
-          <main className="min-w-0 space-y-10 pb-16">
-            {WIKI_CATEGORIES.map((cat) => {
-              const topics = topicsByCategory(cat.id);
-              const Icon = CATEGORY_ICONS[cat.id];
+        /* ───────────── Lista de capítulos ───────────── */
+        <main className="pb-16">
+          <ol className="tfd-stagger list-none">
+            {WIKI_CHAPTERS.map((chapter) => {
+              const Icon = CHAPTER_ICONS[chapter.id];
+              const topics = chapterTopics(chapter);
               return (
-                <section key={cat.id} id={`categoria-${cat.id}`} aria-labelledby={`cat-${cat.id}`}>
-                  <div className="mb-4 flex items-start gap-3">
-                    <span
-                      className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-                      style={{ background: 'var(--tfd-blue-50)', color: 'var(--tfd-blue-600)' }}
-                      aria-hidden="true"
+                <li
+                  key={chapter.id}
+                  className="grid gap-6 border-t py-10 sm:grid-cols-[240px_1fr] sm:gap-10"
+                  style={{ borderColor: 'var(--tfd-surface-border)' }}
+                >
+                  {/* Coluna esquerda: identificação do capítulo */}
+                  <div className="flex flex-col items-start">
+                    <p
+                      className="text-[11px] font-semibold uppercase tracking-[0.14em]"
+                      style={{ color: 'var(--tfd-blue-600)' }}
                     >
-                      <Icon size={17} />
-                    </span>
-                    <div>
-                      <h2
-                        id={`cat-${cat.id}`}
-                        className="text-[17px] font-bold tracking-[-0.01em]"
-                        style={{ color: 'var(--tfd-900)' }}
+                      Capítulo {String(chapter.numero).padStart(2, '0')}
+                    </p>
+                    <h2
+                      className="mt-1.5 text-[18px] font-bold leading-snug tracking-[-0.01em]"
+                      style={{ color: 'var(--tfd-900)' }}
+                    >
+                      <Link
+                        href={`/wiki/${chapter.id}`}
+                        className="transition-colors hover:underline"
+                        style={{ color: 'inherit' }}
                       >
-                        {cat.titulo}
-                      </h2>
-                      <p className="text-[13px]" style={{ color: 'var(--tfd-500)' }}>
-                        {cat.descricao}
-                      </p>
-                    </div>
+                        {chapter.titulo}
+                      </Link>
+                    </h2>
+                    <p className="mt-2 text-[13px] leading-relaxed" style={{ color: 'var(--tfd-500)' }}>
+                      {chapter.descricao}
+                    </p>
+                    <span
+                      className="mt-3 rounded-full border px-2.5 py-0.5 text-[11px] font-medium"
+                      style={{
+                        borderColor: 'var(--tfd-surface-border)',
+                        color: 'var(--tfd-600)',
+                        background: 'var(--tfd-surface-card)',
+                      }}
+                    >
+                      {chapter.tag}
+                    </span>
+                    <Link
+                      href={`/wiki/${chapter.id}`}
+                      className="tfd-btn tfd-btn-primary tfd-btn--sm mt-6 inline-flex items-center gap-1.5"
+                    >
+                      Acessar capítulo
+                      <ArrowRight size={13} aria-hidden="true" />
+                    </Link>
                   </div>
-                  <div className="space-y-5">
-                    {topics.map((topic) => {
-                      const idx = ORDERED_TOPICS.findIndex((t) => t.id === topic.id);
-                      return (
-                        <TopicArticle
-                          key={topic.id}
-                          topic={topic}
-                          prev={ORDERED_TOPICS[idx - 1]}
-                          next={ORDERED_TOPICS[idx + 1]}
-                          onNavigate={scrollToTopic}
-                        />
-                      );
-                    })}
+
+                  {/* Coluna direita: ilustração + tópicos */}
+                  <div className="min-w-0">
+                    <Link
+                      href={`/wiki/${chapter.id}`}
+                      aria-label={`Abrir capítulo ${chapter.titulo}`}
+                      className="group flex h-[180px] items-center justify-center rounded-xl transition-shadow hover:shadow-[var(--tfd-shadow-sm)] sm:h-[210px]"
+                      style={{ background: 'var(--tfd-blue-50)' }}
+                    >
+                      <Icon
+                        size={44}
+                        strokeWidth={1.5}
+                        aria-hidden="true"
+                        className="transition-transform group-hover:scale-105"
+                        style={{ color: 'var(--tfd-blue-500)' }}
+                      />
+                    </Link>
+                    <ul className="mt-4 space-y-1.5">
+                      {topics.map((topic) => (
+                        <li key={topic.id}>
+                          <Link
+                            href={`/wiki/${chapter.id}#${topic.id}`}
+                            className="group inline-flex items-baseline gap-2 text-[13px] transition-colors"
+                            style={{ color: 'var(--tfd-700)' }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.color = 'var(--tfd-blue-600)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.color = 'var(--tfd-700)';
+                            }}
+                          >
+                            <ArrowRight
+                              size={12}
+                              className="shrink-0 translate-y-0.5"
+                              style={{ color: 'var(--tfd-blue-500)' }}
+                              aria-hidden="true"
+                            />
+                            {topic.titulo}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                </section>
+                </li>
               );
             })}
+          </ol>
 
-            <footer
-              className="border-t pt-6 text-[12px]"
-              style={{ borderColor: 'var(--tfd-surface-border)', color: 'var(--tfd-400)' }}
-            >
-              Guia do Usuário TFD · {WIKI_TOPICS.length} tópicos · SES-MA / Citiesoft
-            </footer>
-          </main>
-        </div>
-      )}
-
-      {/* Voltar ao início */}
-      {showBackToTop && (
-        <button
-          type="button"
-          onClick={scrollToTop}
-          aria-label="Voltar ao início da página"
-          className="fixed bottom-6 right-6 z-40 flex h-11 w-11 items-center justify-center rounded-full border transition-transform hover:-translate-y-0.5"
-          style={{
-            background: 'var(--tfd-surface-card)',
-            borderColor: 'var(--tfd-surface-border)',
-            color: 'var(--tfd-blue-600)',
-            boxShadow: 'var(--tfd-shadow-lg)',
-          }}
-        >
-          <ChevronUp size={20} />
-        </button>
+          <footer
+            className="border-t pt-6 text-center text-[12px]"
+            style={{ borderColor: 'var(--tfd-surface-border)', color: 'var(--tfd-400)' }}
+          >
+            Guia do Usuário TFD · SES-MA · Desenvolvido por Citiesoft
+          </footer>
+        </main>
       )}
     </div>
   );
