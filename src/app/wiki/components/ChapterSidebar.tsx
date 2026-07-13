@@ -1,31 +1,26 @@
 'use client';
 
 import Link from 'next/link';
-import type { WikiChapter } from '../data/wikiTopics';
 import { chapterTopics, WIKI_CHAPTERS } from '../data/wikiTopics';
 
 interface ChapterSidebarProps {
-  currentChapter: WikiChapter;
-  activeTopicId: string | null;
-  onTopicClick: (topicId: string) => void;
+  currentChapterId: string;
+  /** Tópico aberto, quando a página atual é um tópico. */
+  currentTopicId?: string;
 }
 
-/** Navegação lateral das páginas de capítulo, em estilo de documento:
- *  lista tipográfica simples, capítulo atual expandido com seus tópicos. */
-export default function ChapterSidebar({
-  currentChapter,
-  activeTopicId,
-  onTopicClick,
-}: ChapterSidebarProps) {
+/** Menu esquerdo do manual: capítulos e subcapítulos (cada um é uma página).
+ *  O capítulo atual fica expandido mostrando seus tópicos. */
+export default function ChapterSidebar({ currentChapterId, currentTopicId }: ChapterSidebarProps) {
   return (
     <nav aria-label="Capítulos do manual" className="space-y-0.5">
       {WIKI_CHAPTERS.map((chapter) => {
-        const isCurrent = chapter.id === currentChapter.id;
+        const isCurrent = chapter.id === currentChapterId;
         return (
           <div key={chapter.id}>
             <Link
               href={`/wiki/${chapter.id}`}
-              aria-current={isCurrent ? 'page' : undefined}
+              aria-current={isCurrent && !currentTopicId ? 'page' : undefined}
               className="flex items-baseline gap-2 rounded-md px-2 py-1.5 text-[13.5px] transition-colors"
               style={{
                 color: isCurrent ? 'var(--tfd-900)' : 'var(--tfd-500)',
@@ -54,14 +49,13 @@ export default function ChapterSidebar({
                 style={{ borderColor: 'var(--tfd-surface-border)' }}
               >
                 {chapterTopics(chapter).map((topic) => {
-                  const active = topic.id === activeTopicId;
+                  const active = topic.id === currentTopicId;
                   return (
                     <li key={topic.id}>
-                      <button
-                        type="button"
-                        onClick={() => onTopicClick(topic.id)}
-                        aria-current={active ? 'true' : undefined}
-                        className="block w-full py-1 text-left text-[13px] leading-snug transition-colors"
+                      <Link
+                        href={`/wiki/${chapter.id}/${topic.id}`}
+                        aria-current={active ? 'page' : undefined}
+                        className="block py-1 text-[13px] leading-snug transition-colors"
                         style={{
                           color: active ? 'var(--tfd-blue-600)' : 'var(--tfd-500)',
                           fontWeight: active ? 500 : 400,
@@ -74,7 +68,7 @@ export default function ChapterSidebar({
                         }}
                       >
                         {topic.titulo}
-                      </button>
+                      </Link>
                     </li>
                   );
                 })}

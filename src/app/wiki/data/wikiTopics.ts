@@ -32,8 +32,12 @@ export interface WikiTopic {
   quandoUsar: string;
   passos: string[];
   campos?: WikiCampo[];
+  /** O que é possível fazer: dicas, atalhos e funcionalidades úteis. */
+  dicas?: string[];
   cuidados?: string[];
   video?: WikiVideo;
+  /** Print direcional de uma funcionalidade específica do tópico. */
+  imagem?: { src: string; alt: string; legenda?: string };
   relacionados?: string[];
 }
 
@@ -120,6 +124,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'A tela de login identifica quem está usando o sistema. O que cada pessoa pode ver e fazer depende do papel de acesso do seu usuário.',
     quandoUsar: 'Sempre que abrir o sistema ou quando a sessão expirar.',
+    dicas: [
+      "Use o ícone de olho no campo de senha para conferir o que digitou antes de entrar.",
+      "No primeiro acesso, o link recebido por e-mail já abre a tela de criação de senha: você não precisa de senha provisória.",
+      "Salvou o CPF errado? O campo aplica a máscara sozinho, digite apenas os números.",
+    ],
     passos: [
       'Acesse a página de login do sistema.',
       'Informe seu CPF no formato 000.000.000-00 (o campo aplica a máscara automaticamente).',
@@ -151,6 +160,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'O sistema TFD organiza o Tratamento Fora do Domicílio da SES-MA: cadastro de pacientes, abertura de solicitações, análise médica (regulação), execução financeira (passagens e diárias) e encerramento.',
     quandoUsar: 'Leia este tópico antes de operar o sistema pela primeira vez.',
+    dicas: [
+      "O badge de status colorido nas listas informa em qual setor a solicitação está sem precisar abrir o caso.",
+      "A aba \"Linha do tempo\" reconstrói toda a história da solicitação em ordem cronológica: é o jeito mais rápido de entender um caso antigo.",
+      "Solicitações do tipo \"Ajuda de custo\" têm numeração própria (TFD-AC) e pulam a parte de viagens.",
+    ],
     passos: [
       'Toda solicitação nasce no setor "Dados Básicos", onde os dados do paciente, agendamento e laudo são registrados.',
       'Ela é enviada para "Regulação", onde o médico regulador emite o parecer e a equipe define o carimbo (encaminhamento).',
@@ -178,6 +192,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'O menu lateral esquerdo dá acesso a todas as áreas do sistema, agrupadas por finalidade. Os itens exibidos dependem das permissões do seu papel.',
     quandoUsar: 'Use como mapa quando não souber onde uma funcionalidade fica.',
+    dicas: [
+      "O menu lateral pode ser recolhido pelo botão \"«\" no rodapé, deixando só os ícones e liberando espaço em telas menores.",
+      "Clicar no seu nome no rodapé do menu abre \"Meu Perfil\", onde ficam seus dados de contato e, para médicos, o CRM.",
+      "Em telas estreitas o menu vira um botão no topo: tudo continua acessível no celular.",
+    ],
     passos: [
       '"Painel": visão geral com indicadores dos três setores e atividades recentes.',
       'Seção "Fluxo do processo": "Solicitações" (todas as solicitações), "Regulação" (fila de análise médica) e "Financeiro" (fila de execução).',
@@ -200,6 +219,17 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'Todas as listagens do sistema (pacientes, solicitações, unidades etc.) seguem o mesmo padrão: cartões de resumo no topo, campo de busca, filtros e tabela com ordenação.',
     quandoUsar: 'Sempre que precisar localizar um registro específico em uma lista grande.',
+    imagem: {
+      src: '/wiki/media/funcionalidades/busca-toolbar.png',
+      alt: "Campo de busca e filtro de status de uma listagem",
+      legenda: "Padrão das listagens: busca por texto ao lado do filtro de status.",
+    },
+    dicas: [
+      "Os cartões de resumo no topo das listas são clicáveis: um clique em \"Em Regulação\" filtra a tabela na hora.",
+      "A busca aceita fragmentos: digitar só parte do nome ou do número já encontra o registro.",
+      "Combine busca com filtro de status para recortes precisos, por exemplo \"Maria\" + \"Em Financeiro\".",
+      "A ordenação por coluna se mantém enquanto você pagina os resultados.",
+    ],
     passos: [
       'Use o campo de busca da tela. Cada lista indica o que aceita: por exemplo, "Buscar por nome, CPF ou número..." nas solicitações.',
       'Combine com os filtros ao lado da busca (status, carimbo, papel, município, conforme a tela).',
@@ -224,6 +254,12 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'O cadastro do paciente é a base de toda solicitação. Ele concentra identificação, contato, endereço (que deriva a regional automaticamente), documentos e acompanhantes.',
     quandoUsar: 'Antes de abrir a primeira solicitação de um paciente, ou para atualizar dados de contato e documentos.',
+    dicas: [
+      "Digite o CEP e o sistema preenche logradouro e bairro automaticamente.",
+      "A Regional e a Região do paciente são derivadas do município de residência: você não precisa saber de qual URS ele é.",
+      "Dá para anexar vários documentos de uma vez, classificando cada arquivo (RG, CPF, Cartão SUS, comprovante).",
+      "A busca da lista encontra por nome, CPF ou CNS.",
+    ],
     passos: [
       'No menu, acesse "Pacientes" e clique em "Novo Paciente".',
       'Em "Dados Pessoais", preencha CPF, nome completo, data de nascimento e ao menos um telefone. Cartão SUS (CNS) é opcional.',
@@ -260,6 +296,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'Cada paciente tem um conjunto de contas bancárias e chaves PIX. Na etapa financeira, a solicitação seleciona uma delas para receber diárias e reembolsos.',
     quandoUsar: 'Ao preparar a solicitação para o fechamento financeiro, ou quando o paciente trocar de conta.',
+    dicas: [
+      "A forma de recebimento \"Ambos\" registra conta bancária e chave PIX no mesmo cadastro.",
+      "O vínculo do titular já vem pré-selecionado como \"Próprio paciente\", o caso mais comum.",
+      "Contas inativadas continuam visíveis no histórico do paciente, só deixam de aparecer em novas solicitações.",
+    ],
     passos: [
       'Abra o paciente na lista "Pacientes" (clique na linha).',
       'Na seção "Dados Bancários", clique em "Adicionar conta".',
@@ -288,6 +329,16 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'As unidades de saúde são os destinos dos pacientes: onde os procedimentos são agendados e realizados. O cadastro alimenta o agendamento das solicitações.',
     quandoUsar: 'Quando uma solicitação apontar para uma unidade que ainda não existe no sistema.',
+    imagem: {
+      src: '/wiki/media/funcionalidades/cnes.png',
+      alt: "Campo CNES do cadastro de unidade",
+      legenda: "Ao digitar os 7 dígitos do CNES, o sistema preenche os dados da unidade automaticamente.",
+    },
+    dicas: [
+      "Digite os 7 dígitos do CNES e o sistema busca a unidade na base oficial, preenchendo nome, endereço, telefone, responsável e tipo sozinho.",
+      "A busca da lista funciona por nome ou por código CNES.",
+      "O CEP também tem preenchimento automático no endereço da unidade.",
+    ],
     passos: [
       'No menu, acesse "Unidades de Saúde" e clique no botão de nova unidade.',
       'Digite o código CNES de 7 dígitos. O sistema consulta a base oficial e preenche nome, endereço, telefone, e-mail, responsável e tipo automaticamente (aviso "CNES encontrado").',
@@ -319,6 +370,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'As regionais (URS) agrupam os municípios do Maranhão. O vínculo município x regional é o que permite ao sistema derivar automaticamente a regional de cada paciente a partir do endereço.',
     quandoUsar: 'Na implantação do sistema ou quando a divisão territorial mudar.',
+    dicas: [
+      "Use o campo \"Filtrar municípios...\" dentro do formulário para achar rapidamente um município na lista do Maranhão inteira.",
+      "O contador de selecionados mostra na hora quantos municípios a regional cobre.",
+      "As Regiões (agrupamentos de regionais) são configuráveis em Configurações, na tabela auxiliar \"Região\".",
+    ],
     passos: [
       'No menu, acesse "Regionais" e clique no botão de nova regional.',
       'Em "Identificação", informe o código (ex.: URS I), o nome, o município sede e a região (agrupamento geográfico).',
@@ -353,6 +409,16 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'A tela "Solicitações" mostra todas as solicitações do TFD, em qualquer setor, com busca, filtros por status e indicadores de volume.',
     quandoUsar: 'Para acompanhar o andamento geral, localizar uma solicitação específica ou iniciar uma nova.',
+    imagem: {
+      src: '/wiki/media/funcionalidades/solicitacoes-stats.png',
+      alt: "Cartões de resumo da lista de solicitações",
+      legenda: "Os cartões de resumo do topo são clicáveis e filtram a lista pelo status correspondente.",
+    },
+    dicas: [
+      "Os cartões do topo filtram a lista com um clique, inclusive \"Encerradas no mês\".",
+      "O número da solicitação já diz o tipo: TFD-N é fluxo normal, TFD-AC é só ajuda de custo.",
+      "As ações de editar, encerrar e tramitar ficam disponíveis direto na linha, sem abrir o caso.",
+    ],
     passos: [
       'No menu, acesse "Solicitações" dentro de "Fluxo do processo".',
       'Use os cartões do topo ("Total", "Em Dados Básicos", "Em Regulação", "Em Financeiro", "Encerradas no mês") para filtrar por status com um clique.',
@@ -380,6 +446,17 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'O formulário "Nova solicitação" registra o caso completo a partir de um paciente já cadastrado: tipo do processo, acompanhantes, agendamento inicial, laudo médico, processo SEI e documentos.',
     quandoUsar: 'Quando chegar um novo pedido de TFD com laudo médico do paciente.',
+    imagem: {
+      src: '/wiki/media/funcionalidades/tipo-solicitacao.png',
+      alt: "Escolha do tipo da solicitação: Normal ou Ajuda de custo",
+      legenda: "O primeiro passo da nova solicitação define o fluxo: Normal (completo) ou Ajuda de custo (só diárias).",
+    },
+    dicas: [
+      "\"Cadastrar novo paciente\" abre em outra aba: você não perde o que já preencheu na solicitação.",
+      "Ao selecionar o paciente, o sistema mostra um resumo do cadastro com link \"Editar cadastro\" para correções rápidas.",
+      "O toggle \"Marcar como doador\" faz o acompanhante contar como paciente no cálculo do BPA.",
+      "Dá para adicionar vários procedimentos agendados na mesma solicitação, cada um com sua data.",
+    ],
     passos: [
       'Em "Solicitações", clique em "Nova solicitação".',
       'Escolha o "Tipo da solicitação": "Normal" (fluxo completo, com viagens) ou "Ajuda de custo" (paciente já está no destino e recebe apenas diárias).',
@@ -417,6 +494,12 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'O detalhe é a central da solicitação: identifica o paciente, mostra o status e concentra todo o histórico e as ações de cada setor em abas.',
     quandoUsar: 'Sempre que precisar consultar ou atuar em uma solicitação específica.',
+    dicas: [
+      "Na aba \"Observações\", Ctrl + Enter envia o texto sem precisar do botão.",
+      "A aba \"Anexos\" reúne documentos de todas as origens e permite filtrar por onde entraram (abertura, parecer, passagem, ajuda de custo...).",
+      "O número SEI vira link direto para o processo quando a URL foi cadastrada.",
+      "O cabeçalho concentra os dados de contato do paciente: telefone e regional sempre à mão.",
+    ],
     passos: [
       'Abra a solicitação pela lista (clique na linha).',
       'No cabeçalho, confira paciente, idade, CPF, status, tipo ("Normal" ou "Ajuda de custo"), número, vínculo SEI, regional e laudo.',
@@ -442,6 +525,15 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'A tramitação move a solicitação entre setores. Avançar é "Enviar"; voltar para um setor anterior é "Devolver". A movimentação nunca é automática.',
     quandoUsar: 'Quando o trabalho do seu setor terminou (enviar) ou quando falta algo que só o setor anterior resolve (devolver).',
+    imagem: {
+      src: '/wiki/media/funcionalidades/enviar-setor.png',
+      alt: "Drawer Enviar para outro setor com os cartões de destino",
+      legenda: "O drawer resume o caso, mostra os setores de destino e destaca a observação na fila por 24 horas.",
+    },
+    dicas: [
+      "A observação escrita no envio aparece destacada na fila do setor de destino nas 24 horas seguintes: use para dar contexto.",
+      "O próprio drawer indica se a ação é \"Enviar\" (avança) ou \"Devolver\" (recua), conforme o setor escolhido.",
+    ],
     passos: [
       'No detalhe da solicitação (ou na ação da linha), clique em "Enviar para setor".',
       'Escolha o setor de destino nos cartões: "Solicitações" (Dados Básicos), "Regulação" ou "Financeiro". O sistema indica se a ação é "Enviar" ou "Devolver".',
@@ -464,6 +556,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'A tela "Regulação" concentra as solicitações em análise: mostra o que aguarda parecer, o que aguarda agendamento e os deferimentos do mês.',
     quandoUsar: 'Rotina diária da equipe de regulação e dos médicos reguladores.',
+    dicas: [
+      "As ações rápidas na linha da fila (\"Parecer rápido\", \"Definir carimbo\", \"Agendamento rápido\") resolvem casos simples sem abrir o detalhe.",
+      "O filtro por carimbo isola casos CNRAC, CET, SAAS ou sem carimbo.",
+      "A coluna \"Tempo\" ordena a fila por espera: bom critério de priorização diária.",
+    ],
     passos: [
       'No menu, acesse "Regulação". A fila mostra apenas solicitações no setor Regulação.',
       'Acompanhe os cartões: "Aguardando parecer", "Aguardando agendamento", "Deferidos no mês" e "Indeferidos no mês".',
@@ -486,6 +583,12 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'O parecer médico é a decisão clínica sobre a solicitação: deferido ou indeferido, com diagnóstico (CID) e justificativa. Ele habilita o carimbo e a continuidade do fluxo.',
     quandoUsar: 'Assim que a solicitação chegar à Regulação com laudo válido.',
+    dicas: [
+      "O botão \"Inserir template\" preenche a observação com o modelo padrão da decisão escolhida (TFD completo, só ajuda de custo, só passagem, prorrogação), bastando ajustar os detalhes.",
+      "O autocomplete de CID busca no catálogo inteiro, nas versões CID-10 e CID-11.",
+      "\"Exportar\" gera a versão do parecer pronta para impressão e assinatura.",
+      "Seus dados de médico (nome, CRM, especialidade) entram automaticamente a partir do perfil.",
+    ],
     passos: [
       'Na aba "Regulação" do detalhe, clique em "Adicionar parecer" (ou use "Parecer rápido" na fila).',
       'Revise o "Resumo da solicitação": paciente, acompanhantes e documentos, com o laudo em destaque.',
@@ -520,6 +623,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'O carimbo define o encaminhamento operacional do caso depois do parecer deferido: seguir direto para o Financeiro ou passar por uma central de exceção.',
     quandoUsar: 'Logo após o parecer deferido. É pré-requisito para o caso andar.',
+    dicas: [
+      "\"Aprovado direto\" é o caminho expresso: sem central de exceção, o caso pode seguir ao Financeiro.",
+      "O carimbo pode ser editado enquanto a solicitação estiver na Regulação, sem perder o histórico.",
+      "O dashboard mostra a distribuição por carimbo, útil para acompanhar o perfil da demanda.",
+    ],
     passos: [
       'Na aba "Regulação", seção "Carimbo de regulação", clique em "Definir carimbo" (disponível após parecer deferido).',
       'Escolha a opção adequada: "Aprovado direto" quando não há exceção e o processo segue direto; "CNRAC" (alta complexidade fora do estado); "CET" (busca de vaga via central estadual); "SAAS" (encaminhamento de exceção); ou "Agendamento" (a regulação fará tentativas manuais até obter resposta).',
@@ -551,6 +659,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'Quando o agendamento não veio pronto na abertura (casos CNRAC, CET ou "Agendamento"), a Regulação registra cada tentativa de contato com as unidades até confirmar data e vaga.',
     quandoUsar: 'Em todos os casos de exceção, a cada contato feito com uma unidade.',
+    dicas: [
+      "Registre também as tentativas sem sucesso: elas documentam o esforço de regulação e aparecem na linha do tempo.",
+      "Ao confirmar um agendamento, os dados de contato da unidade ficam gravados junto.",
+      "O card \"Agendamento confirmado\" resume unidade, data e procedimento no topo da aba.",
+    ],
     passos: [
       'Na aba "Regulação", seção "Agendamento e Tentativas", clique em "Adicionar tentativa".',
       'Informe a unidade contatada e o desfecho: "Pendente", "Negou", "Pediu documento", "Aceitou", "Sem resposta" ou "Agendamento confirmado".',
@@ -572,6 +685,16 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'A tela "Financeiro" lista as solicitações em execução e organiza o que falta: emitir passagens, cadastrar ajuda de custo e vincular dados bancários, até liberar o despacho.',
     quandoUsar: 'Rotina diária do setor financeiro, assim que solicitações chegarem da Regulação.',
+    imagem: {
+      src: '/wiki/media/funcionalidades/fechamento.png',
+      alt: "Checklist de fechamento do Financeiro completo",
+      legenda: "Com passagens, ajuda de custo e dados bancários resolvidos, o botão \"Emitir despacho\" é liberado.",
+    },
+    dicas: [
+      "Os filtros \"Com passagens pendentes\", \"Sem viagem agendada\" e \"Com adicional pendente\" mostram exatamente onde agir.",
+      "Passe o mouse no botão de despacho bloqueado: o tooltip lista o que ainda falta.",
+      "O Painel avisa quando há viagens nos próximos 7 dias, antecipe as emissões.",
+    ],
     passos: [
       'No menu, acesse "Financeiro". A fila mostra apenas solicitações no setor Financeiro.',
       'Use os filtros: "Com passagens pendentes", "Sem viagem agendada", "Com adicional pendente".',
@@ -595,6 +718,12 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'A seção "Viagens" registra cada passagem emitida para o paciente e os acompanhantes: modal, trecho, datas, companhia e valor. Passagens extras entram como nova passagem ou como adicional do tipo "Passagem extra".',
     quandoUsar: 'Após o agendamento confirmado, para levar o paciente ao destino e trazê-lo de volta.',
+    dicas: [
+      "O tipo \"Ida e volta\" cria as duas passagens de uma vez.",
+      "No modal aéreo, a escolha por aeroporto calcula distância e ajuda de custo automaticamente.",
+      "Adicionais vinculados a uma passagem somam ao valor dela nos relatórios.",
+      "Remarcações e não comparecimentos têm status próprios: não é preciso excluir nada.",
+    ],
     passos: [
       'Na aba "Financeiro" (ou pela ação "Adicionar passagem" na fila), clique em "Passagem".',
       'Selecione o beneficiário: paciente ou acompanhante (doadores aparecem identificados).',
@@ -629,6 +758,16 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'A ajuda de custo paga as diárias do paciente e dos acompanhantes durante a permanência no destino. O sistema calcula o valor automaticamente a partir do período.',
     quandoUsar: 'Para cada período de permanência do beneficiário no destino, na etapa financeira.',
+    imagem: {
+      src: '/wiki/media/funcionalidades/ajuda-calculo.png',
+      alt: "Drawer de período de ajuda de custo com memória de cálculo",
+      legenda: "A memória de cálculo mostra o valor na hora: 5 dias resultam em R$ 107,40.",
+    },
+    dicas: [
+      "A memória de cálculo aparece na hora: (dias − 1) × R$ 24,75 + R$ 8,40 do dia do retorno.",
+      "\"Pernoite no retorno\" soma uma diária extra quando a chegada passa da meia-noite (regra da Ata 7).",
+      "O select de beneficiário mostra idade e vínculo de cada acompanhante para evitar confusão.",
+    ],
     passos: [
       'Na aba "Financeiro", seção "Ajuda de custo", clique em "Adicionar período".',
       'Selecione o beneficiário (paciente ou acompanhante, com idade e vínculo exibidos).',
@@ -663,6 +802,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'Os adicionais registram custos extras da viagem que não são passagem nem diária padrão: transfer, bagagem, corrida de aplicativo, passagem extra ou prorrogação de ajuda.',
     quandoUsar: 'Sempre que houver uma despesa complementar comprovada na etapa financeira.',
+    dicas: [
+      "As categorias cobrem os casos comuns: passagem extra, prorrogação de ajuda, bagagem, transfer e outros.",
+      "O comprovante anexado aparece também na aba \"Anexos\" da solicitação, com origem \"Adicional\".",
+      "Vincular o adicional a uma passagem consolida os valores nos relatórios de faturamento.",
+    ],
     passos: [
       'Na aba "Financeiro" (ou pela ação "Adicionar adicional" na fila), clique em "Adicional".',
       'Selecione o beneficiário e descreva a despesa.',
@@ -689,6 +833,16 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'O encerramento conclui a solicitação e trava qualquer edição. O motivo escolhido fica registrado no histórico e alimenta os indicadores de encerradas no mês.',
     quandoUsar: 'Quando o atendimento terminou (alta, transferência) ou o processo foi interrompido (óbito, abandono, desistência).',
+    imagem: {
+      src: '/wiki/media/funcionalidades/encerrar.png',
+      alt: "Modal Encerrar solicitação com motivo, data e observação",
+      legenda: "O encerramento exige um motivo; a data vem preenchida com o dia atual.",
+    },
+    dicas: [
+      "Quando o motivo é óbito, o sistema habilita o bloco de despesas de funerária com subtotal próprio.",
+      "\"Reabrir solicitação\" devolve o caso para o setor que você escolher, com motivo registrado.",
+      "A lista de motivos é sua para gerenciar: Configurações > Motivos de Encerramento.",
+    ],
     passos: [
       'No detalhe (ou na ação da linha), clique em "Encerrar solicitação".',
       'No modal, selecione o "Motivo" (obrigatório): alta médica, transferência, óbito, abandono ou desistência.',
@@ -723,6 +877,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'O Painel dá a foto do momento: quantas solicitações ativas há em cada setor, o que a equipe fez recentemente e como o volume evolui mês a mês.',
     quandoUsar: 'Início do dia de trabalho e reuniões de acompanhamento.',
+    dicas: [
+      "Cada item de \"Atividades recentes\" é um link direto para a solicitação correspondente.",
+      "\"Ver setor\" nos cards leva à fila já filtrada daquele setor.",
+      "A tendência de 6 meses compara entradas e encerramentos: bom termômetro de vazão.",
+    ],
     passos: [
       'Acesse "Painel" no menu.',
       'No topo: distribuição das solicitações ativas por setor, "Encerradas no mês" e "Taxa de aprovação".',
@@ -745,6 +904,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'A tela "Relatórios" consolida os dados do TFD em quatro visões prontas para prestação de contas e lançamentos.',
     quandoUsar: 'Fechamentos mensais e quadrimestrais, lançamento do BPA e análises gerenciais.',
+    dicas: [
+      "Todos os relatórios exportam para CSV/Excel e têm versão de impressão em PDF.",
+      "O relatório de Gestão consolida por paciente: diagnóstico, origem do laudo, destino e parecer numa linha só.",
+      "O BPA já sai no formato de lançamento, contando doadores como pacientes.",
+    ],
     passos: [
       'No menu, acesse "Relatórios" e escolha a aba.',
       '"Financeiro": acompanhamento quadrimestral consolidado.',
@@ -768,6 +932,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'A tela "Usuários" gerencia quem acessa o sistema, o papel de cada pessoa e os dados profissionais (como CRM dos médicos).',
     quandoUsar: 'Entrada e saída de servidores, mudança de função ou reset de senha.',
+    dicas: [
+      "O papel pode ser trocado direto na linha da lista, sem abrir o cadastro.",
+      "\"Redefinir senha\" dispara o e-mail de redefinição na hora.",
+      "O toggle \"Médico\" abre os campos de CRM e UF, pré-requisito para emitir parecer.",
+    ],
     passos: [
       'No menu, acesse "Administrativo" (aba "Usuários") e clique em "Adicionar Usuário".',
       'Preencha nome completo, CPF, e-mail institucional, matrícula e cargo.',
@@ -792,6 +961,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'Os papéis definem o que cada grupo de usuários pode ver e fazer, tela por tela, ação por ação. Exemplos de papéis: Atendente Municipal, Atendente Regional, Coordenação Estadual, Médico Auditor, Setor de Regulação, Setor de Passagens, Financeiro, Assistente Social e Controle Interno.',
     quandoUsar: 'Na implantação e sempre que uma função nova surgir ou mudar de escopo.',
+    dicas: [
+      "\"Todas\" e \"Nenhuma\" marcam as ações em lote, depois é só lapidar.",
+      "Cada papel tem uma cor: ela aparece na lista de usuários e facilita a leitura.",
+      "A coluna \"Usuários\" mostra quantas pessoas cada papel afeta antes de você editá-lo.",
+    ],
     passos: [
       'No menu, acesse "Administrativo" (aba "Permissões") e clique em "Novo Papel".',
       'Dê nome, descrição e cor ao papel.',
@@ -815,6 +989,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'As Configurações mantêm as listas que alimentam os formulários do sistema: tipos de procedimento e documento, vínculos, companhias de transporte, motivos de encerramento, tipos de despesa, bancos e regiões, além dos catálogos CID-10, CID-11 e SIGTAP.',
     quandoUsar: 'Na implantação e quando uma opção nova precisar aparecer em algum formulário.',
+    dicas: [
+      "Tudo que aparece em selects do sistema nasce aqui: procedimentos, vínculos, companhias, bancos, motivos, tipos de despesa.",
+      "Os catálogos CID-10, CID-11 e SIGTAP têm abas próprias com busca.",
+      "Ajustar o nome de um item atualiza a opção nos formulários sem afetar registros antigos.",
+    ],
     passos: [
       'No menu, acesse "Configurações".',
       'Na aba "Tabelas Auxiliares", escolha a categoria (ex.: "Motivos de Encerramento") e use "Novo Item" para incluir, ou edite/exclua itens existentes.',
@@ -835,6 +1014,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'Os logs registram todas as ações relevantes do sistema (criação, edição, parecer, emissão, encerramento, mudanças de usuário), com autor, entidade, data e hora.',
     quandoUsar: 'Para auditar um caso, esclarecer divergências ou responder a questionamentos de controle interno.',
+    dicas: [
+      "Filtre por módulo (Operacional, Regulação, Passagens, Financeiro, Sistema, Autenticação) para investigar por área.",
+      "O período com data início e fim delimita auditorias a um intervalo exato.",
+      "O recorte filtrado pode ser exportado em CSV para anexar a relatórios de controle interno.",
+    ],
     passos: [
       'No menu, acesse "Administrativo" (aba "Logs").',
       'Busque por usuário ou descrição, e filtre por período, ação ou módulo (Operacional, Regulação, Passagens, Financeiro, Sistema, Autenticação).',

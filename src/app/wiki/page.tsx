@@ -24,7 +24,7 @@ export default function WikiHomePage() {
 
   const openTopic = (topicId: string) => {
     const chapter = chapterOfTopic(topicId);
-    if (chapter) router.push(`/wiki/${chapter.id}#${topicId}`);
+    if (chapter) router.push(`/wiki/${chapter.id}/${topicId}`);
   };
 
   return (
@@ -219,7 +219,7 @@ export default function WikiHomePage() {
                       {topics.map((topic) => (
                         <li key={topic.id}>
                           <Link
-                            href={`/wiki/${chapter.id}#${topic.id}`}
+                            href={`/wiki/${chapter.id}/${topic.id}`}
                             className="text-[13.5px] underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
                             style={{ color: 'var(--tfd-600)' }}
                           >
