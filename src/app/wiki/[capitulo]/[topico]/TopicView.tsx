@@ -34,7 +34,7 @@ function SectionHeading({ id, children }: { id: string; children: React.ReactNod
     <h2
       id={id}
       data-topic-section={id}
-      className="mb-4 mt-12 scroll-mt-28 text-[17px] font-semibold"
+      className="mb-4 mt-16 scroll-mt-28 text-[19px] font-semibold tracking-[-0.01em]"
       style={{ color: 'var(--tfd-900)' }}
     >
       {children}
@@ -159,6 +159,37 @@ export default function TopicView({ chapterId, topicId }: TopicViewProps) {
           </div>
         </details>
 
+        {/* "Nesta página" compacto (mobile) */}
+        <details
+          className="mb-8 overflow-hidden rounded-lg border lg:hidden"
+          style={{ borderColor: 'var(--tfd-surface-border)', background: 'var(--tfd-surface-card)' }}
+        >
+          <summary
+            className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-[13.5px] font-medium"
+            style={{ color: 'var(--tfd-800)' }}
+          >
+            <ListTree size={15} style={{ color: 'var(--tfd-400)' }} aria-hidden="true" />
+            Nesta página
+          </summary>
+          <ul className="border-t px-4 pb-3 pt-2" style={{ borderColor: 'var(--tfd-surface-border)' }}>
+            {sections.map((section) => (
+              <li key={section.id}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.currentTarget.closest('details')?.removeAttribute('open');
+                    scrollToSection(section.id);
+                  }}
+                  className="block w-full py-1.5 text-left text-[13px]"
+                  style={{ color: 'var(--tfd-600)' }}
+                >
+                  {section.titulo}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+
         {/* Conteúdo do tópico */}
         <main className="min-w-0 max-w-[680px] pb-20">
           <header>
@@ -177,10 +208,10 @@ export default function TopicView({ chapterId, topicId }: TopicViewProps) {
           </header>
 
           <section id="visao-geral" data-topic-section="visao-geral" className="scroll-mt-28">
-            <p className="mt-6 text-[15px] leading-[1.75]" style={{ color: 'var(--tfd-700)' }}>
+            <p className="mt-6 text-[16px] leading-[1.75]" style={{ color: 'var(--tfd-700)' }}>
               {topic.paraQueServe}
             </p>
-            <p className="mt-3 text-[15px] leading-[1.75]" style={{ color: 'var(--tfd-700)' }}>
+            <p className="mt-3 text-[16px] leading-[1.75]" style={{ color: 'var(--tfd-700)' }}>
               <span className="font-medium" style={{ color: 'var(--tfd-900)' }}>
                 Quando usar.
               </span>{' '}
@@ -190,14 +221,23 @@ export default function TopicView({ chapterId, topicId }: TopicViewProps) {
 
           {topic.imagem && (
             <figure className="mt-8">
-              {/* eslint-disable-next-line @next/next/no-img-element -- print estático local */}
-              <img
-                src={topic.imagem.src}
-                alt={topic.imagem.alt}
-                loading="lazy"
-                className="w-full rounded-lg border"
-                style={{ borderColor: 'var(--tfd-surface-border)' }}
-              />
+              <div
+                className="rounded-xl border p-4 sm:p-5"
+                style={{
+                  borderColor: 'var(--tfd-surface-border)',
+                  background: 'var(--tfd-surface-ground)',
+                  boxShadow: 'var(--tfd-shadow-xs)',
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- print estático local */}
+                <img
+                  src={topic.imagem.src}
+                  alt={topic.imagem.alt}
+                  loading="lazy"
+                  className="w-full rounded-lg border"
+                  style={{ borderColor: 'var(--tfd-surface-border)', background: 'var(--tfd-surface-card)' }}
+                />
+              </div>
               {topic.imagem.legenda && (
                 <figcaption className="mt-2.5 text-[13px]" style={{ color: 'var(--tfd-500)' }}>
                   {topic.imagem.legenda}
@@ -209,7 +249,7 @@ export default function TopicView({ chapterId, topicId }: TopicViewProps) {
           <SectionHeading id="passo-a-passo">Passo a passo</SectionHeading>
           <ol className="ml-5 list-decimal space-y-2.5 marker:text-[13px] marker:font-medium marker:text-[var(--tfd-400)]">
             {topic.passos.map((passo, i) => (
-              <li key={i} className="pl-1.5 text-[15px] leading-[1.7]" style={{ color: 'var(--tfd-700)' }}>
+              <li key={i} className="pl-1.5 text-[16px] leading-[1.7]" style={{ color: 'var(--tfd-700)' }}>
                 {passo}
               </li>
             ))}
@@ -238,7 +278,7 @@ export default function TopicView({ chapterId, topicId }: TopicViewProps) {
               <SectionHeading id="dicas">Dicas e atalhos</SectionHeading>
               <ul className="ml-5 list-disc space-y-2.5 marker:text-[var(--tfd-300)]">
                 {topic.dicas.map((dica, i) => (
-                  <li key={i} className="pl-1 text-[15px] leading-[1.7]" style={{ color: 'var(--tfd-700)' }}>
+                  <li key={i} className="pl-1 text-[16px] leading-[1.7]" style={{ color: 'var(--tfd-700)' }}>
                     {dica}
                   </li>
                 ))}
@@ -252,7 +292,7 @@ export default function TopicView({ chapterId, topicId }: TopicViewProps) {
               <div className="border-l-2 pl-5" style={{ borderColor: 'var(--tfd-200)' }}>
                 <ul className="space-y-2.5">
                   {topic.cuidados.map((cuidado, i) => (
-                    <li key={i} className="text-[14.5px] leading-[1.7]" style={{ color: 'var(--tfd-600)' }}>
+                    <li key={i} className="text-[15px] leading-[1.7]" style={{ color: 'var(--tfd-600)' }}>
                       {cuidado}
                     </li>
                   ))}

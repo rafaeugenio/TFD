@@ -44,7 +44,7 @@ export default function WikiHomePage() {
           Guia do Usuário TFD
         </h1>
         <p className="mx-auto mt-2 max-w-[480px] text-[14.5px]" style={{ color: 'var(--tfd-500)' }}>
-          Aprenda a operar o sistema de Tratamento Fora do Domicílio, capítulo por capítulo.
+          Encontre o passo a passo de cada etapa do Tratamento Fora do Domicílio, do cadastro ao encerramento.
         </p>
 
         <div className="mt-6 flex justify-center">
@@ -70,7 +70,7 @@ export default function WikiHomePage() {
             role="searchbox"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar no manual: parecer, passagem, encerramento..."
+            placeholder="Busque por parecer, passagem, encerramento..."
             aria-label="Buscar tópicos do manual"
             className="w-full rounded-xl border py-3 pl-10 pr-10 text-[14px] outline-none transition-shadow focus:shadow-[0_0_0_3px_var(--tfd-blue-100)]"
             style={{
@@ -114,7 +114,7 @@ export default function WikiHomePage() {
               </span>
               <div>
                 <p className="text-[14px] font-semibold" style={{ color: 'var(--tfd-900)' }}>
-                  Nada encontrado no manual
+                  Ajuste a busca
                 </p>
                 <p className="mt-1 text-[13px]" style={{ color: 'var(--tfd-500)' }}>
                   Tente outra palavra, como &ldquo;parecer&rdquo;, &ldquo;diária&rdquo; ou
@@ -170,7 +170,7 @@ export default function WikiHomePage() {
                       className="text-[12px] font-medium uppercase tracking-[0.1em]"
                       style={{ color: 'var(--tfd-400)' }}
                     >
-                      Capítulo {String(chapter.numero).padStart(2, '0')}
+                      Capítulo {String(chapter.numero).padStart(2, '0')} · {topics.length} seções
                     </p>
                     <h2
                       className="mt-2 text-[19px] font-semibold leading-snug tracking-[-0.01em]"
@@ -189,6 +189,7 @@ export default function WikiHomePage() {
                     </p>
                     <Link
                       href={`/wiki/${chapter.id}`}
+                      aria-label={`Acessar capítulo: ${chapter.titulo}`}
                       className="mt-5 text-[13.5px] font-medium transition-colors hover:underline"
                       style={{ color: 'var(--tfd-blue-600)' }}
                     >

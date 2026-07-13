@@ -119,7 +119,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'login',
     categoria: 'primeiros-passos',
     titulo: 'Entrar no sistema',
-    descricao: 'Login com CPF e senha, primeiro acesso e recuperação de senha.',
+    descricao: 'Entre com CPF e senha, faça o primeiro acesso e recupere sua senha.',
     keywords: ['login', 'senha', 'cpf', 'entrar', 'primeiro acesso', 'recuperar senha', 'esqueci'],
     paraQueServe:
       'A tela de login identifica quem está usando o sistema. O que cada pessoa pode ver e fazer depende do papel de acesso do seu usuário.',
@@ -155,7 +155,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'visao-geral',
     categoria: 'primeiros-passos',
     titulo: 'Visão geral do sistema',
-    descricao: 'O que é o TFD, os quatro setores do fluxo e o ciclo de vida de uma solicitação.',
+    descricao: 'Entenda o que é o TFD, os quatro setores do fluxo e o ciclo de vida de uma solicitação.',
     keywords: ['tfd', 'visão geral', 'setores', 'status', 'fluxo', 'como funciona', 'dados básicos'],
     paraQueServe:
       'O sistema TFD organiza o Tratamento Fora do Domicílio da SES-MA: cadastro de pacientes, abertura de solicitações, análise médica (regulação), execução financeira (passagens e diárias) e encerramento.',
@@ -187,7 +187,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'navegacao',
     categoria: 'primeiros-passos',
     titulo: 'Navegação principal',
-    descricao: 'Menu lateral, seções e onde encontrar cada funcionalidade.',
+    descricao: 'Conheça o menu lateral e encontre cada funcionalidade do sistema.',
     keywords: ['menu', 'navegação', 'sidebar', 'onde encontro', 'telas', 'módulos'],
     paraQueServe:
       'O menu lateral esquerdo dá acesso a todas as áreas do sistema, agrupadas por finalidade. Os itens exibidos dependem das permissões do seu papel.',
@@ -214,7 +214,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'busca-filtros',
     categoria: 'primeiros-passos',
     titulo: 'Busca, filtros e tabelas',
-    descricao: 'Como localizar registros nas listagens usando busca, filtros, ordenação e paginação.',
+    descricao: 'Localize registros nas listagens usando busca, filtros, ordenação e paginação.',
     keywords: ['busca', 'filtro', 'tabela', 'ordenar', 'paginação', 'localizar', 'pesquisar'],
     paraQueServe:
       'Todas as listagens do sistema (pacientes, solicitações, unidades etc.) seguem o mesmo padrão: cartões de resumo no topo, campo de busca, filtros e tabela com ordenação.',
@@ -222,7 +222,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     imagem: {
       src: '/wiki/media/funcionalidades/busca-toolbar.png',
       alt: "Campo de busca e filtro de status de uma listagem",
-      legenda: "Padrão das listagens: busca por texto ao lado do filtro de status.",
+      legenda: "Toda listagem tem um campo de busca ao lado do filtro de status.",
     },
     dicas: [
       "Os cartões de resumo no topo das listas são clicáveis: um clique em \"Em Regulação\" filtra a tabela na hora.",
@@ -249,7 +249,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'pacientes',
     categoria: 'cadastros',
     titulo: 'Pacientes',
-    descricao: 'Cadastro completo do paciente: dados pessoais, endereço, documentos e acompanhantes.',
+    descricao: 'Cadastre o paciente completo: dados pessoais, endereço, documentos e acompanhantes.',
     keywords: ['paciente', 'cadastro', 'cpf', 'cns', 'cartão sus', 'acompanhante', 'endereço', 'novo paciente'],
     paraQueServe:
       'O cadastro do paciente é a base de toda solicitação. Ele concentra identificação, contato, endereço (que deriva a regional automaticamente), documentos e acompanhantes.',
@@ -291,7 +291,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'dados-bancarios',
     categoria: 'cadastros',
     titulo: 'Dados bancários do paciente',
-    descricao: 'Contas e chaves PIX usadas para pagar ajudas de custo e reembolsos.',
+    descricao: 'Registre contas e chaves PIX para pagar ajudas de custo e reembolsos.',
     keywords: ['dados bancários', 'conta', 'pix', 'banco', 'agência', 'titular', 'pagamento'],
     paraQueServe:
       'Cada paciente tem um conjunto de contas bancárias e chaves PIX. Na etapa financeira, a solicitação seleciona uma delas para receber diárias e reembolsos.',
@@ -324,7 +324,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'unidades-saude',
     categoria: 'cadastros',
     titulo: 'Unidades de Saúde',
-    descricao: 'Cadastro das unidades de destino, com preenchimento automático pelo CNES.',
+    descricao: 'Cadastre unidades de destino com preenchimento automático pelo CNES.',
     keywords: ['unidade', 'unidade de saúde', 'cnes', 'hospital', 'destino', 'cadastro de unidade'],
     paraQueServe:
       'As unidades de saúde são os destinos dos pacientes: onde os procedimentos são agendados e realizados. O cadastro alimenta o agendamento das solicitações.',
@@ -365,7 +365,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'regionais',
     categoria: 'cadastros',
     titulo: 'Regionais de Saúde',
-    descricao: 'Unidades Regionais de Saúde (URS) e o vínculo dos municípios com cada regional.',
+    descricao: 'Gerencie as URS e o vínculo dos municípios com cada regional.',
     keywords: ['regional', 'urs', 'região', 'município', 'são luís', 'vínculo', 'agrupamento'],
     paraQueServe:
       'As regionais (URS) agrupam os municípios do Maranhão. O vínculo município x regional é o que permite ao sistema derivar automaticamente a regional de cada paciente a partir do endereço.',
@@ -404,7 +404,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'solicitacoes',
     categoria: 'fluxo',
     titulo: 'Lista de solicitações',
-    descricao: 'Visão geral de todas as solicitações com status consolidado e ações rápidas.',
+    descricao: 'Acompanhe todas as solicitações com status consolidado e ações rápidas.',
     keywords: ['solicitações', 'lista', 'status', 'número', 'tfd-n', 'acompanhar', 'fila'],
     paraQueServe:
       'A tela "Solicitações" mostra todas as solicitações do TFD, em qualquer setor, com busca, filtros por status e indicadores de volume.',
@@ -441,7 +441,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'nova-solicitacao',
     categoria: 'fluxo',
     titulo: 'Nova solicitação',
-    descricao: 'Abertura de solicitação: tipo, paciente, acompanhantes, agendamento, laudo e anexos.',
+    descricao: 'Abra uma solicitação: tipo, paciente, acompanhantes, agendamento, laudo e anexos.',
     keywords: ['nova solicitação', 'abrir', 'criar', 'agendamento', 'laudo', 'sei', 'acompanhante', 'ajuda de custo'],
     paraQueServe:
       'O formulário "Nova solicitação" registra o caso completo a partir de um paciente já cadastrado: tipo do processo, acompanhantes, agendamento inicial, laudo médico, processo SEI e documentos.',
@@ -489,7 +489,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'detalhe-solicitacao',
     categoria: 'fluxo',
     titulo: 'Detalhe da solicitação',
-    descricao: 'Cabeçalho, abas (Linha do tempo, Regulação, Financeiro, Anexos, Observações) e ações.',
+    descricao: 'Consulte o caso completo: linha do tempo, regulação, financeiro, anexos e observações.',
     keywords: ['detalhe', 'abas', 'linha do tempo', 'anexos', 'observações', 'timeline', 'histórico'],
     paraQueServe:
       'O detalhe é a central da solicitação: identifica o paciente, mostra o status e concentra todo o histórico e as ações de cada setor em abas.',
@@ -520,7 +520,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'enviar-para-setor',
     categoria: 'fluxo',
     titulo: 'Enviar para setor (tramitação)',
-    descricao: 'Como a solicitação avança ou volta entre Dados Básicos, Regulação e Financeiro.',
+    descricao: 'Avance ou devolva a solicitação entre Dados Básicos, Regulação e Financeiro.',
     keywords: ['enviar', 'tramitar', 'setor', 'devolver', 'devolução', 'encaminhar', 'tramitação'],
     paraQueServe:
       'A tramitação move a solicitação entre setores. Avançar é "Enviar"; voltar para um setor anterior é "Devolver". A movimentação nunca é automática.',
@@ -551,7 +551,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'regulacao',
     categoria: 'fluxo',
     titulo: 'Fila de Regulação',
-    descricao: 'Solicitações aguardando parecer médico, carimbo ou agendamento de exceção.',
+    descricao: 'Trabalhe a fila de análise: parecer médico, carimbo e agendamento de exceção.',
     keywords: ['regulação', 'fila', 'parecer', 'carimbo', 'cid', 'análise', 'médico regulador'],
     paraQueServe:
       'A tela "Regulação" concentra as solicitações em análise: mostra o que aguarda parecer, o que aguarda agendamento e os deferimentos do mês.',
@@ -578,7 +578,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'parecer-medico',
     categoria: 'fluxo',
     titulo: 'Parecer médico',
-    descricao: 'Emissão do parecer do médico regulador: decisão, CIDs e observação com template.',
+    descricao: 'Emita o parecer do médico regulador com decisão, CIDs e template de observação.',
     keywords: ['parecer', 'médico', 'deferido', 'indeferido', 'cid', 'cid-10', 'cid-11', 'crm', 'template'],
     paraQueServe:
       'O parecer médico é a decisão clínica sobre a solicitação: deferido ou indeferido, com diagnóstico (CID) e justificativa. Ele habilita o carimbo e a continuidade do fluxo.',
@@ -618,7 +618,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'carimbo-regulacao',
     categoria: 'fluxo',
     titulo: 'Carimbo de regulação e aprovação direta',
-    descricao: 'Encaminhamento operacional após o parecer: Aprovado direto, CNRAC, CET, SAAS ou Agendamento.',
+    descricao: 'Defina o encaminhamento após o parecer: Aprovado direto, CNRAC, CET, SAAS ou Agendamento.',
     keywords: ['carimbo', 'aprovado direto', 'aprovação direta', 'cnrac', 'cet', 'saas', 'encaminhamento', 'exceção'],
     paraQueServe:
       'O carimbo define o encaminhamento operacional do caso depois do parecer deferido: seguir direto para o Financeiro ou passar por uma central de exceção.',
@@ -654,7 +654,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'agendamento-tentativas',
     categoria: 'fluxo',
     titulo: 'Agendamento e tentativas',
-    descricao: 'Registro das tentativas de contato com unidades até confirmar o agendamento.',
+    descricao: 'Registre as tentativas de contato com unidades até confirmar o agendamento.',
     keywords: ['agendamento', 'tentativa', 'contato', 'confirmado', 'unidade', 'vaga', 'negou'],
     paraQueServe:
       'Quando o agendamento não veio pronto na abertura (casos CNRAC, CET ou "Agendamento"), a Regulação registra cada tentativa de contato com as unidades até confirmar data e vaga.',
@@ -680,7 +680,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'financeiro',
     categoria: 'fluxo',
     titulo: 'Fila do Financeiro e fechamento',
-    descricao: 'Execução da solicitação: passagens, diárias, adicionais e o checklist de fechamento.',
+    descricao: 'Execute a solicitação: passagens, diárias, adicionais e o checklist de fechamento.',
     keywords: ['financeiro', 'fila', 'fechamento', 'despacho', 'checklist', 'pendências', 'emissão'],
     paraQueServe:
       'A tela "Financeiro" lista as solicitações em execução e organiza o que falta: emitir passagens, cadastrar ajuda de custo e vincular dados bancários, até liberar o despacho.',
@@ -713,7 +713,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'passagens',
     categoria: 'fluxo',
     titulo: 'Passagens e passagem adicional',
-    descricao: 'Emissão de passagens (aéreo, terrestre, fluvial), ida e volta, e passagens extras.',
+    descricao: 'Emita passagens de ida e volta em qualquer modal e registre passagens extras.',
     keywords: ['passagem', 'viagem', 'aéreo', 'terrestre', 'fluvial', 'ida e volta', 'passagem adicional', 'companhia', 'remarcação'],
     paraQueServe:
       'A seção "Viagens" registra cada passagem emitida para o paciente e os acompanhantes: modal, trecho, datas, companhia e valor. Passagens extras entram como nova passagem ou como adicional do tipo "Passagem extra".',
@@ -753,7 +753,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'ajuda-de-custo',
     categoria: 'fluxo',
     titulo: 'Ajuda de custo (diárias)',
-    descricao: 'Períodos de diária com cálculo automático: pernoite, retorno e regra da Ata 7.',
+    descricao: 'Cadastre períodos de diária com cálculo automático e regra da Ata 7.',
     keywords: ['ajuda de custo', 'diária', 'pernoite', 'período', 'valor', 'ata 7', 'reembolso', 'glosa'],
     paraQueServe:
       'A ajuda de custo paga as diárias do paciente e dos acompanhantes durante a permanência no destino. O sistema calcula o valor automaticamente a partir do período.',
@@ -797,7 +797,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'adicionais',
     categoria: 'fluxo',
     titulo: 'Adicionais (despesas extras)',
-    descricao: 'Registro de despesas complementares: transfer, bagagem, corridas, prorrogações.',
+    descricao: 'Registre despesas complementares: transfer, bagagem, corridas e prorrogações.',
     keywords: ['adicional', 'despesa', 'transfer', 'bagagem', 'uber', 'extra', 'prorrogação'],
     paraQueServe:
       'Os adicionais registram custos extras da viagem que não são passagem nem diária padrão: transfer, bagagem, corrida de aplicativo, passagem extra ou prorrogação de ajuda.',
@@ -828,7 +828,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'encerramento',
     categoria: 'fluxo',
     titulo: 'Encerramento e reabertura',
-    descricao: 'Fechar a solicitação com motivo, efeitos do encerramento e como reabrir.',
+    descricao: 'Encerre a solicitação com motivo, entenda os efeitos e reabra quando preciso.',
     keywords: ['encerramento', 'encerrar', 'motivo', 'alta', 'óbito', 'abandono', 'desistência', 'reabrir', 'funerária'],
     paraQueServe:
       'O encerramento conclui a solicitação e trava qualquer edição. O motivo escolhido fica registrado no histórico e alimenta os indicadores de encerradas no mês.',
@@ -872,7 +872,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'dashboard',
     categoria: 'gestao',
     titulo: 'Painel (Dashboard)',
-    descricao: 'Indicadores por setor, atividades recentes, tendências e rankings.',
+    descricao: 'Acompanhe indicadores por setor, atividades recentes, tendências e rankings.',
     keywords: ['painel', 'dashboard', 'indicadores', 'kpi', 'gráfico', 'tendência', 'atividades'],
     paraQueServe:
       'O Painel dá a foto do momento: quantas solicitações ativas há em cada setor, o que a equipe fez recentemente e como o volume evolui mês a mês.',
@@ -899,7 +899,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'relatorios',
     categoria: 'gestao',
     titulo: 'Relatórios',
-    descricao: 'Relatórios Financeiro, Faturamento, BPA e Gestão, com exportação e impressão.',
+    descricao: 'Gere os relatórios Financeiro, Faturamento, BPA e Gestão, com exportação.',
     keywords: ['relatório', 'financeiro', 'faturamento', 'bpa', 'gestão', 'exportar', 'csv', 'pdf', 'imprimir'],
     paraQueServe:
       'A tela "Relatórios" consolida os dados do TFD em quatro visões prontas para prestação de contas e lançamentos.',
@@ -927,7 +927,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'usuarios',
     categoria: 'gestao',
     titulo: 'Usuários',
-    descricao: 'Cadastro de usuários, papéis de acesso, médicos com CRM e redefinição de senha.',
+    descricao: 'Cadastre usuários, atribua papéis, informe CRM de médicos e redefina senhas.',
     keywords: ['usuário', 'adicionar usuário', 'crm', 'médico', 'matrícula', 'redefinir senha', 'remover'],
     paraQueServe:
       'A tela "Usuários" gerencia quem acessa o sistema, o papel de cada pessoa e os dados profissionais (como CRM dos médicos).',
@@ -956,7 +956,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'papeis-permissoes',
     categoria: 'gestao',
     titulo: 'Papéis e permissões',
-    descricao: 'Perfis de acesso por tela e ação: quem vê e quem faz o quê no sistema.',
+    descricao: 'Configure perfis de acesso por tela e ação: quem vê e quem faz o quê.',
     keywords: ['papel', 'permissão', 'perfil', 'acesso', 'rbac', 'regulador', 'coordenação', 'atendente'],
     paraQueServe:
       'Os papéis definem o que cada grupo de usuários pode ver e fazer, tela por tela, ação por ação. Exemplos de papéis: Atendente Municipal, Atendente Regional, Coordenação Estadual, Médico Auditor, Setor de Regulação, Setor de Passagens, Financeiro, Assistente Social e Controle Interno.',
@@ -984,7 +984,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'configuracoes',
     categoria: 'gestao',
     titulo: 'Configurações',
-    descricao: 'Tabelas auxiliares (procedimentos, motivos, bancos, companhias) e catálogos CID/SIGTAP.',
+    descricao: 'Mantenha as tabelas auxiliares e os catálogos CID-10, CID-11 e SIGTAP.',
     keywords: ['configurações', 'tabelas auxiliares', 'tipos de procedimento', 'motivos de encerramento', 'bancos', 'companhias', 'cid', 'sigtap', 'vínculo'],
     paraQueServe:
       'As Configurações mantêm as listas que alimentam os formulários do sistema: tipos de procedimento e documento, vínculos, companhias de transporte, motivos de encerramento, tipos de despesa, bancos e regiões, além dos catálogos CID-10, CID-11 e SIGTAP.',
@@ -1009,7 +1009,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     id: 'logs',
     categoria: 'gestao',
     titulo: 'Logs e auditoria',
-    descricao: 'Rastro completo de quem fez o quê, quando e em qual solicitação.',
+    descricao: 'Audite quem fez o quê, quando e em qual solicitação.',
     keywords: ['logs', 'auditoria', 'histórico', 'ações', 'rastreabilidade', 'quem alterou'],
     paraQueServe:
       'Os logs registram todas as ações relevantes do sistema (criação, edição, parecer, emissão, encerramento, mudanças de usuário), com autor, entidade, data e hora.',

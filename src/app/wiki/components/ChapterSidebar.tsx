@@ -25,6 +25,7 @@ export default function ChapterSidebar({ currentChapterId, currentTopicId }: Cha
               style={{
                 color: isCurrent ? 'var(--tfd-900)' : 'var(--tfd-500)',
                 fontWeight: isCurrent ? 600 : 400,
+                background: isCurrent ? 'var(--tfd-50)' : 'transparent',
               }}
               onMouseEnter={(e) => {
                 if (!isCurrent) e.currentTarget.style.color = 'var(--tfd-800)';
@@ -45,7 +46,7 @@ export default function ChapterSidebar({ currentChapterId, currentTopicId }: Cha
 
             {isCurrent && (
               <ul
-                className="mb-2 ml-[15px] mt-1 space-y-0.5 border-l pl-4"
+                className="mb-2 ml-[15px] mt-1 space-y-0.5 border-l"
                 style={{ borderColor: 'var(--tfd-surface-border)' }}
               >
                 {chapterTopics(chapter).map((topic) => {
@@ -55,10 +56,11 @@ export default function ChapterSidebar({ currentChapterId, currentTopicId }: Cha
                       <Link
                         href={`/wiki/${chapter.id}/${topic.id}`}
                         aria-current={active ? 'page' : undefined}
-                        className="block py-1 text-[13px] leading-snug transition-colors"
+                        className="-ml-px block border-l-2 py-1 pl-[14px] text-[13px] leading-snug transition-colors"
                         style={{
                           color: active ? 'var(--tfd-blue-600)' : 'var(--tfd-500)',
                           fontWeight: active ? 500 : 400,
+                          borderColor: active ? 'var(--tfd-blue-500)' : 'transparent',
                         }}
                         onMouseEnter={(e) => {
                           if (!active) e.currentTarget.style.color = 'var(--tfd-800)';
