@@ -5,7 +5,8 @@
  * passo a passo, campos, cuidados, vídeo, relacionados) para que a
  * página renderize tudo a partir de dados, sem texto hardcoded no JSX.
  *
- * Fonte da verdade: telas reais do protótipo (branch fluxo-v2-mvp).
+ * Fonte da verdade: o sistema publicado em https://tfd.dev.projetoscitiesoft.com
+ * (Angular + PrimeNG). Os 11 capítulos espelham o menu lateral real do sistema.
  */
 
 /** Agrupamento interno legado; a navegação real é por capítulo (WIKI_CHAPTERS). */
@@ -58,26 +59,26 @@ export interface WikiChapter {
 
 export const WIKI_CHAPTERS: WikiChapter[] = [
   {
-    id: 'introducao',
-    imagem: { src: '/wiki/media/capitulos/cap-01-introducao.jpg', alt: 'Tela de login do sistema TFD' },
+    id: 'acesso',
+    imagem: { src: '/wiki/media/stills/login.png', alt: 'Tela de login do sistema TFD' },
     numero: 1,
-    titulo: 'Introdução ao sistema',
-    descricao: 'Uma visão geral do TFD, como entrar, navegar e se orientar nas telas.',
+    titulo: 'Login e acesso',
+    descricao: 'Como entrar no sistema, se orientar nas telas e localizar qualquer funcionalidade.',
     tag: 'Básico',
     topicos: ['login', 'visao-geral', 'navegacao', 'busca-filtros'],
   },
   {
-    id: 'cadastros',
-    imagem: { src: '/wiki/media/capitulos/cap-02-cadastros.jpg', alt: 'Listagem de pacientes com busca e ações' },
+    id: 'dashboard',
+    imagem: { src: '/wiki/media/stills/dashboard.png', alt: 'Painel do sistema TFD com indicadores por setor' },
     numero: 2,
-    titulo: 'Cadastros',
-    descricao: 'Pacientes, dados bancários, unidades de saúde e regionais: a base de toda solicitação.',
-    tag: 'Cadastros',
-    topicos: ['pacientes', 'dados-bancarios', 'unidades-saude', 'regionais'],
+    titulo: 'Dashboard',
+    descricao: 'Indicadores por setor, atividades recentes, tendências e rankings, tudo em um só painel.',
+    tag: 'Painel',
+    topicos: ['dashboard'],
   },
   {
     id: 'solicitacoes',
-    imagem: { src: '/wiki/media/capitulos/cap-03-solicitacoes.jpg', alt: 'Lista de solicitações com status consolidado' },
+    imagem: { src: '/wiki/media/stills/solicitacoes-lista.png', alt: 'Lista de solicitações com status consolidado' },
     numero: 3,
     titulo: 'Solicitações',
     descricao: 'Como abrir, acompanhar, tramitar e encerrar uma solicitação de TFD.',
@@ -86,7 +87,7 @@ export const WIKI_CHAPTERS: WikiChapter[] = [
   },
   {
     id: 'regulacao',
-    imagem: { src: '/wiki/media/capitulos/cap-04-regulacao.jpg', alt: 'Fila de regulação com carimbos e pareceres' },
+    imagem: { src: '/wiki/media/stills/regulacao.png', alt: 'Fila de regulação com carimbos e pareceres' },
     numero: 4,
     titulo: 'Regulação',
     descricao: 'Parecer médico, carimbo de regulação e agendamento: a análise do caso.',
@@ -95,7 +96,7 @@ export const WIKI_CHAPTERS: WikiChapter[] = [
   },
   {
     id: 'financeiro',
-    imagem: { src: '/wiki/media/capitulos/cap-05-financeiro.jpg', alt: 'Fila do financeiro com passagens e ajudas de custo' },
+    imagem: { src: '/wiki/media/stills/financeiro.png', alt: 'Fila do financeiro com passagens e ajudas de custo' },
     numero: 5,
     titulo: 'Financeiro',
     descricao: 'Passagens, ajuda de custo, adicionais e o checklist de fechamento.',
@@ -103,18 +104,63 @@ export const WIKI_CHAPTERS: WikiChapter[] = [
     topicos: ['financeiro', 'passagens', 'ajuda-de-custo', 'adicionais'],
   },
   {
-    id: 'gestao',
-    imagem: { src: '/wiki/media/capitulos/cap-06-gestao.jpg', alt: 'Painel com indicadores por setor' },
+    id: 'pacientes',
+    imagem: { src: '/wiki/media/stills/pacientes.png', alt: 'Listagem de pacientes com busca e ações' },
     numero: 6,
-    titulo: 'Gestão e Configurações',
-    descricao: 'Painel, relatórios, usuários, permissões, tabelas auxiliares e auditoria.',
+    titulo: 'Pacientes',
+    descricao: 'Cadastro completo do paciente e os dados bancários usados nos pagamentos.',
+    tag: 'Cadastros',
+    topicos: ['pacientes', 'dados-bancarios'],
+  },
+  {
+    id: 'unidades-saude',
+    imagem: { src: '/wiki/media/stills/unidades-saude.png', alt: 'Listagem de unidades de saúde de destino' },
+    numero: 7,
+    titulo: 'Unidades de Saúde',
+    descricao: 'Cadastro das unidades de destino que alimentam o agendamento das solicitações.',
+    tag: 'Cadastros',
+    topicos: ['unidades-saude'],
+  },
+  {
+    id: 'regionais',
+    imagem: { src: '/wiki/media/stills/regionais.png', alt: 'Listagem de regionais de saúde do Maranhão' },
+    numero: 8,
+    titulo: 'Regionais',
+    descricao: 'As URS do Maranhão e o vínculo de cada município à sua regional.',
+    tag: 'Cadastros',
+    topicos: ['regionais'],
+  },
+  {
+    id: 'relatorios',
+    imagem: { src: '/wiki/media/stills/relatorios-faturamento.png', alt: 'Relatório de faturamento com totais e reembolsos' },
+    numero: 9,
+    titulo: 'Relatórios',
+    descricao: 'As quatro visões prontas para prestação de contas: Financeiro, Faturamento, BPA e Gestão.',
+    tag: 'Gestão',
+    topicos: ['relatorios'],
+  },
+  {
+    id: 'configuracoes',
+    imagem: { src: '/wiki/media/stills/configuracoes.png', alt: 'Tela de configurações com tabelas auxiliares' },
+    numero: 10,
+    titulo: 'Configurações',
+    descricao: 'As tabelas auxiliares e os catálogos que alimentam os formulários do sistema.',
+    tag: 'Gestão',
+    topicos: ['configuracoes'],
+  },
+  {
+    id: 'administrativo',
+    imagem: { src: '/wiki/media/stills/administrativo.png', alt: 'Tela administrativa com usuários e permissões' },
+    numero: 11,
+    titulo: 'Administrativo',
+    descricao: 'Usuários, papéis de acesso e os logs de auditoria do sistema.',
     tag: 'Administração',
-    topicos: ['dashboard', 'relatorios', 'usuarios', 'papeis-permissoes', 'configuracoes', 'logs'],
+    topicos: ['usuarios', 'papeis-permissoes', 'logs'],
   },
 ];
 
 export const WIKI_TOPICS: WikiTopic[] = [
-  // ─────────────────────────── PRIMEIROS PASSOS ───────────────────────────
+  // ─────────────────────────── CAPÍTULO 1 · LOGIN E ACESSO ───────────────────────────
   {
     id: 'login',
     categoria: 'primeiros-passos',
@@ -160,6 +206,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'O sistema TFD organiza o Tratamento Fora do Domicílio da SES-MA: cadastro de pacientes, abertura de solicitações, análise médica (regulação), execução financeira (passagens e diárias) e encerramento.',
     quandoUsar: 'Leia este tópico antes de operar o sistema pela primeira vez.',
+    imagem: {
+      src: '/wiki/media/stills/dashboard.png',
+      alt: 'Painel do sistema TFD com indicadores por setor',
+      legenda: 'O Painel é o ponto de partida: mostra quantas solicitações há em cada setor e as atividades recentes da equipe.',
+    },
     dicas: [
       "O badge de status colorido nas listas informa em qual setor a solicitação está sem precisar abrir o caso.",
       "A aba \"Linha do tempo\" reconstrói toda a história da solicitação em ordem cronológica: é o jeito mais rápido de entender um caso antigo.",
@@ -192,6 +243,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'O menu lateral esquerdo dá acesso a todas as áreas do sistema, agrupadas por finalidade. Os itens exibidos dependem das permissões do seu papel.',
     quandoUsar: 'Use como mapa quando não souber onde uma funcionalidade fica.',
+    imagem: {
+      src: '/wiki/media/stills/dashboard.png',
+      alt: 'Menu lateral do sistema TFD com as seções Fluxo do processo, Cadastros e Gestão',
+      legenda: 'O menu lateral abre a partir do Painel e dá acesso a todas as áreas do sistema.',
+    },
     dicas: [
       "O menu lateral pode ser recolhido pelo botão \"«\" no rodapé, deixando só os ícones e liberando espaço em telas menores.",
       "Clicar no seu nome no rodapé do menu abre \"Meu Perfil\", onde ficam seus dados de contato e, para médicos, o CRM.",
@@ -220,9 +276,9 @@ export const WIKI_TOPICS: WikiTopic[] = [
       'Todas as listagens do sistema (pacientes, solicitações, unidades etc.) seguem o mesmo padrão: cartões de resumo no topo, campo de busca, filtros e tabela com ordenação.',
     quandoUsar: 'Sempre que precisar localizar um registro específico em uma lista grande.',
     imagem: {
-      src: '/wiki/media/funcionalidades/busca-toolbar.png',
-      alt: "Campo de busca e filtro de status de uma listagem",
-      legenda: "Toda listagem tem um campo de busca ao lado do filtro de status.",
+      src: '/wiki/media/stills/solicitacoes-lista.png',
+      alt: 'Lista de solicitações com campo de busca e filtro de status',
+      legenda: 'Toda listagem do sistema segue este padrão: cartões de resumo, busca e filtro lado a lado.',
     },
     dicas: [
       "Os cartões de resumo no topo das listas são clicáveis: um clique em \"Em Regulação\" filtra a tabela na hora.",
@@ -244,162 +300,41 @@ export const WIKI_TOPICS: WikiTopic[] = [
     relacionados: ['navegacao', 'solicitacoes', 'pacientes'],
   },
 
-  // ─────────────────────────────── CADASTROS ───────────────────────────────
+  // ─────────────────────────── CAPÍTULO 2 · DASHBOARD ───────────────────────────
   {
-    id: 'pacientes',
-    categoria: 'cadastros',
-    titulo: 'Pacientes',
-    descricao: 'Cadastre o paciente completo: dados pessoais, endereço, documentos e acompanhantes.',
-    keywords: ['paciente', 'cadastro', 'cpf', 'cns', 'cartão sus', 'acompanhante', 'endereço', 'novo paciente'],
+    id: 'dashboard',
+    categoria: 'gestao',
+    titulo: 'Painel (Dashboard)',
+    descricao: 'Acompanhe indicadores por setor, atividades recentes, tendências e rankings.',
+    keywords: ['painel', 'dashboard', 'indicadores', 'kpi', 'gráfico', 'tendência', 'atividades'],
     paraQueServe:
-      'O cadastro do paciente é a base de toda solicitação. Ele concentra identificação, contato, endereço (que deriva a regional automaticamente), documentos e acompanhantes.',
-    quandoUsar: 'Antes de abrir a primeira solicitação de um paciente, ou para atualizar dados de contato e documentos.',
-    dicas: [
-      "Digite o CEP e o sistema preenche logradouro e bairro automaticamente.",
-      "A Regional e a Região do paciente são derivadas do município de residência: você não precisa saber de qual URS ele é.",
-      "Dá para anexar vários documentos de uma vez, classificando cada arquivo (RG, CPF, Cartão SUS, comprovante).",
-      "A busca da lista encontra por nome, CPF ou CNS.",
-    ],
-    passos: [
-      'No menu, acesse "Pacientes" e clique em "Novo Paciente".',
-      'Em "Dados Pessoais", preencha CPF, nome completo, data de nascimento e ao menos um telefone. Cartão SUS (CNS) é opcional.',
-      'Em "Endereço", informe o CEP (o sistema preenche logradouro e bairro) e o município de residência. A "Regional" e a "Região" são derivadas do município automaticamente.',
-      'Em "Documentos Pessoais", anexe RG, CPF, Cartão SUS ou comprovante de residência (PDF, PNG, JPG, WEBP ou DOC, até 50 MB cada).',
-      'Em "Acompanhantes", clique em "Adicionar" e preencha nome, CPF, data de nascimento, vínculo e telefone.',
-      'Clique em "Cadastrar Paciente" e confirme o resumo exibido.',
-    ],
-    campos: [
-      { nome: 'CPF', detalhe: 'Campo principal de identificação. O sistema valida o dígito verificador.' },
-      { nome: 'Cartão SUS (CNS)', detalhe: 'Opcional, com validação do dígito. Formato 000 0000 0000 0000.' },
-      { nome: 'Telefones', detalhe: 'Ao menos um (celular ou fixo) é obrigatório para contato.' },
-      { nome: 'Município de Residência', detalhe: 'Define automaticamente a Regional e a Região do paciente.' },
-      { nome: 'Vínculo do acompanhante', detalhe: 'Cônjuge, filho(a), pai/mãe, responsável legal ou outro.' },
-    ],
-    cuidados: [
-      'Acompanhante com menos de 20 ou mais de 65 anos fica fora da faixa padrão e exige autorização da coordenação. O sistema exibe o aviso no cadastro.',
-      'Excluir um paciente é uma inativação (ele some das listas, mas o histórico permanece). A ação pede confirmação e não pode ser desfeita pela tela.',
-      'Dados bancários não são preenchidos neste formulário: eles ficam na página de detalhe do paciente.',
-    ],
-    video: {
-      src: '/wiki/media/wiki-01-cadastro-paciente.mp4',
-      titulo: 'Cadastro de paciente',
-      descricao: 'Preenchimento completo do formulário de novo paciente, do CPF aos acompanhantes.',
-    },
-    relacionados: ['dados-bancarios', 'nova-solicitacao', 'regionais'],
-  },
-  {
-    id: 'dados-bancarios',
-    categoria: 'cadastros',
-    titulo: 'Dados bancários do paciente',
-    descricao: 'Registre contas e chaves PIX para pagar ajudas de custo e reembolsos.',
-    keywords: ['dados bancários', 'conta', 'pix', 'banco', 'agência', 'titular', 'pagamento'],
-    paraQueServe:
-      'Cada paciente tem um conjunto de contas bancárias e chaves PIX. Na etapa financeira, a solicitação seleciona uma delas para receber diárias e reembolsos.',
-    quandoUsar: 'Ao preparar a solicitação para o fechamento financeiro, ou quando o paciente trocar de conta.',
-    dicas: [
-      "A forma de recebimento \"Ambos\" registra conta bancária e chave PIX no mesmo cadastro.",
-      "O vínculo do titular já vem pré-selecionado como \"Próprio paciente\", o caso mais comum.",
-      "Contas inativadas continuam visíveis no histórico do paciente, só deixam de aparecer em novas solicitações.",
-    ],
-    passos: [
-      'Abra o paciente na lista "Pacientes" (clique na linha).',
-      'Na seção "Dados Bancários", clique em "Adicionar conta".',
-      'Escolha a "Forma de recebimento": "Conta bancária", "PIX" ou "Ambos".',
-      'Preencha o titular (vínculo com o paciente, nome e CPF) e os dados da conta ou da chave PIX.',
-      'Clique em "Salvar".',
-    ],
-    campos: [
-      { nome: 'Vínculo com o paciente', detalhe: 'Normalmente "Próprio paciente". Pode ser um responsável.' },
-      { nome: 'Banco / Agência / Conta', detalhe: 'Para recebimento por conta corrente ou poupança.' },
-      { nome: 'Tipo de chave PIX', detalhe: 'CPF, CNPJ, e-mail, telefone ou chave aleatória.' },
-    ],
-    cuidados: [
-      'Se o CPF do titular for diferente do CPF do paciente, o sistema avisa: anexe o Termo de Autorização à solicitação.',
-      'Use "Inativar" em vez de excluir: a conta deixa de aparecer em novas solicitações, mas o histórico de pagamentos fica preservado.',
-      'Sem dados bancários vinculados à solicitação, o checklist de fechamento do Financeiro não libera o despacho.',
-    ],
-    relacionados: ['pacientes', 'ajuda-de-custo', 'financeiro'],
-  },
-  {
-    id: 'unidades-saude',
-    categoria: 'cadastros',
-    titulo: 'Unidades de Saúde',
-    descricao: 'Cadastre unidades de destino com preenchimento automático pelo CNES.',
-    keywords: ['unidade', 'unidade de saúde', 'cnes', 'hospital', 'destino', 'cadastro de unidade'],
-    paraQueServe:
-      'As unidades de saúde são os destinos dos pacientes: onde os procedimentos são agendados e realizados. O cadastro alimenta o agendamento das solicitações.',
-    quandoUsar: 'Quando uma solicitação apontar para uma unidade que ainda não existe no sistema.',
+      'O Painel dá a foto do momento: quantas solicitações ativas há em cada setor, o que a equipe fez recentemente e como o volume evolui mês a mês.',
+    quandoUsar: 'Início do dia de trabalho e reuniões de acompanhamento.',
     imagem: {
-      src: '/wiki/media/funcionalidades/cnes.png',
-      alt: "Campo CNES do cadastro de unidade",
-      legenda: "Ao digitar os 7 dígitos do CNES, o sistema preenche os dados da unidade automaticamente.",
+      src: '/wiki/media/stills/dashboard.png',
+      alt: 'Painel do sistema TFD com indicadores por setor e tendência de 6 meses',
+      legenda: 'O Painel reúne indicadores por setor, atividades recentes e a tendência dos últimos 6 meses.',
     },
     dicas: [
-      "Digite os 7 dígitos do CNES e o sistema busca a unidade na base oficial, preenchendo nome, endereço, telefone, responsável e tipo sozinho.",
-      "A busca da lista funciona por nome ou por código CNES.",
-      "O CEP também tem preenchimento automático no endereço da unidade.",
+      "Cada item de \"Atividades recentes\" é um link direto para a solicitação correspondente.",
+      "\"Ver setor\" nos cards leva à fila já filtrada daquele setor.",
+      "A tendência de 6 meses compara entradas e encerramentos: bom termômetro de vazão.",
     ],
     passos: [
-      'No menu, acesse "Unidades de Saúde" e clique no botão de nova unidade.',
-      'Digite o código CNES de 7 dígitos. O sistema consulta a base oficial e preenche nome, endereço, telefone, e-mail, responsável e tipo automaticamente (aviso "CNES encontrado").',
-      'Revise os dados preenchidos e complete o que faltar (tipo da unidade, contato).',
-      'Clique em "Cadastrar Unidade" e confirme.',
-    ],
-    campos: [
-      { nome: 'CNES', detalhe: 'Código nacional da unidade, exatamente 7 dígitos. Dispara o preenchimento automático.' },
-      { nome: 'Tipo', detalhe: 'Classificação da unidade (hospital, clínica etc.), vinda das tabelas auxiliares.' },
-      { nome: 'Responsável', detalhe: 'Pessoa de contato da unidade para tentativas de agendamento.' },
+      'Acesse "Painel" no menu.',
+      'No topo: distribuição das solicitações ativas por setor, "Encerradas no mês" e "Taxa de aprovação".',
+      'Em "Atividades recentes", acompanhe as últimas ações da equipe. Cada item leva à solicitação; "Ver todos" abre os logs.',
+      'Nos três cards de setor (Solicitação, Regulação, Financeiro), veja os números específicos e use "Ver setor" para ir à fila.',
+      'Abaixo, a "Tendência últimos 6 meses" compara novas solicitações e encerramentos, e os rankings mostram as regiões, regionais e municípios com mais casos.',
     ],
     cuidados: [
-      'Se aparecer "CNES não encontrado", confira o código antes de preencher manualmente.',
-      'Mantenha telefone e responsável atualizados: a Regulação usa esses contatos nas tentativas de agendamento.',
+      'O card do Financeiro alerta viagens nos próximos 7 dias: use esse aviso para antecipar emissões.',
+      'Os números do painel refletem o que está registrado: registros atrasados distorcem os indicadores.',
     ],
-    video: {
-      src: '/wiki/media/wiki-02-cadastro-unidade.mp4',
-      titulo: 'Cadastro de unidade de saúde',
-      descricao: 'Cadastro de unidade com busca automática pelo código CNES.',
-    },
-    relacionados: ['nova-solicitacao', 'agendamento-tentativas', 'regionais'],
-  },
-  {
-    id: 'regionais',
-    categoria: 'cadastros',
-    titulo: 'Regionais de Saúde',
-    descricao: 'Gerencie as URS e o vínculo dos municípios com cada regional.',
-    keywords: ['regional', 'urs', 'região', 'município', 'são luís', 'vínculo', 'agrupamento'],
-    paraQueServe:
-      'As regionais (URS) agrupam os municípios do Maranhão. O vínculo município x regional é o que permite ao sistema derivar automaticamente a regional de cada paciente a partir do endereço.',
-    quandoUsar: 'Na implantação do sistema ou quando a divisão territorial mudar.',
-    dicas: [
-      "Use o campo \"Filtrar municípios...\" dentro do formulário para achar rapidamente um município na lista do Maranhão inteira.",
-      "O contador de selecionados mostra na hora quantos municípios a regional cobre.",
-      "As Regiões (agrupamentos de regionais) são configuráveis em Configurações, na tabela auxiliar \"Região\".",
-    ],
-    passos: [
-      'No menu, acesse "Regionais" e clique no botão de nova regional.',
-      'Em "Identificação", informe o código (ex.: URS I), o nome, o município sede e a região (agrupamento geográfico).',
-      'Preencha endereço do escritório e contatos institucionais.',
-      'Em "Municípios da Regional", use o filtro para localizar e marque os municípios que pertencem a esta regional. O contador mostra quantos foram selecionados.',
-      'Clique em "Cadastrar Regional".',
-    ],
-    campos: [
-      { nome: 'Código', detalhe: 'Identificador curto da URS (ex.: "URS I"). Gravado em maiúsculas.' },
-      { nome: 'Região', detalhe: 'Agrupamento geográfico, configurável em Sistema > Configurações.' },
-      { nome: 'Municípios da Regional', detalhe: 'Checkboxes com todos os municípios do MA. Alimenta a derivação automática nos pacientes.' },
-    ],
-    cuidados: [
-      'Um município fora de qualquer regional deixa pacientes daquele município sem regional derivada. Revise a cobertura ao editar.',
-      'Alterar o vínculo de municípios afeta relatórios e o campo "Regional" de novos cadastros de pacientes.',
-    ],
-    video: {
-      src: '/wiki/media/wiki-04-regional-sao-luis.mp4',
-      titulo: 'Cadastro de regional',
-      descricao: 'Criação de uma regional com seleção dos municípios vinculados.',
-    },
-    relacionados: ['pacientes', 'unidades-saude'],
+    relacionados: ['relatorios', 'solicitacoes', 'logs'],
   },
 
-  // ──────────────────────────── FLUXO DA SOLICITAÇÃO ────────────────────────
+  // ─────────────────────────── CAPÍTULO 3 · SOLICITAÇÕES ───────────────────────────
   {
     id: 'solicitacoes',
     categoria: 'fluxo',
@@ -494,6 +429,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'O detalhe é a central da solicitação: identifica o paciente, mostra o status e concentra todo o histórico e as ações de cada setor em abas.',
     quandoUsar: 'Sempre que precisar consultar ou atuar em uma solicitação específica.',
+    imagem: {
+      src: '/wiki/media/stills/solicitacao-detalhe.png',
+      alt: 'Tela de detalhe de uma solicitação com as abas Linha do tempo, Regulação, Financeiro, Anexos e Observações',
+      legenda: 'O detalhe reúne o cabeçalho com os dados do paciente e as abas com o histórico e as ações de cada setor.',
+    },
     dicas: [
       "Na aba \"Observações\", Ctrl + Enter envia o texto sem precisar do botão.",
       "A aba \"Anexos\" reúne documentos de todas as origens e permite filtrar por onde entraram (abertura, parecer, passagem, ajuda de custo...).",
@@ -548,25 +488,80 @@ export const WIKI_TOPICS: WikiTopic[] = [
     relacionados: ['visao-geral', 'regulacao', 'financeiro'],
   },
   {
+    id: 'encerramento',
+    categoria: 'fluxo',
+    titulo: 'Encerramento e reabertura',
+    descricao: 'Encerre a solicitação com motivo, entenda os efeitos e reabra quando preciso.',
+    keywords: ['encerramento', 'encerrar', 'motivo', 'alta', 'óbito', 'abandono', 'desistência', 'reabrir', 'funerária'],
+    paraQueServe:
+      'O encerramento conclui a solicitação e trava qualquer edição. O motivo escolhido fica registrado no histórico e alimenta os indicadores de encerradas no mês.',
+    quandoUsar: 'Quando o atendimento terminou (alta, transferência) ou o processo foi interrompido (óbito, abandono, desistência).',
+    imagem: {
+      src: '/wiki/media/funcionalidades/encerrar.png',
+      alt: "Modal Encerrar solicitação com motivo, data e observação",
+      legenda: "O encerramento exige um motivo; a data vem preenchida com o dia atual.",
+    },
+    dicas: [
+      "Quando o motivo é óbito, o sistema habilita o bloco de despesas de funerária com subtotal próprio.",
+      "\"Reabrir solicitação\" devolve o caso para o setor que você escolher, com motivo registrado.",
+      "A lista de motivos é sua para gerenciar: Configurações > Motivos de Encerramento.",
+    ],
+    passos: [
+      'No detalhe (ou na ação da linha), clique em "Encerrar solicitação".',
+      'No modal, selecione o "Motivo" (obrigatório): alta médica, transferência, óbito, abandono ou desistência.',
+      'Confirme a "Data" (o padrão é hoje) e escreva uma observação se necessário.',
+      'Clique em "Confirmar encerramento". O status muda para "Encerrada" e a edição é bloqueada.',
+      'Precisou retomar? Use "Reabrir solicitação" (exige permissão), escolha o setor de destino e informe o motivo da reabertura.',
+    ],
+    campos: [
+      { nome: 'Motivo', detalhe: 'Lista configurável em Sistema > Configurações ("Motivos de Encerramento").' },
+      { nome: 'Despesas de funerária', detalhe: 'Bloco habilitado quando o motivo é óbito: transporte, urna e translado, com subtotal próprio.' },
+    ],
+    cuidados: [
+      'Antes de encerrar, confira o checklist do Financeiro: pendências de pagamento não devem ficar para depois do encerramento.',
+      'A solicitação encerrada exibe o banner "Nenhuma edição é permitida. Para retomar o fluxo, reabra a solicitação."',
+      'A lista de motivos precisa estar preenchida nas Configurações: sem motivos cadastrados, o encerramento fica bloqueado.',
+    ],
+    video: {
+      src: '/wiki/media/wiki-10-encerramento.mp4',
+      titulo: 'Encerramento da solicitação',
+      descricao: 'Encerramento com motivo e o efeito de bloqueio da solicitação.',
+    },
+    relacionados: ['financeiro', 'detalhe-solicitacao', 'configuracoes'],
+  },
+
+  // ─────────────────────────── CAPÍTULO 4 · REGULAÇÃO ───────────────────────────
+  {
     id: 'regulacao',
     categoria: 'fluxo',
     titulo: 'Fila de Regulação',
     descricao: 'Trabalhe a fila de análise: parecer médico, carimbo e agendamento de exceção.',
     keywords: ['regulação', 'fila', 'parecer', 'carimbo', 'cid', 'análise', 'médico regulador'],
     paraQueServe:
-      'A tela "Regulação" concentra as solicitações em análise: mostra o que aguarda parecer, o que aguarda agendamento e os deferimentos do mês.',
+      'A tela "Regulação" concentra as solicitações em análise. O subtítulo da página resume bem: fila de solicitações aguardando parecer médico, encaminhamento ou agendamento de exceção.',
     quandoUsar: 'Rotina diária da equipe de regulação e dos médicos reguladores.',
+    imagem: {
+      src: '/wiki/media/stills/regulacao.png',
+      alt: 'Fila de Regulação com os quatro indicadores e o filtro de carimbo',
+      legenda: 'A fila mostra quatro indicadores no topo (Aguardando parecer, Aguardando agendamento, Deferidos e Indeferidos no mês) e um filtro único por carimbo.',
+    },
     dicas: [
-      "As ações rápidas na linha da fila (\"Parecer rápido\", \"Definir carimbo\", \"Agendamento rápido\") resolvem casos simples sem abrir o detalhe.",
-      "O filtro por carimbo isola casos CNRAC, CET, SAAS ou sem carimbo.",
+      "A coluna \"Resumo\" já mostra quantos agendamentos existem e o resultado do último parecer, sem precisar abrir o caso.",
+      "O filtro \"Todos os carimbos\" isola casos por APR, CNRAC, CET, SAAS ou AGND.",
       "A coluna \"Tempo\" ordena a fila por espera: bom critério de priorização diária.",
     ],
     passos: [
       'No menu, acesse "Regulação". A fila mostra apenas solicitações no setor Regulação.',
-      'Acompanhe os cartões: "Aguardando parecer", "Aguardando agendamento", "Deferidos no mês" e "Indeferidos no mês".',
-      'Filtre por carimbo ("Aprovado direto", "CNRAC", "CET", "SAAS", "Agendamento" ou "Sem carimbo").',
-      'Use as ações rápidas da linha: "Parecer rápido", "Definir carimbo", "Agendamento rápido" (quando CNRAC/CET sem agendamento confirmado) e "Enviar para outro setor".',
-      'Para o caso completo, abra o detalhe e use a aba "Regulação".',
+      'Acompanhe os quatro cartões: "Aguardando parecer", "Aguardando agendamento", "Deferidos no mês" e "Indeferidos no mês".',
+      'Use o filtro "Todos os carimbos" para isolar casos por encaminhamento (Aprovado direto, CNRAC, CET, SAAS ou Agendamento).',
+      'Clique em uma linha da fila para abrir o detalhe da solicitação diretamente na aba "Regulação".',
+      'Na aba, acompanhe os contadores "Total de pareceres", "Deferidos" e "Indeferidos" antes de agir.',
+    ],
+    campos: [
+      { nome: 'Aguardando parecer / Aguardando agendamento', detalhe: 'Indicadores no topo da fila: quantas solicitações esperam parecer médico e quantas esperam agendamento de exceção.' },
+      { nome: 'Deferidos no mês / Indeferidos no mês', detalhe: 'Total de pareceres emitidos com cada decisão dentro do mês corrente.' },
+      { nome: 'Carimbo', detalhe: 'Coluna que mostra o encaminhamento atual da solicitação: APR, CNRAC, CET, SAAS, AGND ou "—" quando ainda não definido.' },
+      { nome: 'Resumo', detalhe: 'Quantidade de agendamentos (ou "Sem agendamento") e o resultado do parecer mais recente.' },
     ],
     cuidados: [
       'A coluna "Tempo" mostra há quanto tempo a solicitação espera: priorize os casos mais antigos.',
@@ -587,20 +582,20 @@ export const WIKI_TOPICS: WikiTopic[] = [
       "O botão \"Inserir template\" preenche a observação com o modelo padrão da decisão escolhida (TFD completo, só ajuda de custo, só passagem, prorrogação), bastando ajustar os detalhes.",
       "O autocomplete de CID busca no catálogo inteiro, nas versões CID-10 e CID-11.",
       "\"Exportar\" gera a versão do parecer pronta para impressão e assinatura.",
-      "Seus dados de médico (nome, CRM, especialidade) entram automaticamente a partir do perfil.",
+      "Seus dados de médico (nome, CRM, especialidade) entram automaticamente a partir do perfil, com link \"Editar perfil\" caso precise corrigir.",
     ],
     passos: [
       'Na aba "Regulação" do detalhe, clique em "Adicionar parecer" (ou use "Parecer rápido" na fila).',
-      'Revise o "Resumo da solicitação": paciente, acompanhantes e documentos, com o laudo em destaque.',
-      'Escolha a decisão: "Deferido" ou "Indeferido". Se deferido, informe a "Situação do serviço no Maranhão".',
-      'Selecione o CID principal (CID-10 ou CID-11) e, se houver, o CID secundário.',
-      'Use "Inserir template" para preencher a observação com o modelo padrão (TFD completo, apenas ajuda de custo, apenas passagem, prorrogação ou autorização Medife) e ajuste o texto.',
-      'Confira o card "Médico responsável" (preenchido com seus dados) e clique em "Salvar parecer".',
-      'Para imprimir ou compartilhar, use "Exportar" no parecer salvo.',
+      'Revise o "Resumo da solicitação": paciente, sexo, idade, CPF, nascimento, município, data do laudo e a contagem de documentos anexados. Sem laudo anexado, o sistema avisa "Atenção: laudo costuma ser obrigatório."',
+      'Escolha a decisão: "Deferido" ou "Indeferido".',
+      'Selecione a "Versão CID" (CID-10 ou CID-11), informe o "CID principal" e, se houver, o "CID secundário".',
+      'Use "Inserir template" para preencher a "Observação" com o modelo padrão (TFD completo, apenas ajuda de custo, apenas passagem, prorrogação ou autorização Medife) e ajuste o texto.',
+      'Confira o campo "Médico responsável" (preenchido com seus dados) e, se precisar anexar documentos extras, use "Cadastrar novo tipo" e "Selecionar arquivos".',
+      'Clique em "Salvar parecer". Para imprimir ou compartilhar depois, use "Exportar" no parecer já salvo.',
     ],
     campos: [
       { nome: 'Decisão', detalhe: 'Deferido libera o carimbo; indeferido registra a negativa com justificativa.' },
-      { nome: 'CID principal', detalhe: 'Diagnóstico obrigatório, com busca no catálogo CID-10 ou CID-11.' },
+      { nome: 'CID principal', detalhe: 'Diagnóstico obrigatório, com busca no catálogo CID-10 ou CID-11 conforme a versão escolhida.' },
       { nome: 'Médico responsável', detalhe: 'Vem do seu perfil: nome, CRM/UF e especialidade.' },
     ],
     cuidados: [
@@ -619,29 +614,32 @@ export const WIKI_TOPICS: WikiTopic[] = [
     categoria: 'fluxo',
     titulo: 'Carimbo de regulação e aprovação direta',
     descricao: 'Defina o encaminhamento após o parecer: Aprovado direto, CNRAC, CET, SAAS ou Agendamento.',
-    keywords: ['carimbo', 'aprovado direto', 'aprovação direta', 'cnrac', 'cet', 'saas', 'encaminhamento', 'exceção'],
+    keywords: ['carimbo', 'aprovado direto', 'aprovação direta', 'cnrac', 'cet', 'saas', 'agnd', 'encaminhamento', 'exceção'],
     paraQueServe:
       'O carimbo define o encaminhamento operacional do caso depois do parecer deferido: seguir direto para o Financeiro ou passar por uma central de exceção.',
     quandoUsar: 'Logo após o parecer deferido. É pré-requisito para o caso andar.',
     dicas: [
-      "\"Aprovado direto\" é o caminho expresso: sem central de exceção, o caso pode seguir ao Financeiro.",
+      "\"Aprovado direto\" (APR) é o caminho expresso: sem central de exceção, o caso pode seguir ao Financeiro.",
       "O carimbo pode ser editado enquanto a solicitação estiver na Regulação, sem perder o histórico.",
       "O dashboard mostra a distribuição por carimbo, útil para acompanhar o perfil da demanda.",
     ],
     passos: [
-      'Na aba "Regulação", seção "Carimbo de regulação", clique em "Definir carimbo" (disponível após parecer deferido).',
-      'Escolha a opção adequada: "Aprovado direto" quando não há exceção e o processo segue direto; "CNRAC" (alta complexidade fora do estado); "CET" (busca de vaga via central estadual); "SAAS" (encaminhamento de exceção); ou "Agendamento" (a regulação fará tentativas manuais até obter resposta).',
-      'Registre uma observação geral se necessário e clique em "Salvar carimbo".',
+      'Na aba "Regulação", seção "Carimbo de regulação", clique em "Editar carimbo" (disponível após parecer deferido).',
+      'No campo "Encaminhamento", escolha a opção adequada entre as cinco disponíveis: APR, CNRAC, CET, SAAS ou AGND.',
+      'Registre uma "Observação geral" se necessário (até 1000 caracteres) e anexe documentos se preciso.',
+      'Clique em "Salvar carimbo".',
       'Com o carimbo aplicado e o agendamento resolvido, envie a solicitação ao Financeiro.',
     ],
     campos: [
-      { nome: 'Aprovado direto (APR)', detalhe: 'A solicitação segue sem encaminhamento de exceção. É o caminho comum quando o agendamento já veio definido na abertura.' },
-      { nome: 'CNRAC / CET / SAAS', detalhe: 'Casos de exceção. Os contatos com as unidades ficam registrados em "Agendamento e Tentativas".' },
-      { nome: 'Agendamento (AGND)', detalhe: 'A própria regulação agenda manualmente, registrando cada tentativa.' },
+      { nome: 'APR · Aprovado direto', detalhe: 'Solicitação segue sem encaminhamento de exceção, direto rumo ao Financeiro.' },
+      { nome: 'CNRAC', detalhe: 'Central Nacional de Regulação, para casos de alta complexidade fora do estado.' },
+      { nome: 'CET', detalhe: 'Central Estadual de Tratamento, busca de vaga via central estadual.' },
+      { nome: 'SAAS', detalhe: 'Encaminhamento via SAAS, caso de exceção.' },
+      { nome: 'AGND · Agendamento', detalhe: 'A própria regulação agenda manualmente, registrando cada tentativa em "Agendamento e Tentativas".' },
     ],
     cuidados: [
       'Carimbos de exceção (CNRAC/CET) com agendamento confirmado exigem o segundo deferimento médico antes de avançar.',
-      'O carimbo pode ser editado ("Editar carimbo") enquanto a solicitação estiver na Regulação.',
+      'O carimbo pode ser editado a qualquer momento em "Editar carimbo" enquanto a solicitação estiver na Regulação.',
     ],
     video: {
       src: '/wiki/media/wiki-07-carimbo-aprovado-direto.mp4',
@@ -659,15 +657,20 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'Quando o agendamento não veio pronto na abertura (casos CNRAC, CET ou "Agendamento"), a Regulação registra cada tentativa de contato com as unidades até confirmar data e vaga.',
     quandoUsar: 'Em todos os casos de exceção, a cada contato feito com uma unidade.',
+    imagem: {
+      src: '/wiki/media/stills/regulacao.png',
+      alt: 'Aba Regulação do detalhe da solicitação, seção Agendamento e Tentativas',
+      legenda: 'Sem agendamento nem tentativas, a seção mostra os estados vazios "Nenhum agendamento confirmado" e "Nenhuma tentativa registrada".',
+    },
     dicas: [
       "Registre também as tentativas sem sucesso: elas documentam o esforço de regulação e aparecem na linha do tempo.",
       "Ao confirmar um agendamento, os dados de contato da unidade ficam gravados junto.",
-      "O card \"Agendamento confirmado\" resume unidade, data e procedimento no topo da aba.",
+      "Quando o agendamento já veio confirmado na abertura da solicitação, a seção mostra direto o texto \"Agendamento confirmado na criação\", sem tentativas.",
     ],
     passos: [
       'Na aba "Regulação", seção "Agendamento e Tentativas", clique em "Adicionar tentativa".',
       'Informe a unidade contatada e o desfecho: "Pendente", "Negou", "Pediu documento", "Aceitou", "Sem resposta" ou "Agendamento confirmado".',
-      'Ao confirmar um agendamento, registre unidade, data, tipo de procedimento e contato. O card "Agendamento confirmado" aparece na aba.',
+      'Ao confirmar um agendamento, registre unidade, data, tipo de procedimento e contato. O card com o agendamento confirmado aparece no topo da aba.',
       'Nos casos de exceção confirmados, aguarde o segundo deferimento médico antes de enviar ao Financeiro.',
     ],
     cuidados: [
@@ -676,6 +679,8 @@ export const WIKI_TOPICS: WikiTopic[] = [
     ],
     relacionados: ['carimbo-regulacao', 'unidades-saude', 'parecer-medico'],
   },
+
+  // ─────────────────────────── CAPÍTULO 5 · FINANCEIRO ───────────────────────────
   {
     id: 'financeiro',
     categoria: 'fluxo',
@@ -802,6 +807,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'Os adicionais registram custos extras da viagem que não são passagem nem diária padrão: transfer, bagagem, corrida de aplicativo, passagem extra ou prorrogação de ajuda.',
     quandoUsar: 'Sempre que houver uma despesa complementar comprovada na etapa financeira.',
+    imagem: {
+      src: '/wiki/media/stills/financeiro.png',
+      alt: 'Fila do Financeiro com passagens e ajudas de custo',
+      legenda: 'Os adicionais são lançados a partir da mesma aba Financeiro da solicitação, junto de passagens e diárias.',
+    },
     dicas: [
       "As categorias cobrem os casos comuns: passagem extra, prorrogação de ajuda, bagagem, transfer e outros.",
       "O comprovante anexado aparece também na aba \"Anexos\" da solicitação, com origem \"Adicional\".",
@@ -824,105 +834,243 @@ export const WIKI_TOPICS: WikiTopic[] = [
     ],
     relacionados: ['passagens', 'financeiro', 'ajuda-de-custo'],
   },
+
+  // ─────────────────────────── CAPÍTULO 6 · PACIENTES ───────────────────────────
   {
-    id: 'encerramento',
-    categoria: 'fluxo',
-    titulo: 'Encerramento e reabertura',
-    descricao: 'Encerre a solicitação com motivo, entenda os efeitos e reabra quando preciso.',
-    keywords: ['encerramento', 'encerrar', 'motivo', 'alta', 'óbito', 'abandono', 'desistência', 'reabrir', 'funerária'],
+    id: 'pacientes',
+    categoria: 'cadastros',
+    titulo: 'Pacientes',
+    descricao: 'Cadastre o paciente completo: dados pessoais, endereço, documentos e acompanhantes.',
+    keywords: ['paciente', 'cadastro', 'cpf', 'cns', 'cartão sus', 'acompanhante', 'endereço', 'novo paciente'],
     paraQueServe:
-      'O encerramento conclui a solicitação e trava qualquer edição. O motivo escolhido fica registrado no histórico e alimenta os indicadores de encerradas no mês.',
-    quandoUsar: 'Quando o atendimento terminou (alta, transferência) ou o processo foi interrompido (óbito, abandono, desistência).',
-    imagem: {
-      src: '/wiki/media/funcionalidades/encerrar.png',
-      alt: "Modal Encerrar solicitação com motivo, data e observação",
-      legenda: "O encerramento exige um motivo; a data vem preenchida com o dia atual.",
-    },
+      'O cadastro do paciente é a base de toda solicitação. Ele concentra identificação, contato, endereço (que deriva a regional automaticamente), documentos e acompanhantes.',
+    quandoUsar: 'Antes de abrir a primeira solicitação de um paciente, ou para atualizar dados de contato e documentos.',
     dicas: [
-      "Quando o motivo é óbito, o sistema habilita o bloco de despesas de funerária com subtotal próprio.",
-      "\"Reabrir solicitação\" devolve o caso para o setor que você escolher, com motivo registrado.",
-      "A lista de motivos é sua para gerenciar: Configurações > Motivos de Encerramento.",
+      "Digite o CEP e o sistema preenche logradouro e bairro automaticamente.",
+      "A Regional e a Região do paciente são derivadas do município de residência: você não precisa saber de qual URS ele é.",
+      "Dá para anexar vários documentos de uma vez, classificando cada arquivo (RG, CPF, Cartão SUS, comprovante).",
+      "A busca da lista encontra por nome, CPF ou CNS.",
     ],
     passos: [
-      'No detalhe (ou na ação da linha), clique em "Encerrar solicitação".',
-      'No modal, selecione o "Motivo" (obrigatório): alta médica, transferência, óbito, abandono ou desistência.',
-      'Confirme a "Data" (o padrão é hoje) e escreva uma observação se necessário.',
-      'Clique em "Confirmar encerramento". O status muda para "Encerrada" e a edição é bloqueada.',
-      'Precisou retomar? Use "Reabrir solicitação" (exige permissão), escolha o setor de destino e informe o motivo da reabertura.',
+      'No menu, acesse "Pacientes" e clique em "Novo Paciente".',
+      'Em "Dados Pessoais", preencha CPF, nome completo, data de nascimento e ao menos um telefone. Cartão SUS (CNS) é opcional.',
+      'Em "Endereço", informe o CEP (o sistema preenche logradouro e bairro) e o município de residência. A "Regional" e a "Região" são derivadas do município automaticamente.',
+      'Em "Documentos Pessoais", anexe RG, CPF, Cartão SUS ou comprovante de residência (PDF, PNG, JPG, WEBP ou DOC, até 50 MB cada).',
+      'Em "Acompanhantes", clique em "Adicionar" e preencha nome, CPF, data de nascimento, vínculo e telefone.',
+      'Clique em "Cadastrar Paciente" e confirme o resumo exibido.',
     ],
     campos: [
-      { nome: 'Motivo', detalhe: 'Lista configurável em Sistema > Configurações ("Motivos de Encerramento").' },
-      { nome: 'Despesas de funerária', detalhe: 'Bloco habilitado quando o motivo é óbito: transporte, urna e translado, com subtotal próprio.' },
+      { nome: 'CPF', detalhe: 'Campo principal de identificação. O sistema valida o dígito verificador.' },
+      { nome: 'Cartão SUS (CNS)', detalhe: 'Opcional, com validação do dígito. Formato 000 0000 0000 0000.' },
+      { nome: 'Telefones', detalhe: 'Ao menos um (celular ou fixo) é obrigatório para contato.' },
+      { nome: 'Município de Residência', detalhe: 'Define automaticamente a Regional e a Região do paciente.' },
+      { nome: 'Vínculo do acompanhante', detalhe: 'Cônjuge, filho(a), pai/mãe, responsável legal ou outro.' },
     ],
     cuidados: [
-      'Antes de encerrar, confira o checklist do Financeiro: pendências de pagamento não devem ficar para depois do encerramento.',
-      'A solicitação encerrada exibe o banner "Nenhuma edição é permitida. Para retomar o fluxo, reabra a solicitação."',
-      'A lista de motivos precisa estar preenchida nas Configurações: sem motivos cadastrados, o encerramento fica bloqueado.',
+      'Acompanhante com menos de 20 ou mais de 65 anos fica fora da faixa padrão e exige autorização da coordenação. O sistema exibe o aviso no cadastro.',
+      'Excluir um paciente é uma inativação (ele some das listas, mas o histórico permanece). A ação pede confirmação e não pode ser desfeita pela tela.',
+      'Dados bancários não são preenchidos neste formulário: eles ficam na página de detalhe do paciente.',
     ],
     video: {
-      src: '/wiki/media/wiki-10-encerramento.mp4',
-      titulo: 'Encerramento da solicitação',
-      descricao: 'Encerramento com motivo e o efeito de bloqueio da solicitação.',
+      src: '/wiki/media/wiki-01-cadastro-paciente.mp4',
+      titulo: 'Cadastro de paciente',
+      descricao: 'Preenchimento completo do formulário de novo paciente, do CPF aos acompanhantes.',
     },
-    relacionados: ['financeiro', 'detalhe-solicitacao', 'configuracoes'],
+    relacionados: ['dados-bancarios', 'nova-solicitacao', 'regionais'],
   },
-
-  // ────────────────────────────────── GESTÃO ─────────────────────────────────
   {
-    id: 'dashboard',
-    categoria: 'gestao',
-    titulo: 'Painel (Dashboard)',
-    descricao: 'Acompanhe indicadores por setor, atividades recentes, tendências e rankings.',
-    keywords: ['painel', 'dashboard', 'indicadores', 'kpi', 'gráfico', 'tendência', 'atividades'],
+    id: 'dados-bancarios',
+    categoria: 'cadastros',
+    titulo: 'Dados bancários do paciente',
+    descricao: 'Registre contas e chaves PIX para pagar ajudas de custo e reembolsos.',
+    keywords: ['dados bancários', 'conta', 'pix', 'banco', 'agência', 'titular', 'pagamento'],
     paraQueServe:
-      'O Painel dá a foto do momento: quantas solicitações ativas há em cada setor, o que a equipe fez recentemente e como o volume evolui mês a mês.',
-    quandoUsar: 'Início do dia de trabalho e reuniões de acompanhamento.',
+      'Cada paciente tem um conjunto de contas bancárias e chaves PIX. Na etapa financeira, a solicitação seleciona uma delas para receber diárias e reembolsos.',
+    quandoUsar: 'Ao preparar a solicitação para o fechamento financeiro, ou quando o paciente trocar de conta.',
+    imagem: {
+      src: '/wiki/media/stills/pacientes.png',
+      alt: 'Listagem de pacientes do sistema TFD',
+      legenda: 'Os dados bancários ficam na página de detalhe do paciente, aberta a partir desta lista.',
+    },
     dicas: [
-      "Cada item de \"Atividades recentes\" é um link direto para a solicitação correspondente.",
-      "\"Ver setor\" nos cards leva à fila já filtrada daquele setor.",
-      "A tendência de 6 meses compara entradas e encerramentos: bom termômetro de vazão.",
+      "A forma de recebimento \"Ambos\" registra conta bancária e chave PIX no mesmo cadastro.",
+      "O vínculo do titular já vem pré-selecionado como \"Próprio paciente\", o caso mais comum.",
+      "Contas inativadas continuam visíveis no histórico do paciente, só deixam de aparecer em novas solicitações.",
     ],
     passos: [
-      'Acesse "Painel" no menu.',
-      'No topo: distribuição das solicitações ativas por setor, "Encerradas no mês" e "Taxa de aprovação".',
-      'Em "Atividades recentes", acompanhe as últimas ações da equipe. Cada item leva à solicitação; "Ver todos" abre os logs.',
-      'Nos três cards de setor (Solicitação, Regulação, Financeiro), veja os números específicos e use "Ver setor" para ir à fila.',
-      'Abaixo, a "Tendência últimos 6 meses" compara novas solicitações e encerramentos, e os rankings mostram as regiões, regionais e municípios com mais casos.',
+      'Abra o paciente na lista "Pacientes" (clique na linha).',
+      'Na seção "Dados Bancários", clique em "Adicionar conta".',
+      'Escolha a "Forma de recebimento": "Conta bancária", "PIX" ou "Ambos".',
+      'Preencha o titular (vínculo com o paciente, nome e CPF) e os dados da conta ou da chave PIX.',
+      'Clique em "Salvar".',
+    ],
+    campos: [
+      { nome: 'Vínculo com o paciente', detalhe: 'Normalmente "Próprio paciente". Pode ser um responsável.' },
+      { nome: 'Banco / Agência / Conta', detalhe: 'Para recebimento por conta corrente ou poupança.' },
+      { nome: 'Tipo de chave PIX', detalhe: 'CPF, CNPJ, e-mail, telefone ou chave aleatória.' },
     ],
     cuidados: [
-      'O card do Financeiro alerta viagens nos próximos 7 dias: use esse aviso para antecipar emissões.',
-      'Os números do painel refletem o que está registrado: registros atrasados distorcem os indicadores.',
+      'Se o CPF do titular for diferente do CPF do paciente, o sistema avisa: anexe o Termo de Autorização à solicitação.',
+      'Use "Inativar" em vez de excluir: a conta deixa de aparecer em novas solicitações, mas o histórico de pagamentos fica preservado.',
+      'Sem dados bancários vinculados à solicitação, o checklist de fechamento do Financeiro não libera o despacho.',
     ],
-    relacionados: ['relatorios', 'solicitacoes', 'logs'],
+    relacionados: ['pacientes', 'ajuda-de-custo', 'financeiro'],
   },
+
+  // ─────────────────────────── CAPÍTULO 7 · UNIDADES DE SAÚDE ───────────────────────────
+  {
+    id: 'unidades-saude',
+    categoria: 'cadastros',
+    titulo: 'Unidades de Saúde',
+    descricao: 'Cadastre as unidades de destino usadas no agendamento das solicitações.',
+    keywords: ['unidade', 'unidade de saúde', 'cnes', 'hospital', 'destino', 'cadastro de unidade'],
+    paraQueServe:
+      'As unidades de saúde são os destinos dos pacientes: onde os procedimentos são agendados e realizados. O cadastro alimenta o campo de destino do agendamento das solicitações. Uma solicitação com agendamento confirmado sempre mostra o nome da unidade escolhida.',
+    quandoUsar: 'Quando uma solicitação apontar para uma unidade que ainda não existe no sistema.',
+    imagem: {
+      src: '/wiki/media/funcionalidades/cnes.png',
+      alt: "Painel Nova Unidade de Saúde com os campos de Identificação",
+      legenda: "O painel de nova unidade tem duas seções: Identificação (nome, CNES, tipo, responsável, contato) e Endereço.",
+    },
+    dicas: [
+      "A busca da lista funciona por nome ou por código CNES.",
+      "O CNES tem máscara de exatamente 7 dígitos numéricos.",
+      "O campo \"UF\" do endereço já vem preenchido com \"MA\" por padrão.",
+    ],
+    passos: [
+      'No menu, acesse "Unidades de Saúde". A busca aceita nome ou código CNES.',
+      'Clique em "Nova Unidade" para abrir o painel "Nova Unidade de Saúde".',
+      'Em "Identificação", preencha "Nome" (obrigatório) e "CNES" (obrigatório, 7 dígitos). "Tipo", "Responsável", "Telefone" e "E-mail" são opcionais.',
+      'Em "Endereço", preencha CEP, logradouro, número, bairro, UF (padrão "MA") e município. Todos os campos de endereço são opcionais.',
+      'Clique em "Cadastrar".',
+      'Para editar uma unidade existente, use um dos ícones de ação da linha: o painel reabre como "Editar Unidade de Saúde", com os dados preenchidos e o botão final "Salvar alterações".',
+    ],
+    campos: [
+      { nome: 'Nome', detalhe: 'Obrigatório. Nome completo da unidade de saúde de destino.' },
+      { nome: 'CNES', detalhe: 'Obrigatório, com máscara de exatamente 7 dígitos numéricos.' },
+      { nome: 'Tipo', detalhe: 'Opcional. Classificação da unidade (ex.: Hospital Universitário, Hospital Terciário, Hospital Geral), vinda das tabelas auxiliares.' },
+      { nome: 'Responsável', detalhe: 'Opcional. Pessoa de contato da unidade para tentativas de agendamento.' },
+    ],
+    cuidados: [
+      'Mantenha telefone e responsável atualizados sempre que possível: a Regulação usa esses contatos nas tentativas de agendamento.',
+      'A coluna "Telefone" da listagem aparece como "—" quando o dado não foi preenchido no cadastro.',
+    ],
+    video: {
+      src: '/wiki/media/wiki-02-cadastro-unidade.mp4',
+      titulo: 'Cadastro de unidade de saúde',
+      descricao: 'Preenchimento das seções Identificação e Endereço no cadastro de uma nova unidade.',
+    },
+    relacionados: ['nova-solicitacao', 'agendamento-tentativas', 'regionais'],
+  },
+
+  // ─────────────────────────── CAPÍTULO 8 · REGIONAIS ───────────────────────────
+  {
+    id: 'regionais',
+    categoria: 'cadastros',
+    titulo: 'Regionais de Saúde',
+    descricao: 'Gerencie as URS e o vínculo dos municípios com cada regional.',
+    keywords: ['regional', 'urs', 'região', 'município', 'são luís', 'vínculo', 'agrupamento'],
+    paraQueServe:
+      'As regionais (URS) agrupam os municípios do Maranhão. O vínculo município x regional é o que permite ao sistema derivar automaticamente a regional de cada paciente a partir do endereço.',
+    quandoUsar: 'Na implantação do sistema ou quando a divisão territorial mudar.',
+    dicas: [
+      "Use o campo \"Filtrar municípios...\" dentro do formulário para achar rapidamente um município na lista do Maranhão inteira.",
+      "O contador de selecionados mostra na hora quantos municípios a regional cobre.",
+      "As Regiões (agrupamentos de regionais) são configuráveis em Configurações, na tabela auxiliar \"Região\".",
+    ],
+    passos: [
+      'No menu, acesse "Regionais" e clique no botão de nova regional.',
+      'Em "Identificação", informe o código (ex.: URS I), o nome, o município sede e a região (agrupamento geográfico).',
+      'Preencha endereço do escritório e contatos institucionais.',
+      'Em "Municípios da Regional", use o filtro para localizar e marque os municípios que pertencem a esta regional. O contador mostra quantos foram selecionados.',
+      'Clique em "Cadastrar Regional".',
+    ],
+    campos: [
+      { nome: 'Código', detalhe: 'Identificador curto da URS (ex.: "URS I"). Gravado em maiúsculas.' },
+      { nome: 'Região', detalhe: 'Agrupamento geográfico, configurável em Sistema > Configurações.' },
+      { nome: 'Municípios da Regional', detalhe: 'Checkboxes com todos os municípios do MA. Alimenta a derivação automática nos pacientes.' },
+    ],
+    cuidados: [
+      'Um município fora de qualquer regional deixa pacientes daquele município sem regional derivada. Revise a cobertura ao editar.',
+      'Alterar o vínculo de municípios afeta relatórios e o campo "Regional" de novos cadastros de pacientes.',
+    ],
+    video: {
+      src: '/wiki/media/wiki-04-regional-sao-luis.mp4',
+      titulo: 'Cadastro de regional',
+      descricao: 'Criação de uma regional com seleção dos municípios vinculados.',
+    },
+    relacionados: ['pacientes', 'unidades-saude'],
+  },
+
+  // ─────────────────────────── CAPÍTULO 9 · RELATÓRIOS ───────────────────────────
   {
     id: 'relatorios',
     categoria: 'gestao',
     titulo: 'Relatórios',
     descricao: 'Gere os relatórios Financeiro, Faturamento, BPA e Gestão, com exportação.',
-    keywords: ['relatório', 'financeiro', 'faturamento', 'bpa', 'gestão', 'exportar', 'csv', 'pdf', 'imprimir'],
+    keywords: ['relatório', 'financeiro', 'faturamento', 'bpa', 'gestão', 'exportar', 'csv', 'pdf', 'imprimir', 'sigtap'],
     paraQueServe:
-      'A tela "Relatórios" consolida os dados do TFD em quatro visões prontas para prestação de contas e lançamentos.',
-    quandoUsar: 'Fechamentos mensais e quadrimestrais, lançamento do BPA e análises gerenciais.',
-    dicas: [
-      "Todos os relatórios exportam para CSV/Excel e têm versão de impressão em PDF.",
-      "O relatório de Gestão consolida por paciente: diagnóstico, origem do laudo, destino e parecer numa linha só.",
-      "O BPA já sai no formato de lançamento, contando doadores como pacientes.",
-    ],
+      'A tela "Relatórios" consolida os dados do TFD em quatro visões prontas para prestação de contas e lançamentos: Financeiro, Faturamento, BPA e Gestão.',
+    quandoUsar: 'Fechamentos mensais, lançamento do BPA e análises gerenciais.',
+    imagem: {
+      src: '/wiki/media/stills/relatorios-faturamento.png',
+      alt: 'Aba Faturamento de Relatórios com filtro de ano e mês, total do faturamento e reembolsos',
+      legenda: 'A aba Faturamento traz filtro de ano e mês, o total do faturamento, os bilhetes emitidos e os reembolsos recebidos do fornecedor de transporte.',
+    },
     passos: [
-      'No menu, acesse "Relatórios" e escolha a aba.',
-      '"Financeiro": acompanhamento quadrimestral consolidado.',
-      '"Faturamento": relatório mensal de passagens.',
-      '"BPA": dados prontos para lançamento no BPA.',
+      'No menu, acesse "Relatórios" e escolha a aba desejada.',
+      '"Financeiro": acompanhamento consolidado dos valores em execução (passagens, ajuda de custo e adicionais).',
+      '"Faturamento": relatório mensal e anual de passagens, com filtro por ano e mês. Mostra o total do faturamento, os bilhetes emitidos por paciente e acompanhante, e os reembolsos recebidos do fornecedor de transporte.',
+      '"BPA": dados prontos para lançamento no Boletim de Produção Ambulatorial, com data de atendimento, procedimentos com e sem pernoite e o valor total de referência SIGTAP.',
       '"Gestão": visão consolidada por paciente (diagnóstico, origem do laudo, destino e parecer).',
       'Use "Exportar" (CSV/Excel) ou "Imprimir / PDF" conforme a necessidade.',
+    ],
+    campos: [
+      { nome: 'Total do faturamento', detalhe: 'Valor total do período na aba Faturamento, consolidado em um único total no rodapé do relatório.' },
+      { nome: 'Reembolsos recebidos do fornecedor', detalhe: 'Valores devolvidos pela companhia de transporte por cobranças a maior. Não é um valor pago ao paciente.' },
+      { nome: 'BPA', detalhe: 'Boletim de Produção Ambulatorial: relatório de procedimentos realizados, com valor de referência da tabela SIGTAP.' },
     ],
     cuidados: [
       'O acesso a cada relatório é uma permissão separada: seu papel pode ver apenas algumas abas.',
       'Acompanhantes marcados como doador contam como paciente no cálculo do BPA: confira essa marcação nas solicitações.',
+      'A aba Faturamento filtra por ano e mês (não existe recorte quadrimestral): use o filtro "Ano inteiro" para o consolidado anual.',
     ],
     relacionados: ['dashboard', 'papeis-permissoes'],
   },
+
+  // ─────────────────────────── CAPÍTULO 10 · CONFIGURAÇÕES ───────────────────────────
+  {
+    id: 'configuracoes',
+    categoria: 'gestao',
+    titulo: 'Configurações',
+    descricao: 'Mantenha as tabelas auxiliares e os catálogos CID-10, CID-11 e SIGTAP.',
+    keywords: ['configurações', 'tabelas auxiliares', 'tipos de procedimento', 'motivos de encerramento', 'bancos', 'companhias', 'cid', 'sigtap', 'vínculo'],
+    paraQueServe:
+      'As Configurações mantêm as listas que alimentam os formulários do sistema: tipos de procedimento e documento, vínculos, companhias de transporte, motivos de encerramento, tipos de despesa, bancos e regiões, além dos catálogos CID-10, CID-11 e SIGTAP.',
+    quandoUsar: 'Na implantação e quando uma opção nova precisar aparecer em algum formulário.',
+    imagem: {
+      src: '/wiki/media/stills/configuracoes.png',
+      alt: 'Tela de Configurações com os cards de tabelas auxiliares',
+      legenda: 'Cada card representa uma tabela auxiliar; abrir um deles leva à lista de itens daquela categoria.',
+    },
+    dicas: [
+      "Tudo que aparece em selects do sistema nasce aqui: procedimentos, vínculos, companhias, bancos, motivos, tipos de despesa.",
+      "Os catálogos CID-10, CID-11 e SIGTAP têm abas próprias com busca.",
+      "Ajustar o nome de um item atualiza a opção nos formulários sem afetar registros antigos.",
+    ],
+    passos: [
+      'No menu, acesse "Configurações".',
+      'Na aba "Tabelas Auxiliares", escolha a categoria (ex.: "Motivos de Encerramento") e use "Novo Item" para incluir, ou edite/exclua itens existentes.',
+      'Nas abas "CID-10", "CID-11" e "Códigos SIGTAP", gerencie os catálogos clínicos e de procedimentos usados nos pareceres e no BPA.',
+    ],
+    cuidados: [
+      'Tabela auxiliar vazia bloqueia o fluxo que depende dela: por exemplo, sem "Motivos de Encerramento" cadastrados ninguém consegue encerrar solicitações.',
+      'Excluir um item de tabela auxiliar não altera registros antigos, mas remove a opção de novos formulários. Prefira ajustar o nome quando possível.',
+    ],
+    relacionados: ['encerramento', 'adicionais', 'parecer-medico'],
+  },
+
+  // ─────────────────────────── CAPÍTULO 11 · ADMINISTRATIVO ───────────────────────────
   {
     id: 'usuarios',
     categoria: 'gestao',
@@ -932,13 +1080,18 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'A tela "Usuários" gerencia quem acessa o sistema, o papel de cada pessoa e os dados profissionais (como CRM dos médicos).',
     quandoUsar: 'Entrada e saída de servidores, mudança de função ou reset de senha.',
+    imagem: {
+      src: '/wiki/media/stills/administrativo.png',
+      alt: 'Tela Administrativo com a aba Usuários',
+      legenda: 'A aba Usuários fica dentro de Administrativo, junto de Permissões e Logs.',
+    },
     dicas: [
       "O papel pode ser trocado direto na linha da lista, sem abrir o cadastro.",
       "\"Redefinir senha\" dispara o e-mail de redefinição na hora.",
       "O toggle \"Médico\" abre os campos de CRM e UF, pré-requisito para emitir parecer.",
     ],
     passos: [
-      'No menu, acesse "Administrativo" (aba "Usuários") e clique em "Adicionar Usuário".',
+      'No menu, acesse "Administrativo" (aba "Usuários") e clique em "Adicionar usuário".',
       'Preencha nome completo, CPF, e-mail institucional, matrícula e cargo.',
       'Escolha o "Papel de acesso" (pode ser definido depois).',
       'Se a pessoa for médica, ative o toggle "Médico" e informe CRM e UF do CRM.',
@@ -961,6 +1114,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'Os papéis definem o que cada grupo de usuários pode ver e fazer, tela por tela, ação por ação. Exemplos de papéis: Atendente Municipal, Atendente Regional, Coordenação Estadual, Médico Auditor, Setor de Regulação, Setor de Passagens, Financeiro, Assistente Social e Controle Interno.',
     quandoUsar: 'Na implantação e sempre que uma função nova surgir ou mudar de escopo.',
+    imagem: {
+      src: '/wiki/media/stills/administrativo.png',
+      alt: 'Tela Administrativo com a aba Permissões',
+      legenda: 'A aba Permissões fica dentro de Administrativo, ao lado de Usuários e Logs.',
+    },
     dicas: [
       "\"Todas\" e \"Nenhuma\" marcam as ações em lote, depois é só lapidar.",
       "Cada papel tem uma cor: ela aparece na lista de usuários e facilita a leitura.",
@@ -981,31 +1139,6 @@ export const WIKI_TOPICS: WikiTopic[] = [
     relacionados: ['usuarios', 'navegacao', 'logs'],
   },
   {
-    id: 'configuracoes',
-    categoria: 'gestao',
-    titulo: 'Configurações',
-    descricao: 'Mantenha as tabelas auxiliares e os catálogos CID-10, CID-11 e SIGTAP.',
-    keywords: ['configurações', 'tabelas auxiliares', 'tipos de procedimento', 'motivos de encerramento', 'bancos', 'companhias', 'cid', 'sigtap', 'vínculo'],
-    paraQueServe:
-      'As Configurações mantêm as listas que alimentam os formulários do sistema: tipos de procedimento e documento, vínculos, companhias de transporte, motivos de encerramento, tipos de despesa, bancos e regiões, além dos catálogos CID-10, CID-11 e SIGTAP.',
-    quandoUsar: 'Na implantação e quando uma opção nova precisar aparecer em algum formulário.',
-    dicas: [
-      "Tudo que aparece em selects do sistema nasce aqui: procedimentos, vínculos, companhias, bancos, motivos, tipos de despesa.",
-      "Os catálogos CID-10, CID-11 e SIGTAP têm abas próprias com busca.",
-      "Ajustar o nome de um item atualiza a opção nos formulários sem afetar registros antigos.",
-    ],
-    passos: [
-      'No menu, acesse "Configurações".',
-      'Na aba "Tabelas Auxiliares", escolha a categoria (ex.: "Motivos de Encerramento") e use "Novo Item" para incluir, ou edite/exclua itens existentes.',
-      'Nas abas "CID-10", "CID-11" e "Códigos SIGTAP", gerencie os catálogos clínicos e de procedimentos usados nos pareceres e no BPA.',
-    ],
-    cuidados: [
-      'Tabela auxiliar vazia bloqueia o fluxo que depende dela: por exemplo, sem "Motivos de Encerramento" cadastrados ninguém consegue encerrar solicitações.',
-      'Excluir um item de tabela auxiliar não altera registros antigos, mas remove a opção de novos formulários. Prefira ajustar o nome quando possível.',
-    ],
-    relacionados: ['encerramento', 'adicionais', 'parecer-medico'],
-  },
-  {
     id: 'logs',
     categoria: 'gestao',
     titulo: 'Logs e auditoria',
@@ -1014,6 +1147,11 @@ export const WIKI_TOPICS: WikiTopic[] = [
     paraQueServe:
       'Os logs registram todas as ações relevantes do sistema (criação, edição, parecer, emissão, encerramento, mudanças de usuário), com autor, entidade, data e hora.',
     quandoUsar: 'Para auditar um caso, esclarecer divergências ou responder a questionamentos de controle interno.',
+    imagem: {
+      src: '/wiki/media/stills/administrativo.png',
+      alt: 'Tela Administrativo com a aba Logs',
+      legenda: 'A aba Logs fica dentro de Administrativo, ao lado de Usuários e Permissões.',
+    },
     dicas: [
       "Filtre por módulo (Operacional, Regulação, Passagens, Financeiro, Sistema, Autenticação) para investigar por área.",
       "O período com data início e fim delimita auditorias a um intervalo exato.",
@@ -1056,13 +1194,13 @@ export function searchTopics(query: string): WikiTopic[] {
     .trim()
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+    .replace(/[̀-ͯ]/g, '');
   if (!q) return WIKI_TOPICS;
   const norm = (s: string) =>
     s
       .toLowerCase()
       .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '');
+      .replace(/[̀-ͯ]/g, '');
   return WIKI_TOPICS.filter((t) => {
     const chapter = chapterOfTopic(t.id);
     const haystack = [t.titulo, t.descricao, chapter?.titulo ?? '', ...t.keywords].map(norm).join(' ');
