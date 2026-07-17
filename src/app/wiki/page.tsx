@@ -187,35 +187,6 @@ export default function WikiHomePage() {
                     <p className="mt-2.5 text-[13.5px] leading-[1.65]" style={{ color: 'var(--tfd-500)' }}>
                       {chapter.descricao}
                     </p>
-                    <Link
-                      href={`/wiki/${chapter.id}`}
-                      aria-label={`Acessar capítulo: ${chapter.titulo}`}
-                      className="mt-5 text-[13.5px] font-medium transition-colors hover:underline"
-                      style={{ color: 'var(--tfd-blue-600)' }}
-                    >
-                      Acessar capítulo →
-                    </Link>
-                  </div>
-
-                  {/* Coluna direita: ilustração + tópicos */}
-                  <div className="min-w-0">
-                    <Link
-                      href={`/wiki/${chapter.id}`}
-                      aria-label={`Abrir capítulo ${chapter.titulo}`}
-                      className="group block overflow-hidden rounded-xl border transition-shadow hover:shadow-[var(--tfd-shadow-md)]"
-                      style={{
-                        borderColor: 'var(--tfd-surface-border)',
-                        background: 'var(--tfd-blue-50)',
-                      }}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element -- print estático local */}
-                      <img
-                        src={chapter.imagem.src}
-                        alt={chapter.imagem.alt}
-                        loading="lazy"
-                        className="h-[180px] w-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.02] sm:h-[240px]"
-                      />
-                    </Link>
                     <ul className="mt-5 space-y-2">
                       {topics.map((topic) => (
                         <li key={topic.id}>
@@ -229,6 +200,31 @@ export default function WikiHomePage() {
                         </li>
                       ))}
                     </ul>
+                    <Link
+                      href={`/wiki/${chapter.id}`}
+                      aria-label={`Acessar capítulo: ${chapter.titulo}`}
+                      className="mt-5 text-[13.5px] font-medium transition-colors hover:underline"
+                      style={{ color: 'var(--tfd-blue-600)' }}
+                    >
+                      Acessar capítulo →
+                    </Link>
+                  </div>
+
+                  {/* Coluna direita: ilustração completa, sem corte */}
+                  <div className="min-w-0">
+                    <Link
+                      href={`/wiki/${chapter.id}`}
+                      aria-label={`Abrir capítulo ${chapter.titulo}`}
+                      className="group block overflow-hidden rounded-xl transition-shadow hover:shadow-[var(--tfd-shadow-md)]"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element -- print estático local */}
+                      <img
+                        src={chapter.imagem.src}
+                        alt={chapter.imagem.alt}
+                        loading="lazy"
+                        className="h-auto w-full transition-transform duration-300 group-hover:scale-[1.01]"
+                      />
+                    </Link>
                   </div>
                 </li>
               );
