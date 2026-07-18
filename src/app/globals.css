@@ -911,12 +911,18 @@ body {
   .tfd-auth-card {
     padding: clamp(2rem, 4vh, 4rem) clamp(2rem, 3vw, 4rem);
     margin: 0;
-    justify-self: start;
+    /* Card alinhado à direita do col-2 com margin-right grande,
+     * para que o gradiente visível à direita do card iguale, em
+     * pixels, o gradiente visível à esquerda do texto do brand
+     * (que sofre shell-padding + brand-internal-padding). */
+    justify-self: end;
+    margin-right: clamp(5rem, 10vw, 12rem);
     align-self: stretch;
     height: 100%;
   }
 }
-@media (min-width: 1280px) { .tfd-auth-card { padding: clamp(2.5rem, 5vh, 5rem) clamp(2.5rem, 4vw, 5rem); } }
+@media (min-width: 1280px) { .tfd-auth-card { padding: clamp(2.5rem, 5vh, 5rem) clamp(2.5rem, 4vw, 5rem); margin-right: clamp(6rem, 11vw, 14rem); } }
+@media (min-width: 1536px) { .tfd-auth-card { margin-right: clamp(7rem, 12vw, 16rem); } }
 
 /* Conteúdo central do card (header, form, link). Limita largura
  * para preservar respiro lateral; cresce centralizado dentro do

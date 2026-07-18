@@ -21,6 +21,7 @@ import {
   type ViagemMock,
   type AjudaCustoMock,
   type AdicionalMock,
+  type DespesaFunerariaMock,
   type EncerramentoMock,
   type ObservacaoChat,
   type DevolucaoFinanceiroParaRegulacao,
@@ -38,6 +39,7 @@ import {
   buildViagem,
   buildAjudaCusto,
   buildAdicional,
+  buildDespesaFuneraria,
   buildEncerramento,
   buildObservacao,
   buildNewSolicitacao,
@@ -181,6 +183,11 @@ interface FluxoV2ContextValue {
   editarAdicional: (id: string, adicionalId: string, patch: Partial<AdicionalMock>) => void;
   /** T2.AL — Remove um adicional. */
   removerAdicional: (id: string, adicionalId: string) => void;
+
+  /** Registra uma despesa de funerária (solicitações encerradas por óbito). */
+  addDespesaFuneraria: (id: string, d: Omit<DespesaFunerariaMock, 'id'>) => void;
+  /** Remove uma despesa de funerária. */
+  removerDespesaFuneraria: (id: string, despId: string) => void;
 
   encerrar: (id: string, e: EncerramentoMock) => void;
   /** @deprecated use reabrirSolicitacao */
@@ -473,6 +480,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       viagens: [],
       ajudasCusto: [],
       adicionais: [],
+      despesasFunerarias: [],
       observacoes: [],
     };
 
@@ -1049,6 +1057,34 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     [mutate],
   );
 
+  const addDespesaFuneraria = useCallback<FluxoV2ContextValue['addDespesaFuneraria']>((id, d) => {
+    const tempId = uid('df');
+    mutate(id, (s) => {
+      s.despesasFunerarias = [...s.despesasFunerarias, { ...d, id: tempId }];
+      return s;
+    });
+    void persistInsert('despesas_funerarias', buildDespesaFuneraria(id, d)).then((realId) => {
+      if (!realId) return;
+      mutate(id, (s) => {
+        s.despesasFunerarias = s.despesasFunerarias.map((dd) =>
+          dd.id === tempId ? { ...dd, id: realId } : dd,
+        );
+        return s;
+      });
+    });
+  }, [mutate]);
+
+  const removerDespesaFuneraria = useCallback<FluxoV2ContextValue['removerDespesaFuneraria']>(
+    (id, despId) => {
+      mutate(id, (s) => {
+        s.despesasFunerarias = s.despesasFunerarias.filter((d) => d.id !== despId);
+        return s;
+      });
+      persistDelete('despesas_funerarias', despId);
+    },
+    [mutate],
+  );
+
   const encerrar = useCallback<FluxoV2ContextValue['encerrar']>((id, e) => {
     mutate(id, (s) => {
       s.encerramento = e;
@@ -1336,6 +1372,8 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     addAdicional,
     editarAdicional,
     removerAdicional,
+    addDespesaFuneraria,
+    removerDespesaFuneraria,
     encerrar,
     reabrirParaParecer,
     reabrirSolicitacao,
@@ -1355,6 +1393,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     addViagem, addViagensIdaEVolta, updateViagem, editarViagem, cancelarViagem, reembolsarViagem, removerViagem,
     addAjudaCusto, updateAjudaCusto, editarAjudaCusto, cancelarAjudaCusto, reembolsarAjudaCusto, removerAjudaCusto,
     addAdicional, editarAdicional, removerAdicional,
+    addDespesaFuneraria, removerDespesaFuneraria,
     encerrar, reabrirParaParecer, reabrirSolicitacao,
     addObservacao,
     enviarParaSetor, encaminharParaFinanceiro, devolverParaRegulacao, marcarDevolucaoResolvida, editarSolicitacao,

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
   ArrowLeft, Archive, ArchiveRestore, Send, Phone, Mail, ExternalLink, Paperclip, FileText, FileX,
+  Plus, Trash2,
 } from 'lucide-react';
 import StatusV2Badge from '../../_components/StatusV2Badge';
 import { idadeAnos } from '../../_utils/idade';
@@ -15,6 +16,7 @@ import FinanceiroTab from '../../_components/FinanceiroTab';
 import AnexosTab from '../../_components/AnexosTab';
 import { agregarAnexos } from '../../_utils/anexosUnificados';
 import EnviarParaSetorDrawer from '../../_components/drawers/EnviarParaSetorDrawer';
+import NewDespesaFunerariaDrawer from '../../_components/drawers/NewDespesaFunerariaDrawer';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import { isLocked, tooltipLocked, setorAtual } from '../../_utils/lock';
@@ -50,7 +52,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { getById, encerrar, reabrirSolicitacao, isLoading } = useFluxoV2State();
+  const { getById, encerrar, reabrirSolicitacao, removerDespesaFuneraria, isLoading } = useFluxoV2State();
   const toast = useToast();
   const s = getById(id);
 
@@ -76,6 +78,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
   const [reabrirOpen, setReabrirOpen] = useState(false);
   const [reabrirSetor, setReabrirSetor] = useState<'dados_basicos' | 'regulacao' | 'financeiro'>('regulacao');
   const [reabrirMotivo, setReabrirMotivo] = useState('');
+  const [despFuneOpen, setDespFuneOpen] = useState(false);
   /** Código vindo da tabela auxiliar `motivo_encerramento` — vazio força o
    *  operador a selecionar antes de salvar. */
   const [motivo, setMotivo] = useState<string>('');
@@ -333,6 +336,84 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
             <EncerramentoField label="Data" value={new Date(s.encerramento.data).toLocaleDateString('pt-BR')} />
             <EncerramentoField label="Observação" value={s.encerramento.observacao || '—'} />
           </div>
+
+          {/* Despesas de funerária — só quando encerrada por óbito */}
+          {s.encerramento.motivo === 'obito' && (
+            <div
+              className="mt-4 pt-4"
+              style={{ borderTop: '1px solid #FECACA' }}
+            >
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <h4 className="text-[13px] font-semibold" style={{ color: '#7F1D1D' }}>
+                    Despesas de funerária
+                  </h4>
+                  <p className="text-[11.5px]" style={{ color: '#B91C1C' }}>
+                    Custos cobertos pelo município (transporte, urna, translado).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDespFuneOpen(true)}
+                  className="tfd-btn tfd-btn--sm shrink-0"
+                  style={{ background: 'white', border: '1px solid #FECACA', color: '#B91C1C' }}
+                >
+                  <Plus size={14} /> Adicionar despesa de funerária
+                </button>
+              </div>
+
+              {s.despesasFunerarias.length === 0 ? (
+                <p className="text-[12px]" style={{ color: '#B91C1C' }}>
+                  Nenhuma despesa registrada.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {s.despesasFunerarias.map((d) => (
+                    <div
+                      key={d.id}
+                      className="flex items-center gap-3 px-3 py-2"
+                      style={{ background: 'white', border: '1px solid #FECACA', borderRadius: 8 }}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[13px] font-medium truncate" style={{ color: '#1A1D2B' }}>
+                          {d.descricao}
+                        </div>
+                        <div className="text-[11.5px]" style={{ color: '#94A3B8' }}>
+                          {new Date(`${d.data}T00:00:00`).toLocaleDateString('pt-BR')}
+                          {d.anexoNome ? ` · ${d.anexoNome}` : ''}
+                        </div>
+                      </div>
+                      <div className="text-[13px] font-semibold" style={{ color: '#7F1D1D' }}>
+                        {d.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removerDespesaFuneraria(s.id, d.id)}
+                        className="inline-flex items-center justify-center shrink-0"
+                        style={{ color: '#B91C1C' }}
+                        aria-label="Remover despesa"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  ))}
+                  <div
+                    className="flex items-center justify-between px-3 py-2 mt-1"
+                    style={{ borderTop: '1px dashed #FECACA' }}
+                  >
+                    <span className="text-[12px] font-semibold" style={{ color: '#7F1D1D' }}>
+                      Subtotal funerária
+                    </span>
+                    <span className="text-[13px] font-bold" style={{ color: '#7F1D1D' }}>
+                      {s.despesasFunerarias
+                        .reduce((acc, d) => acc + d.valor, 0)
+                        .toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -422,6 +503,14 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
           onClose={() => setEnviarOpen(false)}
           solicitacaoId={s.id}
           setorAtual={setorAtual(s) as 'dados_basicos' | 'regulacao' | 'financeiro'}
+        />
+      )}
+
+      {s.encerramento?.motivo === 'obito' && (
+        <NewDespesaFunerariaDrawer
+          open={despFuneOpen}
+          onClose={() => setDespFuneOpen(false)}
+          solicitacaoId={s.id}
         />
       )}
 

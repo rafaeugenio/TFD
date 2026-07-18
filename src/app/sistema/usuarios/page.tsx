@@ -14,6 +14,7 @@ import {
   Package,
   KeyRound,
   Mail,
+  Stethoscope,
 } from 'lucide-react';
 
 import Drawer from '@/shared/components/drawer/Drawer';
@@ -82,6 +83,11 @@ function getAvatarColor(name: string): string {
 
 const DEFAULT_PAGE_SIZE = 25;
 
+const UFS = [
+  'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT',
+  'PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO',
+];
+
 const isRealUUID = (id: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
@@ -120,6 +126,9 @@ export function UsuariosPanel({ showHeader = true }: { showHeader?: boolean }) {
   const [createPapelId, setCreatePapelId] = useState('');
   const [createMatricula, setCreateMatricula] = useState('');
   const [createCargo, setCreateCargo] = useState('');
+  const [isMedicoCreate, setIsMedicoCreate] = useState(false);
+  const [createCrm, setCreateCrm] = useState('');
+  const [createCrmUf, setCreateCrmUf] = useState('');
   const [createSaving, setCreateSaving] = useState(false);
 
   /* ---- Reset password confirmation ---- */
@@ -316,6 +325,8 @@ export function UsuariosPanel({ showHeader = true }: { showHeader?: boolean }) {
   function handleOpenCreateDrawer() {
     setCreateNome(''); setCreateCpf(''); setCreateEmail('');
     setCreatePapelId('');
+    setCreateMatricula(''); setCreateCargo('');
+    setIsMedicoCreate(false); setCreateCrm(''); setCreateCrmUf('');
     setCreateSaving(false);
     setCreateDrawerOpen(true);
   }
@@ -344,6 +355,16 @@ export function UsuariosPanel({ showHeader = true }: { showHeader?: boolean }) {
       toast.warning('Campo obrigatório', 'Informe o cargo do usuário.');
       return;
     }
+    if (isMedicoCreate) {
+      if (!createCrm.trim()) {
+        toast.warning('CRM obrigatório', 'Informe o número do CRM para usuários médicos.');
+        return;
+      }
+      if (!createCrmUf) {
+        toast.warning('UF do CRM obrigatória', 'Selecione o estado de registro do CRM.');
+        return;
+      }
+    }
     const papelNome = createPapelId ? (papeis.find((p) => p.id === createPapelId)?.nome ?? '') : '';
     const diff: DiffField[] = [
       { label: 'Nome', after: createNome.trim() },
@@ -352,6 +373,10 @@ export function UsuariosPanel({ showHeader = true }: { showHeader?: boolean }) {
       { label: 'Matrícula', after: createMatricula.trim() },
       { label: 'Cargo', after: createCargo.trim() },
       { label: 'Papel', after: papelNome || '(sem papel)' },
+      { label: 'Médico', after: isMedicoCreate ? 'Sim' : 'Não' },
+      ...(isMedicoCreate
+        ? [{ label: 'CRM', after: `${createCrm.trim()}/${createCrmUf}` }]
+        : []),
     ];
     setCreateConfirm({ diff });
   }
@@ -371,6 +396,9 @@ export function UsuariosPanel({ showHeader = true }: { showHeader?: boolean }) {
           papelId: createPapelId || null,
           matricula: createMatricula.trim(),
           cargo: createCargo.trim(),
+          isMedico: isMedicoCreate,
+          crm: isMedicoCreate ? createCrm.trim() : null,
+          crm_uf: isMedicoCreate ? createCrmUf : null,
         }),
       });
 
@@ -867,6 +895,64 @@ export function UsuariosPanel({ showHeader = true }: { showHeader?: boolean }) {
             ))}
           </select>
         </FormField>
+
+        {/* Usuário é médico */}
+        <div
+          className="mt-2 mb-4 rounded-lg"
+          style={{ border: '1px solid var(--tfd-surface-border)', overflow: 'hidden' }}
+        >
+          <label
+            className="flex items-start gap-3 p-3 cursor-pointer"
+            style={{ background: isMedicoCreate ? '#F0FDF4' : 'white' }}
+          >
+            <input
+              type="checkbox"
+              checked={isMedicoCreate}
+              onChange={(e) => {
+                setIsMedicoCreate(e.target.checked);
+                if (!e.target.checked) { setCreateCrm(''); setCreateCrmUf(''); }
+              }}
+              style={{ marginTop: 2, width: 16, height: 16, accentColor: '#15803D' }}
+            />
+            <span className="flex-1">
+              <span className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
+                <Stethoscope size={14} style={{ color: '#15803D' }} />
+                Usuário é médico
+              </span>
+              <span className="block text-xs mt-0.5" style={{ color: 'var(--tfd-text-muted)' }}>
+                Marque para registrar o CRM. Será exibido nos pareceres que este médico emitir.
+              </span>
+            </span>
+          </label>
+
+          {isMedicoCreate && (
+            <div className="px-3 pb-3 grid grid-cols-2 gap-3">
+              <FormField label="CRM" required>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="tfd-input"
+                  placeholder="000000"
+                  value={createCrm}
+                  onChange={(e) => setCreateCrm(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  style={{ fontFamily: 'var(--tfd-font-mono)' }}
+                />
+              </FormField>
+              <FormField label="UF do CRM" required>
+                <select
+                  className="tfd-input"
+                  value={createCrmUf}
+                  onChange={(e) => setCreateCrmUf(e.target.value)}
+                >
+                  <option value="">Selecione...</option>
+                  {UFS.map((uf) => (
+                    <option key={uf} value={uf}>{uf}</option>
+                  ))}
+                </select>
+              </FormField>
+            </div>
+          )}
+        </div>
       </Drawer>
 
       {/* Confirmação de cadastro de usuário */}

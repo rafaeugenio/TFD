@@ -23,6 +23,7 @@ import type {
   ViagemMock,
   AjudaCustoMock,
   AdicionalMock,
+  DespesaFunerariaMock,
   EncerramentoMock,
 } from '@/core/mocks/fluxo-v2-v3-seed';
 import { entryStatusForSetor, type SetorDb, type StatusDb } from './statusMapping';
@@ -387,6 +388,29 @@ export function buildAdicional(
     beneficiario_tipo: bTipo,
     beneficiario_id: bTipo === 'ACOMPANHANTE' ? (a.beneficiarioId ?? null) : null,
     viagem_id: a.viagemId ?? null,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Despesas de funerária                                              */
+/* ------------------------------------------------------------------ */
+
+export interface DespesaFunerariaDb {
+  solicitacao_id: string;
+  descricao: string;
+  valor: number;
+  data_gasto: string;
+}
+
+export function buildDespesaFuneraria(
+  solicitacaoId: string,
+  d: Omit<DespesaFunerariaMock, 'id'>,
+): DespesaFunerariaDb {
+  return {
+    solicitacao_id: solicitacaoId,
+    descricao: d.descricao,
+    valor: d.valor,
+    data_gasto: d.data,
   };
 }
 

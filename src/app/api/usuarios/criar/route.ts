@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
 
     // 2) Validação do body.
     const body = await req.json();
-    const { nome, cpf, email, papelId, perfil, matricula, cargo } = body;
+    const { nome, cpf, email, papelId, perfil, matricula, cargo, isMedico, crm, crm_uf } = body;
 
     if (!nome?.trim() || !cpf || !email?.trim()) {
       return Response.json({ error: 'Campos obrigatórios não preenchidos' }, { status: 400 });
@@ -58,6 +58,19 @@ export async function POST(req: NextRequest) {
     }
     if (!cargo?.trim()) {
       return Response.json({ error: 'Cargo é obrigatório' }, { status: 400 });
+    }
+
+    // Médico: quando marcado, CRM e UF do CRM são obrigatórios.
+    const ehMedico = Boolean(isMedico);
+    const crmLimpo = ehMedico ? String(crm ?? '').replace(/\D/g, '') : '';
+    const crmUfFinal = ehMedico ? String(crm_uf ?? '').trim().toUpperCase() : '';
+    if (ehMedico) {
+      if (!crmLimpo) {
+        return Response.json({ error: 'CRM é obrigatório para usuários médicos' }, { status: 400 });
+      }
+      if (!crmUfFinal) {
+        return Response.json({ error: 'UF do CRM é obrigatória para usuários médicos' }, { status: 400 });
+      }
     }
 
     const perfilFinal = (perfil && PERFIS_VALIDOS.has(perfil)) ? perfil : 'ATENDENTE_MUNICIPAL';
@@ -122,6 +135,9 @@ export async function POST(req: NextRequest) {
         papel_id: papelId || null,
         matricula: matriculaLimpa,
         cargo: cargo.trim(),
+        is_medico: ehMedico,
+        crm: ehMedico ? crmLimpo : null,
+        crm_uf: ehMedico ? crmUfFinal : null,
       } as never);
     if (dbError) {
       await supabaseAdmin.auth.admin.deleteUser(userId);

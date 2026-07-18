@@ -363,6 +363,20 @@ export interface AdicionalMock {
   viagemId?: string;
 }
 
+/**
+ * Despesa de funerária — só faz sentido em solicitações encerradas por óbito.
+ * Cada item (transporte, urna, translado, etc.) conta como gasto da solicitação.
+ */
+export interface DespesaFunerariaMock {
+  id: string;
+  descricao: string;
+  valor: number;
+  /** Data do gasto (ISO yyyy-mm-dd). */
+  data: string;
+  /** Nome do comprovante anexado (opcional). */
+  anexoNome?: string;
+}
+
 /** Tipo da solicitação. NORMAL cobre o fluxo completo (viagens + adicionais + ajuda).
  *  AJUDA_CUSTO é para quando o paciente já está no destino do procedimento e
  *  só recebe diárias — sem viagens nem adicionais. */
@@ -467,6 +481,8 @@ export interface SolicitacaoMock {
   viagens: ViagemMock[];
   ajudasCusto: AjudaCustoMock[];
   adicionais: AdicionalMock[];
+  /** Despesas de funerária — preenchido quando encerrada por óbito. */
+  despesasFunerarias: DespesaFunerariaMock[];
   encerramento?: EncerramentoMock;
   observacoes: ObservacaoChat[];
   /** Histórico de devoluções Financeiro → Regulação (com motivo). */
@@ -712,6 +728,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       { id: 'ac1', beneficiarioTipo: 'paciente', dataInicio: '2025-05-19', dataFim: '2025-05-23', status: 'concluido', dataConclusao: '2025-05-23' },
     ],
     adicionais: [],
+    despesasFunerarias: [],
     encerramento: { data: '2025-05-26', motivo: 'alta_medica', observacao: 'Paciente recebeu alta após procedimento.' },
     numeroSEI: '00100.000456/2025-12',
     seiUrl: 'https://sei.ses.ma.gov.br/processo/00100.000456-2025-12',
@@ -758,6 +775,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       { id: 'ac2', beneficiarioTipo: 'paciente', dataInicio: '2025-06-01', dataFim: '2025-06-10', status: 'emitido' },
     ],
     adicionais: [],
+    despesasFunerarias: [],
     observacoes: [],
   },
 
@@ -799,6 +817,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
     viagens: [],
     ajudasCusto: [],
     adicionais: [],
+    despesasFunerarias: [],
     numeroSEI: '00100.001789/2025-04',
     seiUrl: 'https://sei.ses.ma.gov.br/processo/00100.001789-2025-04',
     observacoes: [
@@ -866,6 +885,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       ],
       ajudasCusto: ajudas,
       adicionais: [],
+    despesasFunerarias: [],
       observacoes: [],
     };
   })(),
@@ -913,6 +933,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       { id: 'ad5a', categoria: 'transfer', descricao: 'Transfer Aeroporto GIG → INCA', data: '2025-05-04', valor: 180, status: 'pago',     beneficiarioTipo: 'paciente' },
       { id: 'ad5b', categoria: 'transfer', descricao: 'Transfer INCA → Aeroporto GIG', data: '2025-05-12', valor: 180, status: 'pago',     beneficiarioTipo: 'paciente' },
     ],
+    despesasFunerarias: [],
     numeroSEI: '00100.002345/2025-09',
     seiUrl: 'https://sei.ses.ma.gov.br/processo/00100.002345-2025-09',
     observacoes: [
@@ -955,6 +976,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       { id: 'ac6', beneficiarioTipo: 'paciente', dataInicio: '2025-03-21', dataFim: '2025-04-02', status: 'concluido', dataConclusao: '2025-04-02' },
     ],
     adicionais: [],
+    despesasFunerarias: [],
     encerramento: { data: '2025-04-03', motivo: 'obito', observacao: 'Paciente faleceu durante o tratamento.' },
     observacoes: [],
   },
@@ -996,6 +1018,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       { id: 'ad7a', categoria: 'bagagem',         descricao: 'Bagagem extra (cadeira de rodas)',    data: '2025-06-09', valor: 90,  status: 'aprovado' },
       { id: 'ad7b', categoria: 'passagem_extra',  descricao: 'Passagem volta extra para acompanhante', data: '2025-06-16', valor: 1480, status: 'pendente_aprovacao' },
     ],
+    despesasFunerarias: [],
     observacoes: [
       { id: 'obs7a', autor: 'João Pereira', perfilAutor: 'Financeiro', texto: 'Adicional de bagagem (cadeira de rodas) aprovado direto — comprovante já anexado.', data: '2025-06-08T14:00:00' },
     ],
@@ -1021,6 +1044,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
     viagens: [],
     ajudasCusto: [],
     adicionais: [],
+    despesasFunerarias: [],
     observacoes: [],
   },
 
@@ -1056,6 +1080,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
     viagens: [],
     ajudasCusto: [],
     adicionais: [],
+    despesasFunerarias: [],
     observacoes: [
       { id: 'obs9a', autor: 'João Pereira', perfilAutor: 'Financeiro', texto: 'Devolvi pra regulação — laudo está sem CID secundário e o convênio do hospital pediu pra reforçar a indicação cirúrgica antes de eu liberar a passagem.', data: '2025-06-14T15:20:00' },
     ],

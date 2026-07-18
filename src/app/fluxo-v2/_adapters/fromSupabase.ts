@@ -13,6 +13,7 @@ import type {
   ViagemMock,
   AjudaCustoMock,
   AdicionalMock,
+  DespesaFunerariaMock,
   EncerramentoMock,
   AnexoMock,
   ObservacaoChat,
@@ -350,6 +351,15 @@ function adicionaisFromRows(rows: Row[]): AdicionalMock[] {
   }));
 }
 
+function despesasFunerariasFromRows(rows: Row[]): DespesaFunerariaMock[] {
+  return rows.map((r) => ({
+    id: str(r.id),
+    descricao: str(r.descricao),
+    valor: num(r.valor),
+    data: str(r.data_gasto) || str(r.created_at),
+  }));
+}
+
 /* ------------------------------------------------------------------ */
 /*  Encerramento                                                       */
 /* ------------------------------------------------------------------ */
@@ -430,6 +440,7 @@ export function solicitacaoFromSupabase(row: Row): SolicitacaoMock {
   const viagens = viagensFromRows(arr(row.viagens));
   const ajudasCusto = ajudasFromRows(arr(row.ajudas_custo));
   const adicionais = adicionaisFromRows(arr(row.adicionais));
+  const despesasFunerarias = despesasFunerariasFromRows(arr(row.despesas_funerarias));
   const encerramento = encerramentoFromRows(arr(row.encerramentos));
   const observacoes = observacoesFromRows(arr(row.observacoes_processo));
   const devolucoes = devolucoesFromRows(arr(row.devolucoes));
@@ -453,6 +464,7 @@ export function solicitacaoFromSupabase(row: Row): SolicitacaoMock {
     viagens,
     ajudasCusto,
     adicionais,
+    despesasFunerarias,
     encerramento,
     observacoes,
     devolucoes,

@@ -67,7 +67,8 @@ export default function MeuPerfilPage() {
   const [telefones, setTelefones] = useState<string[]>([]);
   const [fotoUrl, setFotoUrl] = useState('');
 
-  // Medical fields (MEDICO_AUDITOR)
+  // Medical fields (médicos)
+  const [isMedicoFlag, setIsMedicoFlag] = useState(false);
   const [crm, setCrm] = useState('');
   const [crmUf, setCrmUf] = useState('');
   const [especialidadeMedica, setEspecialidadeMedica] = useState('');
@@ -88,7 +89,8 @@ export default function MeuPerfilPage() {
   const [webcamActive, setWebcamActive] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const isMedico = perfil === 'MEDICO_AUDITOR';
+  // Considera a flag is_medico do cadastro, com fallback para o perfil legado.
+  const isMedico = isMedicoFlag || perfil === 'MEDICO_AUDITOR';
 
   useEffect(() => {
     async function load() {
@@ -115,6 +117,7 @@ export default function MeuPerfilPage() {
         setPerfil(data.perfil ?? '');
         setTelefones((data as any).telefones ?? []);
         setFotoUrl((data as any).foto_url ?? '');
+        setIsMedicoFlag((data as any).is_medico ?? false);
         setCrm((data as any).crm ?? '');
         setCrmUf((data as any).crm_uf ?? '');
         setEspecialidadeMedica((data as any).especialidade_medica ?? '');

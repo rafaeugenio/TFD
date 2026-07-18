@@ -93,7 +93,11 @@ export default function FinanceiroTab({ s }: Props) {
     [s.ajudasCusto],
   );
   const totalAdicionais = useMemo(() => s.adicionais.reduce((acc, a) => acc + a.valor, 0), [s.adicionais]);
-  const totalGeral = totalPassagens + totalAjuda + totalAdicionais;
+  const totalFuneraria = useMemo(
+    () => s.despesasFunerarias.reduce((acc, d) => acc + d.valor, 0),
+    [s.despesasFunerarias],
+  );
+  const totalGeral = totalPassagens + totalAjuda + totalAdicionais + totalFuneraria;
 
   // T2.AF — contagem por beneficiário
   const passagensPaciente = useMemo(
@@ -166,6 +170,16 @@ export default function FinanceiroTab({ s }: Props) {
               : `${s.ajudasCusto.length} período(s)`
           }
         />
+        {totalFuneraria > 0 && (
+          <>
+            <StatDivider />
+            <FinStat
+              label="Funerária"
+              value={fmtBRL(totalFuneraria)}
+              hint={`${s.despesasFunerarias.length} despesa(s)`}
+            />
+          </>
+        )}
         <StatDivider />
         <FinStat label="Total geral" value={fmtBRL(totalGeral)} emphasis />
       </div>

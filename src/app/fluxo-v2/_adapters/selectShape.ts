@@ -32,6 +32,7 @@ export const SOLICITACAO_V2_SELECT = `
   viagens (*),
   ajudas_custo (*),
   adicionais (*),
+  despesas_funerarias (*),
   encerramentos (*),
   observacoes_processo (
     *,
