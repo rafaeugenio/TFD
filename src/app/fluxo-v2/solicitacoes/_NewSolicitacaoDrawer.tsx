@@ -21,7 +21,6 @@ import {
   Mail,
   IdCard,
   CalendarPlus,
-  ClipboardList,
   User,
   Users,
   CalendarCheck,
@@ -106,7 +105,6 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
   const toast = useToast();
   const router = useRouter();
 
-  const [tipoSolicitacao, setTipoSolicitacao] = useState<'normal' | 'ajuda_custo'>('normal');
   const [pacienteId, setPacienteId] = useState('');
   const [acompanhanteIds, setAcompanhanteIds] = useState<string[]>([]);
   const [acompDoadores, setAcompDoadores] = useState<Set<string>>(new Set());
@@ -243,17 +241,17 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
 
   const unidadeSelecionada = unidades.find((u) => u.id === unidadeId);
   const agendamentosValidos = agendamentos.filter((a) => a.tipoProcedimento && a.data);
-  // Ajuda de custo agora também pode ter agendamento (alinhado com o fluxo
-  // normal). Validação: ou marca "sem agendamento", ou preenche unidade +
-  // pelo menos um procedimento — independente do tipo da solicitação.
+  // PBI 13218 — Número do processo SEI e link passam a ser obrigatórios na
+  // criação da solicitação.
+  const seiPreenchido = numeroSEI.trim().length > 0 && seiUrl.trim().length > 0;
   const podeSalvar =
     !!paciente &&
     !validacaoMenor &&
+    seiPreenchido &&
     !seiUrlInvalido &&
     (semAgendamento || (!!unidadeId && agendamentosValidos.length > 0));
 
   function reset() {
-    setTipoSolicitacao('normal');
     setPacienteId('');
     setAcompanhanteIds([]);
     setAcompDoadores(new Set());
@@ -311,7 +309,7 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
   }
 
   async function handleSalvar() {
-    if (!paciente) return;
+    if (!paciente || !podeSalvar) return;
 
     // Snapshots no shape do mock (PacienteMock/AcompanhanteMock) — o Provider
     // ainda usa essa view-model. A persistência real no banco ficará para o
@@ -351,7 +349,6 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
     const id = await createSolicitacao({
       pacienteId: paciente.id,
       acompanhanteIds,
-      tipoSolicitacao,
       agendamento:
         !semAgendamento && agendamentosValidos.length > 0
           ? {
@@ -364,8 +361,8 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
           : undefined,
       dataLaudo: dataLaudo || undefined,
       origemLaudoUnidadeId: origemLaudoUnidadeId || undefined,
-      numeroSEI: numeroSEI.trim() || undefined,
-      seiUrl: seiUrl.trim() || undefined,
+      numeroSEI: numeroSEI.trim(),
+      seiUrl: seiUrl.trim(),
       anexos,
       pacienteSnapshot,
       acompanhantesSnapshot,
@@ -405,27 +402,6 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
       }
     >
       <div className="flex flex-col">
-        {/* Tipo de solicitação */}
-        <FormSection title="Tipo da solicitação" icon={<ClipboardList size={12} />} tone="primary">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <TipoCard
-              active={tipoSolicitacao === 'normal'}
-              title="Normal"
-              description="Fluxo completo: viagens, adicionais e ajuda de custo."
-              onClick={() => setTipoSolicitacao('normal')}
-            />
-            <TipoCard
-              active={tipoSolicitacao === 'ajuda_custo'}
-              title="Ajuda de custo"
-              description="Paciente já está no destino. Só recebe diárias — sem viagens e sem adicionais."
-              onClick={() => {
-                setTipoSolicitacao('ajuda_custo');
-                setSemAgendamento(true);
-              }}
-            />
-          </div>
-        </FormSection>
-
         {/* Paciente e Acompanhantes — unificados num mesmo bloco visual */}
         <FormSection
           title="Paciente e Acompanhantes"
@@ -885,32 +861,42 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
           </div>
         </FormSection>
 
-        {/* Processo SEI */}
+        {/* Processo SEI — obrigatório (PBI 13218) */}
         <FormSection
           title="Processo SEI"
           icon={<Hash size={12} />}
           tone="default"
-          hint="Opcional — informe se o processo já tem número SEI."
+          hint="Número e link do processo são obrigatórios."
         >
           <div className="grid grid-cols-2 gap-2 min-w-0">
-            <input
-              value={numeroSEI}
-              onChange={(e) => setNumeroSEI(e.target.value)}
-              placeholder="Número SEI (ex.: 00100.000456/2026-12)"
-              className="px-3 py-2 text-[13px] font-mono"
-              style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
-            />
-            <input
-              value={seiUrl}
-              onChange={(e) => setSeiUrl(e.target.value)}
-              placeholder="URL do processo (https://...)"
-              className="px-3 py-2 text-[13px]"
-              style={{
-                background: 'white',
-                border: `1px solid ${seiUrlInvalido ? '#FCA5A5' : 'var(--tfd-surface-border)'}`,
-                borderRadius: 8,
-              }}
-            />
+            <div>
+              <label className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8', letterSpacing: '0.04em' }}>
+                Número SEI <span style={{ color: 'var(--tfd-status-danger)' }}>*</span>
+              </label>
+              <input
+                value={numeroSEI}
+                onChange={(e) => setNumeroSEI(e.target.value)}
+                placeholder="ex.: 00100.000456/2026-12"
+                className="w-full px-3 py-2 text-[13px] font-mono mt-1"
+                style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
+              />
+            </div>
+            <div>
+              <label className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8', letterSpacing: '0.04em' }}>
+                Link do processo <span style={{ color: 'var(--tfd-status-danger)' }}>*</span>
+              </label>
+              <input
+                value={seiUrl}
+                onChange={(e) => setSeiUrl(e.target.value)}
+                placeholder="https://..."
+                className="w-full px-3 py-2 text-[13px] mt-1"
+                style={{
+                  background: 'white',
+                  border: `1px solid ${seiUrlInvalido ? '#FCA5A5' : 'var(--tfd-surface-border)'}`,
+                  borderRadius: 8,
+                }}
+              />
+            </div>
           </div>
           {seiUrlInvalido && (
             <p className="text-[11px] mt-1" style={{ color: '#B91C1C' }}>
@@ -1298,48 +1284,3 @@ function ResumoField({
   );
 }
 
-function TipoCard({
-  active,
-  title,
-  description,
-  onClick,
-}: {
-  active: boolean;
-  title: string;
-  description: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="text-left p-3 transition-all"
-      style={{
-        background: active ? 'var(--tfd-primary-50)' : 'white',
-        border: active ? '1px solid var(--tfd-primary-500)' : '1px solid var(--tfd-surface-border)',
-        borderRadius: 8,
-        boxShadow: active ? '0 0 0 3px rgba(20,107,250,0.08)' : 'none',
-      }}
-    >
-      <div className="flex items-center gap-2 mb-1">
-        <span
-          className="inline-flex items-center justify-center"
-          style={{
-            width: 14,
-            height: 14,
-            borderRadius: '50%',
-            border: active ? '4px solid var(--tfd-primary-500)' : '2px solid #CBD5E1',
-            background: 'white',
-          }}
-          aria-hidden
-        />
-        <span className="text-[13px] font-semibold" style={{ color: active ? 'var(--tfd-primary-700, #0D4FBD)' : '#1A1D2B' }}>
-          {title}
-        </span>
-      </div>
-      <p className="text-[12px]" style={{ color: '#64748B', paddingLeft: 22 }}>
-        {description}
-      </p>
-    </button>
-  );
-}

@@ -39,8 +39,10 @@ export function contarPorStatus(
   const acc: Record<StatusGlobalV2, number> = {
     em_dados_basicos: 0,
     em_regulacao: 0,
-    em_financeiro: 0,
-    encerrada: 0,
+    em_passagens: 0,
+    em_ajuda_custo: 0,
+    em_acompanhamento: 0,
+    em_encerramento: 0,
   };
   for (const s of solicitacoes) acc[s.status] += 1;
   return acc;
@@ -48,7 +50,7 @@ export function contarPorStatus(
 
 export function contarEncerradasNoMes(solicitacoes: SolicitacaoMock[]): number {
   return solicitacoes.filter(
-    (s) => s.status === 'encerrada' && s.encerramento && dentroDoMesAtual(s.encerramento.data),
+    (s) => s.status === 'em_encerramento' && s.encerramento && dentroDoMesAtual(s.encerramento.data),
   ).length;
 }
 
@@ -129,12 +131,19 @@ export function contarPorCarimbo(solicitacoes: SolicitacaoMock[]): DistribuicaoC
  * Financeiro
  * ------------------------------------------------------------------ */
 
+/** Setores "financeiro-família" (PBI 13237): Passagens, Ajuda de Custo e
+ *  Acompanhamento — sucessores do antigo setor único "Financeiro". */
+const EM_FINANCEIRO_OU_ACOMPANHAMENTO = new Set<StatusGlobalV2>([
+  'em_passagens',
+  'em_ajuda_custo',
+  'em_acompanhamento',
+]);
+
 export function contarSolicitacoesAguardandoEmissao(solicitacoes: SolicitacaoMock[]): number {
-  // Solicitações do tipo normal (que preveem passagem) ainda sem passagem ativa.
+  // Solicitações no setor de Passagens ainda sem passagem ativa.
   let n = 0;
   for (const s of solicitacoes) {
-    if (s.status !== 'em_financeiro') continue;
-    if (s.tipoSolicitacao === 'ajuda_custo') continue;
+    if (s.status !== 'em_passagens') continue;
     const temPassagem = s.viagens.some((v) => v.ativa !== false);
     if (!temPassagem) n += 1;
   }
@@ -145,7 +154,7 @@ export function contarSolicitacoesAjudaPendente(solicitacoes: SolicitacaoMock[])
   // Solicitações com passagem ativa, mas sem nenhuma ajuda de custo ativa.
   let n = 0;
   for (const s of solicitacoes) {
-    if (s.status !== 'em_financeiro') continue;
+    if (!EM_FINANCEIRO_OU_ACOMPANHAMENTO.has(s.status)) continue;
     const temPassagem = s.viagens.some((v) => v.ativa !== false);
     const temAjuda = s.ajudasCusto.some((a) => a.ativa !== false);
     if (temPassagem && !temAjuda) n += 1;
@@ -157,7 +166,7 @@ export function contarSolicitacoesAjudaPendente(solicitacoes: SolicitacaoMock[])
 export function contarViagensAguardandoEmissao(solicitacoes: SolicitacaoMock[]): number {
   let n = 0;
   for (const s of solicitacoes) {
-    if (s.status !== 'em_financeiro') continue;
+    if (!EM_FINANCEIRO_OU_ACOMPANHAMENTO.has(s.status)) continue;
     n += s.viagens.filter((v) => v.status === 'agendada').length;
   }
   return n;
@@ -170,7 +179,7 @@ export function contarViagensProximas7Dias(solicitacoes: SolicitacaoMock[]): num
   limite.setDate(limite.getDate() + 7);
   let n = 0;
   for (const s of solicitacoes) {
-    if (s.status !== 'em_financeiro') continue;
+    if (!EM_FINANCEIRO_OU_ACOMPANHAMENTO.has(s.status)) continue;
     for (const v of s.viagens) {
       const d = new Date(v.data);
       if (Number.isNaN(d.getTime())) continue;

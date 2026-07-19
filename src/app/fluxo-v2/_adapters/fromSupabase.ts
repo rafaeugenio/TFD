@@ -35,6 +35,13 @@ import type {
 } from '@/core/mocks/fluxo-v2-v3-seed';
 import { setorToStatusGlobal, type SetorDb } from './statusMapping';
 
+/** Remove os antigos códigos "N"/"AC" de números de solicitação legados
+ *  (ex.: "TFD-N-2026/000010" ou "TFD-AC-2026/000010" → "TFD-2026/000010").
+ *  PBI 13218 — a distinção de tipo de solicitação foi removida. */
+function normalizarNumero(numero: string): string {
+  return numero.replace(/^TFD-(?:N|AC)-/, 'TFD-');
+}
+
 /* ------------------------------------------------------------------ */
 /*  Helpers de tipagem mínima das rows                                 */
 /* ------------------------------------------------------------------ */
@@ -450,9 +457,11 @@ export function solicitacaoFromSupabase(row: Row): SolicitacaoMock {
 
   return {
     id: str(row.id),
-    numero: str(row.numero_processo),
+    numero: normalizarNumero(str(row.numero_processo)),
     status: setorToStatusGlobal(setor),
-    tipoSolicitacao: str(row.tipo_solicitacao) === 'AJUDA_CUSTO' ? 'ajuda_custo' : 'normal',
+    // PBI 13218 — o tipo de solicitação deixou de existir; solicitações
+    // antigas de ajuda de custo passam a ser tratadas como comuns.
+    tipoSolicitacao: 'normal',
     dataCriacao: str(row.created_at),
     dataLaudo: opt(row.data_laudo),
     paciente,

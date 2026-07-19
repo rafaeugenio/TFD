@@ -6,7 +6,9 @@ import {
   Send,
   ClipboardList,
   Stethoscope,
+  Plane,
   Wallet,
+  HeartHandshake,
   type LucideIcon,
 } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
@@ -23,34 +25,45 @@ interface Props {
   open: boolean;
   onClose: () => void;
   solicitacaoId: string;
-  /** Setor de onde a solicitação está saindo. Define os 2 destinos disponíveis. */
+  /** Setor de onde a solicitação está saindo. Define os destinos disponíveis
+   *  (o setor seguinte e o anterior na cadeia). */
   setorAtual: SetorAtualDrawer;
 }
 
 const LABEL_DESTINO: Record<DestinoEnvio, string> = {
+  dados_basicos: 'Dados Básicos',
   regulacao: 'Regulação',
-  financeiro: 'Financeiro',
-  dados_basicos: 'Solicitações',
+  passagens: 'Passagens',
+  ajuda_custo: 'Ajuda de Custo',
+  acompanhamento: 'Acompanhamento',
 };
 
-const ORDEM: SetorAcao[] = ['dados_basicos', 'regulacao', 'financeiro'];
+/** Cadeia linear do fluxo (PBI 13237). Cada setor só pode enviar para o
+ *  próximo e devolver para o anterior — nunca pular etapas. */
+const ORDEM: SetorAcao[] = ['dados_basicos', 'regulacao', 'passagens', 'ajuda_custo', 'acompanhamento'];
 
 const ICON_DESTINO: Record<DestinoEnvio, LucideIcon> = {
   dados_basicos: ClipboardList,
   regulacao: Stethoscope,
-  financeiro: Wallet,
+  passagens: Plane,
+  ajuda_custo: Wallet,
+  acompanhamento: HeartHandshake,
 };
 
 const DESCRICAO_DESTINO: Record<DestinoEnvio, string> = {
   dados_basicos: 'Cadastro, anexos e ajustes no laudo do paciente.',
   regulacao: 'Parecer médico, carimbo e agendamento de exceção.',
-  financeiro: 'Passagens, ajudas de custo e adicionais.',
+  passagens: 'Emissão e remarcação de passagens.',
+  ajuda_custo: 'Cálculo e pagamento de diárias.',
+  acompanhamento: 'Acompanhamento da viagem e do tratamento em curso.',
 };
 
 const HINT_DESTINO: Record<DestinoEnvio, string> = {
   dados_basicos: 'Ex.: paciente sem CNS cadastrado, falta anexar laudo atualizado.',
   regulacao: 'Ex.: paciente com urgência cirúrgica, caso já tem laudo do oncologista.',
-  financeiro: 'Ex.: paciente prefere voo direto pela manhã, sem conexão.',
+  passagens: 'Ex.: paciente prefere voo direto pela manhã, sem conexão.',
+  ajuda_custo: 'Ex.: confirmar dados bancários antes de liberar as diárias.',
+  acompanhamento: 'Ex.: paciente embarcou, acompanhar internação e retorno.',
 };
 
 /** Infere se vai pra "frente" (enviar) ou pra "atrás" (devolver). */
@@ -59,10 +72,12 @@ function inferirTipo(de: SetorAcao, para: SetorAcao): TipoEnvio {
 }
 
 /**
- * T2.AE — Drawer único de tramitação entre setores. O usuário escolhe
- * o destino entre os 2 setores disponíveis (todos exceto o setor atual)
- * via radio cards. O CTA assume a cor do destino selecionado; enquanto
- * nenhum estiver selecionado, o CTA fica neutro e desabilitado.
+ * T2.AE — Drawer único de tramitação entre setores. O usuário escolhe o
+ * destino entre os setores adjacentes ao setor atual — o próximo (enviar)
+ * e o anterior (devolver) na cadeia Dados Básicos → Regulação → Passagens
+ * → Ajuda de Custo → Acompanhamento — via radio cards. O CTA assume a cor
+ * do destino selecionado; enquanto nenhum estiver selecionado, o CTA fica
+ * neutro e desabilitado.
  */
 export default function EnviarParaSetorDrawer({
   open,
@@ -78,10 +93,13 @@ export default function EnviarParaSetorDrawer({
   const [observacao, setObservacao] = useState('');
   const ref = useRef<HTMLTextAreaElement>(null);
 
-  const destinos = useMemo<DestinoEnvio[]>(
-    () => ORDEM.filter((s) => s !== setorAtual),
-    [setorAtual],
-  );
+  const destinos = useMemo<DestinoEnvio[]>(() => {
+    const idx = ORDEM.indexOf(setorAtual);
+    const adjacentes: DestinoEnvio[] = [];
+    if (idx > 0) adjacentes.push(ORDEM[idx - 1]);
+    if (idx >= 0 && idx < ORDEM.length - 1) adjacentes.push(ORDEM[idx + 1]);
+    return adjacentes;
+  }, [setorAtual]);
 
   useEffect(() => {
     if (open) {
@@ -128,8 +146,7 @@ export default function EnviarParaSetorDrawer({
       observacao.trim() || undefined,
       tipo,
     );
-    const labelDest = destino === 'dados_basicos' ? 'Dados Básicos' : destino === 'regulacao' ? 'Regulação' : 'Financeiro';
-    toast.success(tipo === 'devolver' ? 'Solicitação devolvida' : 'Solicitação enviada', `Destino: ${labelDest}.`);
+    toast.success(tipo === 'devolver' ? 'Solicitação devolvida' : 'Solicitação enviada', `Destino: ${LABEL_DESTINO[destino]}.`);
     onClose();
   }
 

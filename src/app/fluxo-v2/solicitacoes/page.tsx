@@ -39,8 +39,10 @@ const STATUS_OPTIONS: (StatusGlobalV2 | 'all')[] = [
   'all',
   'em_dados_basicos',
   'em_regulacao',
-  'em_financeiro',
-  'encerrada',
+  'em_passagens',
+  'em_ajuda_custo',
+  'em_acompanhamento',
+  'em_encerramento',
 ];
 
 export default function SolicitacoesV2ListPage() {
@@ -65,7 +67,9 @@ export default function SolicitacoesV2ListPage() {
       total: solicitacoes.length,
       em_dados_basicos: porStatus.em_dados_basicos,
       em_regulacao: porStatus.em_regulacao,
-      em_financeiro: porStatus.em_financeiro,
+      em_passagens: porStatus.em_passagens,
+      em_ajuda_custo: porStatus.em_ajuda_custo,
+      em_acompanhamento: porStatus.em_acompanhamento,
       encerradasMes: contarEncerradasNoMes(solicitacoes),
       aprovacao: taxaAprovacao(solicitacoes),
     };
@@ -167,19 +171,33 @@ export default function SolicitacoesV2ListPage() {
             active: statusFilter === 'em_regulacao',
           },
           {
-            label: 'Em Financeiro',
-            value: stats.em_financeiro,
+            label: 'Em Passagens',
+            value: stats.em_passagens,
             onClick: () =>
-              setStatusFilter((cur) => (cur === 'em_financeiro' ? 'all' : 'em_financeiro')),
-            active: statusFilter === 'em_financeiro',
+              setStatusFilter((cur) => (cur === 'em_passagens' ? 'all' : 'em_passagens')),
+            active: statusFilter === 'em_passagens',
+          },
+          {
+            label: 'Em Ajuda de Custo',
+            value: stats.em_ajuda_custo,
+            onClick: () =>
+              setStatusFilter((cur) => (cur === 'em_ajuda_custo' ? 'all' : 'em_ajuda_custo')),
+            active: statusFilter === 'em_ajuda_custo',
+          },
+          {
+            label: 'Em Acompanhamento',
+            value: stats.em_acompanhamento,
+            onClick: () =>
+              setStatusFilter((cur) => (cur === 'em_acompanhamento' ? 'all' : 'em_acompanhamento')),
+            active: statusFilter === 'em_acompanhamento',
           },
           {
             label: 'Encerradas no mês',
             value: stats.encerradasMes,
             hint: 'do mês corrente',
             onClick: () =>
-              setStatusFilter((cur) => (cur === 'encerrada' ? 'all' : 'encerrada')),
-            active: statusFilter === 'encerrada',
+              setStatusFilter((cur) => (cur === 'em_encerramento' ? 'all' : 'em_encerramento')),
+            active: statusFilter === 'em_encerramento',
             title: 'Solicitações encerradas no mês corrente',
           },
           {
@@ -314,12 +332,12 @@ export default function SolicitacoesV2ListPage() {
                           {
                             key: 'encerrar',
                             icon: Archive,
-                            label: s.status === 'encerrada'
+                            label: s.status === 'em_encerramento'
                               ? 'Solicitação já encerrada'
                               : 'Encerrar solicitação',
                             tone: 'danger',
                             onClick: () => abrirEncerrar(s),
-                            disabled: s.status === 'encerrada',
+                            disabled: s.status === 'em_encerramento',
                           },
                         ]}
                       />

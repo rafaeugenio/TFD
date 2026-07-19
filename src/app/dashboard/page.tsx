@@ -57,6 +57,8 @@ const COLORS = {
   blue: '#146BFA',
   indigo: '#6366F1',
   amber: '#F59E0B',
+  orange: '#F97316',
+  cyan: '#0891B2',
   green: '#10B981',
   slate: '#94A3B8',
   red: '#EF4444',
@@ -117,10 +119,12 @@ function diasNoSetor(s: SolicitacaoMock): number {
 
 function setorLabel(status: SolicitacaoMock['status']): string {
   switch (status) {
-    case 'em_dados_basicos': return 'Dados básicos';
-    case 'em_regulacao':     return 'Regulação';
-    case 'em_financeiro':    return 'Financeiro';
-    case 'encerrada':        return 'Encerrada';
+    case 'em_dados_basicos':  return 'Dados básicos';
+    case 'em_regulacao':      return 'Regulação';
+    case 'em_passagens':      return 'Passagens';
+    case 'em_ajuda_custo':    return 'Ajuda de custo';
+    case 'em_acompanhamento': return 'Acompanhamento';
+    case 'em_encerramento':   return 'Encerramento';
   }
 }
 
@@ -133,13 +137,19 @@ function PainelContent() {
   const distribuicao = useMemo(() => {
     const porStatus = contarPorStatus(solicitacoes);
     const ativas =
-      porStatus.em_dados_basicos + porStatus.em_regulacao + porStatus.em_financeiro;
+      porStatus.em_dados_basicos +
+      porStatus.em_regulacao +
+      porStatus.em_passagens +
+      porStatus.em_ajuda_custo +
+      porStatus.em_acompanhamento;
     return {
       ativas,
       data: [
-        { name: 'Dados básicos', value: porStatus.em_dados_basicos, fill: COLORS.blue },
-        { name: 'Regulação',     value: porStatus.em_regulacao,     fill: COLORS.indigo },
-        { name: 'Financeiro',    value: porStatus.em_financeiro,    fill: COLORS.amber },
+        { name: 'Dados básicos',   value: porStatus.em_dados_basicos,  fill: COLORS.blue },
+        { name: 'Regulação',       value: porStatus.em_regulacao,      fill: COLORS.indigo },
+        { name: 'Passagens',       value: porStatus.em_passagens,      fill: COLORS.amber },
+        { name: 'Ajuda de custo',  value: porStatus.em_ajuda_custo,    fill: COLORS.orange },
+        { name: 'Acompanhamento',  value: porStatus.em_acompanhamento, fill: COLORS.cyan },
       ],
       encerradasMes: contarEncerradasNoMes(solicitacoes),
       aprovacao: taxaAprovacao(solicitacoes),

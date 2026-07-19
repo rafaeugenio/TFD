@@ -1,6 +1,6 @@
 /**
  * Mapeamento entre o status detalhado do banco (17 valores) e o
- * setor_atual usado pelo fluxo v2 (4 valores).
+ * setor_atual usado pelo fluxo v2 (PBI 13237 — 6 setores).
  *
  * IMPORTANTE: o banco tem o trigger `trg_sync_setor_atual` que mantém
  * setor_atual em sincronia quando status muda. Estas funções servem
@@ -29,10 +29,48 @@ export type StatusDb =
   | 'CONCLUIDO'
   | 'INDEFERIDO';
 
-export type SetorDb = 'dados_basicos' | 'regulacao' | 'financeiro' | 'encerrada';
+/**
+ * PBI 13237 — o antigo setor "financeiro" virou dois setores/times
+ * (Passagens e Ajuda de Custo), e entrou o estágio pós-financeiro
+ * "Acompanhamento" antes do "Encerramento" (que substitui o antigo rótulo
+ * "Encerrada").
+ *
+ * Compatibilidade: `'financeiro'` e `'encerrada'` continuam aceitos como
+ * valores legados vindos do banco (linhas ainda não normalizadas pela
+ * migration aditiva) — leitura trata os dois como sinônimos de
+ * `'passagens'`/`'encerramento'` respectivamente via `normalizarSetorDb`.
+ */
+export type SetorDb =
+  | 'dados_basicos'
+  | 'regulacao'
+  | 'passagens'
+  | 'ajuda_custo'
+  | 'acompanhamento'
+  | 'encerramento'
+  /** @deprecated legado — trate como 'passagens' na leitura */
+  | 'financeiro'
+  /** @deprecated legado — trate como 'encerramento' na leitura */
+  | 'encerrada';
+
+/** Normaliza um setor_atual possivelmente legado para os 6 setores atuais. */
+export function normalizarSetorDb(setor: string): Exclude<SetorDb, 'financeiro' | 'encerrada'> {
+  if (setor === 'financeiro') return 'passagens';
+  if (setor === 'encerrada') return 'encerramento';
+  if (
+    setor === 'dados_basicos' ||
+    setor === 'regulacao' ||
+    setor === 'passagens' ||
+    setor === 'ajuda_custo' ||
+    setor === 'acompanhamento' ||
+    setor === 'encerramento'
+  ) {
+    return setor;
+  }
+  return 'dados_basicos';
+}
 
 /** setor_atual ← status detalhado (mesma lógica do trigger do banco). */
-export function setorFromStatus(status: StatusDb): SetorDb {
+export function setorFromStatus(status: StatusDb): Exclude<SetorDb, 'financeiro' | 'encerrada'> {
   switch (status) {
     case 'NOVO':
     case 'EM_ANALISE':
@@ -47,60 +85,64 @@ export function setorFromStatus(status: StatusDb): SetorDb {
       return 'regulacao';
     case 'AGUARDANDO_EMISSAO':
     case 'EMITIDA':
+    case 'REMARCACAO':
+      return 'passagens';
+    case 'EM_PAGAMENTO':
+      return 'ajuda_custo';
     case 'EM_VIAGEM':
     case 'EM_PERMANENCIA':
-    case 'REMARCACAO':
-    case 'EM_PAGAMENTO':
-      return 'financeiro';
+      return 'acompanhamento';
     case 'CONCLUIDO':
     case 'INDEFERIDO':
-      return 'encerrada';
+      return 'encerramento';
   }
 }
 
 /**
  * Quando o front (v2) quer mover a solicitação para um setor, traduzimos
  * para o status "canônico" daquele setor (entry point).
- *
- * `tipoSolicitacao` (opcional) ajusta o entry status do financeiro:
- *   - 'ajuda_custo' (sem viagens) → entra direto em EM_PAGAMENTO, porque
- *     não há passagem para emitir.
- *   - default (normal) → AGUARDANDO_EMISSAO de passagens.
  */
 export function entryStatusForSetor(
-  setor: SetorDb,
-  tipoSolicitacao?: 'normal' | 'ajuda_custo',
+  setor: Exclude<SetorDb, 'financeiro' | 'encerrada'>,
 ): StatusDb {
   switch (setor) {
     case 'dados_basicos':
       return 'NOVO';
     case 'regulacao':
       return 'AGUARDANDO_REGULACAO';
-    case 'financeiro':
-      return tipoSolicitacao === 'ajuda_custo' ? 'EM_PAGAMENTO' : 'AGUARDANDO_EMISSAO';
-    case 'encerrada':
+    case 'passagens':
+      return 'AGUARDANDO_EMISSAO';
+    case 'ajuda_custo':
+      return 'EM_PAGAMENTO';
+    case 'acompanhamento':
+      return 'EM_VIAGEM';
+    case 'encerramento':
       return 'CONCLUIDO';
   }
 }
 
 /**
  * StatusGlobalV2 (mock) usa prefixo `em_` enquanto setor_atual (DB) não.
- * Mapas dos dois lados.
+ * Mapas dos dois lados. Aceita setores legados via `normalizarSetorDb`.
  */
 export function setorToStatusGlobal(s: SetorDb): StatusGlobalV2 {
-  switch (s) {
-    case 'dados_basicos': return 'em_dados_basicos';
-    case 'regulacao':     return 'em_regulacao';
-    case 'financeiro':    return 'em_financeiro';
-    case 'encerrada':     return 'encerrada';
+  switch (normalizarSetorDb(s)) {
+    case 'dados_basicos':   return 'em_dados_basicos';
+    case 'regulacao':       return 'em_regulacao';
+    case 'passagens':       return 'em_passagens';
+    case 'ajuda_custo':     return 'em_ajuda_custo';
+    case 'acompanhamento':  return 'em_acompanhamento';
+    case 'encerramento':    return 'em_encerramento';
   }
 }
 
-export function statusGlobalToSetor(s: StatusGlobalV2): SetorDb {
+export function statusGlobalToSetor(s: StatusGlobalV2): Exclude<SetorDb, 'financeiro' | 'encerrada'> {
   switch (s) {
-    case 'em_dados_basicos': return 'dados_basicos';
-    case 'em_regulacao':     return 'regulacao';
-    case 'em_financeiro':    return 'financeiro';
-    case 'encerrada':        return 'encerrada';
+    case 'em_dados_basicos':  return 'dados_basicos';
+    case 'em_regulacao':      return 'regulacao';
+    case 'em_passagens':      return 'passagens';
+    case 'em_ajuda_custo':    return 'ajuda_custo';
+    case 'em_acompanhamento': return 'acompanhamento';
+    case 'em_encerramento':   return 'encerramento';
   }
 }

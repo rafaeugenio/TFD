@@ -19,7 +19,7 @@ import EnviarParaSetorDrawer from '../../_components/drawers/EnviarParaSetorDraw
 import NewDespesaFunerariaDrawer from '../../_components/drawers/NewDespesaFunerariaDrawer';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
-import { isLocked, tooltipLocked, setorAtual } from '../../_utils/lock';
+import { isLocked, tooltipLocked, setorAtual, type SetorAcao } from '../../_utils/lock';
 import { DetailPageSkeleton } from '@/shared/components/skeleton';
 import { Can } from '@/shared/auth/Can';
 import { useToast } from '@/shared/components/toast/Toast';
@@ -76,7 +76,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
   const [encerrarOpen, setEncerrarOpen] = useState(false);
   const [enviarOpen, setEnviarOpen] = useState(false);
   const [reabrirOpen, setReabrirOpen] = useState(false);
-  const [reabrirSetor, setReabrirSetor] = useState<'dados_basicos' | 'regulacao' | 'financeiro'>('regulacao');
+  const [reabrirSetor, setReabrirSetor] = useState<'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento'>('regulacao');
   const [reabrirMotivo, setReabrirMotivo] = useState('');
   const [despFuneOpen, setDespFuneOpen] = useState(false);
   /** Código vindo da tabela auxiliar `motivo_encerramento` — vazio força o
@@ -120,7 +120,9 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
     const setorLabel = {
       dados_basicos: 'Dados Básicos',
       regulacao: 'Regulação',
-      financeiro: 'Financeiro',
+      passagens: 'Passagens',
+      ajuda_custo: 'Ajuda de Custo',
+      acompanhamento: 'Acompanhamento',
     }[reabrirSetor];
     toast.success('Solicitação reaberta', `Encaminhada para ${setorLabel}.`);
     setReabrirOpen(false);
@@ -170,7 +172,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
               </span>
             </div>
           </div>
-          {s.status !== 'encerrada' && (
+          {s.status !== 'em_encerramento' && (
             <div className="flex items-center gap-2 shrink-0">
               <Can action="tramitacao.tramitar">
                 <button
@@ -193,11 +195,10 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
           )}
         </div>
 
-        {/* Linha 2 — estado da solicitação: status + tipo + número + datas */}
+        {/* Linha 2 — estado da solicitação: status + número + datas */}
         <div className="px-6 pb-3 text-[14px]" style={{ color: '#475569' }}>
           <div className="flex items-center gap-x-4 gap-y-2 flex-wrap">
             <StatusV2Badge status={s.status} />
-            <TipoSolicitacaoBadge tipo={s.tipoSolicitacao} />
             <span><span style={{ color: '#94A3B8' }}>Solicitação </span><span className="font-mono" style={{ color: '#1E293B', fontWeight: 500 }}>{s.numero}</span></span>
             <Sep />
             <span><span style={{ color: '#94A3B8' }}>Criada em </span>{new Date(s.dataCriacao).toLocaleDateString('pt-BR')}</span>
@@ -497,12 +498,12 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
       )}
 
       {/* Enviar para outro setor */}
-      {s.status !== 'encerrada' && (
+      {s.status !== 'em_encerramento' && (
         <EnviarParaSetorDrawer
           open={enviarOpen}
           onClose={() => setEnviarOpen(false)}
           solicitacaoId={s.id}
-          setorAtual={setorAtual(s) as 'dados_basicos' | 'regulacao' | 'financeiro'}
+          setorAtual={setorAtual(s) as SetorAcao}
         />
       )}
 
@@ -515,7 +516,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
       )}
 
       {/* Reabrir modal — exibido apenas quando solicitação está encerrada */}
-      {reabrirOpen && s.status === 'encerrada' && (
+      {reabrirOpen && s.status === 'em_encerramento' && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: 'rgba(0,0,0,0.4)' }}
@@ -549,12 +550,14 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
               como qualquer outra. Escolha o setor inicial para onde ela deve cair:
             </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-4">
               {(
                 [
                   { key: 'dados_basicos', titulo: 'Dados Básicos', descricao: 'Reanalisar dados clínicos e do paciente.' },
                   { key: 'regulacao', titulo: 'Regulação', descricao: 'Retomar regulação, parecer ou agendamento.' },
-                  { key: 'financeiro', titulo: 'Financeiro', descricao: 'Ajustar passagens, ajuda de custo ou adicionais.' },
+                  { key: 'passagens', titulo: 'Passagens', descricao: 'Emitir ou remarcar passagens.' },
+                  { key: 'ajuda_custo', titulo: 'Ajuda de Custo', descricao: 'Calcular e pagar diárias.' },
+                  { key: 'acompanhamento', titulo: 'Acompanhamento', descricao: 'Retomar acompanhamento da viagem/tratamento.' },
                 ] as const
               ).map((opt) => {
                 const ativo = reabrirSetor === opt.key;
@@ -663,31 +666,6 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
 
 function Sep() {
   return <span aria-hidden style={{ color: '#CBD5E1' }}>·</span>;
-}
-
-/** Badge do tipo da solicitação (Normal x Ajuda de Custo) no header. */
-function TipoSolicitacaoBadge({ tipo }: { tipo?: 'normal' | 'ajuda_custo' }) {
-  const ajuda = tipo === 'ajuda_custo';
-  const styles = ajuda
-    ? { bg: '#FFFBEB', fg: '#92400E', bd: '#FDE68A', label: 'Ajuda de custo' }
-    : { bg: '#EFF6FF', fg: '#1D4ED8', bd: '#BFDBFE', label: 'Normal' };
-  return (
-    <span
-      className="inline-flex items-center px-2 py-[3px] text-[11px] font-semibold uppercase"
-      style={{
-        background: styles.bg,
-        color: styles.fg,
-        border: `1px solid ${styles.bd}`,
-        borderRadius: 6,
-        letterSpacing: '0.05em',
-      }}
-      title={ajuda
-        ? 'Paciente já está no destino. Só recebe diárias — sem viagens e sem adicionais.'
-        : 'Fluxo completo: viagens, adicionais e ajuda de custo.'}
-    >
-      {styles.label}
-    </span>
-  );
 }
 
 /**

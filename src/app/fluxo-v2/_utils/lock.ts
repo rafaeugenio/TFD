@@ -4,16 +4,20 @@ import {
   type SolicitacaoMock,
 } from '@/core/mocks/fluxo-v2-v3-seed';
 
-/** Setor de ação (exclui 'encerrada' — quando encerrada, ninguém edita). */
-export type SetorAcao = 'dados_basicos' | 'regulacao' | 'financeiro';
+/** Setor de ação (exclui 'encerramento' — quando encerrada, ninguém edita). */
+export type SetorAcao = 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento';
 
 /** Setor responsável pela próxima ação na solicitação, derivado do status. */
 export function setorAtual(s: SolicitacaoMock): SetorAtivo {
-  if (s.status === 'encerrada') return 'encerrada';
-  if (s.status === 'em_dados_basicos') return 'dados_basicos';
-  if (s.status === 'em_regulacao') return 'regulacao';
-  if (s.status === 'em_financeiro') return 'financeiro';
-  return 'dados_basicos';
+  switch (s.status) {
+    case 'em_encerramento':   return 'encerramento';
+    case 'em_dados_basicos':  return 'dados_basicos';
+    case 'em_regulacao':      return 'regulacao';
+    case 'em_passagens':      return 'passagens';
+    case 'em_ajuda_custo':    return 'ajuda_custo';
+    case 'em_acompanhamento': return 'acompanhamento';
+    default:                  return 'dados_basicos';
+  }
 }
 
 /**
@@ -25,7 +29,7 @@ export function isLocked(
   s: SolicitacaoMock,
   setorAcao: SetorAcao,
 ): boolean {
-  if (s.status === 'encerrada') return true;
+  if (s.status === 'em_encerramento') return true;
   return setorAtual(s) !== setorAcao;
 }
 
@@ -37,7 +41,7 @@ export function tooltipLocked(
   s: SolicitacaoMock,
   _setorAcao: SetorAcao,
 ): string {
-  if (s.status === 'encerrada') {
+  if (s.status === 'em_encerramento') {
     return 'Solicitação encerrada — sem ações disponíveis.';
   }
   const atual = STATUS_LABEL[s.status];
@@ -47,19 +51,25 @@ export function tooltipLocked(
 /** Cor de destaque do botão de envio por destino. */
 export const COR_DESTINO: Record<SetorAcao, string> = {
   regulacao: '#7C3AED',
-  financeiro: '#D97706',
+  passagens: '#D97706',
+  ajuda_custo: '#C2410C',
+  acompanhamento: '#1D4ED8',
   dados_basicos: '#475569',
 };
 
 /** Versão suave (bg) das cores de destino. */
 export const BG_DESTINO: Record<SetorAcao, string> = {
   regulacao: '#F5F3FF',
-  financeiro: '#FFFBEB',
+  passagens: '#FFFBEB',
+  ajuda_custo: '#FFF7ED',
+  acompanhamento: '#EFF6FF',
   dados_basicos: '#F1F5F9',
 };
 
 export const BORDER_DESTINO: Record<SetorAcao, string> = {
   regulacao: '#DDD6FE',
-  financeiro: '#FCD34D',
+  passagens: '#FCD34D',
+  ajuda_custo: '#FED7AA',
+  acompanhamento: '#BFDBFE',
   dados_basicos: '#CBD5E1',
 };

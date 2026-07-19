@@ -30,7 +30,6 @@ export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Prop
   const [despachoId, setDespachoId] = useState<string | null>(null);
   const [carregandoDespacho, setCarregandoDespacho] = useState(true);
 
-  const isAjudaCusto = s.tipoSolicitacao === 'ajuda_custo';
   const viagensAtivas = s.viagens.filter((v) => v.ativa !== false);
   const ajudasAtivas = s.ajudasCusto.filter((a) => a.ativa !== false);
 
@@ -52,9 +51,7 @@ export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Prop
 
   // Checklist de requisitos para fechamento
   const checks: Array<{ label: string; ok: boolean }> = [];
-  if (!isAjudaCusto) {
-    checks.push({ label: 'Passagens emitidas', ok: viagensAtivas.length > 0 });
-  }
+  checks.push({ label: 'Passagens emitidas', ok: viagensAtivas.length > 0 });
   checks.push({ label: 'Ajuda de custo cadastrada', ok: ajudasAtivas.length > 0 });
   checks.push({ label: 'Dados bancários da solicitação', ok: temBancario === true });
 

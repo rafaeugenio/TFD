@@ -41,17 +41,18 @@ export interface NewSolicitacaoSupabase {
   origem_laudo_unidade_id?: string;
   status: StatusDb;
   setor_atual: SetorDb;
-  tipo_solicitacao: 'NORMAL' | 'AJUDA_CUSTO';
+  /** PBI 13218 — a distinção de tipo de solicitação foi removida; toda
+   *  solicitação nova é 'NORMAL'. Mantido só pela coluna legada no banco. */
+  tipo_solicitacao: 'NORMAL';
 }
 
 export function buildNewSolicitacao(input: {
   pacienteId: string;
   numeroProcesso: string;
-  numeroSEI?: string;
-  seiUrl?: string;
+  numeroSEI: string;
+  seiUrl: string;
   dataLaudo?: string;
   origemLaudoUnidadeId?: string;
-  tipoSolicitacao?: 'normal' | 'ajuda_custo';
 }): NewSolicitacaoSupabase {
   return {
     paciente_id: input.pacienteId,
@@ -62,7 +63,7 @@ export function buildNewSolicitacao(input: {
     origem_laudo_unidade_id: input.origemLaudoUnidadeId,
     status: 'NOVO',
     setor_atual: 'dados_basicos',
-    tipo_solicitacao: input.tipoSolicitacao === 'ajuda_custo' ? 'AJUDA_CUSTO' : 'NORMAL',
+    tipo_solicitacao: 'NORMAL',
   };
 }
 
@@ -481,22 +482,20 @@ export function buildObservacao(
 /* ------------------------------------------------------------------ */
 
 /**
- * Quando o front faz `enviarParaSetor(id, 'regulacao' | 'financeiro' | 'dados_basicos')`,
- * traduzimos para um UPDATE em solicitacoes mudando status + setor_atual.
- * O trigger trg_sync_setor_atual no banco também atualiza setor_atual quando
- * status muda — aqui setamos os dois explicitamente para deixar claro.
+ * Quando o front faz `enviarParaSetor(id, destino)`, traduzimos para um
+ * UPDATE em solicitacoes mudando status + setor_atual. O trigger
+ * trg_sync_setor_atual no banco também atualiza setor_atual quando status
+ * muda — aqui setamos os dois explicitamente para deixar claro.
  */
 export function buildEnvioSetor(
-  setor: 'regulacao' | 'financeiro' | 'dados_basicos',
-  tipoSolicitacao?: 'normal' | 'ajuda_custo',
+  setor: 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento',
 ): {
   status: StatusDb;
   setor_atual: SetorDb;
 } {
-  const sd: SetorDb = setor;
   return {
-    status: entryStatusForSetor(sd, tipoSolicitacao),
-    setor_atual: sd,
+    status: entryStatusForSetor(setor),
+    setor_atual: setor,
   };
 }
 
@@ -514,8 +513,8 @@ export interface DevolucaoDb {
 
 export function buildDevolucao(
   solicitacaoId: string,
-  origem: 'financeiro' | 'regulacao' | 'dados_basicos',
-  destino: 'regulacao' | 'dados_basicos',
+  origem: 'passagens' | 'ajuda_custo' | 'acompanhamento' | 'regulacao' | 'dados_basicos',
+  destino: 'regulacao' | 'dados_basicos' | 'passagens' | 'ajuda_custo',
   motivo: string,
   devolvidoPorId: string,
 ): DevolucaoDb {

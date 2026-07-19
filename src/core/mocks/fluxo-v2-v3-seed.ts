@@ -11,18 +11,32 @@ export const VALOR_DIARIA_RETORNO = 8.4;
 
 /* ── Status global ─────────────────────────────────────────────────────── */
 
+/**
+ * PBI 13237 — ciclo de status geral da solicitação. O antigo setor
+ * "Financeiro" foi dividido em dois times/status distintos, Passagens e
+ * Ajuda de Custo, e o fluxo ganhou um estágio pós-financeiro de
+ * Acompanhamento (da viagem/tratamento) antes do Encerramento.
+ */
 export type StatusGlobalV2 =
   | 'em_dados_basicos'
   | 'em_regulacao'
-  | 'em_financeiro'
-  | 'encerrada';
+  | 'em_passagens'
+  | 'em_ajuda_custo'
+  | 'em_acompanhamento'
+  | 'em_encerramento';
 
 /**
  * Setor responsável pela próxima ação. Quando a solicitação está num setor X,
  * apenas aquele setor pode editar — os outros veem em modo locked. O setor
- * "encerrada" trava tudo.
+ * "encerramento" trava tudo.
  */
-export type SetorAtivo = 'dados_basicos' | 'regulacao' | 'financeiro' | 'encerrada';
+export type SetorAtivo =
+  | 'dados_basicos'
+  | 'regulacao'
+  | 'passagens'
+  | 'ajuda_custo'
+  | 'acompanhamento'
+  | 'encerramento';
 
 /* ── Entidades ─────────────────────────────────────────────────────────── */
 
@@ -447,14 +461,9 @@ export interface DevolucaoFinanceiroParaRegulacao {
  * popover com a observação completa em hover.
  */
 export interface UltimaTramitacao {
-  tipo:
-    | 'envio_regulacao'
-    | 'envio_financeiro'
-    | 'devolucao_regulacao'
-    | 'devolucao_dados_basicos'
-    /** @deprecated mantido para compat — use `envio_financeiro` */
-    | 'encaminhamento_financeiro';
-  destino: 'regulacao' | 'financeiro' | 'dados_basicos';
+  /** Direção do movimento — `destino` diz para qual setor. */
+  tipo: 'envio' | 'devolucao';
+  destino: 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento';
   data: string;          // ISO datetime
   autor: string;
   perfilAutor: string;
@@ -694,7 +703,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
   {
     id: 's1',
     numero: '2025/000123',
-    status: 'encerrada',
+    status: 'em_encerramento',
     dataCriacao: isoAt('2025-05-02'),
     dataLaudo: '2025-05-01',
     paciente: pacientesPool[0],
@@ -743,7 +752,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
   {
     id: 's2',
     numero: '2025/000124',
-    status: 'em_financeiro',
+    status: 'em_acompanhamento',
     dataCriacao: isoAt('2025-05-08'),
     dataLaudo: '2025-05-07',
     paciente: pacientesPool[2], // menor
@@ -783,7 +792,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
   {
     id: 's3',
     numero: '2025/000125',
-    status: 'em_financeiro',
+    status: 'em_passagens',
     dataCriacao: isoAt('2025-05-20'),
     dataLaudo: '2025-05-18',
     paciente: pacientesPool[1],
@@ -826,8 +835,8 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       { id: 'obs3c', autor: 'Ana Carolina Mendes', perfilAutor: 'Regulação',           texto: 'HC-RP confirmou! Vaga para 25/06. Já registrei a aceitação e encaminhei para 2º deferimento médico.', data: '2025-06-08T11:30:00' },
     ],
     ultimaTramitacao: {
-      tipo: 'envio_financeiro',
-      destino: 'financeiro',
+      tipo: 'envio',
+      destino: 'passagens',
       data: hoursAgoIso(4),
       autor: 'Ana Carolina Mendes',
       perfilAutor: 'Regulação',
@@ -857,7 +866,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
     return {
       id: 's4',
       numero: '2025/000126',
-      status: 'em_financeiro' as StatusGlobalV2,
+      status: 'em_ajuda_custo' as StatusGlobalV2,
       dataCriacao: isoAt('2025-01-05'),
       dataLaudo: '2025-01-04',
       paciente: pacientesPool[4],
@@ -894,7 +903,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
   {
     id: 's5',
     numero: '2025/000127',
-    status: 'em_financeiro',
+    status: 'em_acompanhamento',
     dataCriacao: isoAt('2025-04-15'),
     dataLaudo: '2025-04-14',
     paciente: pacientesPool[3],
@@ -946,7 +955,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
   {
     id: 's6',
     numero: '2025/000128',
-    status: 'encerrada',
+    status: 'em_encerramento',
     dataCriacao: isoAt('2025-03-10'),
     dataLaudo: '2025-03-08',
     paciente: pacientesPool[5],
@@ -985,7 +994,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
   {
     id: 's7',
     numero: '2025/000129',
-    status: 'em_financeiro',
+    status: 'em_ajuda_custo',
     dataCriacao: isoAt('2025-05-22'),
     dataLaudo: '2025-05-21',
     paciente: pacientesPool[6],
@@ -1095,7 +1104,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       },
     ],
     ultimaTramitacao: {
-      tipo: 'devolucao_regulacao',
+      tipo: 'devolucao',
       destino: 'regulacao',
       data: hoursAgoIso(6),
       autor: 'João Pereira',
@@ -1108,17 +1117,21 @@ export const seedFluxoV2: SolicitacaoMock[] = [
 /* ── Labels (para uso na UI) ───────────────────────────────────────────── */
 
 export const STATUS_LABEL: Record<StatusGlobalV2, string> = {
-  em_dados_basicos: 'Dados Básicos',
-  em_regulacao:     'Regulação',
-  em_financeiro:    'Financeiro',
-  encerrada:        'Encerrada',
+  em_dados_basicos:   'Dados Básicos',
+  em_regulacao:       'Regulação',
+  em_passagens:       'Passagens',
+  em_ajuda_custo:     'Ajuda de Custo',
+  em_acompanhamento:  'Acompanhamento',
+  em_encerramento:    'Encerramento',
 };
 
 export const STATUS_BADGE_COLOR: Record<StatusGlobalV2, { bg: string; fg: string }> = {
-  em_dados_basicos: { bg: '#F1F5F9', fg: '#475569' }, // cinza
-  em_regulacao:     { bg: '#EDE9FE', fg: '#6D28D9' }, // roxo
-  em_financeiro:    { bg: '#FEF3C7', fg: '#92400E' }, // âmbar
-  encerrada:        { bg: '#DCFCE7', fg: '#166534' }, // verde escuro
+  em_dados_basicos:  { bg: '#F1F5F9', fg: '#475569' }, // cinza
+  em_regulacao:      { bg: '#EDE9FE', fg: '#6D28D9' }, // roxo
+  em_passagens:      { bg: '#FEF3C7', fg: '#92400E' }, // âmbar
+  em_ajuda_custo:    { bg: '#FFEDD5', fg: '#C2410C' }, // laranja
+  em_acompanhamento: { bg: '#DBEAFE', fg: '#1D4ED8' }, // azul
+  em_encerramento:   { bg: '#DCFCE7', fg: '#166534' }, // verde escuro
 };
 
 /** @deprecated alias retrocompat — use STATUS_BADGE_COLOR */

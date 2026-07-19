@@ -4,11 +4,6 @@ import type { SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
 import HoverTooltip, { TooltipKV } from './HoverTooltip';
 import { ExternalLink } from 'lucide-react';
 
-const TIPO_LABEL: Record<string, string> = {
-  normal: 'TFD completo',
-  ajuda_custo: 'Apenas ajuda de custo',
-};
-
 function fmtDataBR(iso?: string) {
   if (!iso) return '—';
   try {
@@ -33,7 +28,6 @@ interface Props {
  * - Sem `seiUrl`, exibe sem affordance de link.
  */
 export default function SolicitacaoNumeroCell({ s, trailing, size = 13 }: Props) {
-  const tipoLabel = s.tipoSolicitacao ? TIPO_LABEL[s.tipoSolicitacao] ?? s.tipoSolicitacao : 'TFD completo';
   const hasSei = Boolean(s.seiUrl);
 
   const tooltipContent = (
@@ -41,7 +35,6 @@ export default function SolicitacaoNumeroCell({ s, trailing, size = 13 }: Props)
       rows={[
         { k: 'Número', v: s.numero, mono: true },
         ...(s.numeroSEI ? [{ k: 'SEI', v: s.numeroSEI, mono: true }] : []),
-        { k: 'Tipo', v: tipoLabel },
         { k: 'Status', v: s.status },
         { k: 'Criada em', v: fmtDataBR(s.dataCriacao) },
         ...(s.dataLaudo ? [{ k: 'Laudo', v: fmtDataBR(s.dataLaudo) }] : []),

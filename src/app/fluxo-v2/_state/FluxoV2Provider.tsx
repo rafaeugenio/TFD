@@ -195,20 +195,20 @@ interface FluxoV2ContextValue {
   /** Reabre uma solicitação encerrada, colocando-a no setor escolhido. */
   reabrirSolicitacao: (
     id: string,
-    setor: 'dados_basicos' | 'regulacao' | 'financeiro',
+    setor: 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento',
     motivo?: string,
   ) => void;
 
   addObservacao: (id: string, texto: string) => void;
 
-  // T2.AB — Tramitação genérica entre setores (3 setores + dados básicos)
+  // T2.AB — Tramitação genérica entre setores (PBI 13237 — 5 setores ativos)
   enviarParaSetor: (
     id: string,
-    destino: 'regulacao' | 'financeiro' | 'dados_basicos',
+    destino: 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento',
     observacao?: string,
     tipo?: 'enviar' | 'devolver',
   ) => void;
-  /** @deprecated use `enviarParaSetor(id, 'financeiro', obs, 'enviar')` */
+  /** @deprecated use `enviarParaSetor(id, 'passagens', obs, 'enviar')` */
   encaminharParaFinanceiro: (id: string, observacao?: string) => void;
   /** @deprecated use `enviarParaSetor(id, 'regulacao', motivo, 'devolver')` */
   devolverParaRegulacao: (id: string, motivo: string) => void;
@@ -253,8 +253,6 @@ export interface EditarSolicitacaoPatch {
 export interface NewSolicitacaoInput {
   pacienteId: string;
   acompanhanteIds: string[];
-  /** 'normal' (com viagens) ou 'ajuda_custo' (paciente já no destino — só diárias). */
-  tipoSolicitacao?: 'normal' | 'ajuda_custo';
   /** Agendamento na criação — uma única unidade pode hospedar múltiplos
    *  procedimentos (consulta, exame, cirurgia, tratamento contínuo). Cada
    *  procedimento vira uma tentativa confirmada no AgendamentoMock. */
@@ -270,8 +268,10 @@ export interface NewSolicitacaoInput {
    *  Usado para relatórios regionais. */
   origemLaudoUnidadeId?: string;
   anexos: { nome: string; tipo: string }[];
-  numeroSEI?: string;
-  seiUrl?: string;
+  /** PBI 13218 — Número do processo SEI e link passam a ser obrigatórios
+   *  na criação da solicitação. */
+  numeroSEI: string;
+  seiUrl: string;
   /** Snapshot do paciente quando vem do banco (não está no pacientesPool mock). */
   pacienteSnapshot?: import('@/core/mocks/fluxo-v2-v3-seed').PacienteMock;
   /** Snapshot dos acompanhantes quando vêm do banco. */
@@ -288,6 +288,29 @@ import { pacientesPool, acompanhantesPool } from '@/core/mocks/fluxo-v2-v3-seed'
 
 const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 const nowIso = () => new Date().toISOString();
+
+/** Persona (autor + perfil) mockada de quem está tramitando, derivada do
+ *  setor onde a solicitação está ANTES do movimento — a mesma pessoa/time
+ *  "envia" pra frente ou "devolve" pra trás. */
+const PERSONA_POR_STATUS: Record<StatusGlobalV2, { autor: string; perfilAutor: string }> = {
+  em_dados_basicos:  { autor: 'Maria Silva',         perfilAutor: 'Coordenação Estadual' },
+  em_regulacao:      { autor: 'Ana Carolina Mendes',  perfilAutor: 'Regulação' },
+  em_passagens:      { autor: 'João Pereira',         perfilAutor: 'Passagens' },
+  em_ajuda_custo:    { autor: 'Carla Nogueira',       perfilAutor: 'Ajuda de Custo' },
+  em_acompanhamento: { autor: 'Patrícia Gomes',       perfilAutor: 'Acompanhamento' },
+  em_encerramento:   { autor: 'Sistema',              perfilAutor: 'Sistema' },
+};
+
+const STATUS_POR_DESTINO: Record<
+  'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento',
+  StatusGlobalV2
+> = {
+  dados_basicos:  'em_dados_basicos',
+  regulacao:      'em_regulacao',
+  passagens:      'em_passagens',
+  ajuda_custo:    'em_ajuda_custo',
+  acompanhamento: 'em_acompanhamento',
+};
 
 export function FluxoV2Provider({ children }: { children: ReactNode }) {
   // Inicia vazio. As telas consumidoras devem checar `isLoading` e renderizar
@@ -374,20 +397,14 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
 
   const setStatus = useCallback(
     (id: string, status: StatusGlobalV2) => {
-      // Captura tipo antes do mutate (precisa pra escolher entry status em financeiro)
-      const atual = getById(id);
       // Otimista: atualiza local primeiro
       mutate(id, (s) => ({ ...s, status }));
       // Persiste no Supabase (best-effort, não bloqueia UI)
       const setor = statusGlobalToSetor(status);
-      const payload = buildEnvioSetor(
-        setor === 'encerrada' ? 'dados_basicos' : setor,
-        atual?.tipoSolicitacao,
-      );
       const supabase = createClient();
-      const update = setor === 'encerrada'
-        ? { setor_atual: 'encerrada', status: 'CONCLUIDO' }
-        : payload;
+      const update = setor === 'encerramento'
+        ? { setor_atual: 'encerramento', status: 'CONCLUIDO' }
+        : buildEnvioSetor(setor);
       supabase
         .from('solicitacoes')
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -397,7 +414,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
           if (error) console.warn('[FluxoV2] setStatus persistência falhou:', error.message);
         });
     },
-    [mutate, getById],
+    [mutate],
   );
 
   const createSolicitacao = useCallback(async (input: NewSolicitacaoInput): Promise<string> => {
@@ -409,22 +426,21 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       ? input.acompanhantesSnapshot.filter((a) => input.acompanhanteIds.includes(a.id))
       : acompanhantesPool.filter((a) => input.acompanhanteIds.includes(a.id));
 
-    // Formato: TFD-{N|AC}-{ano}/{seq6}
-    // Prefixo identifica imediatamente o tipo na listagem e em relatórios.
+    // Formato: TFD-{ano}/{seq6}
+    // PBI 13218 — o número deixou de carregar o código de tipo (N/AC), já
+    // que a distinção de tipo de solicitação foi removida.
     const ano = new Date().getFullYear();
-    const tipoPrefix = input.tipoSolicitacao === 'ajuda_custo' ? 'AC' : 'N';
-    const proximoNumero = `TFD-${tipoPrefix}-${ano}/${String(130 + solicitacoes.length).padStart(6, '0')}`;
+    const proximoNumero = `TFD-${ano}/${String(130 + solicitacoes.length).padStart(6, '0')}`;
 
     // 1) Persiste no Supabase para receber o id real ANTES de inserir no estado.
     //    Filhos (parecer, viagem, etc.) precisam de FK válida.
     const novaSolicitacaoPayload = buildNewSolicitacao({
       pacienteId: paciente.id,
       numeroProcesso: proximoNumero,
-      numeroSEI: input.numeroSEI?.trim() || undefined,
-      seiUrl: input.seiUrl?.trim() || undefined,
+      numeroSEI: input.numeroSEI.trim(),
+      seiUrl: input.seiUrl.trim(),
       dataLaudo: input.dataLaudo,
       origemLaudoUnidadeId: input.origemLaudoUnidadeId,
-      tipoSolicitacao: input.tipoSolicitacao,
     });
     const realId = await persistInsert('solicitacoes', novaSolicitacaoPayload);
     const id = realId ?? uid('s');
@@ -467,11 +483,11 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       id,
       numero: proximoNumero,
       status: 'em_dados_basicos',
-      tipoSolicitacao: input.tipoSolicitacao ?? 'normal',
+      tipoSolicitacao: 'normal',
       dataCriacao: nowIso(),
       dataLaudo: input.dataLaudo,
-      numeroSEI: input.numeroSEI?.trim() || undefined,
-      seiUrl: input.seiUrl?.trim() || undefined,
+      numeroSEI: input.numeroSEI.trim(),
+      seiUrl: input.seiUrl.trim(),
       paciente,
       acompanhantes,
       anexos: input.anexos.map((a) => ({ id: uid('an'), ...a })),
@@ -1088,14 +1104,14 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
   const encerrar = useCallback<FluxoV2ContextValue['encerrar']>((id, e) => {
     mutate(id, (s) => {
       s.encerramento = e;
-      s.status = 'encerrada';
+      s.status = 'em_encerramento';
       return s;
     });
     void currentUserId().then((userId) => {
       void persistInsert('encerramentos', buildEncerramento(id, e, userId));
     });
     persistUpdate('solicitacoes', id, {
-      setor_atual: 'encerrada',
+      setor_atual: 'encerramento',
       status: 'CONCLUIDO',
       data_encerramento: e.data,
       motivo_encerramento: e.motivo,
@@ -1114,7 +1130,9 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       const statusByDestino: Record<typeof setor, SolicitacaoMock['status']> = {
         dados_basicos: 'em_dados_basicos',
         regulacao: 'em_regulacao',
-        financeiro: 'em_financeiro',
+        passagens: 'em_passagens',
+        ajuda_custo: 'em_ajuda_custo',
+        acompanhamento: 'em_acompanhamento',
       };
       mutate(id, (s) => {
         s.status = statusByDestino[setor];
@@ -1161,53 +1179,31 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
   }, [mutate]);
 
   /**
-   * T2.AB — Tramitação genérica entre setores. Substitui `encaminharParaFinanceiro`
+   * T2.AB — Tramitação genérica entre setores (PBI 13237 — 5 setores ativos:
+   * Dados Básicos → Regulação → Passagens → Ajuda de Custo → Acompanhamento,
+   * com devolução ao setor anterior). Substitui `encaminharParaFinanceiro`
    * e `devolverParaRegulacao`. Atualiza o status para `em_${destino}`, registra
-   * a `ultimaTramitacao` com tipo derivado de `destino` + `tipo`, e — quando é
-   * uma devolução para Regulação ou Dados Básicos — adiciona um item em
+   * a `ultimaTramitacao` e — quando é uma devolução — adiciona um item em
    * `devolucoes[]` para alimentar o banner âmbar nas abas.
    *
-   * Quando a Regulação reencaminha pro Financeiro (envio_financeiro), marca
-   * a última devolução como resolvida — fechando o ciclo.
+   * Quando o setor de origem reencaminha pra frente, marca a última
+   * devolução pendente como resolvida — fechando o ciclo.
    */
   const enviarParaSetor = useCallback<FluxoV2ContextValue['enviarParaSetor']>(
     (id, destino, observacao, tipo = 'enviar') => {
-      // Captura tipo antes do mutate — usado pra escolher entry status do financeiro
-      // (ajuda_custo entra direto em EM_PAGAMENTO, não AGUARDANDO_EMISSAO).
-      const tipoSol = getById(id)?.tipoSolicitacao;
       mutate(id, (s) => {
         const obs = observacao?.trim() || undefined;
-        // Autor mockado por contexto — Regulação devolve, Financeiro devolve, etc.
-        const isFinDevolvendo = tipo === 'devolver' && destino === 'regulacao';
-        const isFinDevolvendoDB = tipo === 'devolver' && destino === 'dados_basicos';
-        const autor = isFinDevolvendo
-          ? 'João Pereira'
-          : isFinDevolvendoDB
-            ? 'Ana Carolina Mendes'
-            : destino === 'regulacao'
-              ? 'Maria Silva'
-              : destino === 'financeiro'
-                ? 'Ana Carolina Mendes'
-                : 'João Pereira';
-        const perfilAutor = isFinDevolvendo
-          ? 'Financeiro'
-          : isFinDevolvendoDB
-            ? 'Regulação'
-            : destino === 'regulacao'
-              ? 'Coordenação Estadual'
-              : destino === 'financeiro'
-                ? 'Regulação'
-                : 'Financeiro';
+        const { autor, perfilAutor } = PERSONA_POR_STATUS[s.status];
 
-        // Quando Regulação reencaminha pro Financeiro, fecha a última devolução.
-        if (tipo === 'enviar' && destino === 'financeiro' && s.devolucoes?.length) {
+        // Quando o setor de origem reencaminha pra frente, fecha a última devolução.
+        if (tipo === 'enviar' && s.devolucoes?.length) {
           s.devolucoes = s.devolucoes.map((d, idx, arr) =>
             idx === arr.length - 1 && !d.resolvida ? { ...d, resolvida: true } : d,
           );
         }
 
         // Devoluções: registra item na lista pra alimentar banner amber.
-        if (tipo === 'devolver' && (destino === 'regulacao' || destino === 'dados_basicos')) {
+        if (tipo === 'devolver') {
           const dev: DevolucaoFinanceiroParaRegulacao = {
             id: uid('dev'),
             motivo: obs ?? '(sem motivo informado)',
@@ -1219,17 +1215,8 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
           s.devolucoes = [...(s.devolucoes ?? []), dev];
         }
 
-        const tipoTram: UltimaTramitacao['tipo'] =
-          tipo === 'devolver'
-            ? destino === 'dados_basicos'
-              ? 'devolucao_dados_basicos'
-              : 'devolucao_regulacao'
-            : destino === 'financeiro'
-              ? 'envio_financeiro'
-              : 'envio_regulacao';
-
         s.ultimaTramitacao = {
-          tipo: tipoTram,
+          tipo: tipo === 'devolver' ? 'devolucao' : 'envio',
           destino,
           data: nowIso(),
           autor,
@@ -1237,17 +1224,14 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
           observacao: obs,
         };
 
-        s.status =
-          destino === 'regulacao' ? 'em_regulacao' :
-          destino === 'financeiro' ? 'em_financeiro' :
-          'em_dados_basicos';
+        s.status = STATUS_POR_DESTINO[destino];
 
         return s;
       });
 
       // Persiste a troca de setor no Supabase (best-effort)
       const supabase = createClient();
-      const payload = buildEnvioSetor(destino, tipoSol);
+      const payload = buildEnvioSetor(destino);
       supabase
         .from('solicitacoes')
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1257,11 +1241,11 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
           if (error) console.warn('[FluxoV2] enviarParaSetor persistência falhou:', error.message);
         });
     },
-    [mutate, getById],
+    [mutate],
   );
 
   const encaminharParaFinanceiro = useCallback<FluxoV2ContextValue['encaminharParaFinanceiro']>(
-    (id, observacao) => enviarParaSetor(id, 'financeiro', observacao, 'enviar'),
+    (id, observacao) => enviarParaSetor(id, 'passagens', observacao, 'enviar'),
     [enviarParaSetor],
   );
 

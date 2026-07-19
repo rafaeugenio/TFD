@@ -12,7 +12,7 @@ import NewAjudaCustoDrawer from './drawers/NewAjudaCustoDrawer';
 import NewAdicionalDrawer from './drawers/NewAdicionalDrawer';
 import FechamentoSolicitacaoCard from './FechamentoSolicitacaoCard';
 import DadosBancariosBlock from './DadosBancariosBlock';
-import { isLocked, tooltipLocked } from '../_utils/lock';
+import { tooltipLocked, setorAtual } from '../_utils/lock';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { useToast } from '@/shared/components/toast/Toast';
 import { fmtDataBR } from '@/shared/utils/fmtData';
@@ -61,9 +61,14 @@ export default function FinanceiroTab({ s }: Props) {
   /** Modais de reembolso (passagem + ajuda). */
   const [ajudaReembolso, setAjudaReembolso] = useState<AjudaCustoMock | null>(null);
 
-  const locked = isLocked(s, 'financeiro');
-  const lockedTip = tooltipLocked(s, 'financeiro');
-  const isAjudaCusto = s.tipoSolicitacao === 'ajuda_custo';
+  // PBI 13237 — a aba Financeiro cobre os 3 setores sucessores do antigo
+  // "Financeiro" único (Passagens, Ajuda de Custo, Acompanhamento). É
+  // editável enquanto a solicitação estiver em qualquer um deles.
+  const setorAtualS = setorAtual(s);
+  const emFinanceiro =
+    setorAtualS === 'passagens' || setorAtualS === 'ajuda_custo' || setorAtualS === 'acompanhamento';
+  const locked = !emFinanceiro;
+  const lockedTip = tooltipLocked(s, 'passagens');
 
   function abrirNovaPassagem() { setPassagemEditar(undefined); setPassagemOpen(true); }
   function abrirEditarPassagem(v: ViagemMock) { setPassagemEditar(v); setPassagemOpen(true); }
@@ -147,20 +152,16 @@ export default function FinanceiroTab({ s }: Props) {
           boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
         }}
       >
-        {!isAjudaCusto && (
-          <>
-            <FinStat
-              label="Viagens"
-              value={fmtBRL(totalPassagens + totalAdicionais)}
-              hint={
-                `${s.viagens.length} trecho(s)${
-                  passagensAcomp > 0 ? ` · ${passagensPaciente} pac. · ${passagensAcomp} acomp.` : ''
-                }${s.adicionais.length > 0 ? ` · ${s.adicionais.length} adic.` : ''}`
-              }
-            />
-            <StatDivider />
-          </>
-        )}
+        <FinStat
+          label="Viagens"
+          value={fmtBRL(totalPassagens + totalAdicionais)}
+          hint={
+            `${s.viagens.length} trecho(s)${
+              passagensAcomp > 0 ? ` · ${passagensPaciente} pac. · ${passagensAcomp} acomp.` : ''
+            }${s.adicionais.length > 0 ? ` · ${s.adicionais.length} adic.` : ''}`
+          }
+        />
+        <StatDivider />
         <FinStat
           label="Ajuda de custo"
           value={fmtBRL(totalAjuda)}
@@ -185,7 +186,6 @@ export default function FinanceiroTab({ s }: Props) {
       </div>
 
       {/* Viagens (passagens + adicionais — mesmo setor) */}
-      {!isAjudaCusto && (
       <Section
         icon={Plane}
         title="Viagens"
@@ -335,7 +335,6 @@ export default function FinanceiroTab({ s }: Props) {
           </div>
         )}
       </Section>
-      )}
 
       {/* Ajuda de Custo */}
       <Section
