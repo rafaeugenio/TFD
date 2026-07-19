@@ -16,9 +16,18 @@ interface PacienteRow {
 }
 
 interface SolicitacaoRow {
+  id: string;
   numero_processo: string;
   created_at: string;
   paciente: PacienteRow | null;
+}
+
+interface AjudaCustoRow {
+  id: string;
+  numero_sei: string | null;
+  data_inicio: string;
+  data_fim: string | null;
+  valor_total: number | null;
 }
 
 interface ResponsavelRow {
@@ -32,9 +41,23 @@ interface DespachoRow {
   texto_despacho: string | null;
   observacoes: string | null;
   representantes: RepresentanteDespacho[] | null;
+  ajuda_custo_id: string | null;
   created_at: string;
   solicitacao: SolicitacaoRow | null;
   responsavel: ResponsavelRow | null;
+}
+
+function fmtDataCurta(iso: string | null): string {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+  } catch {
+    return iso;
+  }
+}
+
+function fmtBRL(valor: number): string {
+  return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 function formatarProcessoCurto(numero: string | undefined): string {
@@ -59,9 +82,9 @@ export default async function DespachoFinanceiroPage({ params }: { params: Promi
   const { data, error } = await supabase
     .from('despachos_financeiros')
     .select(
-      `id, numero_sei, texto_despacho, observacoes, representantes, created_at,
+      `id, numero_sei, texto_despacho, observacoes, representantes, ajuda_custo_id, created_at,
        solicitacao:solicitacoes(
-         numero_processo, created_at,
+         id, numero_processo, created_at,
          paciente:pacientes(nome_completo, cpf, municipio, uf)
        ),
        responsavel:usuarios!despachos_financeiros_gerado_por_fkey(nome_completo, perfil)`,
@@ -73,6 +96,21 @@ export default async function DespachoFinanceiroPage({ params }: { params: Promi
 
   const despacho = data as unknown as DespachoRow;
   const s = despacho.solicitacao;
+
+  // PBI 13195 — ajudas de custo da solicitação, para o select obrigatório
+  // no drawer de edição do despacho (referencia uma ajuda específica).
+  const { data: ajudasRows } = s
+    ? await supabase
+        .from('ajudas_custo')
+        .select('id, numero_sei, data_inicio, data_fim, valor_total')
+        .eq('solicitacao_id', s.id)
+    : { data: null };
+  const ajudasCustoOptions = ((ajudasRows as AjudaCustoRow[] | null) ?? []).map((a) => ({
+    id: a.id,
+    numeroSEI: a.numero_sei ?? undefined,
+    periodoLabel: `${fmtDataCurta(a.data_inicio)} → ${fmtDataCurta(a.data_fim)}`,
+    valorLabel: a.valor_total != null ? fmtBRL(a.valor_total) : 'R$ ______',
+  }));
   const paciente = s?.paciente ?? null;
 
   const numeroProcesso = despacho.numero_sei ?? s?.numero_processo ?? '';
@@ -104,7 +142,12 @@ export default async function DespachoFinanceiroPage({ params }: { params: Promi
 
   return (
     <div className="print-root">
-      <DespachoToolbar despachoId={despacho.id} corpoPadrao={corpoPadrao} />
+      <DespachoToolbar
+        despachoId={despacho.id}
+        corpoPadrao={corpoPadrao}
+        ajudasCusto={ajudasCustoOptions}
+        nomePaciente={nomePaciente}
+      />
 
       <div className="print-page sei-page">
         {/* ── Cabeçalho oficial ─────────────────────────── */}

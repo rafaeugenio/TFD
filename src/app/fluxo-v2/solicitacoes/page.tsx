@@ -14,6 +14,8 @@ import PacienteHoverCell from '../_components/PacienteHoverCell';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { derivarEventos, tempoRelativo } from '../_utils/derivarLinhaDoTempo';
 import { isLocked, setorAtual, tooltipLocked } from '../_utils/lock';
+import { casaComFiltroRegiao, REGIAO_FILTRO_VAZIO, type RegiaoFiltroValue } from '../_utils/derivarRegional';
+import RegiaoRegionalMunicipioFilter from '../_components/RegiaoRegionalMunicipioFilter';
 import {
   STATUS_LABEL,
   type SolicitacaoMock,
@@ -49,6 +51,7 @@ export default function SolicitacoesV2ListPage() {
   const router = useRouter();
   const { solicitacoes, encerrar, isLoading } = useFluxoV2State();
   const [statusFilter, setStatusFilter] = useState<StatusGlobalV2 | 'all'>('all');
+  const [regiaoFiltro, setRegiaoFiltro] = useState<RegiaoFiltroValue>(REGIAO_FILTRO_VAZIO);
   const [busca, setBusca] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -78,6 +81,7 @@ export default function SolicitacoesV2ListPage() {
   const filtradas = useMemo(() => {
     return solicitacoes.filter((s) => {
       if (statusFilter !== 'all' && s.status !== statusFilter) return false;
+      if (!casaComFiltroRegiao(s.paciente, regiaoFiltro)) return false;
       if (busca.trim()) {
         const q = busca.toLowerCase();
         if (
@@ -88,13 +92,13 @@ export default function SolicitacoesV2ListPage() {
       }
       return true;
     });
-  }, [solicitacoes, statusFilter, busca]);
+  }, [solicitacoes, statusFilter, regiaoFiltro, busca]);
 
   // Reset paginação quando os filtros mudam — caso contrário o usuário
   // pode acabar olhando uma página vazia.
   useEffect(() => {
     setPage(1);
-  }, [busca, statusFilter, sort]);
+  }, [busca, statusFilter, regiaoFiltro, sort]);
 
   const ordenadas = useMemo(() => {
     if (!sort.field || !sort.dir) return filtradas;
@@ -241,6 +245,11 @@ export default function SolicitacoesV2ListPage() {
             </option>
           ))}
         </select>
+        <RegiaoRegionalMunicipioFilter
+          solicitacoes={solicitacoes}
+          value={regiaoFiltro}
+          onChange={setRegiaoFiltro}
+        />
       </div>
 
       {/* Tabela */}

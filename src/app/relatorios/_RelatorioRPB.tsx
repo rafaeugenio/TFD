@@ -192,14 +192,17 @@ export default function RelatorioRPB() {
           const sigSemPernoite = resolveSigtapAjudaCusto({ beneficiario, comPernoite: false, cnrac: false });
 
           const nome = acomp?.nome ?? (pac?.nome_completo as string) ?? '—';
-          const cpfCns = acomp?.cpf ?? (pac?.cpf as string) ?? (pac?.cns as string) ?? '—';
+          // PBI 13134: se a pessoa tem CPF e Cartão SUS, exibe o Cartão SUS; só cai pro CPF quando não há SUS cadastrado.
+          const documento = acomp
+            ? acomp.cns || acomp.cpf || '—'
+            : ((pac?.cns as string) || (pac?.cpf as string) || '—');
 
           return {
             id: String(r.id),
             origem_id: String(r.id),
             trecho: null,
             dt_atendimento: String(r.data_inicio),
-            cpf_cns: cpfCns,
+            cpf_cns: documento,
             nome,
             beneficiario_tipo: beneficiario,
             sexo: acomp ? acomp.sexo : ((pac?.sexo as string) ?? null),
@@ -293,7 +296,10 @@ export default function RelatorioRPB() {
             : null;
 
           const nome = (acomp?.nome_completo as string) ?? (pac?.nome_completo as string) ?? '—';
-          const cpfCns = (acomp?.cpf as string) ?? (pac?.cpf as string) ?? (pac?.cns as string) ?? '—';
+          // PBI 13134: mesma prioridade Cartão SUS > CPF usada na tabela de Ajuda de Custo.
+          const documento = acomp
+            ? ((acomp.cns as string) || (acomp.cpf as string) || '—')
+            : ((pac?.cns as string) || (pac?.cpf as string) || '—');
           const enderecoFull = [pac?.logradouro, pac?.numero].filter(Boolean).join(', ');
 
           // Acompanhante doador conta como PACIENTE para o SIGTAP/BPA.
@@ -316,7 +322,7 @@ export default function RelatorioRPB() {
             origem_id: String(v.id),
             trecho,
             dt_atendimento: String(v.data_embarque_prevista),
-            cpf_cns: cpfCns,
+            cpf_cns: documento,
             nome,
             beneficiario_tipo: beneficiario,
             sexo: (acomp?.sexo as string) ?? (pac?.sexo as string) ?? null,
@@ -489,7 +495,7 @@ export default function RelatorioRPB() {
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
             <div className="flex items-center gap-1.5" style={{ whiteSpace: 'nowrap' }}>
-              {tipo === 'ajuda_custo' && <TipoBeneficiarioBadge tipo={r.beneficiario_tipo} />}
+              <TipoBeneficiarioBadge tipo={r.beneficiario_tipo} />
               <span style={{ fontWeight: 600, color: '#0F172A' }}>{r.nome}</span>
             </div>
             <span style={{ fontFamily: 'var(--tfd-font-mono)', fontSize: 11, color: '#64748B', whiteSpace: 'nowrap' }}>

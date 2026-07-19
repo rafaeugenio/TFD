@@ -100,18 +100,17 @@ const SECOES: SecaoConfig[] = [
     ],
   },
   {
-    title: 'Transporte',
+    title: 'Passagens',
     icon: Plane,
     categorias: [
       { key: '_companhias', label: 'Companhias de Transporte', icon: Plane, desc: 'Empresas aéreas, rodoviárias e fluviais' },
+      { key: 'tipo_despesa', label: 'Tipos de Despesa', icon: DollarSign, desc: 'Categorias de despesa para adicionais' },
     ],
   },
   {
-    title: 'Financeiro e Permanência',
+    title: 'Ajuda de Custo',
     icon: DollarSign,
     categorias: [
-      { key: 'motivo_encerramento', label: 'Motivos de Encerramento', icon: XCircle, desc: 'Tipos de encerramento do processo' },
-      { key: 'tipo_despesa', label: 'Tipos de Despesa', icon: DollarSign, desc: 'Categorias de despesa para adicionais' },
       { key: 'banco', label: 'Bancos', icon: Landmark, desc: 'Instituições financeiras aceitas no cadastro do paciente' },
     ],
   },
@@ -120,6 +119,7 @@ const SECOES: SecaoConfig[] = [
     icon: Settings,
     categorias: [
       { key: '_regioes', label: 'Região', icon: MapPin, desc: 'Agrupamentos geográficos das regionais de saúde' },
+      { key: 'motivo_encerramento', label: 'Motivos de Encerramento', icon: XCircle, desc: 'Tipos de encerramento do processo' },
     ],
   },
 ];

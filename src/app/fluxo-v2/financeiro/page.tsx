@@ -17,6 +17,8 @@ import { tempoNoSetor } from '../_utils/tempoSetor';
 import { isTramitacaoRecente } from '../_utils/tramitacao';
 import { TramitacaoInfoPopover } from '../_components/TramitacaoBadge';
 import { isLocked, setorAtual, tooltipLocked } from '../_utils/lock';
+import { casaComFiltroRegiao, REGIAO_FILTRO_VAZIO, type RegiaoFiltroValue } from '../_utils/derivarRegional';
+import RegiaoRegionalMunicipioFilter from '../_components/RegiaoRegionalMunicipioFilter';
 import Pagination from '@/shared/components/pagination/Pagination';
 import StatsRow from '@/shared/components/stats-row/StatsRow';
 import {
@@ -96,6 +98,7 @@ export default function FinanceiroListPage() {
   const [enviar, setEnviar] = useState<SolicitacaoMock | null>(null);
   const [busca, setBusca] = useState('');
   const [filtro, setFiltro] = useState<FinanceiroFiltro>('all');
+  const [regiaoFiltro, setRegiaoFiltro] = useState<RegiaoFiltroValue>(REGIAO_FILTRO_VAZIO);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'tempo', dir: 'desc' });
@@ -107,12 +110,15 @@ export default function FinanceiroListPage() {
     totalDiarias: totalDiariasNoMes(solicitacoes),
   }), [solicitacoes]);
 
-  const fila = useMemo(
-    () => solicitacoes.filter((s) => {
-      // Financeiro (PBI 13237) reúne os dois setores sucessores do antigo
-      // "Financeiro" único: Passagens e Ajuda de Custo.
-      if (s.status !== 'em_passagens' && s.status !== 'em_ajuda_custo') return false;
+  // Base da fila do Financeiro, antes dos filtros interativos — usada para
+  // derivar as opções do filtro Região > Regional > Município.
+  const filaBase = useMemo(
+    () => solicitacoes.filter((s) => s.status === 'em_passagens' || s.status === 'em_ajuda_custo'),
+    [solicitacoes],
+  );
 
+  const fila = useMemo(
+    () => filaBase.filter((s) => {
       const semViagem = s.viagens.filter(
         (v) => !['cancelada', 'reembolso'].includes(v.status),
       ).length === 0;
@@ -126,6 +132,8 @@ export default function FinanceiroListPage() {
         if (!adicionalPendente) return false;
       }
 
+      if (!casaComFiltroRegiao(s.paciente, regiaoFiltro)) return false;
+
       if (busca.trim()) {
         const q = busca.toLowerCase();
         if (
@@ -136,12 +144,12 @@ export default function FinanceiroListPage() {
       }
       return true;
     }),
-    [solicitacoes, busca, filtro],
+    [filaBase, busca, filtro, regiaoFiltro],
   );
 
   useEffect(() => {
     setPage(1);
-  }, [busca, filtro, sort]);
+  }, [busca, filtro, regiaoFiltro, sort]);
 
   const filaOrdenada = useMemo(() => {
     if (!sort.field || !sort.dir) return fila;
@@ -254,6 +262,11 @@ export default function FinanceiroListPage() {
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
+        <RegiaoRegionalMunicipioFilter
+          solicitacoes={filaBase}
+          value={regiaoFiltro}
+          onChange={setRegiaoFiltro}
+        />
       </div>
 
       <div style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 'var(--tfd-radius-lg)', overflow: 'hidden' }}>

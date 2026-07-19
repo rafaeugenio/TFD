@@ -239,7 +239,19 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
   );
   const validacaoMenor = isMenor && acompanhantesAdultos.length === 0;
 
-  const unidadeSelecionada = unidades.find((u) => u.id === unidadeId);
+  // PBI 13124 — a unidade de origem do laudo é sempre uma unidade de saúde do
+  // Maranhão (onde o paciente foi atendido/diagnosticado); a unidade de
+  // agendamento do TFD é sempre fora do Maranhão (destino do tratamento).
+  const unidadesOrigemLaudo = useMemo(
+    () => unidades.filter((u) => u.uf === 'MA'),
+    [unidades],
+  );
+  const unidadesAgendamento = useMemo(
+    () => unidades.filter((u) => u.uf !== 'MA'),
+    [unidades],
+  );
+
+  const unidadeSelecionada = unidadesAgendamento.find((u) => u.id === unidadeId);
   const agendamentosValidos = agendamentos.filter((a) => a.tipoProcedimento && a.data);
   // PBI 13218 — Número do processo SEI e link passam a ser obrigatórios na
   // criação da solicitação.
@@ -714,11 +726,11 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
                   <option value="">
                     {loadingUnidades
                       ? 'Carregando unidades...'
-                      : unidades.length === 0
-                        ? 'Nenhuma unidade cadastrada — clique em "Cadastrar nova unidade"'
-                        : 'Selecione a unidade de saúde...'}
+                      : unidadesAgendamento.length === 0
+                        ? 'Nenhuma unidade fora do Maranhão cadastrada — clique em "Cadastrar nova unidade"'
+                        : 'Selecione a unidade de saúde (fora do Maranhão)...'}
                   </option>
-                  {unidades.map((u) => (
+                  {unidadesAgendamento.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.nome}
                       {u.cnes ? ` — CNES ${u.cnes}` : ''}
@@ -726,6 +738,9 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
                     </option>
                   ))}
                 </select>
+                <p className="text-[10.5px]" style={{ color: '#94A3B8' }}>
+                  O agendamento do TFD é sempre em unidade fora do Maranhão — o destino do tratamento.
+                </p>
               </div>
 
               {/* Lista repetível de Procedimento + Data — múltiplos
@@ -840,13 +855,16 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
                 className="w-full px-3 py-2 text-[13px] mt-1"
                 style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
               >
-                <option value="">— Selecione a unidade de saúde —</option>
-                {unidades.map((u) => (
+                <option value="">— Selecione a unidade de saúde do Maranhão —</option>
+                {unidadesOrigemLaudo.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.nome}{u.cidade ? ` — ${u.cidade}${u.uf ? `/${u.uf}` : ''}` : ''}
                   </option>
                 ))}
               </select>
+              <p className="text-[10.5px] mt-1" style={{ color: '#94A3B8' }}>
+                Origem do laudo é sempre uma unidade de saúde do Maranhão.
+              </p>
             </div>
             <div>
               <label className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8', letterSpacing: '0.04em' }}>

@@ -8,6 +8,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   FileText,
+  LayoutDashboard,
   Plane,
   Stethoscope,
   Wallet,
@@ -41,7 +42,6 @@ import {
   contarPorCarimbo,
   contarPareceres,
   contarViagensAguardandoEmissao,
-  contarViagensProximas7Dias,
   contarAdicionaisPendentes,
   contarAjudasPendentes,
   totalEmitidoNoMes,
@@ -50,6 +50,59 @@ import {
 } from '@/app/fluxo-v2/_utils/stats';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
+import { usePermissions } from '@/shared/auth/PermissionsProvider';
+import type { PerfilUsuario } from '@/lib/supabase/database.types';
+
+/* ── PBI 13235: visibilidade de gráficos por perfil ──────────────────────
+ * O Dashboard passa a ser visível a todos os perfis; cada gráfico/card é
+ * exibido conforme o papel do usuário logado. Mapa simples papel → widgets
+ * visíveis. Admin master e perfis de gestão ampla (Coordenação Estadual,
+ * Controle Interno) veem tudo; perfis operacionais veem só o que cabe à
+ * sua frente de trabalho.
+ */
+type WidgetKey =
+  | 'distribuicao'
+  | 'kpis'
+  | 'atividades'
+  | 'solicitacao'
+  | 'regulacao'
+  | 'financeiro'
+  | 'tendencia'
+  | 'topRegioes'
+  | 'topRegionais'
+  | 'topMunicipios';
+
+const TODOS_WIDGETS: WidgetKey[] = [
+  'distribuicao', 'kpis', 'atividades', 'solicitacao', 'regulacao',
+  'financeiro', 'tendencia', 'topRegioes', 'topRegionais', 'topMunicipios',
+];
+
+const WIDGETS_POR_PERFIL: Record<PerfilUsuario, WidgetKey[]> = {
+  ADMINISTRADOR: TODOS_WIDGETS,
+  COORDENACAO_ESTADUAL: TODOS_WIDGETS,
+  CONTROLE_INTERNO: TODOS_WIDGETS,
+  SETOR_REGULACAO: ['distribuicao', 'regulacao', 'tendencia'],
+  MEDICO_AUDITOR: ['distribuicao', 'regulacao', 'tendencia'],
+  SETOR_PASSAGENS: ['distribuicao', 'financeiro', 'kpis', 'tendencia'],
+  FINANCEIRO: ['distribuicao', 'financeiro', 'kpis', 'tendencia'],
+  ATENDENTE_MUNICIPAL: ['distribuicao', 'solicitacao', 'kpis', 'atividades'],
+  ATENDENTE_REGIONAL: ['distribuicao', 'solicitacao', 'kpis', 'atividades', 'topRegioes', 'topRegionais', 'topMunicipios'],
+  ASSISTENTE_SOCIAL: ['distribuicao', 'solicitacao', 'kpis', 'atividades'],
+};
+
+/** Perfil desconhecido ou usuário ainda carregando: mostra tudo (fail-open, protótipo). */
+function widgetsDoPerfil(perfil: string | undefined, isAdmin: boolean): Set<WidgetKey> {
+  if (isAdmin) return new Set(TODOS_WIDGETS);
+  const lista = WIDGETS_POR_PERFIL[perfil as PerfilUsuario];
+  return new Set(lista ?? TODOS_WIDGETS);
+}
+
+/** Classes Tailwind literais (o JIT não interpreta strings interpoladas). */
+function gridColsClass(n: number): string {
+  if (n <= 1) return 'grid-cols-1';
+  if (n === 2) return 'grid-cols-1 lg:grid-cols-2';
+  return 'grid-cols-1 lg:grid-cols-3';
+}
 
 /* ── Paleta dos charts ───────────────────────────────── */
 
@@ -132,6 +185,11 @@ function setorLabel(status: SolicitacaoMock['status']): string {
 
 function PainelContent() {
   const { solicitacoes, isLoading } = useFluxoV2State();
+  const { user, isLoading: isLoadingPerfil } = usePermissions();
+  const visible = useMemo(
+    () => widgetsDoPerfil(user?.perfil, user?.is_admin === true),
+    [user?.perfil, user?.is_admin],
+  );
 
   /* ── Distribuição por setor (donut) ── */
   const distribuicao = useMemo(() => {
@@ -221,7 +279,6 @@ function PainelContent() {
       passagens,
       adicionais,
       ajudas,
-      viagens7d: contarViagensProximas7Dias(solicitacoes),
       emitidoMes: totalEmitidoNoMes(solicitacoes),
       diariasMes: totalDiariasNoMes(solicitacoes),
       pendenciasData: [
@@ -299,7 +356,7 @@ function PainelContent() {
       .slice(0, 6);
   }, [solicitacoes]);
 
-  if (isLoading) {
+  if (isLoading || isLoadingPerfil) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-72 w-full" />
@@ -312,11 +369,38 @@ function PainelContent() {
     );
   }
 
+  if (visible.size === 0) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center gap-2 py-20 text-center"
+        style={{
+          background: 'white',
+          border: `1px solid ${COLORS.border}`,
+          borderRadius: 12,
+        }}
+      >
+        <LayoutDashboard size={28} style={{ color: COLORS.muted }} />
+        <p className="text-[13.5px] font-medium" style={{ color: COLORS.text }}>
+          Nenhum indicador disponível para o seu perfil.
+        </p>
+        <p className="text-[12px]" style={{ color: COLORS.muted }}>
+          Fale com o administrador do sistema caso precise de acesso a este painel.
+        </p>
+      </div>
+    );
+  }
+
+  const heroWidgets = (['distribuicao', 'kpis', 'atividades'] as const).filter((w) => visible.has(w));
+  const setorWidgets = (['solicitacao', 'regulacao', 'financeiro'] as const).filter((w) => visible.has(w));
+  const topWidgets = (['topRegioes', 'topRegionais', 'topMunicipios'] as const).filter((w) => visible.has(w));
+
   return (
     <div className="flex flex-col gap-6">
-      {/* ─── Hero: Donut + KPIs + Atividades, 3 colunas alinhadas ─── */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
+      {/* ─── Hero: Donut + KPIs + Atividades, colunas conforme perfil ─── */}
+      {heroWidgets.length > 0 && (
+      <section className={`grid ${gridColsClass(heroWidgets.length)} gap-4 items-stretch`}>
         {/* Coluna 1 — Donut */}
+        {visible.has('distribuicao') && (
         <div
           className="p-5 flex flex-col"
           style={{
@@ -391,8 +475,10 @@ function PainelContent() {
             </ResponsiveContainer>
           </div>
         </div>
+        )}
 
         {/* Coluna 2 — KPIs empilhados (mesma altura do donut) */}
+        {visible.has('kpis') && (
         <div className="flex flex-col gap-4">
           <KpiTile
             label="Encerradas no mês"
@@ -406,14 +492,18 @@ function PainelContent() {
             progress={distribuicao.aprovacao}
           />
         </div>
+        )}
 
         {/* Coluna 3 — Atividades recentes (limitada à altura da linha) */}
-        <AtividadesRecentes />
+        {visible.has('atividades') && <AtividadesRecentes />}
       </section>
+      )}
 
-      {/* ─── 3 setores ─── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* ─── Setores (Solicitação/Regulação/Financeiro) conforme perfil ─── */}
+      {setorWidgets.length > 0 && (
+      <div className={`grid ${gridColsClass(setorWidgets.length)} gap-4`}>
         {/* Solicitação — Tendência */}
+        {visible.has('solicitacao') && (
         <SetorCard
           titulo="Solicitação"
           icone={<ClipboardList size={16} />}
@@ -467,8 +557,10 @@ function PainelContent() {
             ]}
           />
         </SetorCard>
+        )}
 
         {/* Regulação — Donut Carimbo */}
+        {visible.has('regulacao') && (
         <SetorCard
           titulo="Regulação"
           icone={<Stethoscope size={16} />}
@@ -548,8 +640,10 @@ function PainelContent() {
             ]}
           />
         </SetorCard>
+        )}
 
         {/* Financeiro — Barras pendências */}
+        {visible.has('financeiro') && (
         <SetorCard
           titulo="Financeiro"
           icone={<Wallet size={16} />}
@@ -618,27 +712,13 @@ function PainelContent() {
               <div>Diárias: {formatBRL(financeiro.diariasMes)}</div>
             </div>
           </div>
-          {financeiro.viagens7d > 0 && (
-            <div
-              className="px-3 py-2 text-[11.5px] flex items-center gap-2"
-              style={{
-                background: '#FFFBEB',
-                border: '1px solid #FCD34D',
-                borderRadius: 8,
-                color: '#92400E',
-              }}
-            >
-              <CalendarClock size={13} />
-              <span>
-                <strong>{financeiro.viagens7d}</strong>{' '}
-                {financeiro.viagens7d === 1 ? 'viagem nos próximos 7 dias' : 'viagens nos próximos 7 dias'}
-              </span>
-            </div>
-          )}
         </SetorCard>
+        )}
       </div>
+      )}
 
       {/* ─── Histórico mensal (6 meses) — full width ─── */}
+      {visible.has('tendencia') && (
       <section
         className="p-5"
         style={{
@@ -693,21 +773,30 @@ function PainelContent() {
           </ResponsiveContainer>
         </div>
       </section>
+      )}
 
-      {/* ─── 3 colunas: Top Regiões + Top Regionais + Top Municípios ─── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* ─── Top Regiões / Top Regionais / Top Municípios — conforme perfil ─── */}
+      {topWidgets.length > 0 && (
+      <div className={`grid ${gridColsClass(topWidgets.length)} gap-4`}>
+        {visible.has('topRegioes') && (
         <ChartCard titulo="Top regiões" subtitulo="Zona regional do paciente">
           <TopBarChart data={topRegioes} color={COLORS.indigo} width={90} />
         </ChartCard>
+        )}
 
+        {visible.has('topRegionais') && (
         <ChartCard titulo="Top regionais" subtitulo="Regional de saúde">
           <TopBarChart data={topRegionais} color={COLORS.amber} width={150} />
         </ChartCard>
+        )}
 
+        {visible.has('topMunicipios') && (
         <ChartCard titulo="Top municípios" subtitulo="Origem dos pacientes">
           <TopBarChart data={topMunicipios} color={COLORS.blue} width={110} />
         </ChartCard>
+        )}
       </div>
+      )}
     </div>
   );
 }

@@ -7,7 +7,10 @@ import { buscarPorSolicitacao as buscarDespacho } from '@/services/despachos-fin
 import DespachoFinanceiroDrawer from '@/shared/components/despacho/DespachoFinanceiroDrawer';
 import { REPRESENTANTES_PADRAO } from '@/core/despacho/representantes';
 import { montarCorpoDespacho } from '../_utils/corpoDespacho';
-import type { SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
+import { calcularValorAjuda, type SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
+import { fmtDataBR } from '@/shared/utils/fmtData';
+
+const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 interface Props {
   s: SolicitacaoMock;
@@ -32,6 +35,14 @@ export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Prop
 
   const viagensAtivas = s.viagens.filter((v) => v.ativa !== false);
   const ajudasAtivas = s.ajudasCusto.filter((a) => a.ativa !== false);
+
+  // PBI 13195 — opções do select de ajuda de custo referenciada pelo despacho.
+  const ajudasCustoOptions = ajudasAtivas.map((a) => ({
+    id: a.id,
+    numeroSEI: a.numeroSEI,
+    periodoLabel: `${fmtDataBR(a.dataInicio)} → ${fmtDataBR(a.dataFim)}`,
+    valorLabel: fmtBRL(calcularValorAjuda(a.dataInicio, a.dataFim, a.pernoiteRetorno).valor),
+  }));
 
   useEffect(() => {
     let cancel = false;
@@ -152,6 +163,8 @@ export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Prop
           representantes: REPRESENTANTES_PADRAO,
         }}
         corpoPadrao={drawerAberto ? montarCorpoDespacho(s) : undefined}
+        ajudasCusto={ajudasCustoOptions}
+        nomePaciente={(s.paciente?.nome ?? '').toUpperCase()}
         onClose={() => setDrawerAberto(false)}
         aposSalvar={(id) => {
           const eraCriacao = !despachoId;

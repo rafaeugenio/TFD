@@ -346,6 +346,11 @@ export interface AjudaCustoMock {
   ativa?: boolean;
   dataCancelamento?: string;
   motivoCancelamentoTexto?: string;
+  /** PBI 13218 — no SEI, cada ajuda de custo abre um processo próprio
+   *  (distinto do processo da solicitação). Obrigatório no cadastro. */
+  numeroSEI?: string;
+  /** PBI 13218 — URL completa para o processo próprio da ajuda no SEI. */
+  linkProcesso?: string;
 }
 
 export type CategoriaAdicional =
@@ -502,6 +507,10 @@ export interface SolicitacaoMock {
   numeroSEI?: string;
   /** T2.AG — URL completa para o processo no SEI. */
   seiUrl?: string;
+  /** PBI 13131 — marcada pelo time de Passagens ao terminar de lançar todas
+   *  as passagens da solicitação. Sinaliza para o time de Ajuda de Custo que
+   *  o fluxo pode seguir. */
+  passagensConcluidas?: boolean;
 }
 
 /* ── Helpers ───────────────────────────────────────────────────────────── */

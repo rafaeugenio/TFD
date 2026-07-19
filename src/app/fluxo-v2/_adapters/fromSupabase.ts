@@ -52,6 +52,7 @@ const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 const opt = (v: unknown): string | undefined =>
   typeof v === 'string' && v.length > 0 ? v : undefined;
 const num = (v: unknown): number => (typeof v === 'number' ? v : 0);
+const bool = (v: unknown): boolean => v === true;
 const arr = (v: unknown): Row[] => (Array.isArray(v) ? (v as Row[]) : []);
 const obj = (v: unknown): Row | null =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Row) : null;
@@ -322,6 +323,9 @@ function ajudasFromRows(rows: Row[]): AjudaCustoMock[] {
     status: STATUS_AJUDA_FROM_DB[str(r.status)] ?? 'emitido',
     dataConclusao: opt(r.concluido_em),
     observacao: opt(r.observacoes),
+    // PBI 13218 — processo próprio da ajuda no SEI.
+    numeroSEI: opt(r.numero_sei),
+    linkProcesso: opt(r.link_processo),
   }));
 }
 
@@ -479,6 +483,8 @@ export function solicitacaoFromSupabase(row: Row): SolicitacaoMock {
     devolucoes,
     numeroSEI: opt(row.numero_protocolo),
     seiUrl: opt(row.url_sei),
+    // PBI 13131 — marcação de "Passagens concluídas".
+    passagensConcluidas: bool(row.passagens_concluidas),
   };
 }
 

@@ -29,6 +29,8 @@ export async function criarDespacho(data: {
   texto_despacho?: string | null;
   observacoes?: string | null;
   representantes?: RepresentanteDespacho[] | null;
+  /** PBI 13195 — ajuda de custo referenciada pelo despacho. */
+  ajuda_custo_id?: string | null;
 }) {
   return getSupabase()
     .from('despachos_financeiros')
@@ -42,6 +44,8 @@ export async function atualizarDespacho(id: string, patch: {
   texto_despacho?: string | null;
   observacoes?: string | null;
   representantes?: RepresentanteDespacho[] | null;
+  /** PBI 13195 — ajuda de custo referenciada pelo despacho. */
+  ajuda_custo_id?: string | null;
 }) {
   return getSupabase()
     .from('despachos_financeiros')

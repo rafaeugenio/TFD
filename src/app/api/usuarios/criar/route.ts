@@ -51,11 +51,8 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: 'CPF inválido' }, { status: 400 });
     }
 
-    // Matrícula: obrigatória, somente números. Cargo: obrigatório, texto livre.
+    // Matrícula: opcional, somente números (médicos PJ e funcionários PJ podem não ter). Cargo: obrigatório, texto livre.
     const matriculaLimpa = String(matricula ?? '').replace(/\D/g, '');
-    if (!matriculaLimpa) {
-      return Response.json({ error: 'Matrícula é obrigatória (somente números)' }, { status: 400 });
-    }
     if (!cargo?.trim()) {
       return Response.json({ error: 'Cargo é obrigatório' }, { status: 400 });
     }
@@ -133,7 +130,7 @@ export async function POST(req: NextRequest) {
         ativo: true,
         primeiro_acesso: true,
         papel_id: papelId || null,
-        matricula: matriculaLimpa,
+        matricula: matriculaLimpa || null,
         cargo: cargo.trim(),
         is_medico: ehMedico,
         crm: ehMedico ? crmLimpo : null,

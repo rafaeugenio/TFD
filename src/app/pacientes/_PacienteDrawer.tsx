@@ -568,8 +568,6 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
       telefone: cleanAcompPhone,
       sexo: acompSexo,
       email: acompEmail.trim() || null,
-      necessidade_especial: false,
-      descricao_necessidade: null,
     };
 
     if (editandoId) {

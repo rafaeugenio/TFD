@@ -18,6 +18,8 @@ import { isTramitacaoRecente } from '../_utils/tramitacao';
 import { TramitacaoInfoPopover } from '../_components/TramitacaoBadge';
 import { isLocked, setorAtual, tooltipLocked } from '../_utils/lock';
 import { temAgendamentoConfirmado, agendamentoConfirmado, dataDoAgendamento } from '../_utils/agendamento';
+import { casaComFiltroRegiao, REGIAO_FILTRO_VAZIO, type RegiaoFiltroValue } from '../_utils/derivarRegional';
+import RegiaoRegionalMunicipioFilter from '../_components/RegiaoRegionalMunicipioFilter';
 import HoverTooltip, { TooltipKV } from '../_components/HoverTooltip';
 import { TIPO_PROCEDIMENTO_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
 import { useCidLookup, getCidDescricao } from '../_utils/useCidLookup';
@@ -67,6 +69,7 @@ export default function RegulacaoListPage() {
   const [enviar, setEnviar] = useState<SolicitacaoMock | null>(null);
   const [busca, setBusca] = useState('');
   const [carimboFiltro, setCarimboFiltro] = useState<CarimboFiltro>('all');
+  const [regiaoFiltro, setRegiaoFiltro] = useState<RegiaoFiltroValue>(REGIAO_FILTRO_VAZIO);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'tempo', dir: 'desc' });
@@ -78,14 +81,22 @@ export default function RegulacaoListPage() {
     indeferidosMes: contarPareceres(solicitacoes, 'indeferido', true),
   }), [solicitacoes]);
 
+  // Base da fila de Regulação, antes dos filtros interativos — usada para
+  // derivar as opções do filtro Região > Regional > Município, que assim não
+  // "somem" quando outro filtro (carimbo/busca/região) já reduziu a lista.
+  const filaBase = useMemo(
+    () => solicitacoes.filter((s) => s.status === 'em_regulacao'),
+    [solicitacoes],
+  );
+
   const fila = useMemo(
-    () => solicitacoes.filter((s) => {
-      if (s.status !== 'em_regulacao') return false;
+    () => filaBase.filter((s) => {
       if (carimboFiltro === 'sem_carimbo') {
         if (s.carimboRegulacao) return false;
       } else if (carimboFiltro !== 'all') {
         if (s.carimboRegulacao !== carimboFiltro) return false;
       }
+      if (!casaComFiltroRegiao(s.paciente, regiaoFiltro)) return false;
       if (busca.trim()) {
         const q = busca.toLowerCase();
         if (
@@ -96,12 +107,12 @@ export default function RegulacaoListPage() {
       }
       return true;
     }),
-    [solicitacoes, busca, carimboFiltro],
+    [filaBase, busca, carimboFiltro, regiaoFiltro],
   );
 
   useEffect(() => {
     setPage(1);
-  }, [busca, carimboFiltro, sort]);
+  }, [busca, carimboFiltro, regiaoFiltro, sort]);
 
   const filaOrdenada = useMemo(() => {
     if (!sort.field || !sort.dir) return fila;
@@ -200,6 +211,11 @@ export default function RegulacaoListPage() {
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
+        <RegiaoRegionalMunicipioFilter
+          solicitacoes={filaBase}
+          value={regiaoFiltro}
+          onChange={setRegiaoFiltro}
+        />
       </div>
 
       <div

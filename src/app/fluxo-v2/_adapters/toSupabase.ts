@@ -320,6 +320,9 @@ export interface AjudaDb {
   ativa?: boolean;
   data_cancelamento?: string | null;
   motivo_cancelamento_texto?: string | null;
+  /** PBI 13218 — processo próprio da ajuda no SEI. */
+  numero_sei?: string | null;
+  link_processo?: string | null;
 }
 
 export function buildAjudaCusto(
@@ -340,6 +343,8 @@ export function buildAjudaCusto(
     ativa: a.ativa ?? true,
     data_cancelamento: a.dataCancelamento ?? null,
     motivo_cancelamento_texto: a.motivoCancelamentoTexto ?? null,
+    numero_sei: a.numeroSEI?.trim() || null,
+    link_processo: a.linkProcesso?.trim() || null,
   };
 }
 

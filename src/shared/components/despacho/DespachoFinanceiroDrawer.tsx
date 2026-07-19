@@ -10,6 +10,7 @@ import {
   UserPlus,
   FileSignature,
   Users,
+  Wallet,
 } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormSection from '@/shared/components/drawer/FormSection';
@@ -25,12 +26,22 @@ import {
   REPRESENTANTES_PADRAO,
   type RepresentanteDespacho,
 } from '@/core/despacho/representantes';
+import { montarCorpoDespachoTemplate } from '@/core/despacho/corpoTemplate';
 
 interface CriarPrefill {
   solicitacaoId: string;
   numeroSEI: string;
   texto: string;
   representantes: RepresentanteDespacho[];
+}
+
+/** PBI 13195 — cada ajuda de custo tem processo próprio no SEI; o despacho
+ *  passa a referenciar uma ajuda específica da solicitação. */
+export interface AjudaCustoOption {
+  id: string;
+  numeroSEI?: string;
+  periodoLabel: string;
+  valorLabel: string;
 }
 
 interface Props {
@@ -48,6 +59,11 @@ interface Props {
   onClose: () => void;
   /** Chamado após salvar com sucesso, recebendo o id do despacho. */
   aposSalvar?: (despachoId: string) => void;
+  /** PBI 13195 — ajudas de custo da solicitação, para o select obrigatório. */
+  ajudasCusto?: AjudaCustoOption[];
+  /** PBI 13195 — nome do paciente (maiúsculas), usado para regerar o corpo
+   *  do despacho ao trocar a ajuda de custo selecionada. */
+  nomePaciente?: string;
 }
 
 interface DespachoData {
@@ -57,6 +73,7 @@ interface DespachoData {
   texto_despacho?: string | null;
   observacoes?: string | null;
   representantes?: RepresentanteDespacho[] | null;
+  ajuda_custo_id?: string | null;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -85,6 +102,8 @@ export default function DespachoFinanceiroDrawer({
   corpoPadrao,
   onClose,
   aposSalvar,
+  ajudasCusto = [],
+  nomePaciente,
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -100,6 +119,8 @@ export default function DespachoFinanceiroDrawer({
   const [texto, setTexto] = useState('');
   const [observacoes, setObservacoes] = useState('');
   const [representantes, setRepresentantes] = useState<RepresentanteDespacho[]>([]);
+  // PBI 13195 — ajuda de custo referenciada pelo despacho (obrigatório).
+  const [ajudaCustoId, setAjudaCustoId] = useState<string | null>(null);
   // Remonta o Autocomplete para limpar o input após cada escolha.
   const [buscaKey, setBuscaKey] = useState(0);
 
@@ -120,6 +141,7 @@ export default function DespachoFinanceiroDrawer({
       const reps = data.representantes ?? [];
       setRepresentantes(reps.length ? reps : REPRESENTANTES_PADRAO);
       if (data.solicitacao_id) setSolicitacaoId(data.solicitacao_id);
+      setAjudaCustoId(data.ajuda_custo_id ?? null);
     }
 
     (async () => {
@@ -151,6 +173,7 @@ export default function DespachoFinanceiroDrawer({
             setRepresentantes(
               criar.representantes.length ? criar.representantes : REPRESENTANTES_PADRAO,
             );
+            setAjudaCustoId(null);
           }
           setLoading(false);
         }
@@ -165,6 +188,25 @@ export default function DespachoFinanceiroDrawer({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, despachoId, criar?.solicitacaoId, corpoPadrao]);
+
+  // PBI 13195 — ao trocar a ajuda de custo selecionada, o processo SEI e o
+  // corpo do despacho passam a referenciar os dados dela (processo próprio +
+  // valor + período), em vez do processo geral da solicitação.
+  function selecionarAjudaCusto(id: string) {
+    setAjudaCustoId(id);
+    const ajuda = ajudasCusto.find((a) => a.id === id);
+    if (!ajuda) return;
+    if (ajuda.numeroSEI) setNumeroSEI(ajuda.numeroSEI);
+    if (nomePaciente) {
+      setTexto(
+        montarCorpoDespachoTemplate({
+          nome: nomePaciente,
+          processo: ajuda.numeroSEI?.trim() || numeroSEI || '____',
+          valor: ajuda.valorLabel,
+        }),
+      );
+    }
+  }
 
   async function buscarUsuarios(query: string) {
     const { data } = await listarUsuarios({ search: query, pageSize: 20 });
@@ -236,6 +278,7 @@ export default function DespachoFinanceiroDrawer({
         cargo: r.cargo.trim(),
         id_funcional: r.id_funcional.trim(),
       })),
+      ajuda_custo_id: ajudaCustoId,
     };
 
     try {
@@ -263,6 +306,10 @@ export default function DespachoFinanceiroDrawer({
 
   const modoEdicao = !!idAtual;
   const totalReps = representantes.length;
+  // PBI 13195 — select de ajuda de custo é sempre obrigatório para gerar
+  // ou editar o despacho.
+  const exigeAjudaCusto = ajudasCusto.length > 0;
+  const podeSalvar = !!ajudaCustoId;
 
   return (
     <Drawer
@@ -285,7 +332,8 @@ export default function DespachoFinanceiroDrawer({
             type="button"
             className="tfd-btn tfd-btn-primary"
             onClick={salvar}
-            disabled={loading || saving}
+            disabled={loading || saving || !podeSalvar}
+            title={!podeSalvar ? 'Selecione a ajuda de custo referenciada pelo despacho' : undefined}
           >
             {saving ? (
               <>
@@ -306,6 +354,47 @@ export default function DespachoFinanceiroDrawer({
         </div>
       ) : (
         <>
+          {/* PBI 13195 — Ajuda de custo referenciada pelo despacho (obrigatório). */}
+          <FormSection
+            title="Ajuda de custo"
+            icon={<Wallet size={12} />}
+            hint="No SEI, cada ajuda de custo abre um processo próprio. Escolha qual período este despacho encaminha."
+          >
+            {exigeAjudaCusto ? (
+              <select
+                value={ajudaCustoId ?? ''}
+                onChange={(e) => selecionarAjudaCusto(e.target.value)}
+                className="w-full px-3 py-2 text-[13px]"
+                style={{
+                  ...inputStyle,
+                  borderColor: !ajudaCustoId ? '#FCA5A5' : (inputStyle.border as string),
+                }}
+              >
+                <option value="" disabled>
+                  Selecione a ajuda de custo…
+                </option>
+                {ajudasCusto.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.numeroSEI ? `SEI ${a.numeroSEI}` : 'Sem processo SEI'} — {a.periodoLabel} — {a.valorLabel}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div
+                className="flex items-center gap-2 px-3 py-2.5 text-[12px]"
+                style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, color: '#B91C1C' }}
+              >
+                <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+                Nenhuma ajuda de custo cadastrada nesta solicitação. Cadastre um período antes de emitir o despacho.
+              </div>
+            )}
+            {exigeAjudaCusto && !ajudaCustoId && (
+              <p className="text-[11px] mt-1" style={{ color: '#B91C1C' }}>
+                Obrigatório — selecione a ajuda de custo referenciada por este despacho.
+              </p>
+            )}
+          </FormSection>
+
           {/* Despacho — SEI + corpo */}
           <FormSection title="Despacho" icon={<FileSignature size={12} />}>
             <label className={labelClass} style={labelStyle}>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Plane, Wallet, Plus, Paperclip, Lock, User } from 'lucide-react';
+import { Plane, Wallet, Plus, Paperclip, Lock, User, ExternalLink, CheckCheck, Hash } from 'lucide-react';
 import StatusDot, { type StatusDotTone } from './StatusDot';
 import OrdinalBadge from './OrdinalBadge';
 import ItemRowActions from './ItemRowActions';
@@ -42,6 +42,7 @@ export default function FinanceiroTab({ s }: Props) {
     cancelarAjudaCusto,
     reembolsarAjudaCusto,
     removerAdicional,
+    editarSolicitacao,
   } = useFluxoV2State();
   const toast = useToast();
 
@@ -215,6 +216,37 @@ export default function FinanceiroTab({ s }: Props) {
           </div>
         }
       >
+        {/* PBI 13131 — o time de Passagens sinaliza aqui que terminou de
+           lançar todas as passagens da solicitação; o time de Ajuda de
+           Custo vê o aviso correspondente no bloco abaixo. */}
+        <label
+          className="flex items-start gap-2 mb-4 cursor-pointer px-3 py-2.5"
+          style={{
+            background: s.passagensConcluidas ? '#F0FDF4' : '#F8FAFC',
+            border: '1px solid ' + (s.passagensConcluidas ? '#BBF7D0' : 'var(--tfd-surface-border)'),
+            borderRadius: 8,
+            opacity: locked ? 0.6 : 1,
+          }}
+          title={locked ? lockedTip : undefined}
+        >
+          <input
+            type="checkbox"
+            checked={!!s.passagensConcluidas}
+            disabled={locked}
+            onChange={(e) => editarSolicitacao(s.id, { passagensConcluidas: e.target.checked })}
+            className="mt-[3px] shrink-0"
+          />
+          <span className="flex-1">
+            <span className="flex items-center gap-1.5 text-[13px] font-medium" style={{ color: '#1A1D2B' }}>
+              <CheckCheck size={13} style={{ color: s.passagensConcluidas ? '#16A34A' : '#94A3B8' }} />
+              Passagens concluídas
+            </span>
+            <span className="block text-[11px] mt-0.5" style={{ color: '#6B7280' }}>
+              Marque quando terminar de lançar todas as passagens desta solicitação — o time de Ajuda de Custo é avisado.
+            </span>
+          </span>
+        </label>
+
         {s.viagens.length > 0 ? (
           <div className="overflow-hidden" style={{ border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}>
             <table className="w-full text-[12px]">
@@ -353,6 +385,18 @@ export default function FinanceiroTab({ s }: Props) {
           </button>
         }
       >
+        {/* PBI 13131 — sinalização vinda do bloco de Viagens. */}
+        {s.passagensConcluidas && (
+          <div
+            className="flex items-center gap-2 mb-3 px-3 py-2"
+            style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8 }}
+          >
+            <CheckCheck size={14} style={{ color: '#16A34A', flexShrink: 0 }} />
+            <span className="text-[12px] font-medium" style={{ color: '#166534' }}>
+              Passagens concluídas — o fluxo pode seguir para a ajuda de custo.
+            </span>
+          </div>
+        )}
         <p className="text-[11px] mb-3" style={{ color: '#9CA3AF' }}>
           Memória de cálculo: <code>(dias − 1) × {fmtBRL(VALOR_DIARIA_PERNOITE)} + {fmtBRL(VALOR_DIARIA_RETORNO)}</code>
         </p>
@@ -415,8 +459,30 @@ export default function FinanceiroTab({ s }: Props) {
                       tooltipDisabled={lockedTip}
                     />
                   </div>
-                  <div className="font-mono" style={{ color: '#94A3B8', fontSize: 10.5, paddingLeft: 26 }}>
-                    {memoria}
+                  <div className="flex items-center justify-between flex-wrap gap-2" style={{ paddingLeft: 26 }}>
+                    <div className="font-mono" style={{ color: '#94A3B8', fontSize: 10.5 }}>
+                      {memoria}
+                    </div>
+                    {/* PBI 13218 — processo próprio da ajuda no SEI, hiperlink de acesso rápido. */}
+                    {a.linkProcesso ? (
+                      <a
+                        href={a.linkProcesso}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1 font-mono transition-colors hover:underline"
+                        style={{ color: '#146BFA', fontSize: 10.5, textUnderlineOffset: 2 }}
+                        title="Abrir processo no SEI"
+                      >
+                        <Hash size={10} style={{ opacity: 0.7 }} />
+                        {a.numeroSEI || 'Processo SEI'}
+                        <ExternalLink size={10} style={{ opacity: 0.6 }} />
+                      </a>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 font-mono" style={{ color: '#CBD5E1', fontSize: 10.5 }}>
+                        <Hash size={10} /> Sem processo SEI
+                      </span>
+                    )}
                   </div>
                 </li>
               );

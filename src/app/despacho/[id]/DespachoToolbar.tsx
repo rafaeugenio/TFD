@@ -2,14 +2,21 @@
 
 import { useState } from 'react';
 import { Printer, Link2, Check, ArrowLeft, Pencil } from 'lucide-react';
-import DespachoFinanceiroDrawer from '@/shared/components/despacho/DespachoFinanceiroDrawer';
+import DespachoFinanceiroDrawer, {
+  type AjudaCustoOption,
+} from '@/shared/components/despacho/DespachoFinanceiroDrawer';
 
 export default function DespachoToolbar({
   despachoId,
   corpoPadrao,
+  ajudasCusto,
+  nomePaciente,
 }: {
   despachoId: string;
   corpoPadrao?: string;
+  /** PBI 13195 — ajudas de custo da solicitação, para o select obrigatório. */
+  ajudasCusto?: AjudaCustoOption[];
+  nomePaciente?: string;
 }) {
   const [copiado, setCopiado] = useState(false);
   const [editar, setEditar] = useState(false);
@@ -59,6 +66,8 @@ export default function DespachoToolbar({
           open={editar}
           despachoId={despachoId}
           corpoPadrao={corpoPadrao}
+          ajudasCusto={ajudasCusto}
+          nomePaciente={nomePaciente}
           onClose={() => setEditar(false)}
           aposSalvar={() => window.location.reload()}
         />

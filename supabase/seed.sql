@@ -153,8 +153,8 @@ ON CONFLICT (cpf) DO NOTHING;
 -- ============================================================================
 
 INSERT INTO acompanhantes (id, paciente_id, nome_completo, cpf, cns, vinculo, telefone) VALUES
-  -- Paciente 01: cônjuge
-  ('dddddddd-0001-0001-0001-000000000001', 'cccccccc-0001-0001-0001-000000000001', 'Rosa Maria Lima Sousa',           '80100100101', '800000000000001', 'CONJUGE',           '(98) 99801-0001'),
+  -- Paciente 01: cônjuge — sem Cartão SUS cadastrado (apenas CPF); cobre o fallback do relatório BPA (PBI 13134).
+  ('dddddddd-0001-0001-0001-000000000001', 'cccccccc-0001-0001-0001-000000000001', 'Rosa Maria Lima Sousa',           '80100100101', NULL, 'CONJUGE',           '(98) 99801-0001'),
   -- Paciente 02: filho
   ('dddddddd-0001-0001-0001-000000000002', 'cccccccc-0001-0001-0001-000000000002', 'Lucas José da Conceição',         '80200200202', '800000000000002', 'FILHO',             '(98) 99801-0002'),
   -- Paciente 03: filha + neto (2 acompanhantes)

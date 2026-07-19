@@ -347,10 +347,6 @@ export function UsuariosPanel({ showHeader = true }: { showHeader?: boolean }) {
       toast.warning('Campo obrigatório', 'Informe um e-mail válido.');
       return;
     }
-    if (!createMatricula.trim()) {
-      toast.warning('Campo obrigatório', 'Informe a matrícula (somente números).');
-      return;
-    }
     if (!createCargo.trim()) {
       toast.warning('Campo obrigatório', 'Informe o cargo do usuário.');
       return;
@@ -370,7 +366,7 @@ export function UsuariosPanel({ showHeader = true }: { showHeader?: boolean }) {
       { label: 'Nome', after: createNome.trim() },
       { label: 'CPF', after: createCpf },
       { label: 'E-mail', after: createEmail.trim() },
-      { label: 'Matrícula', after: createMatricula.trim() },
+      { label: 'Matrícula', after: createMatricula.trim() || '(não informada)' },
       { label: 'Cargo', after: createCargo.trim() },
       { label: 'Papel', after: papelNome || '(sem papel)' },
       { label: 'Médico', after: isMedicoCreate ? 'Sim' : 'Não' },
@@ -859,7 +855,7 @@ export function UsuariosPanel({ showHeader = true }: { showHeader?: boolean }) {
           />
         </FormField>
 
-        <FormField label="Matrícula" required>
+        <FormField label="Matrícula" hint="opcional — médicos PJ e funcionários PJ podem não ter">
           <input
             type="text"
             inputMode="numeric"

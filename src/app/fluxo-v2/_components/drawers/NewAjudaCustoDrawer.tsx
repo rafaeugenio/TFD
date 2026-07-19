@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarRange, Calculator } from 'lucide-react';
+import { CalendarRange, Calculator, Hash } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormSection from '@/shared/components/drawer/FormSection';
 import AnexosUploadField, { type AnexoLocal } from '@/shared/components/anexos-upload-field/AnexosUploadField';
@@ -51,6 +51,10 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
   const [beneficiario, setBeneficiario] = useState<string>('p');
   const [pernoiteRetorno, setPernoiteRetorno] = useState(false);
   const [status, setStatus] = useState<StatusAjuda>('emitido');
+  // PBI 13218 — cada ajuda de custo abre processo próprio no SEI, distinto
+  // do processo da solicitação. Ambos os campos são obrigatórios.
+  const [numeroSEI, setNumeroSEI] = useState('');
+  const [linkProcesso, setLinkProcesso] = useState('');
 
   useEffect(() => {
     if (open) {
@@ -64,12 +68,16 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         );
         setPernoiteRetorno(!!editar.pernoiteRetorno);
         setStatus(editar.status);
+        setNumeroSEI(editar.numeroSEI ?? '');
+        setLinkProcesso(editar.linkProcesso ?? '');
       } else {
         setDataInicio('');
         setDataFim('');
         setBeneficiario('p');
         setPernoiteRetorno(false);
         setStatus('emitido');
+        setNumeroSEI('');
+        setLinkProcesso('');
       }
       setTimeout(() => firstInputRef.current?.focus(), 100);
     }
@@ -88,7 +96,16 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
       ? calcularValorAjuda(dataInicio, dataFim, pernoiteRetorno)
       : null;
 
-  const valid = !!dataInicio && !!dataFim && !!beneficiario;
+  const linkProcessoInvalido =
+    linkProcesso.trim().length > 0 && !/^https?:\/\//i.test(linkProcesso.trim());
+
+  const valid =
+    !!dataInicio &&
+    !!dataFim &&
+    !!beneficiario &&
+    !!numeroSEI.trim() &&
+    !!linkProcesso.trim() &&
+    !linkProcessoInvalido;
 
   function handleSalvar() {
     if (!valid) return;
@@ -106,6 +123,8 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         dataConclusao,
         ...beneficiarioPayload,
         pernoiteRetorno: pernoiteRetorno || undefined,
+        numeroSEI: numeroSEI.trim(),
+        linkProcesso: linkProcesso.trim(),
       });
     } else {
       addAjudaCusto(solicitacaoId, {
@@ -115,6 +134,8 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         dataConclusao,
         ...beneficiarioPayload,
         pernoiteRetorno: pernoiteRetorno || undefined,
+        numeroSEI: numeroSEI.trim(),
+        linkProcesso: linkProcesso.trim(),
       });
     }
     toast.success(isEdicao ? 'Ajuda de custo atualizada' : 'Ajuda de custo registrada', `${dataInicio} → ${dataFim}`);
@@ -281,6 +302,40 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
           </option>
         ))}
       </select>
+      </FormSection>
+
+      {/* PBI 13218 — Processo SEI próprio da ajuda de custo (obrigatório). */}
+      <FormSection
+        title="Processo SEI"
+        icon={<Hash size={12} />}
+        tone="default"
+        hint="Obrigatório — cada ajuda de custo abre um processo próprio no SEI."
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <input
+            value={numeroSEI}
+            onChange={(e) => setNumeroSEI(e.target.value)}
+            placeholder="Número SEI (ex.: 00100.000456/2026-12)"
+            className="px-3 py-2 text-[13px] font-mono"
+            style={inputStyle}
+          />
+          <input
+            value={linkProcesso}
+            onChange={(e) => setLinkProcesso(e.target.value)}
+            placeholder="URL do processo (https://...)"
+            className="px-3 py-2 text-[13px]"
+            style={{
+              background: 'white',
+              border: `1px solid ${linkProcessoInvalido ? '#FCA5A5' : 'var(--tfd-surface-border)'}`,
+              borderRadius: 8,
+            }}
+          />
+        </div>
+        {linkProcessoInvalido && (
+          <p className="text-[11px] mt-1" style={{ color: '#B91C1C' }}>
+            URL inválida — comece com http:// ou https://
+          </p>
+        )}
       </FormSection>
 
       <AnexosUploadField value={anexos} onChange={setAnexos} />

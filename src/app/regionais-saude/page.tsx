@@ -6,14 +6,14 @@ import {
   Plus,
   Search,
   Pencil,
-  Trash2,
+  PowerOff,
+  Power,
   XCircle,
 } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import StatsRow from '@/shared/components/stats-row/StatsRow';
 import Pagination from '@/shared/components/pagination/Pagination';
-import ConfirmDialog from '@/shared/components/confirm-dialog/ConfirmDialog';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useSupabaseData } from '@/shared/hooks/useSupabaseData';
 import { maskPhone } from '@/shared/pipes/formatters';
@@ -21,9 +21,10 @@ import SortableHeader from '@/shared/components/table/SortableHeader';
 import { useTableControls } from '@/shared/hooks/useTableControls';
 
 import {
-  listarRegionaisSaude,
+  listarRegionaisSaudeAdmin,
   buscarRegionalSaude,
   desativarRegionalSaude,
+  atualizarRegionalSaude,
 } from '@/services/regionais-saude.service';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Can } from '@/shared/auth/Can';
@@ -50,13 +51,12 @@ function RegionaisSaudePage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingData, setEditingData] = useState<Record<string, unknown> | null>(null);
 
-  /* ---- Deactivate confirmation ---- */
-  const [deactivateConfirmId, setDeactivateConfirmId] = useState<string | null>(null);
-  const [deactivateConfirmName, setDeactivateConfirmName] = useState('');
+  /* ---- Toggling ativo/inativo (sem modal, feedback via toast) ---- */
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   /* ---- Data fetching ---- */
   const { data: regionaisRaw, loading, refresh } = useSupabaseData(
-    () => listarRegionaisSaude({ pageSize: 1000 }),
+    () => listarRegionaisSaudeAdmin({}),
     [],
   );
 
@@ -70,7 +70,10 @@ function RegionaisSaudePage() {
   const items = table.paginated as unknown as Record<string, unknown>[];
 
   /* ---- Summary counters (derived from fetched data) ---- */
-  const counts = { total: regionaisRaw.length, ativas: regionaisRaw.length };
+  const counts = {
+    total: regionaisRaw.length,
+    ativas: regionaisRaw.filter((r) => (r as Record<string, unknown>).ativo !== false).length,
+  };
 
   /* ---- Abrir drawer via query param ?editar=ID ---- */
   const searchParams = useSearchParams();
@@ -112,21 +115,26 @@ function RegionaisSaudePage() {
     setEditingData(null);
   }
 
-  function handleOpenDeactivate(reg: Record<string, unknown>) {
-    setDeactivateConfirmId(reg.id as string);
-    setDeactivateConfirmName((reg.nome as string) ?? 'Regional');
-  }
-
-  async function handleConfirmDeactivate() {
-    if (!deactivateConfirmId) return;
-    const result = await desativarRegionalSaude(deactivateConfirmId);
+  async function handleToggleAtivo(reg: Record<string, unknown>) {
+    const id = reg.id as string;
+    const nome = (reg.nome as string) ?? 'Regional';
+    const estaAtiva = reg.ativo !== false;
+    setTogglingId(id);
+    const result = estaAtiva
+      ? await desativarRegionalSaude(id)
+      : await atualizarRegionalSaude(id, { ativo: true });
+    setTogglingId(null);
     if (result.error) {
-      toast.error('Erro ao excluir', (result.error as { message?: string }).message ?? 'Erro desconhecido');
+      toast.error(
+        estaAtiva ? 'Erro ao desativar' : 'Erro ao reativar',
+        (result.error as { message?: string }).message ?? 'Erro desconhecido',
+      );
       return;
     }
-    toast.success('Regional excluída', 'O registro foi desativado do sistema.');
-    setDeactivateConfirmId(null);
-    setDeactivateConfirmName('');
+    toast.success(
+      estaAtiva ? 'Regional desativada' : 'Regional reativada',
+      estaAtiva ? `${nome} não aparece mais como opção para novas vinculações.` : `${nome} voltou a ficar ativa.`,
+    );
     refresh();
   }
 
@@ -269,7 +277,17 @@ function RegionaisSaudePage() {
                       </span>
                     </td>
                     <td className="font-medium" style={{ color: 'var(--tfd-text-primary)' }}>
-                      {reg.nome as string}
+                      <div className="flex items-center gap-2">
+                        <span>{reg.nome as string}</span>
+                        {reg.ativo === false && (
+                          <span
+                            className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                            style={{ backgroundColor: 'var(--tfd-status-danger-bg, #FEF2F2)', color: 'var(--tfd-status-danger, #DC2626)' }}
+                          >
+                            Inativa
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="hidden md:table-cell" style={{ color: 'var(--tfd-text-secondary)' }}>
                       {(reg.municipio_sede as string) || '\u2014'}
@@ -307,11 +325,12 @@ function RegionaisSaudePage() {
                         <Can action="regionais_saude.excluir">
                           <button
                             className="tfd-btn tfd-btn-ghost tfd-btn--icon-only"
-                            title="Excluir"
-                            style={{ color: '#DC2626' }}
-                            onClick={(e) => { e.stopPropagation(); handleOpenDeactivate(reg as Record<string, unknown>); }}
+                            title={reg.ativo === false ? 'Reativar' : 'Desativar'}
+                            style={{ color: reg.ativo === false ? 'var(--tfd-status-success)' : '#DC2626' }}
+                            disabled={togglingId === (reg.id as string)}
+                            onClick={(e) => { e.stopPropagation(); handleToggleAtivo(reg as Record<string, unknown>); }}
                           >
-                            <Trash2 size={15} />
+                            {reg.ativo === false ? <Power size={15} /> : <PowerOff size={15} />}
                           </button>
                         </Can>
                       </div>
@@ -334,17 +353,6 @@ function RegionaisSaudePage() {
           />
         )}
       </div>
-
-      {/* ========== Delete Confirmation Modal ========== */}
-      <ConfirmDialog
-        open={!!deactivateConfirmId}
-        tone="delete"
-        title="Excluir regional?"
-        subject={deactivateConfirmName}
-        description="Esta ação não pode ser desfeita."
-        onClose={() => { setDeactivateConfirmId(null); setDeactivateConfirmName(''); }}
-        onConfirm={handleConfirmDeactivate}
-      />
 
       {/* ========== Drawer ========== */}
       <RegionalDrawer
