@@ -325,7 +325,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         const supabase = createClient();
-        const [{ data, error }, { data: vinculosRows }] = await Promise.all([
+        const [{ data, error }, { data: vinculosRows }, despesasFunerariasResult] = await Promise.all([
           supabase
             .from('solicitacoes')
             .select(SOLICITACAO_V2_SELECT)
@@ -337,11 +337,35 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
           supabase
             .from('regionais_saude_municipios')
             .select('municipio_nome, regionais_saude:regional_saude_id(nome, codigo, municipio_sede)'),
+          // Best-effort: `despesas_funerarias` (migration 00062) pode ainda não
+          // existir no ambiente. Buscada à parte para não derrubar a query
+          // principal (ver comentário em selectShape.ts).
+          supabase
+            .from('despesas_funerarias')
+            .select('*')
+            .then(
+              (res) => res,
+              (err) => ({ data: null, error: err }),
+            ),
         ]);
         if (cancelled) return;
         if (error || !data) {
           if (error) console.warn('[FluxoV2] erro ao carregar Supabase:', error.message);
           return;
+        }
+        if (despesasFunerariasResult.error) {
+          console.warn(
+            '[FluxoV2] despesas_funerarias indisponível (migration pendente?):',
+            despesasFunerariasResult.error.message,
+          );
+        }
+        const despesasFunerariasPorSolicitacao = new Map<string, Record<string, unknown>[]>();
+        for (const d of (despesasFunerariasResult.data ?? []) as Array<Record<string, unknown>>) {
+          const solicitacaoId = String(d.solicitacao_id ?? '');
+          if (!solicitacaoId) continue;
+          const lista = despesasFunerariasPorSolicitacao.get(solicitacaoId) ?? [];
+          lista.push(d);
+          despesasFunerariasPorSolicitacao.set(solicitacaoId, lista);
         }
         // Mapa nome do município (lowercase) → { regional, código, sede }.
         const regionalPorMunicipio = new Map<string, { nome: string; codigo: string; sede: string }>();
@@ -356,7 +380,10 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
           });
         });
 
-        const real = solicitacoesFromSupabase(data as unknown as Record<string, unknown>[]);
+        const real = solicitacoesFromSupabase(
+          data as unknown as Record<string, unknown>[],
+          despesasFunerariasPorSolicitacao,
+        );
         for (const s of real) {
           if (s.paciente.municipio) {
             const [nome] = s.paciente.municipio.split(' - ');

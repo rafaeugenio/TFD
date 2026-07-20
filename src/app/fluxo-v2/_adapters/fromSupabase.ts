@@ -440,7 +440,7 @@ function anexosFromRows(rows: Row[]): AnexoMock[] {
 /*  Solicitação                                                        */
 /* ------------------------------------------------------------------ */
 
-export function solicitacaoFromSupabase(row: Row): SolicitacaoMock {
+export function solicitacaoFromSupabase(row: Row, despesasFunerariasRows: Row[] = []): SolicitacaoMock {
   const paciente = pacienteFromRow(obj(row.pacientes));
   const acompanhantes = acompanhantesFromRows(arr(row.solicitacao_acompanhantes));
   const pareceres = arr(row.pareceres).map(parecerFromRow);
@@ -451,7 +451,9 @@ export function solicitacaoFromSupabase(row: Row): SolicitacaoMock {
   const viagens = viagensFromRows(arr(row.viagens));
   const ajudasCusto = ajudasFromRows(arr(row.ajudas_custo));
   const adicionais = adicionaisFromRows(arr(row.adicionais));
-  const despesasFunerarias = despesasFunerariasFromRows(arr(row.despesas_funerarias));
+  // Buscadas à parte pelo provider (ver comentário em selectShape.ts) —
+  // não vêm embutidas no embed principal.
+  const despesasFunerarias = despesasFunerariasFromRows(despesasFunerariasRows);
   const encerramento = encerramentoFromRows(arr(row.encerramentos));
   const observacoes = observacoesFromRows(arr(row.observacoes_processo));
   const devolucoes = devolucoesFromRows(arr(row.devolucoes));
@@ -488,6 +490,11 @@ export function solicitacaoFromSupabase(row: Row): SolicitacaoMock {
   };
 }
 
-export function solicitacoesFromSupabase(rows: Row[]): SolicitacaoMock[] {
-  return rows.map(solicitacaoFromSupabase);
+export function solicitacoesFromSupabase(
+  rows: Row[],
+  despesasFunerariasPorSolicitacao?: Map<string, Row[]>,
+): SolicitacaoMock[] {
+  return rows.map((row) =>
+    solicitacaoFromSupabase(row, despesasFunerariasPorSolicitacao?.get(str(row.id)) ?? []),
+  );
 }
