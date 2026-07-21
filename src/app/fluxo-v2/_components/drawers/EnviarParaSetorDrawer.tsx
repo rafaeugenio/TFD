@@ -93,12 +93,11 @@ export default function EnviarParaSetorDrawer({
   const [observacao, setObservacao] = useState('');
   const ref = useRef<HTMLTextAreaElement>(null);
 
+  // Tramitação em qualquer direção entre os cinco setores gerais do fluxo
+  // (Dados Básicos, Regulação, Passagens, Ajuda de Custo, Acompanhamento):
+  // todos os outros quatro aparecem como destino, sem restrição de sentido.
   const destinos = useMemo<DestinoEnvio[]>(() => {
-    const idx = ORDEM.indexOf(setorAtual);
-    const adjacentes: DestinoEnvio[] = [];
-    if (idx > 0) adjacentes.push(ORDEM[idx - 1]);
-    if (idx >= 0 && idx < ORDEM.length - 1) adjacentes.push(ORDEM[idx + 1]);
-    return adjacentes;
+    return ORDEM.filter((s) => s !== setorAtual);
   }, [setorAtual]);
 
   useEffect(() => {

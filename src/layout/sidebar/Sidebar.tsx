@@ -8,7 +8,9 @@ import {
   LayoutDashboard,
   FileText,
   MapPin,
+  Plane,
   Wallet,
+  CalendarCheck,
   LogOut,
   BarChart3,
   Settings,
@@ -50,9 +52,11 @@ const navSections: NavSection[] = [
   {
     title: 'FLUXO DO PROCESSO',
     items: [
-      { icon: FileText,     label: 'Solicitações', href: '/fluxo-v2/solicitacoes', tela: 'solicitacoes' },
-      { icon: Stethoscope,  label: 'Regulação',    href: '/fluxo-v2/regulacao',    tela: 'regulacao' },
-      { icon: Wallet,         label: 'Financeiro',     href: '/fluxo-v2/financeiro',     tela: 'financeiro' },
+      { icon: FileText,     label: 'Solicitações',   href: '/fluxo-v2/solicitacoes',   tela: 'solicitacoes' },
+      { icon: Stethoscope,  label: 'Regulação',      href: '/fluxo-v2/regulacao',      tela: 'regulacao' },
+      { icon: Plane,        label: 'Passagens',      href: '/fluxo-v2/passagens',      tela: 'passagens' },
+      { icon: Wallet,       label: 'Ajuda de Custo', href: '/fluxo-v2/ajuda-custo',    tela: 'ajuda_custo' },
+      { icon: CalendarCheck, label: 'Acompanhamento', href: '/fluxo-v2/acompanhamento', tela: 'acompanhamento' },
     ],
   },
   {
