@@ -52,7 +52,6 @@ const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 const opt = (v: unknown): string | undefined =>
   typeof v === 'string' && v.length > 0 ? v : undefined;
 const num = (v: unknown): number => (typeof v === 'number' ? v : 0);
-const bool = (v: unknown): boolean => v === true;
 const arr = (v: unknown): Row[] => (Array.isArray(v) ? (v as Row[]) : []);
 const obj = (v: unknown): Row | null =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Row) : null;
@@ -485,8 +484,6 @@ export function solicitacaoFromSupabase(row: Row, despesasFunerariasRows: Row[] 
     devolucoes,
     numeroSEI: opt(row.numero_protocolo),
     seiUrl: opt(row.url_sei),
-    // PBI 13131 — marcação de "Passagens concluídas".
-    passagensConcluidas: bool(row.passagens_concluidas),
   };
 }
 

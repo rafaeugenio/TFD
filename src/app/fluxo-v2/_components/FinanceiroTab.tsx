@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Plane, Wallet, Plus, Paperclip, Lock, User, ExternalLink, CheckCheck, Hash } from 'lucide-react';
+import { Plane, Wallet, Plus, Paperclip, Lock, User, ExternalLink, Hash } from 'lucide-react';
 import StatusDot, { type StatusDotTone } from './StatusDot';
 import OrdinalBadge from './OrdinalBadge';
 import ItemRowActions from './ItemRowActions';
@@ -42,7 +42,8 @@ export default function FinanceiroTab({ s }: Props) {
     cancelarAjudaCusto,
     reembolsarAjudaCusto,
     removerAdicional,
-    editarSolicitacao,
+    editarViagem,
+    editarAjudaCusto,
   } = useFluxoV2State();
   const toast = useToast();
 
@@ -62,14 +63,27 @@ export default function FinanceiroTab({ s }: Props) {
   /** Modais de reembolso (passagem + ajuda). */
   const [ajudaReembolso, setAjudaReembolso] = useState<AjudaCustoMock | null>(null);
 
-  // PBI 13237 — a aba Financeiro cobre os 3 setores sucessores do antigo
-  // "Financeiro" único (Passagens, Ajuda de Custo, Acompanhamento). É
-  // editável enquanto a solicitação estiver em qualquer um deles.
+  // PBI 13237 (regras da semana) — a aba Financeiro cobre os 3 setores
+  // sucessores do antigo "Financeiro" único (Passagens, Ajuda de Custo,
+  // Acompanhamento), mas cada seção só é editável no setor que a possui:
+  // Passagens edita passagens/adicionais e vê Ajuda de Custo travada;
+  // Ajuda de Custo edita ajuda de custo e vê passagens travadas; em
+  // Acompanhamento tudo é somente leitura, com exceção do status da
+  // passagem e do status da ajuda de custo (o que o setor acompanha).
   const setorAtualS = setorAtual(s);
   const emFinanceiro =
     setorAtualS === 'passagens' || setorAtualS === 'ajuda_custo' || setorAtualS === 'acompanhamento';
   const locked = !emFinanceiro;
+  const lockedPassagens = setorAtualS !== 'passagens';
+  const lockedAjuda = setorAtualS !== 'ajuda_custo';
+  const emAcompanhamento = setorAtualS === 'acompanhamento';
   const lockedTip = tooltipLocked(s, 'passagens');
+  const lockedTipPassagens = emAcompanhamento
+    ? 'Em Acompanhamento, passagens ficam somente leitura — apenas o status pode ser atualizado.'
+    : tooltipLocked(s, 'passagens');
+  const lockedTipAjuda = emAcompanhamento
+    ? 'Em Acompanhamento, ajuda de custo fica somente leitura — apenas o status pode ser atualizado.'
+    : tooltipLocked(s, 'ajuda_custo');
 
   function abrirNovaPassagem() { setPassagemEditar(undefined); setPassagemOpen(true); }
   function abrirEditarPassagem(v: ViagemMock) { setPassagemEditar(v); setPassagemOpen(true); }
@@ -140,8 +154,34 @@ export default function FinanceiroTab({ s }: Props) {
         </div>
       )}
 
-      {/* Card de fechamento — checklist + Relatório TFD + Despacho */}
-      <FechamentoSolicitacaoCard s={s} locked={locked} lockedTip={lockedTip} />
+      {/* Aviso específico do Acompanhamento — tudo somente leitura, exceto o
+          status da passagem e o status da ajuda de custo. */}
+      {emAcompanhamento && (
+        <div
+          className="flex items-start gap-3 mb-4 px-4 py-3"
+          style={{
+            background: '#F8FAFC',
+            border: '1px dashed #CBD5E1',
+            borderRadius: 10,
+            color: '#475569',
+          }}
+        >
+          <Lock size={16} style={{ flexShrink: 0, marginTop: 1, color: '#64748B' }} />
+          <div className="text-[12.5px] leading-relaxed">
+            <strong style={{ color: '#1A1D2B' }}>Somente leitura em Acompanhamento.</strong>{' '}
+            Só o status da passagem e o status da ajuda de custo podem ser atualizados aqui — as demais ações ficam bloqueadas.
+          </div>
+        </div>
+      )}
+
+      {/* Card de fechamento — checklist + Relatório TFD + Despacho.
+          Em Acompanhamento fica travado também: não é uma das duas exceções
+          editáveis (status da passagem e status da ajuda de custo). */}
+      <FechamentoSolicitacaoCard
+        s={s}
+        locked={locked || emAcompanhamento}
+        lockedTip={emAcompanhamento ? 'Somente leitura em Acompanhamento.' : lockedTip}
+      />
 
       {/* Linha tipográfica horizontal — 4 stats neutros com divisor vertical */}
       <div
@@ -199,8 +239,8 @@ export default function FinanceiroTab({ s }: Props) {
               type="button"
               className="tfd-btn tfd-btn-secondary tfd-btn--sm"
               onClick={abrirNovoAdicional}
-              disabled={locked}
-              title={locked ? lockedTip : 'Adicional vinculado à viagem (bagagem extra, oxigênio, assento, etc.)'}
+              disabled={lockedPassagens}
+              title={lockedPassagens ? lockedTipPassagens : 'Adicional vinculado à viagem (bagagem extra, oxigênio, assento, etc.)'}
             >
               <Plus size={14} /> Adicional
             </button>
@@ -208,45 +248,14 @@ export default function FinanceiroTab({ s }: Props) {
               type="button"
               className="tfd-btn tfd-btn-primary tfd-btn--sm"
               onClick={abrirNovaPassagem}
-              disabled={locked}
-              title={locked ? lockedTip : undefined}
+              disabled={lockedPassagens}
+              title={lockedPassagens ? lockedTipPassagens : undefined}
             >
               <Plus size={14} /> Passagem
             </button>
           </div>
         }
       >
-        {/* PBI 13131 — o time de Passagens sinaliza aqui que terminou de
-           lançar todas as passagens da solicitação; o time de Ajuda de
-           Custo vê o aviso correspondente no bloco abaixo. */}
-        <label
-          className="flex items-start gap-2 mb-4 cursor-pointer px-3 py-2.5"
-          style={{
-            background: s.passagensConcluidas ? '#F0FDF4' : '#F8FAFC',
-            border: '1px solid ' + (s.passagensConcluidas ? '#BBF7D0' : 'var(--tfd-surface-border)'),
-            borderRadius: 8,
-            opacity: locked ? 0.6 : 1,
-          }}
-          title={locked ? lockedTip : undefined}
-        >
-          <input
-            type="checkbox"
-            checked={!!s.passagensConcluidas}
-            disabled={locked}
-            onChange={(e) => editarSolicitacao(s.id, { passagensConcluidas: e.target.checked })}
-            className="mt-[3px] shrink-0"
-          />
-          <span className="flex-1">
-            <span className="flex items-center gap-1.5 text-[13px] font-medium" style={{ color: '#1A1D2B' }}>
-              <CheckCheck size={13} style={{ color: s.passagensConcluidas ? '#16A34A' : '#94A3B8' }} />
-              Passagens concluídas
-            </span>
-            <span className="block text-[11px] mt-0.5" style={{ color: '#6B7280' }}>
-              Marque quando terminar de lançar todas as passagens desta solicitação — o time de Ajuda de Custo é avisado.
-            </span>
-          </span>
-        </label>
-
         {s.viagens.length > 0 ? (
           <div className="overflow-hidden" style={{ border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}>
             <table className="w-full text-[12px]">
@@ -286,7 +295,16 @@ export default function FinanceiroTab({ s }: Props) {
                         {v.companhia ?? '—'}
                       </td>
                       <td className="px-3 py-2 capitalize" style={{ color: '#475569' }}>{v.tipo}</td>
-                      <td className="px-3 py-2"><ViagemStatusBadge status={v.status} /></td>
+                      <td className="px-3 py-2">
+                        {emAcompanhamento ? (
+                          <ViagemStatusSelect
+                            status={v.status}
+                            onChange={(novo) => editarViagem(s.id, v.id, { status: novo })}
+                          />
+                        ) : (
+                          <ViagemStatusBadge status={v.status} />
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-right font-mono" style={{ color: v.ativa === false ? '#94A3B8' : '#1A1D2B', textDecoration: v.ativa === false ? 'line-through' : undefined }}>
                         {fmtBRL(v.valor)}
                         {v.valorReembolso != null && v.valorReembolso > 0 && (
@@ -300,8 +318,8 @@ export default function FinanceiroTab({ s }: Props) {
                           onEditar={() => abrirEditarPassagem(v)}
                           onExcluir={() => setPassagemCancelar(v)}
                           labelExcluir={v.ativa === false ? 'Já cancelada' : 'Cancelar passagem'}
-                          disabled={locked}
-                          tooltipDisabled={lockedTip}
+                          disabled={lockedPassagens}
+                          tooltipDisabled={lockedTipPassagens}
                         />
                       </td>
                     </tr>
@@ -356,8 +374,8 @@ export default function FinanceiroTab({ s }: Props) {
                       <ItemRowActions
                         onEditar={() => abrirEditarAdicional(a)}
                         onExcluir={() => setAdicionalExcluir(a)}
-                        disabled={locked}
-                        tooltipDisabled={lockedTip}
+                        disabled={lockedPassagens}
+                        tooltipDisabled={lockedTipPassagens}
                       />
                     </div>
                   </li>
@@ -378,25 +396,13 @@ export default function FinanceiroTab({ s }: Props) {
             type="button"
             className="tfd-btn tfd-btn-primary tfd-btn--sm"
             onClick={abrirNovaAjuda}
-            disabled={locked}
-            title={locked ? lockedTip : undefined}
+            disabled={lockedAjuda}
+            title={lockedAjuda ? lockedTipAjuda : undefined}
           >
             <Plus size={14} /> Adicionar período
           </button>
         }
       >
-        {/* PBI 13131 — sinalização vinda do bloco de Viagens. */}
-        {s.passagensConcluidas && (
-          <div
-            className="flex items-center gap-2 mb-3 px-3 py-2"
-            style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8 }}
-          >
-            <CheckCheck size={14} style={{ color: '#16A34A', flexShrink: 0 }} />
-            <span className="text-[12px] font-medium" style={{ color: '#166534' }}>
-              Passagens concluídas — o fluxo pode seguir para a ajuda de custo.
-            </span>
-          </div>
-        )}
         <p className="text-[11px] mb-3" style={{ color: '#9CA3AF' }}>
           Memória de cálculo: <code>(dias − 1) × {fmtBRL(VALOR_DIARIA_PERNOITE)} + {fmtBRL(VALOR_DIARIA_RETORNO)}</code>
         </p>
@@ -446,7 +452,14 @@ export default function FinanceiroTab({ s }: Props) {
                         </span>
                       )}
                     </span>
-                    <AjudaStatusBadge status={a.status} />
+                    {emAcompanhamento ? (
+                      <AjudaStatusSelect
+                        status={a.status}
+                        onChange={(novo) => editarAjudaCusto(s.id, a.id, { status: novo })}
+                      />
+                    ) : (
+                      <AjudaStatusBadge status={a.status} />
+                    )}
                     <span style={{ color: '#9CA3AF', fontSize: 10 }}>{a.id.slice(-4)}</span>
                     <ItemRowActions
                       onEditar={() => abrirEditarAjuda(a)}
@@ -455,8 +468,8 @@ export default function FinanceiroTab({ s }: Props) {
                       labelExcluir={a.ativa === false ? 'Já cancelada' : 'Cancelar ajuda'}
                       labelReembolso={a.valorReembolso != null ? 'Editar reembolso' : 'Reembolsar'}
                       reembolsado={a.valorReembolso != null && a.valorReembolso > 0}
-                      disabled={locked}
-                      tooltipDisabled={lockedTip}
+                      disabled={lockedAjuda}
+                      tooltipDisabled={lockedTipAjuda}
                     />
                   </div>
                   <div className="flex items-center justify-between flex-wrap gap-2" style={{ paddingLeft: 26 }}>
@@ -498,8 +511,8 @@ export default function FinanceiroTab({ s }: Props) {
           pacienteId={s.paciente.id}
           pacienteCpf={s.paciente.cpf}
           pacienteNome={s.paciente.nome}
-          locked={locked}
-          lockedTip={lockedTip}
+          locked={lockedAjuda}
+          lockedTip={lockedTipAjuda}
         />
       </Section>
 
@@ -634,6 +647,24 @@ function ViagemStatusBadge({ status }: { status: StatusViagem }) {
   return <StatusDot tone={VIAGEM_TONE[status]}>{STATUS_VIAGEM_LABEL[status]}</StatusDot>;
 }
 
+/** Select inline do status da passagem — única edição permitida em
+ *  Acompanhamento (o setor confirma embarque, remarcação, no-show etc.). */
+function ViagemStatusSelect({ status, onChange }: { status: StatusViagem; onChange: (novo: StatusViagem) => void }) {
+  return (
+    <select
+      value={status}
+      onChange={(e) => onChange(e.target.value as StatusViagem)}
+      className="text-[12px]"
+      style={{ border: '1px solid var(--tfd-surface-border)', borderRadius: 6, padding: '2px 6px', color: '#1A1D2B', background: 'white' }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {(Object.keys(STATUS_VIAGEM_LABEL) as StatusViagem[]).map((opt) => (
+        <option key={opt} value={opt}>{STATUS_VIAGEM_LABEL[opt]}</option>
+      ))}
+    </select>
+  );
+}
+
 const AJUDA_TONE: Record<StatusAjuda, StatusDotTone> = {
   emitido:   'info',
   concluido: 'success',
@@ -641,6 +672,24 @@ const AJUDA_TONE: Record<StatusAjuda, StatusDotTone> = {
 };
 function AjudaStatusBadge({ status }: { status: StatusAjuda }) {
   return <StatusDot tone={AJUDA_TONE[status]}>{STATUS_AJUDA_LABEL[status]}</StatusDot>;
+}
+
+/** Select inline do status da ajuda de custo — única edição permitida em
+ *  Acompanhamento (o setor confirma se foi paga, reembolsada, glosada etc.). */
+function AjudaStatusSelect({ status, onChange }: { status: StatusAjuda; onChange: (novo: StatusAjuda) => void }) {
+  return (
+    <select
+      value={status}
+      onChange={(e) => onChange(e.target.value as StatusAjuda)}
+      className="text-[12px]"
+      style={{ border: '1px solid var(--tfd-surface-border)', borderRadius: 6, padding: '2px 6px', color: '#1A1D2B', background: 'white' }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {(Object.keys(STATUS_AJUDA_LABEL) as StatusAjuda[]).map((opt) => (
+        <option key={opt} value={opt}>{STATUS_AJUDA_LABEL[opt]}</option>
+      ))}
+    </select>
+  );
 }
 
 /** Beneficiário — texto cinza neutro com ícone, sem cor. */

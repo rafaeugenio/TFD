@@ -248,8 +248,6 @@ export interface EditarSolicitacaoPatch {
   seiUrl?: string | undefined;
   /** Snapshot dos acompanhantes quando vêm do banco (não estão em acompanhantesPool). */
   acompanhantesSnapshot?: import('@/core/mocks/fluxo-v2-v3-seed').AcompanhanteMock[];
-  /** PBI 13131 — marcação de "Passagens concluídas" pelo time de Passagens. */
-  passagensConcluidas?: boolean;
 }
 
 export interface NewSolicitacaoInput {
@@ -1317,16 +1315,12 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       if (patch.seiUrl !== undefined) {
         s.seiUrl = patch.seiUrl?.trim() || undefined;
       }
-      if (patch.passagensConcluidas !== undefined) {
-        s.passagensConcluidas = patch.passagensConcluidas;
-      }
       return s;
     });
     const dbPatch: Record<string, unknown> = {};
     if (patch.dataLaudo !== undefined) dbPatch.data_laudo = patch.dataLaudo || null;
     if (patch.numeroSEI !== undefined) dbPatch.numero_protocolo = patch.numeroSEI?.trim() || null;
     if (patch.seiUrl !== undefined) dbPatch.url_sei = patch.seiUrl?.trim() || null;
-    if (patch.passagensConcluidas !== undefined) dbPatch.passagens_concluidas = patch.passagensConcluidas;
     if (Object.keys(dbPatch).length) persistUpdate('solicitacoes', id, dbPatch);
   }, [mutate]);
 

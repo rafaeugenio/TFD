@@ -2,11 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Wallet, PlusCircle, Send, Search } from 'lucide-react';
+import { Wallet, Send, Search } from 'lucide-react';
 import RowActions from '../_components/RowActions';
 import BotaoEnvio from '../_components/BotaoEnvio';
 import NewAjudaCustoDrawer from '../_components/drawers/NewAjudaCustoDrawer';
-import NewAdicionalDrawer from '../_components/drawers/NewAdicionalDrawer';
 import SolicitacaoNumeroCell from '../_components/SolicitacaoNumeroCell';
 import PacienteHoverCell from '../_components/PacienteHoverCell';
 import EnviarParaSetorDrawer from '../_components/drawers/EnviarParaSetorDrawer';
@@ -40,7 +39,7 @@ const FILTRO_OPTIONS: { value: AjudaCustoFiltro; label: string }[] = [
 const fmtBRL = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-type DrawerKind = 'ajuda' | 'adicional' | null;
+type DrawerKind = 'ajuda' | null;
 
 /**
  * Fila do setor de Ajuda de Custo (PBI 13237): listagem exclusiva das
@@ -320,13 +319,6 @@ export default function AjudaCustoListPage() {
                             onClick: () => open('ajuda', s),
                             disabled: locked,
                           },
-                          {
-                            key: 'adicional',
-                            icon: PlusCircle,
-                            label: locked ? lockedTip : 'Adicionar adicional',
-                            onClick: () => open('adicional', s),
-                            disabled: locked,
-                          },
                         ]}
                       />
                       <Can action="tramitacao.tramitar">
@@ -363,20 +355,12 @@ export default function AjudaCustoListPage() {
       )}
 
       {ativo && (
-        <>
-          <NewAjudaCustoDrawer
-            open={drawer.kind === 'ajuda'}
-            onClose={close}
-            solicitacaoId={ativo.id}
-            snapshotPaciente={snapshotFromSolicitacao(ativo)}
-          />
-          <NewAdicionalDrawer
-            open={drawer.kind === 'adicional'}
-            onClose={close}
-            solicitacaoId={ativo.id}
-            snapshotPaciente={snapshotFromSolicitacao(ativo)}
-          />
-        </>
+        <NewAjudaCustoDrawer
+          open={drawer.kind === 'ajuda'}
+          onClose={close}
+          solicitacaoId={ativo.id}
+          snapshotPaciente={snapshotFromSolicitacao(ativo)}
+        />
       )}
     </div>
   );

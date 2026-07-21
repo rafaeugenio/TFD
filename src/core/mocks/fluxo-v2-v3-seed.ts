@@ -507,10 +507,6 @@ export interface SolicitacaoMock {
   numeroSEI?: string;
   /** T2.AG — URL completa para o processo no SEI. */
   seiUrl?: string;
-  /** PBI 13131 — marcada pelo time de Passagens ao terminar de lançar todas
-   *  as passagens da solicitação. Sinaliza para o time de Ajuda de Custo que
-   *  o fluxo pode seguir. */
-  passagensConcluidas?: boolean;
 }
 
 /* ── Helpers ───────────────────────────────────────────────────────────── */
