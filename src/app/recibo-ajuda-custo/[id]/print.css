@@ -1,0 +1,202 @@
+@page { size: A4 portrait; margin: 14mm; }
+
+@media print {
+  body { background: white !important; }
+  .no-print, .no-print-aux { display: none !important; }
+  .print-page { box-shadow: none !important; border: none !important; padding: 0 !important; margin: 0 !important; max-width: 100% !important; }
+}
+
+.print-root {
+  background: #F1F5F9;
+  min-height: 100vh;
+  padding: 32px 16px 64px;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: #1A1D2B;
+}
+
+.print-page {
+  background: white;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 48px;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
+}
+
+.print-page + .print-page { margin-top: 24px; }
+
+.print-toolbar {
+  max-width: 900px;
+  margin: 0 auto 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.print-toolbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.print-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #1A1D2B;
+  color: white;
+  border: none;
+  cursor: pointer;
+  transition: transform 100ms ease, box-shadow 100ms ease;
+}
+
+.print-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+}
+
+.print-btn-secondary {
+  background: white;
+  color: #1A1D2B;
+  border: 1px solid #CBD5E1;
+}
+
+.print-btn-secondary:hover {
+  background: #F8FAFC;
+}
+
+.print-back {
+  color: #475569;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+}
+
+.print-back:hover {
+  color: #1A1D2B;
+}
+
+/* ═════════════════════════════════════════════════════════
+   Layout do Recibo de Pagamento a Beneficiário (RPB): espelha o
+   documento hoje emitido pelo sistema legado da SES-MA (PBI 13279).
+   ═════════════════════════════════════════════════════════ */
+.recibo-page {
+  font-family: Arial, Helvetica, sans-serif;
+  color: #000;
+  font-size: 9.5pt;
+  line-height: 1.35;
+}
+
+.recibo-cabecalho {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 2px solid #1A1D2B;
+  padding-bottom: 12px;
+  margin-bottom: 18px;
+}
+
+.recibo-brasao {
+  height: 46px;
+  width: auto;
+}
+
+.recibo-titulo {
+  flex: 1;
+  text-align: center;
+  font-size: 12pt;
+  font-weight: 700;
+}
+
+.recibo-logo-tfd {
+  font-size: 22pt;
+  font-weight: 800;
+  color: #146BFA;
+  letter-spacing: 0.01em;
+}
+
+.recibo-section-title {
+  background: #DCE3EA;
+  border: 1px solid #94A3B8;
+  padding: 5px 10px;
+  font-weight: 700;
+  font-size: 10pt;
+  text-align: center;
+  margin: 16px 0 0;
+}
+
+.recibo-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 8.7pt;
+  margin: 0 0 16px;
+}
+
+.recibo-table th,
+.recibo-table td {
+  border: 1px solid #94A3B8;
+  padding: 5px 8px;
+  vertical-align: top;
+}
+
+.recibo-table th {
+  background: #F1F5F9;
+  font-weight: 700;
+  text-align: center;
+}
+
+.recibo-table td.recibo-rotulo {
+  font-weight: 700;
+  width: 220px;
+  background: #F8FAFC;
+}
+
+.recibo-table td.recibo-direita { text-align: right; }
+.recibo-table td.recibo-centro { text-align: center; }
+
+.recibo-table tr.recibo-total td {
+  font-weight: 700;
+  background: #F8FAFC;
+}
+
+.recibo-vazio {
+  padding: 10px 12px;
+  color: #64748B;
+  font-style: italic;
+  text-align: center;
+}
+
+.recibo-bloco-auditoria {
+  margin-top: 32px;
+  background: #F1F5F9;
+  border: 1px solid #94A3B8;
+  padding: 10px 14px;
+  font-size: 9pt;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 24px;
+}
+
+.recibo-rodape {
+  margin-top: 28px;
+  font-size: 8.5pt;
+  color: #1A1D2B;
+}
+
+.recibo-pagina {
+  margin-top: 10px;
+  padding-top: 6px;
+  border-top: 1px solid #CBD5E1;
+  text-align: right;
+  font-size: 8.5pt;
+  color: #475569;
+}

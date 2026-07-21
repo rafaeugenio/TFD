@@ -64,6 +64,9 @@ interface Props {
   /** PBI 13195 — nome do paciente (maiúsculas), usado para regerar o corpo
    *  do despacho ao trocar a ajuda de custo selecionada. */
   nomePaciente?: string;
+  /** PBI 13279: ajuda de custo já escolhida no select unificado do card de
+   *  fechamento; prefila o select deste drawer na criação de um despacho novo. */
+  ajudaCustoIdInicial?: string;
 }
 
 interface DespachoData {
@@ -104,6 +107,7 @@ export default function DespachoFinanceiroDrawer({
   aposSalvar,
   ajudasCusto = [],
   nomePaciente,
+  ajudaCustoIdInicial,
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -173,7 +177,9 @@ export default function DespachoFinanceiroDrawer({
             setRepresentantes(
               criar.representantes.length ? criar.representantes : REPRESENTANTES_PADRAO,
             );
-            setAjudaCustoId(null);
+            // PBI 13279: prefila com a ajuda de custo já escolhida no select
+            // unificado do card, mas o usuário ainda pode trocar aqui.
+            setAjudaCustoId(ajudaCustoIdInicial ?? null);
           }
           setLoading(false);
         }
