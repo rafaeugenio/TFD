@@ -1,7 +1,12 @@
 /**
- * Mapeia o pathname atual para o `tela_id` correspondente em telas_sistema.
- * Usado pelo gate centralizado no AppLayout para checar a permissão
- * `<tela>.visualizar` antes de renderizar a página.
+ * Mapeia o pathname atual para o `tela_id` correspondente à chave
+ * `tela.<id>.visualizar` do modelo simplificado de permissões. Usado pelo
+ * gate centralizado no AppLayout para checar essa permissão antes de
+ * renderizar a página.
+ *
+ * A tela Financeiro saiu do modelo (virou redirect para Passagens) e a antiga
+ * tela Tramitação também, por não ser tela, e sim a ação de fluxo `acao.tramitar`.
+ * Ver `matriz-permissoes-simplificada-2026-07-21.md` no Obsidian Vault.
  *
  * Retorna `null` se a rota é pública ou se não exige permissão (ex: /meu-perfil,
  * /dashboard sem tela específica fora do RBAC).
@@ -19,7 +24,6 @@ const RULES: RouteRule[] = [
   { prefix: '/fluxo-v2/passagens',     tela: 'passagens' },
   { prefix: '/fluxo-v2/ajuda-custo',   tela: 'ajuda_custo' },
   { prefix: '/fluxo-v2/acompanhamento', tela: 'acompanhamento' },
-  { prefix: '/fluxo-v2/financeiro',    tela: 'financeiro' },
   { prefix: '/pacientes',              tela: 'pacientes' },
   { prefix: '/unidades-saude',         tela: 'unidades_saude' },
   { prefix: '/regionais-saude',        tela: 'regionais_saude' },

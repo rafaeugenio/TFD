@@ -41,6 +41,100 @@ interface PermissionsContextValue {
 /*  Context                                                                   */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Compatibilidade com o modelo antigo de permissões (uma ação por tela, com
+ * até 121 combinações). Chamadas que ainda usam a chave antiga `<tela>.<acao>`
+ * continuam funcionando: são traduzidas para a chave equivalente do modelo
+ * simplificado (`tela.<id>.visualizar`, `<item>.criar|editar|excluir` ou
+ * `acao.<nome>`). Fonte do de-para: migration
+ * `00068_pbi13230_permissoes_simplificadas.sql`, seção 5.
+ */
+const CHAVE_ANTIGA_PARA_NOVA: Record<string, string> = {
+  // Acesso às telas
+  'painel.visualizar': 'tela.painel.visualizar',
+  'solicitacoes.visualizar': 'tela.solicitacoes.visualizar',
+  'regulacao.visualizar': 'tela.regulacao.visualizar',
+  'passagens.visualizar': 'tela.passagens.visualizar',
+  'ajuda_custo.visualizar': 'tela.ajuda_custo.visualizar',
+  'acompanhamento.visualizar': 'tela.acompanhamento.visualizar',
+  'pacientes.visualizar': 'tela.pacientes.visualizar',
+  'unidades_saude.visualizar': 'tela.unidades_saude.visualizar',
+  'regionais_saude.visualizar': 'tela.regionais_saude.visualizar',
+  'relatorios.visualizar': 'tela.relatorios.visualizar',
+  'sys_configuracoes.visualizar': 'tela.sys_configuracoes.visualizar',
+  'sys_papeis.visualizar': 'tela.sys_papeis.visualizar',
+  'sys_usuarios.visualizar': 'tela.sys_usuarios.visualizar',
+  'sys_logs.visualizar': 'tela.sys_logs.visualizar',
+
+  // Cadastros — solicitação e ações de fluxo associadas
+  'solicitacoes.criar': 'solicitacao.criar',
+  'solicitacoes.editar': 'solicitacao.editar',
+  'solicitacoes.excluir': 'solicitacao.excluir',
+  'solicitacoes.reabrir': 'acao.reabrir',
+  'solicitacoes.encerrar': 'acao.encerrar',
+  'solicitacoes.enviar_setor': 'acao.tramitar',
+  'solicitacoes.devolver_regulacao': 'acao.tramitar',
+
+  // Cadastros — pacientes, acompanhantes e dados bancários
+  'pacientes.criar': 'paciente.criar',
+  'pacientes.editar': 'paciente.editar',
+  'pacientes.excluir': 'paciente.excluir',
+  'pacientes.gerenciar_dados_bancarios': 'dados_bancarios.editar',
+  'pacientes.gerenciar_acompanhantes': 'acompanhante.editar',
+  'pacientes.exportar_prontuario': 'acao.exportar',
+
+  // Cadastros — financeiro (passagem, adicional, ajuda de custo)
+  'financeiro.registrar_passagem': 'passagem.criar',
+  'financeiro.editar_passagem': 'passagem.editar',
+  'financeiro.cancelar_passagem': 'passagem.editar',
+  'financeiro.reembolsar_passagem': 'passagem.editar',
+  'financeiro.registrar_adicional': 'adicional.criar',
+  'financeiro.registrar_ajuda_custo': 'ajuda_custo.criar',
+  'financeiro.editar_ajuda_custo': 'ajuda_custo.editar',
+  'financeiro.aprovar_ajuda_custo': 'ajuda_custo.editar',
+  'financeiro.aprovar_lote': 'ajuda_custo.editar',
+  'financeiro.criar_conta_bancaria_inline': 'dados_bancarios.criar',
+  'financeiro.encaminhar_financeiro': 'acao.tramitar',
+
+  // Cadastros — regulação (agendamentos) e parecer médico
+  'regulacao.registrar_tentativa': 'agendamento.criar',
+  'regulacao.registrar_agendamento': 'agendamento.criar',
+  'regulacao.emitir_parecer': 'acao.emitir_parecer',
+  'regulacao.editar_parecer': 'acao.emitir_parecer',
+  'regulacao.aplicar_carimbo': 'acao.emitir_parecer',
+
+  // Cadastros — unidades e regionais de saúde
+  'unidades_saude.criar': 'unidade_saude.criar',
+  'unidades_saude.editar': 'unidade_saude.editar',
+  'unidades_saude.inativar': 'unidade_saude.editar',
+  'regionais_saude.criar': 'regional.criar',
+  'regionais_saude.editar': 'regional.editar',
+  'regionais_saude.gerenciar_municipios': 'regional.editar',
+
+  // Cadastros — usuários e papéis
+  'sys_usuarios.criar': 'usuario.criar',
+  'sys_usuarios.editar': 'usuario.editar',
+  'sys_usuarios.ativar_desativar': 'usuario.editar',
+  'sys_usuarios.excluir': 'usuario.excluir',
+  'sys_papeis.criar': 'papel.criar',
+  'sys_papeis.editar': 'papel.editar',
+  'sys_papeis.permissoes_editar': 'papel.editar',
+  'sys_papeis.excluir': 'papel.excluir',
+
+  // Cadastros — tabelas auxiliares
+  'sys_configuracoes.editar': 'tabela_auxiliar.editar',
+  'sys_configuracoes.gerenciar_tabelas_auxiliares': 'tabela_auxiliar.editar',
+  'sys_configuracoes.gerenciar_bancos': 'tabela_auxiliar.editar',
+
+  // Ações de fluxo — tramitação e relatórios
+  'tramitacao.tramitar': 'acao.tramitar',
+  'tramitacao.enviar_setor': 'acao.tramitar',
+  'tramitacao.encaminhar_financeiro': 'acao.tramitar',
+  'tramitacao.devolver_regulacao': 'acao.tramitar',
+  'relatorios.exportar': 'acao.exportar',
+  'relatorios.imprimir': 'acao.exportar',
+};
+
 const PermissionsContext = createContext<PermissionsContextValue | null>(null);
 
 export function PermissionsProvider({ children }: { children: ReactNode }) {
@@ -103,14 +197,18 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const { data: perms } = await supabase
-        .from('papel_tela_acoes')
-        .select('tela_id, acao')
+      // `permissao_id` já é a chave plena do modelo simplificado
+      // (`tela.<id>.visualizar`, `<item>.criar|editar|excluir`, `acao.<nome>`),
+      // então nenhum join com `permissoes` é necessário aqui.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: perms } = await (supabase as any)
+        .from('papel_permissoes')
+        .select('permissao_id')
         .eq('papel_id', sessionUser.papel_id);
 
       const acc = new Set<string>();
-      for (const p of (perms ?? []) as Array<{ tela_id: string; acao: string }>) {
-        acc.add(`${p.tela_id}.${p.acao}`);
+      for (const p of (perms ?? []) as Array<{ permissao_id: string }>) {
+        acc.add(p.permissao_id);
       }
       setPermissions(acc);
     } finally {
@@ -145,7 +243,9 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
     (permission: string) => {
       if (!user) return false;
       if (user.is_admin) return true;
-      return permissions.has(permission);
+      if (permissions.has(permission)) return true;
+      const chaveNova = CHAVE_ANTIGA_PARA_NOVA[permission];
+      return chaveNova ? permissions.has(chaveNova) : false;
     },
     [user, permissions],
   );

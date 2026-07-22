@@ -24,15 +24,16 @@ import SortTh, { type SortDir, nextSort, compareValues } from '@/shared/componen
 import { useToast } from '@/shared/components/toast/Toast';
 import {
   listarPapeis,
-  listarTelasComAcoes,
+  listarPermissoes,
   contarUsuariosPorPapel,
-  listarTelasDoPapel,
+  listarPermissoesDoPapel,
+  listarTodosPapelPermissoes,
   criarPapel,
   atualizarPapel,
   excluirPapel,
-  salvarTelasDoPapel,
+  salvarPermissoesDoPapel,
 } from '@/services/papeis.service';
-import type { Papel, TelaSistema } from '@/services/papeis.service';
+import type { Papel, Permissao } from '@/services/papeis.service';
 import { TableRowsSkeleton } from '@/shared/components/skeleton';
 import { Can } from '@/shared/auth/Can';
 
@@ -55,23 +56,57 @@ function getInitials(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
-function groupTelasByModule(telas: TelaSistema[]): Record<string, TelaSistema[]> {
-  const groups: Record<string, TelaSistema[]> = {};
-  for (const tela of telas) {
-    if (!groups[tela.modulo]) groups[tela.modulo] = [];
-    groups[tela.modulo].push(tela);
-  }
-  return groups;
+/** Rótulo de cada ação de cadastro (família `item`). */
+const ACAO_ITEM_LABELS: Record<string, string> = { criar: 'Criar', editar: 'Editar', excluir: 'Excluir' };
+
+interface PermissaoItemGroup {
+  itemId: string;
+  label: string;
+  grupo: string;
+  ordem: number;
+  acoes: { id: string; label: string }[];
 }
 
-/** Converte linhas { tela_id, acao } em mapa tela_id → acoes[]. */
-function rowsToAcoesMap(rows: { tela_id: string; acao: string }[]): Record<string, string[]> {
-  const map: Record<string, string[]> = {};
-  for (const row of rows) {
-    if (!map[row.tela_id]) map[row.tela_id] = [];
-    map[row.tela_id].push(row.acao);
+/**
+ * Separa o catálogo de permissões nas três famílias do modelo simplificado
+ * e, na família `item`, agrupa as ações criar/editar/excluir do mesmo
+ * cadastro numa única linha (ex: "Paciente" com pills Criar/Editar/Excluir).
+ */
+function agruparPermissoes(permissoes: Permissao[]) {
+  const telas = permissoes.filter((p) => p.familia === 'tela').sort((a, b) => a.ordem - b.ordem);
+  const acoes = permissoes.filter((p) => p.familia === 'acao').sort((a, b) => a.ordem - b.ordem);
+
+  const itemMap = new Map<string, PermissaoItemGroup>();
+  for (const p of permissoes.filter((p) => p.familia === 'item')) {
+    const match = p.id.match(/^(.+)\.(criar|editar|excluir)$/);
+    if (!match) continue;
+    const [, itemId, acaoChave] = match;
+    if (!itemMap.has(itemId)) {
+      itemMap.set(itemId, {
+        itemId,
+        // "Criar solicitação" → "Solicitação"
+        label: p.nome.replace(/^(Criar|Editar|Excluir)\s+/, '').replace(/^\w/, (c) => c.toUpperCase()),
+        grupo: p.grupo ?? 'Outros',
+        ordem: p.ordem,
+        acoes: [],
+      });
+    }
+    itemMap.get(itemId)!.acoes.push({ id: p.id, label: ACAO_ITEM_LABELS[acaoChave] ?? acaoChave });
   }
-  return map;
+  const itens = Array.from(itemMap.values()).sort((a, b) => a.ordem - b.ordem);
+
+  return { telas, acoes, itens };
+}
+
+/** Agrupa uma lista de permissões (ou grupos de item) pelo campo `grupo`, preservando a ordem de aparição. */
+function agruparPorGrupo<T extends { grupo: string | null }>(rows: T[]): Record<string, T[]> {
+  const groups: Record<string, T[]> = {};
+  for (const row of rows) {
+    const chave = row.grupo ?? 'Outros';
+    if (!groups[chave]) groups[chave] = [];
+    groups[chave].push(row);
+  }
+  return groups;
 }
 
 /* -------------------------------------------------- */
@@ -127,8 +162,9 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
 
   /* ---- Data state ---- */
   const [papeis, setPapeis] = useState<Papel[]>([]);
-  const [telas, setTelas] = useState<TelaSistema[]>([]);
+  const [permissoes, setPermissoes] = useState<Permissao[]>([]);
   const [userCounts, setUserCounts] = useState<Record<string, number>>({});
+  /** Nº de permissões `tela.*.visualizar` que cada papel tem, para a coluna "Telas" da listagem. */
   const [telaCountsByPapel, setTelaCountsByPapel] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
@@ -153,12 +189,16 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
   const [formNome, setFormNome] = useState('');
   const [formDescricao, setFormDescricao] = useState('');
   const [formCor, setFormCor] = useState(DEFAULT_COLORS[0]);
-  /** tela_id → lista de ações selecionadas */
-  const [formTelas, setFormTelas] = useState<Record<string, string[]>>({});
+  /** IDs de permissão selecionados (ex: "tela.pacientes.visualizar", "paciente.criar", "acao.tramitar"). */
+  const [formPermissoes, setFormPermissoes] = useState<Set<string>>(new Set());
 
-  /* ---- Grouped telas ---- */
-  const telasByModule = useMemo(() => groupTelasByModule(telas), [telas]);
-  const moduleNames = useMemo(() => Object.keys(telasByModule), [telasByModule]);
+  /* ---- Permissões agrupadas pelas três famílias do modelo simplificado ---- */
+  const { telas: permissoesTelas, acoes: permissoesAcoes, itens: permissoesItens } = useMemo(
+    () => agruparPermissoes(permissoes),
+    [permissoes],
+  );
+  const permissoesTelasPorGrupo = useMemo(() => agruparPorGrupo(permissoesTelas), [permissoesTelas]);
+  const permissoesItensPorGrupo = useMemo(() => agruparPorGrupo(permissoesItens), [permissoesItens]);
 
   /* ---- Debounce search (300ms) ---- */
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -172,18 +212,21 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [papeisRes, telasRes, usersRes] = await Promise.all([
+      const [papeisRes, permissoesRes, usersRes, papelPermissoesRes] = await Promise.all([
         listarPapeis(),
-        listarTelasComAcoes(),
+        listarPermissoes(),
         contarUsuariosPorPapel(),
+        listarTodosPapelPermissoes(),
       ]);
 
       const papeisData = (papeisRes.data as unknown as Papel[]) ?? [];
-      const telasData = telasRes.data ?? [];
+      const permissoesData = permissoesRes.data ?? [];
       const usersData = (usersRes.data as unknown as { papel_id: string }[]) ?? [];
+      const papelPermissoesData =
+        (papelPermissoesRes.data as unknown as { papel_id: string; permissao_id: string }[]) ?? [];
 
       setPapeis(papeisData);
-      setTelas(telasData);
+      setPermissoes(permissoesData);
 
       const counts: Record<string, number> = {};
       for (const row of usersData) {
@@ -191,16 +234,12 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
       }
       setUserCounts(counts);
 
-      // Carrega contagem de telas por papel em paralelo (para mostrar na coluna).
-      const telaCountPromises = papeisData.map(async (p) => {
-        const res = await listarTelasDoPapel(p.id);
-        const rows = (res.data as unknown as { tela_id: string; acao: string }[]) ?? [];
-        const uniqueTelas = new Set(rows.map((r) => r.tela_id));
-        return [p.id, uniqueTelas.size] as const;
-      });
-      const telaCountsArr = await Promise.all(telaCountPromises);
+      // Coluna "Telas" da listagem: quantas permissões `tela.*.visualizar` cada papel tem.
       const telaCounts: Record<string, number> = {};
-      for (const [id, c] of telaCountsArr) telaCounts[id] = c;
+      for (const row of papelPermissoesData) {
+        if (!row.permissao_id.startsWith('tela.')) continue;
+        telaCounts[row.papel_id] = (telaCounts[row.papel_id] || 0) + 1;
+      }
       setTelaCountsByPapel(telaCounts);
     } catch {
       // empty state will show
@@ -253,7 +292,7 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
     setFormNome('');
     setFormDescricao('');
     setFormCor(DEFAULT_COLORS[Math.floor(Math.random() * DEFAULT_COLORS.length)]);
-    setFormTelas({});
+    setFormPermissoes(new Set());
     setDrawerOpen(true);
   }
 
@@ -264,11 +303,11 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
     setFormCor(papel.cor);
 
     try {
-      const res = await listarTelasDoPapel(papel.id);
-      const rows = (res.data as unknown as { tela_id: string; acao: string }[]) ?? [];
-      setFormTelas(rowsToAcoesMap(rows));
+      const res = await listarPermissoesDoPapel(papel.id);
+      const rows = (res.data as unknown as { permissao_id: string }[]) ?? [];
+      setFormPermissoes(new Set(rows.map((r) => r.permissao_id)));
     } catch {
-      setFormTelas({});
+      setFormPermissoes(new Set());
     }
 
     setDrawerOpen(true);
@@ -279,68 +318,45 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
     setEditingPapel(null);
   }
 
-  /* ---- Form: toggle ações por tela ---- */
-  function toggleAcao(telaId: string, acao: string) {
-    setFormTelas((prev) => {
-      const current = prev[telaId] ?? [];
+  /* ---- Form: toggle de permissões ---- */
 
-      if (current.includes(acao)) {
-        if (acao === 'visualizar' && current.filter((a) => a !== 'visualizar').length > 0) {
-          return prev;
-        }
-        const updated = current.filter((a) => a !== acao);
-        if (updated.length === 0) {
-          const { [telaId]: _, ...rest } = prev;
-          return rest;
-        }
-        return { ...prev, [telaId]: updated };
-      } else {
-        const base = current.includes('visualizar') ? current : ['visualizar', ...current];
-        return { ...prev, [telaId]: [...base, acao] };
-      }
+  /** Liga/desliga uma única permissão (usado por telas, ações de fluxo e pills de cadastro). */
+  function togglePermissao(id: string) {
+    setFormPermissoes((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
   }
 
-  function toggleTela(tela: TelaSistema) {
-    setFormTelas((prev) => {
-      if ((prev[tela.id]?.length ?? 0) > 0) {
-        const { [tela.id]: _, ...rest } = prev;
-        return rest;
-      }
-      return { ...prev, [tela.id]: tela.acoes.map((a) => a.acao) };
-    });
-  }
-
-  function toggleModule(modulo: string) {
-    const moduleTelas = telasByModule[modulo] ?? [];
-    const allSelected = moduleTelas.every((t) => (formTelas[t.id]?.length ?? 0) > 0);
-
-    setFormTelas((prev) => {
-      const next = { ...prev };
+  /** Liga/desliga um grupo de permissões de uma vez (checkbox pai de um item ou de uma seção). */
+  function toggleGrupoPermissoes(ids: string[]) {
+    setFormPermissoes((prev) => {
+      const allSelected = ids.every((id) => prev.has(id));
+      const next = new Set(prev);
       if (allSelected) {
-        for (const t of moduleTelas) delete next[t.id];
+        for (const id of ids) next.delete(id);
       } else {
-        for (const t of moduleTelas) next[t.id] = t.acoes.map((a) => a.acao);
+        for (const id of ids) next.add(id);
       }
       return next;
     });
   }
 
-  function selectAllTelas() {
-    const all: Record<string, string[]> = {};
-    for (const tela of telas) all[tela.id] = tela.acoes.map((a) => a.acao);
-    setFormTelas(all);
+  function selectAllPermissoes() {
+    setFormPermissoes(new Set(permissoes.map((p) => p.id)));
   }
 
-  function selectNoneTelas() {
-    setFormTelas({});
+  function selectNonePermissoes() {
+    setFormPermissoes(new Set());
   }
 
   /** Valida e abre o modal de confirmação. */
   function handleRequestSave() {
     if (!formNome.trim()) { toast.error('Campo obrigatório', 'Informe o nome do papel.'); return; }
 
-    const novoTelaCount = Object.values(formTelas).filter((a) => a.length > 0).length;
+    const novoTelaCount = permissoesTelas.filter((p) => formPermissoes.has(p.id)).length;
 
     if (editingPapel) {
       // Carrega contagem atual de telas a partir do editingPapel.id no telaCountsByPapel... mas o estado pode estar desatualizado.
@@ -361,7 +377,7 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
         { key: 'cor', label: 'Cor' },
       ]);
       // Permissões serão sempre re-salvas — adiciona como info informativa.
-      diff.push({ label: 'Telas com permissão', before: '', after: `${novoTelaCount} de ${telas.length}` });
+      diff.push({ label: 'Telas com permissão', before: '', after: `${novoTelaCount} de ${permissoesTelas.length}` });
       setSaveConfirm({ tone: 'edit', diff });
     } else {
       setSaveConfirm({
@@ -369,7 +385,7 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
         diff: [
           { label: 'Nome', after: formNome.trim() },
           { label: 'Descrição', after: formDescricao.trim() },
-          { label: 'Telas com permissão', after: `${novoTelaCount} de ${telas.length}` },
+          { label: 'Telas com permissão', after: `${novoTelaCount} de ${permissoesTelas.length}` },
         ],
       });
     }
@@ -381,9 +397,7 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
 
     setSaving(true);
     try {
-      const telaAcoes = Object.entries(formTelas).flatMap(([tela_id, acoes]) =>
-        acoes.map((acao) => ({ tela_id, acao })),
-      );
+      const permissaoIds = Array.from(formPermissoes);
 
       if (editingPapel) {
         await atualizarPapel(editingPapel.id, {
@@ -391,7 +405,7 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
           descricao: formDescricao.trim() || undefined,
           cor: formCor,
         });
-        await salvarTelasDoPapel(editingPapel.id, telaAcoes);
+        await salvarPermissoesDoPapel(editingPapel.id, permissaoIds);
         toast.success('Papel atualizado!', 'As permissões foram salvas.');
       } else {
         const res = await criarPapel({
@@ -401,7 +415,7 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
         });
         const newPapel = res.data as unknown as Papel;
         if (newPapel?.id) {
-          await salvarTelasDoPapel(newPapel.id, telaAcoes);
+          await salvarPermissoesDoPapel(newPapel.id, permissaoIds);
         }
         toast.success('Papel criado!', 'O novo papel de acesso está disponível.');
       }
@@ -430,8 +444,9 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
     }
   }
 
-  const formTelaCount = Object.values(formTelas).filter((a) => a.length > 0).length;
-  const totalTelas = telas.length;
+  const formPermissoesCount = formPermissoes.size;
+  const totalPermissoes = permissoes.length;
+  const totalTelas = permissoesTelas.length;
 
   /* -------------------------------------------------- */
   /*  Render                                             */
@@ -733,132 +748,161 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
 
         <hr className="tfd-divider" />
 
-        {/* Telas section */}
+        {/* Permissões — modelo simplificado: acesso às telas, cadastros, ações de fluxo */}
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-            Telas e ações ({formTelaCount} de {telas.length})
+            Permissões ({formPermissoesCount} de {totalPermissoes})
           </h3>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="tfd-btn tfd-btn-secondary tfd-btn--sm"
-              onClick={selectAllTelas}
-            >
+            <button type="button" className="tfd-btn tfd-btn-secondary tfd-btn--sm" onClick={selectAllPermissoes}>
               <Check size={14} />
               Todas
             </button>
-            <button
-              type="button"
-              className="tfd-btn tfd-btn-secondary tfd-btn--sm"
-              onClick={selectNoneTelas}
-            >
+            <button type="button" className="tfd-btn tfd-btn-secondary tfd-btn--sm" onClick={selectNonePermissoes}>
               <X size={14} />
               Nenhuma
             </button>
           </div>
         </div>
 
-        {/* Modules with telas and action pills */}
-        {moduleNames.map((modulo) => {
-          const moduleTelas = telasByModule[modulo];
-          const selectedCount = moduleTelas.filter((t) => (formTelas[t.id]?.length ?? 0) > 0).length;
-          const allSelected = selectedCount === moduleTelas.length;
-          const someSelected = selectedCount > 0 && !allSelected;
-
-          return (
-            <div key={modulo} className="mb-5">
-              {/* Module parent checkbox */}
-              <div className="flex items-center gap-2 mb-2">
-                <IndeterminateCheckbox
-                  id={`module-${modulo}`}
-                  checked={allSelected}
-                  indeterminate={someSelected}
-                  onChange={() => toggleModule(modulo)}
-                />
-                <label
-                  htmlFor={`module-${modulo}`}
-                  className="text-sm font-semibold cursor-pointer select-none"
-                  style={{ color: 'var(--tfd-text-primary)' }}
-                >
-                  {modulo}
-                </label>
-                <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
-                  ({moduleTelas.length})
-                </span>
-              </div>
-
-              {/* Telas com ação pills */}
-              <div className="flex flex-col gap-2 pl-6">
-                {moduleTelas.map((tela) => {
-                  const selectedAcoes = formTelas[tela.id] ?? [];
-                  const hasAnyAcao = selectedAcoes.length > 0;
-
-                  return (
-                    <div
-                      key={tela.id}
-                      className="rounded-lg p-2"
-                      style={{
-                        background: hasAnyAcao ? 'var(--tfd-primary-50)' : 'var(--tfd-surface-100)',
-                        border: `1px solid ${hasAnyAcao ? 'var(--tfd-primary-100, #DBEAFE)' : 'var(--tfd-surface-border)'}`,
-                      }}
+        {/* Família 1 — Acesso às telas */}
+        <div className="mb-5">
+          <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--tfd-text-muted)' }}>
+            Acesso às telas
+          </p>
+          {Object.entries(permissoesTelasPorGrupo).map(([grupo, telasDoGrupo]) => (
+            <div key={grupo} className="flex flex-col gap-1.5 mb-3 pl-1">
+              <span className="text-xs font-medium" style={{ color: 'var(--tfd-text-secondary)' }}>{grupo}</span>
+              {telasDoGrupo.map((tela) => {
+                const checked = formPermissoes.has(tela.id);
+                return (
+                  <label
+                    key={tela.id}
+                    htmlFor={`perm-${tela.id}`}
+                    className="flex items-center gap-2 rounded-md p-1.5 cursor-pointer select-none"
+                    style={{ background: checked ? 'var(--tfd-primary-50)' : 'transparent' }}
+                    title={tela.descricao ?? undefined}
+                  >
+                    <input
+                      id={`perm-${tela.id}`}
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => togglePermissao(tela.id)}
+                      style={{ accentColor: 'var(--tfd-primary-500)' }}
+                    />
+                    <span
+                      className="text-sm"
+                      style={{ color: checked ? 'var(--tfd-text-primary)' : 'var(--tfd-text-secondary)' }}
                     >
-                      {/* Row: checkbox + nome */}
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <input
-                          id={`tela-${tela.id}`}
-                          type="checkbox"
-                          checked={hasAnyAcao}
-                          onChange={() => toggleTela(tela)}
-                          style={{ accentColor: 'var(--tfd-primary-500)' }}
-                        />
-                        <label
-                          htmlFor={`tela-${tela.id}`}
-                          className="text-sm font-medium cursor-pointer select-none flex-1"
-                          style={{
-                            color: hasAnyAcao
-                              ? 'var(--tfd-text-primary)'
-                              : 'var(--tfd-text-secondary)',
-                          }}
-                        >
-                          {tela.nome}
-                        </label>
-                      </div>
-
-                      {/* Action pills */}
-                      <div className="flex flex-wrap gap-1">
-                        {tela.acoes.map((a) => {
-                          const isSelected = selectedAcoes.includes(a.acao);
-                          const otherActionsActive = selectedAcoes.filter((x) => x !== 'visualizar').length > 0;
-                          const isLocked = a.acao === 'visualizar' && isSelected && otherActionsActive;
-                          return (
-                            <button
-                              key={a.acao}
-                              type="button"
-                              className="text-[11px] px-2 py-0.5 rounded-full border transition-colors"
-                              style={{
-                                background: isSelected ? 'var(--tfd-primary-500)' : 'var(--tfd-surface-card)',
-                                color: isSelected ? '#FFFFFF' : 'var(--tfd-text-muted)',
-                                borderColor: isSelected
-                                  ? 'var(--tfd-primary-500)'
-                                  : 'var(--tfd-surface-border)',
-                                opacity: isLocked ? 0.7 : 1,
-                                cursor: isLocked ? 'not-allowed' : 'pointer',
-                              }}
-                              onClick={() => toggleAcao(tela.id, a.acao)}
-                              title={isLocked ? 'Visualizar é obrigatório quando outras ações estão ativas' : (a.descricao ?? undefined)}
-                            >
-                              {a.nome_humano}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                      {tela.nome}
+                    </span>
+                  </label>
+                );
+              })}
             </div>
-          );
-        })}
+          ))}
+        </div>
+
+        {/* Família 2 — Cadastros (criar/editar/excluir por item, válido em todos os pontos de entrada) */}
+        <div className="mb-5">
+          <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--tfd-text-muted)' }}>
+            Cadastros
+          </p>
+          {Object.entries(permissoesItensPorGrupo).map(([grupo, itensDoGrupo]) => (
+            <div key={grupo} className="flex flex-col gap-2 mb-3 pl-1">
+              <span className="text-xs font-medium" style={{ color: 'var(--tfd-text-secondary)' }}>{grupo}</span>
+              {itensDoGrupo.map((item) => {
+                const idsDoItem = item.acoes.map((a) => a.id);
+                const selectedCount = idsDoItem.filter((id) => formPermissoes.has(id)).length;
+                const allSelected = selectedCount === idsDoItem.length;
+                const someSelected = selectedCount > 0 && !allSelected;
+
+                return (
+                  <div
+                    key={item.itemId}
+                    className="rounded-lg p-2"
+                    style={{
+                      background: selectedCount > 0 ? 'var(--tfd-primary-50)' : 'var(--tfd-surface-100)',
+                      border: `1px solid ${selectedCount > 0 ? 'var(--tfd-primary-100, #DBEAFE)' : 'var(--tfd-surface-border)'}`,
+                    }}
+                  >
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <IndeterminateCheckbox
+                        id={`item-${item.itemId}`}
+                        checked={allSelected}
+                        indeterminate={someSelected}
+                        onChange={() => toggleGrupoPermissoes(idsDoItem)}
+                      />
+                      <label
+                        htmlFor={`item-${item.itemId}`}
+                        className="text-sm font-medium cursor-pointer select-none flex-1"
+                        style={{ color: selectedCount > 0 ? 'var(--tfd-text-primary)' : 'var(--tfd-text-secondary)' }}
+                      >
+                        {item.label}
+                      </label>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1">
+                      {item.acoes.map((acao) => {
+                        const isSelected = formPermissoes.has(acao.id);
+                        return (
+                          <button
+                            key={acao.id}
+                            type="button"
+                            className="text-[11px] px-2 py-0.5 rounded-full border transition-colors"
+                            style={{
+                              background: isSelected ? 'var(--tfd-primary-500)' : 'var(--tfd-surface-card)',
+                              color: isSelected ? '#FFFFFF' : 'var(--tfd-text-muted)',
+                              borderColor: isSelected ? 'var(--tfd-primary-500)' : 'var(--tfd-surface-border)',
+                            }}
+                            onClick={() => togglePermissao(acao.id)}
+                          >
+                            {acao.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+
+        {/* Família 3 — Ações de fluxo */}
+        <div className="mb-2">
+          <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--tfd-text-muted)' }}>
+            Ações de fluxo
+          </p>
+          <div className="flex flex-col gap-1.5 pl-1">
+            {permissoesAcoes.map((acao) => {
+              const checked = formPermissoes.has(acao.id);
+              return (
+                <label
+                  key={acao.id}
+                  htmlFor={`perm-${acao.id}`}
+                  className="flex items-center gap-2 rounded-md p-1.5 cursor-pointer select-none"
+                  style={{ background: checked ? 'var(--tfd-primary-50)' : 'transparent' }}
+                  title={acao.descricao ?? undefined}
+                >
+                  <input
+                    id={`perm-${acao.id}`}
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => togglePermissao(acao.id)}
+                    style={{ accentColor: 'var(--tfd-primary-500)' }}
+                  />
+                  <span
+                    className="text-sm"
+                    style={{ color: checked ? 'var(--tfd-text-primary)' : 'var(--tfd-text-secondary)' }}
+                  >
+                    {acao.nome}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
       </Drawer>
     </>
   );

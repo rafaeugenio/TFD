@@ -33,7 +33,7 @@ interface NavItem {
   icon: LucideIcon;
   label: string;
   href: string;
-  /** ID em telas_sistema. Item só aparece se user tem `<tela>.visualizar`. */
+  /** ID da tela. Item só aparece se user tem `tela.<tela>.visualizar`. */
   tela?: string;
   badge?: number;
 }
@@ -128,7 +128,7 @@ export default function Sidebar({
       items: section.items.filter((item) => {
         if (isLoading) return false;
         if (!item.tela) return true;
-        return can(`${item.tela}.visualizar`);
+        return can(`tela.${item.tela}.visualizar`);
       }),
     }))
     .filter((section) => section.items.length > 0);

@@ -142,6 +142,63 @@ export async function salvarTelasDoPapel(
   return { data: null, error: null };
 }
 
+/* -------------------------------------------------- */
+/*  Permissões — modelo simplificado (PBI 13230)       */
+/* -------------------------------------------------- */
+
+export interface Permissao {
+  id: string;
+  familia: 'tela' | 'item' | 'acao';
+  nome: string;
+  descricao: string | null;
+  grupo: string | null;
+  ordem: number;
+}
+
+/**
+ * Lista o catálogo de permissões do modelo simplificado: as três famílias
+ * `tela.<id>.visualizar`, `<item>.criar|editar|excluir` e `acao.<nome>`.
+ * Ver migration `00068_pbi13230_permissoes_simplificadas.sql`.
+ */
+export async function listarPermissoes(): Promise<{ data: Permissao[]; error: unknown }> {
+  const supabase = getSupabase();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const res = await (supabase as any)
+    .from('permissoes')
+    .select('id, familia, nome, descricao, grupo, ordem')
+    .order('ordem');
+  return { data: (res.data as Permissao[]) ?? [], error: res.error };
+}
+
+/** Retorna os IDs de permissão atribuídos a um papel. */
+export async function listarPermissoesDoPapel(papelId: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (getSupabase() as any)
+    .from('papel_permissoes')
+    .select('permissao_id')
+    .eq('papel_id', papelId);
+}
+
+/** Retorna todos os vínculos papel_id → permissao_id, para contagens em lote na listagem. */
+export async function listarTodosPapelPermissoes() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (getSupabase() as any)
+    .from('papel_permissoes')
+    .select('papel_id, permissao_id');
+}
+
+/** Salva as permissões de um papel, substituindo completamente as anteriores. */
+export async function salvarPermissoesDoPapel(papelId: string, permissaoIds: string[]) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sb = getSupabase() as any;
+  await sb.from('papel_permissoes').delete().eq('papel_id', papelId);
+  if (permissaoIds.length > 0) {
+    const rows = permissaoIds.map((permissao_id) => ({ papel_id: papelId, permissao_id }));
+    return sb.from('papel_permissoes').insert(rows);
+  }
+  return { data: null, error: null };
+}
+
 export async function contarUsuariosPorPapel() {
   return getSupabase()
     .from('usuarios')
