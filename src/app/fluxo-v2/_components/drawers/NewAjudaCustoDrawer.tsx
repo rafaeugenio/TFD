@@ -183,7 +183,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
           <Lock size={16} style={{ flexShrink: 0, marginTop: 1, color: '#64748B' }} />
           <div className="text-[12.5px] leading-relaxed">
             <strong style={{ color: '#1A1D2B' }}>Somente leitura em Acompanhamento.</strong>{' '}
-            Os demais campos ficam travados — apenas o status pode ser atualizado aqui.
+            Os demais campos ficam travados. Apenas o status pode ser atualizado aqui.
           </div>
         </div>
       )}

@@ -82,10 +82,10 @@ export default function FinanceiroTab({ s }: Props) {
   const editarAjudaDisabled = lockedAjuda && !emAcompanhamento;
   const lockedTip = tooltipLocked(s, 'passagens');
   const lockedTipPassagens = emAcompanhamento
-    ? 'Em Acompanhamento, passagens ficam somente leitura — apenas o status pode ser atualizado pelo drawer de edição.'
+    ? 'Em Acompanhamento, passagens ficam somente leitura. Apenas o status pode ser atualizado pelo drawer de edição.'
     : tooltipLocked(s, 'passagens');
   const lockedTipAjuda = emAcompanhamento
-    ? 'Em Acompanhamento, ajuda de custo fica somente leitura — apenas o status pode ser atualizado pelo drawer de edição.'
+    ? 'Em Acompanhamento, ajuda de custo fica somente leitura. Apenas o status pode ser atualizado pelo drawer de edição.'
     : tooltipLocked(s, 'ajuda_custo');
 
   function abrirNovaPassagem() { setPassagemEditar(undefined); setPassagemOpen(true); }
@@ -172,7 +172,7 @@ export default function FinanceiroTab({ s }: Props) {
           <Lock size={16} style={{ flexShrink: 0, marginTop: 1, color: '#64748B' }} />
           <div className="text-[12.5px] leading-relaxed">
             <strong style={{ color: '#1A1D2B' }}>Somente leitura em Acompanhamento.</strong>{' '}
-            Abra o drawer de edição da passagem ou da ajuda de custo para atualizar o status — os demais campos ficam travados lá dentro.
+            Abra o drawer de edição da passagem ou da ajuda de custo para atualizar o status. Os demais campos ficam travados lá dentro.
           </div>
         </div>
       )}
