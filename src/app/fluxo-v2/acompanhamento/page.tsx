@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CalendarCheck, Send, Search, LogOut, Eye } from 'lucide-react';
+import { CalendarCheck, Send, Search, LogOut, Eye, Plane, Wallet } from 'lucide-react';
 import RowActions from '../_components/RowActions';
 import BotaoEnvio from '../_components/BotaoEnvio';
 import SolicitacaoNumeroCell from '../_components/SolicitacaoNumeroCell';
 import PacienteHoverCell from '../_components/PacienteHoverCell';
 import EnviarParaSetorDrawer from '../_components/drawers/EnviarParaSetorDrawer';
+import StatusDot, { type StatusDotTone } from '../_components/StatusDot';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { tempoNoSetor } from '../_utils/tempoSetor';
 import { casaComFiltroRegiao, REGIAO_FILTRO_VAZIO, type RegiaoFiltroValue } from '../_utils/derivarRegional';
@@ -19,13 +20,102 @@ import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import { useToast } from '@/shared/components/toast/Toast';
-import { type SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
+import {
+  STATUS_AJUDA_LABEL,
+  STATUS_VIAGEM_LABEL,
+  calcularValorAjuda,
+  type SolicitacaoMock,
+  type ViagemMock,
+  type StatusViagem,
+  type StatusAjuda,
+} from '@/core/mocks/fluxo-v2-v3-seed';
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import SortTh, { compareValues, nextSort, type SortDir } from '@/shared/components/sort-th/SortTh';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Can } from '@/shared/auth/Can';
+import { fmtDataBR } from '@/shared/utils/fmtData';
 
 const DEFAULT_PAGE_SIZE = 25;
+
+const fmtBRL = (v: number) =>
+  v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+const VIAGEM_TONE: Record<StatusViagem, StatusDotTone> = {
+  agendada: 'neutral',
+  confirmada: 'success',
+  remarcada: 'info',
+  nao_compareceu: 'warning',
+  cancelada: 'danger',
+  reembolso: 'muted',
+};
+
+const AJUDA_TONE: Record<StatusAjuda, StatusDotTone> = {
+  emitido: 'info',
+  concluido: 'success',
+  glosada: 'danger',
+};
+
+/** Escolhe a viagem futura mais próxima ou, na ausência, a mais recente já
+ *  ocorrida — mesmo critério usado nas filas de Passagens e Financeiro. */
+function escolherViagem(viagens: ViagemMock[]): ViagemMock | null {
+  if (viagens.length === 0) return null;
+  const hoje = new Date().toISOString().slice(0, 10);
+  const futuras = viagens.filter((v) => v.data >= hoje).sort((a, b) => a.data.localeCompare(b.data));
+  return futuras.length > 0 ? futuras[0] : [...viagens].sort((a, b) => b.data.localeCompare(a.data))[0];
+}
+
+function viagemPorTipo(s: SolicitacaoMock, tipo: 'ida' | 'volta'): ViagemMock | null {
+  const ativas = s.viagens.filter(
+    (v) => v.ativa !== false && v.tipo === tipo && !['cancelada', 'reembolso'].includes(v.status),
+  );
+  return escolherViagem(ativas);
+}
+
+/** Última ajuda de custo ativa (pelo fim do período), com o valor calculado. */
+function ultimaAjuda(s: SolicitacaoMock) {
+  const ativas = s.ajudasCusto.filter((a) => a.ativa !== false);
+  if (ativas.length === 0) return null;
+  const ajuda = [...ativas].sort((a, b) => b.dataFim.localeCompare(a.dataFim))[0];
+  return { ajuda, valor: calcularValorAjuda(ajuda.dataInicio, ajuda.dataFim, ajuda.pernoiteRetorno).valor };
+}
+
+/**
+ * Data limite da solicitação para o setor priorizar quem age primeiro: o
+ * retorno já agendado (quando existe viagem de volta) ou, na ausência de
+ * viagem, a data do agendamento médico confirmado. `null` quando nenhuma
+ * das duas bases existe.
+ */
+function dataLimiteInfo(s: SolicitacaoMock): { data: string; label: string } | null {
+  const volta = viagemPorTipo(s, 'volta');
+  if (volta) return { data: volta.data, label: 'Retorno previsto' };
+
+  const confirmadas = (s.agendamento?.tentativas ?? []).filter(
+    (t) => t.desfecho === 'agendamento_confirmado' && t.dataAgendamento,
+  );
+  if (confirmadas.length > 0) {
+    const prox = [...confirmadas].sort((a, b) =>
+      (a.dataAgendamento ?? '').localeCompare(b.dataAgendamento ?? ''),
+    )[0];
+    return { data: prox.dataAgendamento as string, label: 'Data do agendamento' };
+  }
+  return null;
+}
+
+/** Dias até a data limite (negativo quando já passou). */
+function diasAteLimite(dataIso: string): number {
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const alvo = new Date(`${dataIso}T00:00:00`);
+  return Math.round((alvo.getTime() - hoje.getTime()) / 86_400_000);
+}
+
+function urgenciaLimite(dias: number): { cor: string; texto: string } {
+  if (dias < 0) return { cor: '#DC2626', texto: `Atrasado ${Math.abs(dias)}d` };
+  if (dias === 0) return { cor: '#DC2626', texto: 'Hoje' };
+  if (dias <= 2) return { cor: '#DC2626', texto: `Faltam ${dias}d` };
+  if (dias <= 7) return { cor: '#D97706', texto: `Faltam ${dias}d` };
+  return { cor: '#64748B', texto: `Faltam ${dias}d` };
+}
 
 /**
  * Fila de Acompanhamento (PBI 13313): última etapa do ciclo de status
@@ -101,6 +191,7 @@ export default function AcompanhamentoListPage() {
         case 'paciente': return s.paciente.nome;
         case 'municipio': return s.paciente.municipio;
         case 'tempo': return tempoNoSetor(s.dataCriacao);
+        case 'limite': return dataLimiteInfo(s)?.data ?? '9999-99-99';
         default: return '';
       }
     };
@@ -209,6 +300,9 @@ export default function AcompanhamentoListPage() {
               <SortTh label="Número" field="numero" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Paciente" field="paciente" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Origem" field="municipio" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <Th>Passagem</Th>
+              <Th>Ajuda de custo</Th>
+              <SortTh label="Data limite" field="limite" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Tempo na etapa" field="tempo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <Th align="right">Ações</Th>
             </tr>
@@ -217,9 +311,9 @@ export default function AcompanhamentoListPage() {
             {isLoading && (
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={`sk-${i}`} style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
-                  {Array.from({ length: 5 }).map((__, c) => (
+                  {Array.from({ length: 8 }).map((__, c) => (
                     <td key={c} className="px-4 py-3.5">
-                      <Skeleton className={`h-4 ${c === 0 ? 'w-24' : c === 1 ? 'w-44' : c === 4 ? 'w-16 ml-auto' : 'w-28'}`} />
+                      <Skeleton className={`h-4 ${c === 0 ? 'w-24' : c === 1 ? 'w-44' : c === 7 ? 'w-16 ml-auto' : 'w-28'}`} />
                     </td>
                   ))}
                 </tr>
@@ -227,12 +321,19 @@ export default function AcompanhamentoListPage() {
             )}
             {!isLoading && fila.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
+                <td colSpan={8} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
                   Nenhuma solicitação em acompanhamento.
                 </td>
               </tr>
             )}
-            {!isLoading && paginadas.map((s) => (
+            {!isLoading && paginadas.map((s) => {
+              const ida = viagemPorTipo(s, 'ida');
+              const volta = viagemPorTipo(s, 'volta');
+              const ajuda = ultimaAjuda(s);
+              const limite = dataLimiteInfo(s);
+              const urgencia = limite ? urgenciaLimite(diasAteLimite(limite.data)) : null;
+
+              return (
               <tr
                 key={s.id}
                 style={{ borderBottom: '1px solid #E2E8F0', cursor: 'pointer' }}
@@ -254,6 +355,68 @@ export default function AcompanhamentoListPage() {
                         : '—'}
                     </div>
                   </div>
+                </td>
+                <td className="px-4 py-3.5">
+                  {!ida && !volta ? (
+                    <span style={{ color: '#CBD5E1', fontSize: 12 }}>Sem passagem</span>
+                  ) : (
+                    <div className="flex flex-col gap-1">
+                      <div className="inline-flex items-center gap-1.5">
+                        <Plane size={12} style={{ color: '#94A3B8' }} />
+                        <span style={{ color: '#64748B', fontSize: 11.5 }}>Ida</span>
+                        {ida ? (
+                          <>
+                            <StatusDot tone={VIAGEM_TONE[ida.status]}>{STATUS_VIAGEM_LABEL[ida.status]}</StatusDot>
+                            <span className="font-mono" style={{ color: '#1E293B', fontSize: 12 }}>{fmtDataBR(ida.data)}</span>
+                          </>
+                        ) : (
+                          <span style={{ color: '#CBD5E1', fontSize: 12 }}>—</span>
+                        )}
+                      </div>
+                      <div className="inline-flex items-center gap-1.5">
+                        <Plane size={12} style={{ color: '#94A3B8', transform: 'scaleX(-1)' }} />
+                        <span style={{ color: '#64748B', fontSize: 11.5 }}>Volta</span>
+                        {volta ? (
+                          <>
+                            <StatusDot tone={VIAGEM_TONE[volta.status]}>{STATUS_VIAGEM_LABEL[volta.status]}</StatusDot>
+                            <span className="font-mono" style={{ color: '#1E293B', fontSize: 12 }}>{fmtDataBR(volta.data)}</span>
+                          </>
+                        ) : (
+                          <span style={{ color: '#CBD5E1', fontSize: 12 }}>Não garantido</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </td>
+                <td className="px-4 py-3.5">
+                  {!ajuda ? (
+                    <span style={{ color: '#CBD5E1', fontSize: 12 }}>Sem ajuda de custo</span>
+                  ) : (
+                    <div className="inline-flex items-center gap-1.5 flex-wrap">
+                      <Wallet size={12} style={{ color: '#94A3B8' }} />
+                      <StatusDot tone={AJUDA_TONE[ajuda.ajuda.status]}>{STATUS_AJUDA_LABEL[ajuda.ajuda.status]}</StatusDot>
+                      <span className="leading-tight">
+                        <span style={{ color: '#1E293B', fontSize: 12 }}>
+                          {fmtDataBR(ajuda.ajuda.dataInicio)} → {fmtDataBR(ajuda.ajuda.dataFim)}
+                        </span>
+                        <span className="font-mono" style={{ color: '#64748B', fontSize: 12 }}> · {fmtBRL(ajuda.valor)}</span>
+                      </span>
+                    </div>
+                  )}
+                </td>
+                <td className="px-4 py-3.5">
+                  {limite && urgencia ? (
+                    <div className="leading-tight" title={limite.label}>
+                      <div className="font-mono" style={{ color: urgencia.cor, fontWeight: 700, fontSize: 13 }}>
+                        {fmtDataBR(limite.data)}
+                      </div>
+                      <div style={{ color: urgencia.cor, fontSize: 11.5 }}>
+                        {limite.label} · {urgencia.texto}
+                      </div>
+                    </div>
+                  ) : (
+                    <span style={{ color: '#CBD5E1', fontSize: 12 }}>Sem data definida</span>
+                  )}
                 </td>
                 <td className="px-4 py-3.5" style={{ color: '#64748B', fontSize: 13 }}>
                   {tempoNoSetor(s.dataCriacao)}d
@@ -285,7 +448,8 @@ export default function AcompanhamentoListPage() {
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
         <Pagination

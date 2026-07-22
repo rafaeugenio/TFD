@@ -54,6 +54,22 @@ function proximaViagem(s: SolicitacaoMock): { data: string; trecho: string } | n
   };
 }
 
+/**
+ * Tipo de viagem exibido na fila, conforme o que está cadastrado nas
+ * viagens ativas da solicitação: ida, ida e volta, apenas volta ou apenas
+ * transfer. `null` quando não há viagem cadastrada ainda.
+ */
+function tipoViagemFila(s: SolicitacaoMock): string | null {
+  const ativas = s.viagens.filter((v) => !['cancelada', 'reembolso'].includes(v.status));
+  if (ativas.length === 0) return null;
+  const temIda = ativas.some((v) => v.tipo === 'ida');
+  const temVolta = ativas.some((v) => v.tipo === 'volta');
+  if (temIda && temVolta) return 'Ida e volta';
+  if (temIda) return 'Ida';
+  if (temVolta) return 'Volta';
+  return 'Transfer';
+}
+
 const fmtDataBR = (iso: string) => {
   const [y, m, d] = iso.split('-');
   if (!y || !m || !d) return iso;
@@ -242,6 +258,7 @@ export default function PassagensListPage() {
               <SortTh label="Número" field="numero" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Paciente" field="paciente" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Origem" field="municipio" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <Th>Tipo de viagem</Th>
               <SortTh label="Próxima viagem" field="proxima" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Total passagens" field="total" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} align="right" />
               <SortTh label="Aguardando há" field="tempo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
@@ -252,9 +269,9 @@ export default function PassagensListPage() {
             {isLoading && (
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={`sk-${i}`} style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
-                  {Array.from({ length: 7 }).map((__, c) => (
+                  {Array.from({ length: 8 }).map((__, c) => (
                     <td key={c} className="px-4 py-3.5">
-                      <Skeleton className={`h-4 ${c === 0 ? 'w-24' : c === 1 ? 'w-44' : c === 6 ? 'w-16 ml-auto' : 'w-28'}`} />
+                      <Skeleton className={`h-4 ${c === 0 ? 'w-24' : c === 1 ? 'w-44' : c === 7 ? 'w-16 ml-auto' : 'w-28'}`} />
                     </td>
                   ))}
                 </tr>
@@ -262,7 +279,7 @@ export default function PassagensListPage() {
             )}
             {!isLoading && fila.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
+                <td colSpan={8} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
                   Nenhuma solicitação aguardando ação em Passagens.
                 </td>
               </tr>
@@ -272,6 +289,7 @@ export default function PassagensListPage() {
                 .filter((v) => v.status !== 'reembolso' && v.status !== 'cancelada')
                 .reduce((acc, v) => acc + v.valor, 0);
               const prox = proximaViagem(s);
+              const tipoViagem = tipoViagemFila(s);
 
               const tram = s.ultimaTramitacao;
               const destaque =
@@ -320,6 +338,13 @@ export default function PassagensListPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3.5">
+                    {tipoViagem ? (
+                      <span style={{ color: '#1E293B', fontSize: 13 }}>{tipoViagem}</span>
+                    ) : (
+                      <span style={{ color: '#CBD5E1', fontSize: 12 }}>Sem viagem</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3.5">
                     {prox ? (
                       <div className="leading-tight">
                         <div style={{ color: '#1E293B', fontSize: 13, fontWeight: 500 }}>{fmtDataBR(prox.data)}</div>
@@ -329,8 +354,19 @@ export default function PassagensListPage() {
                       <span style={{ color: '#CBD5E1', fontSize: 12 }}>Sem viagem</span>
                     )}
                   </td>
-                  <td className="px-4 py-3.5 text-right font-mono" style={{ color: '#0F172A', fontWeight: 600, fontSize: 14 }}>
-                    {fmtBRL(totalPassagens)}
+                  <td className="px-4 py-3.5 text-right">
+                    <div className="inline-flex items-center justify-end gap-2">
+                      <span
+                        className="inline-flex items-center justify-center shrink-0"
+                        style={{ width: 22, height: 22, background: '#EFF6FF', color: '#1D4ED8', borderRadius: 6 }}
+                        aria-hidden
+                      >
+                        <Plane size={13} strokeWidth={2.2} />
+                      </span>
+                      <span className="font-mono" style={{ color: '#0F172A', fontWeight: 600, fontSize: 14 }}>
+                        {fmtBRL(totalPassagens)}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-4 py-3.5" style={{ color: '#64748B', fontSize: 13 }}>
                     {tempoNoSetor(s.dataCriacao)}d

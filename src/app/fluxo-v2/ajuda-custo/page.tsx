@@ -39,7 +39,46 @@ const FILTRO_OPTIONS: { value: AjudaCustoFiltro; label: string }[] = [
 const fmtBRL = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+const fmtDataBR = (iso: string) => {
+  const [y, m, d] = iso.split('-');
+  if (!y || !m || !d) return iso;
+  return `${d}/${m}/${y}`;
+};
+
 type DrawerKind = 'ajuda' | null;
+
+/**
+ * Última ajuda de custo já lançada (pela data de início), usada para
+ * mostrar o período vigente e para derivar o próximo período.
+ */
+function ultimaAjudaLancada(s: SolicitacaoMock) {
+  const ativas = s.ajudasCusto.filter((a) => a.ativa !== false);
+  if (ativas.length === 0) return null;
+  return [...ativas].sort((a, b) => b.dataFim.localeCompare(a.dataFim))[0];
+}
+
+/**
+ * Próximo período a ser lançado: começa no dia seguinte ao fim do último
+ * período já lançado. Quando ainda não há nenhum lançamento, usa a data de
+ * início da primeira viagem de ida como referência — é a partir dela que a
+ * ajuda de custo passa a ser devida. Sem nenhuma das duas bases, retorna
+ * `null` em vez de inventar uma data.
+ */
+function proximoPeriodoAjuda(s: SolicitacaoMock): { data: string; origem: 'ultimo_periodo' | 'inicio_viagem' } | null {
+  const ultima = ultimaAjudaLancada(s);
+  if (ultima) {
+    const fim = new Date(`${ultima.dataFim}T00:00:00`);
+    fim.setDate(fim.getDate() + 1);
+    return { data: fim.toISOString().slice(0, 10), origem: 'ultimo_periodo' };
+  }
+  const idas = s.viagens
+    .filter((v) => v.ativa !== false && v.tipo === 'ida')
+    .sort((a, b) => a.data.localeCompare(b.data));
+  if (idas.length > 0) {
+    return { data: idas[0].data, origem: 'inicio_viagem' };
+  }
+  return null;
+}
 
 /**
  * Fila do setor de Ajuda de Custo (PBI 13237): listagem exclusiva das
@@ -216,7 +255,8 @@ export default function AjudaCustoListPage() {
               <SortTh label="Número" field="numero" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Paciente" field="paciente" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Origem" field="municipio" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
-              <Th>Ajudas de custo</Th>
+              <Th>Período lançado</Th>
+              <Th>Próximo período</Th>
               <SortTh label="Total previsto" field="total" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} align="right" />
               <SortTh label="Aguardando há" field="tempo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <Th align="right">Ações</Th>
@@ -226,9 +266,9 @@ export default function AjudaCustoListPage() {
             {isLoading && (
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={`sk-${i}`} style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
-                  {Array.from({ length: 7 }).map((__, c) => (
+                  {Array.from({ length: 8 }).map((__, c) => (
                     <td key={c} className="px-4 py-3.5">
-                      <Skeleton className={`h-4 ${c === 0 ? 'w-24' : c === 1 ? 'w-44' : c === 6 ? 'w-16 ml-auto' : 'w-28'}`} />
+                      <Skeleton className={`h-4 ${c === 0 ? 'w-24' : c === 1 ? 'w-44' : c === 7 ? 'w-16 ml-auto' : 'w-28'}`} />
                     </td>
                   ))}
                 </tr>
@@ -236,7 +276,7 @@ export default function AjudaCustoListPage() {
             )}
             {!isLoading && fila.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
+                <td colSpan={8} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
                   Nenhuma solicitação aguardando ação em Ajuda de Custo.
                 </td>
               </tr>
@@ -246,6 +286,8 @@ export default function AjudaCustoListPage() {
               const totalAjuda = ajudasAtivas.reduce(
                 (acc, a) => acc + calcularValorAjuda(a.dataInicio, a.dataFim, a.pernoiteRetorno).valor, 0,
               );
+              const ultima = ultimaAjudaLancada(s);
+              const proximo = proximoPeriodoAjuda(s);
 
               const tram = s.ultimaTramitacao;
               const destaque =
@@ -294,12 +336,31 @@ export default function AjudaCustoListPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3.5">
-                    {ajudasAtivas.length === 0 ? (
-                      <span style={{ color: '#CBD5E1', fontSize: 12 }}>Sem ajuda</span>
+                    {ultima ? (
+                      <div className="leading-tight">
+                        <div style={{ color: '#1E293B', fontSize: 13, fontWeight: 500 }}>
+                          {fmtDataBR(ultima.dataInicio)} → {fmtDataBR(ultima.dataFim)}
+                        </div>
+                        {ajudasAtivas.length > 1 && (
+                          <div style={{ color: '#94A3B8', fontSize: 12 }}>
+                            {ajudasAtivas.length} períodos ao todo
+                          </div>
+                        )}
+                      </div>
                     ) : (
-                      <span style={{ color: '#1E293B', fontSize: 13 }}>
-                        {ajudasAtivas.length} {ajudasAtivas.length === 1 ? 'período' : 'períodos'}
-                      </span>
+                      <span style={{ color: '#CBD5E1', fontSize: 12 }}>Sem ajuda</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    {proximo ? (
+                      <div className="leading-tight">
+                        <div style={{ color: '#1E293B', fontSize: 13, fontWeight: 500 }}>{fmtDataBR(proximo.data)}</div>
+                        <div style={{ color: '#94A3B8', fontSize: 12 }}>
+                          {proximo.origem === 'ultimo_periodo' ? 'a partir do último período' : 'a partir do início da viagem'}
+                        </div>
+                      </div>
+                    ) : (
+                      <span style={{ color: '#CBD5E1', fontSize: 12 }}>Sem base para calcular</span>
                     )}
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono" style={{ color: '#0F172A', fontWeight: 600, fontSize: 14 }}>
