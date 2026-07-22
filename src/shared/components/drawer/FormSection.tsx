@@ -14,6 +14,8 @@ interface FormSectionProps {
   children: ReactNode;
   /** className extra no fieldset. */
   className?: string;
+  /** Desabilita todos os campos da seção (nativo do `<fieldset>`). */
+  disabled?: boolean;
 }
 
 /**
@@ -47,15 +49,17 @@ export default function FormSection({
   hint,
   children,
   className,
+  disabled,
 }: FormSectionProps) {
   const palette = TONES[tone];
   return (
     <fieldset
+      disabled={disabled}
       className={`px-3 pt-3 pb-4 mb-4 min-w-0 ${className ?? ''}`}
       style={{
         border: '1px solid var(--tfd-surface-border)',
         borderRadius: 10,
-        background: 'white',
+        background: disabled ? '#F8FAFC' : 'white',
         minWidth: 0,
       }}
     >

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, User, Route, Ticket } from 'lucide-react';
+import { Loader2, User, Route, Ticket, Lock } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormSection from '@/shared/components/drawer/FormSection';
 import AnexosUploadField, { type AnexoLocal } from '@/shared/components/anexos-upload-field/AnexosUploadField';
@@ -62,9 +62,12 @@ interface Props {
   snapshotPaciente?: SnapshotPacienteData;
   /** T2.AL — Quando informado, entra em modo edição (sem opção de "ida e volta"). */
   editar?: ViagemMock;
+  /** PBI 13237 — Acompanhamento edita pelo drawer, mas só o status é
+   *  editável e salvável; os demais campos ficam somente leitura. */
+  somenteStatus?: boolean;
 }
 
-export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar }: Props) {
+export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar, somenteStatus }: Props) {
   const { addViagem, addViagensIdaEVolta, editarViagem, getById, addAnexos } = useFluxoV2State();
   const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
   const toast = useToast();
@@ -430,8 +433,25 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
     >
       {snapshotPaciente && <SnapshotPaciente data={snapshotPaciente} />}
 
+      {/* Aviso do Acompanhamento — só o status pode ser alterado aqui. */}
+      {somenteStatus && (
+        <div
+          className="flex items-start gap-3 mb-4 px-4 py-3"
+          style={{ background: '#F8FAFC', border: '1px dashed #CBD5E1', borderRadius: 10, color: '#475569' }}
+        >
+          <Lock size={16} style={{ flexShrink: 0, marginTop: 1, color: '#64748B' }} />
+          <div className="text-[12.5px] leading-relaxed">
+            <strong style={{ color: '#1A1D2B' }}>Somente leitura em Acompanhamento.</strong>{' '}
+            Os demais campos ficam travados — apenas o status pode ser atualizado aqui.
+          </div>
+        </div>
+      )}
+
       {/* Beneficiário */}
       <FormSection title="Beneficiário" icon={<User size={12} />} tone="primary">
+      {/* O Status fica fora deste fieldset — em Acompanhamento é o único
+          campo editável, então precisa continuar habilitado. */}
+      <fieldset disabled={somenteStatus} style={{ display: 'contents' }}>
       <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         Beneficiário
       </label>
@@ -458,10 +478,12 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
           Ambas as passagens (ida + volta) ficam vinculadas ao mesmo beneficiário.
         </p>
       )}
+      </fieldset>
 
       {/* Modal / Tipo / Status — vêm logo após o beneficiário porque definem o
           formato dos campos de origem/destino (cidade vs aeroporto). */}
       <div className="grid grid-cols-3 gap-3 mb-4">
+        <fieldset disabled={somenteStatus} style={{ display: 'contents' }}>
         <div>
           <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
             Modal
@@ -492,6 +514,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
             {!isEdicao && <option value="ida_e_volta">Ida e volta</option>}
           </select>
         </div>
+        </fieldset>
         <div>
           <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
             Status
@@ -511,6 +534,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         </div>
       </div>
 
+      <fieldset disabled={somenteStatus} style={{ display: 'contents' }}>
       {status === 'reembolso' && (
         <div className="grid grid-cols-2 gap-3 mt-3">
           <div>
@@ -545,10 +569,11 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
           </p>
         </div>
       )}
+      </fieldset>
       </FormSection>
 
       {/* Origem / Destino: aeroporto (aéreo) ou UF+cidade (terrestre/fluvial). */}
-      <FormSection title="Trajeto" icon={<Route size={12} />} tone="info">
+      <FormSection title="Trajeto" icon={<Route size={12} />} tone="info" disabled={somenteStatus}>
       {isAereo ? (
         <>
           {!loadingAeroportos && (aeroportosErro || aeroportos.length === 0) && (
@@ -724,7 +749,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       </FormSection>
 
       {/* Datas, valor e companhia */}
-      <FormSection title="Detalhes da passagem" icon={<Ticket size={12} />} tone="success">
+      <FormSection title="Detalhes da passagem" icon={<Ticket size={12} />} tone="success" disabled={somenteStatus}>
       {isIdaEVolta ? (
         <>
           <div className="grid grid-cols-2 gap-3 mb-2">
@@ -825,7 +850,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
 
       </FormSection>
 
-      <AnexosUploadField value={anexos} onChange={setAnexos} hint="Bilhete, voucher ou comprovante de embarque (opcional)." />
+      <AnexosUploadField value={anexos} onChange={setAnexos} hint="Bilhete, voucher ou comprovante de embarque (opcional)." disabled={somenteStatus} />
     </Drawer>
   );
 }

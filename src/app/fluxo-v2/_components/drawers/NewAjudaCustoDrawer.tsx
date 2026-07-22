@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarRange, Calculator, Hash } from 'lucide-react';
+import { CalendarRange, Calculator, Hash, Lock } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormSection from '@/shared/components/drawer/FormSection';
 import AnexosUploadField, { type AnexoLocal } from '@/shared/components/anexos-upload-field/AnexosUploadField';
@@ -34,9 +34,12 @@ interface Props {
   snapshotPaciente?: SnapshotPacienteData;
   /** T2.AL — Quando informado, entra em modo edição. */
   editar?: AjudaCustoMock;
+  /** PBI 13237 — Acompanhamento edita pelo drawer, mas só o status é
+   *  editável e salvável; os demais campos ficam somente leitura. */
+  somenteStatus?: boolean;
 }
 
-export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar }: Props) {
+export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar, somenteStatus }: Props) {
   const { addAjudaCusto, editarAjudaCusto, getById, addAnexos } = useFluxoV2State();
   const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
   const toast = useToast();
@@ -171,8 +174,22 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
     >
       {snapshotPaciente && <SnapshotPaciente data={snapshotPaciente} />}
 
+      {/* Aviso do Acompanhamento — só o status pode ser alterado aqui. */}
+      {somenteStatus && (
+        <div
+          className="flex items-start gap-3 mb-4 px-4 py-3"
+          style={{ background: '#F8FAFC', border: '1px dashed #CBD5E1', borderRadius: 10, color: '#475569' }}
+        >
+          <Lock size={16} style={{ flexShrink: 0, marginTop: 1, color: '#64748B' }} />
+          <div className="text-[12.5px] leading-relaxed">
+            <strong style={{ color: '#1A1D2B' }}>Somente leitura em Acompanhamento.</strong>{' '}
+            Os demais campos ficam travados — apenas o status pode ser atualizado aqui.
+          </div>
+        </div>
+      )}
+
       {/* T2.AQ — Select de beneficiário (mesmo padrão de NewPassagemDrawer). */}
-      <FormSection title="Beneficiário e Período" icon={<CalendarRange size={12} />} tone="primary">
+      <FormSection title="Beneficiário e Período" icon={<CalendarRange size={12} />} tone="primary" disabled={somenteStatus}>
       <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         Beneficiário
       </label>
@@ -310,6 +327,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         icon={<Hash size={12} />}
         tone="default"
         hint="Obrigatório — cada ajuda de custo abre um processo próprio no SEI."
+        disabled={somenteStatus}
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           <input
@@ -338,7 +356,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         )}
       </FormSection>
 
-      <AnexosUploadField value={anexos} onChange={setAnexos} />
+      <AnexosUploadField value={anexos} onChange={setAnexos} disabled={somenteStatus} />
     </Drawer>
   );
 }

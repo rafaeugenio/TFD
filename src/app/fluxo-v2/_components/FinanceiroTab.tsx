@@ -42,8 +42,6 @@ export default function FinanceiroTab({ s }: Props) {
     cancelarAjudaCusto,
     reembolsarAjudaCusto,
     removerAdicional,
-    editarViagem,
-    editarAjudaCusto,
   } = useFluxoV2State();
   const toast = useToast();
 
@@ -69,7 +67,8 @@ export default function FinanceiroTab({ s }: Props) {
   // Passagens edita passagens/adicionais e vê Ajuda de Custo travada;
   // Ajuda de Custo edita ajuda de custo e vê passagens travadas; em
   // Acompanhamento tudo é somente leitura, com exceção do status da
-  // passagem e do status da ajuda de custo (o que o setor acompanha).
+  // passagem e do status da ajuda de custo, que são editados pelo próprio
+  // drawer de edição (os demais campos do drawer ficam travados lá dentro).
   const setorAtualS = setorAtual(s);
   const emFinanceiro =
     setorAtualS === 'passagens' || setorAtualS === 'ajuda_custo' || setorAtualS === 'acompanhamento';
@@ -77,12 +76,16 @@ export default function FinanceiroTab({ s }: Props) {
   const lockedPassagens = setorAtualS !== 'passagens';
   const lockedAjuda = setorAtualS !== 'ajuda_custo';
   const emAcompanhamento = setorAtualS === 'acompanhamento';
+  // Em Acompanhamento, o botão Editar continua liberado — é a porta de
+  // entrada pro drawer, que ali só deixa o status ser alterado.
+  const editarPassagensDisabled = lockedPassagens && !emAcompanhamento;
+  const editarAjudaDisabled = lockedAjuda && !emAcompanhamento;
   const lockedTip = tooltipLocked(s, 'passagens');
   const lockedTipPassagens = emAcompanhamento
-    ? 'Em Acompanhamento, passagens ficam somente leitura — apenas o status pode ser atualizado.'
+    ? 'Em Acompanhamento, passagens ficam somente leitura — apenas o status pode ser atualizado pelo drawer de edição.'
     : tooltipLocked(s, 'passagens');
   const lockedTipAjuda = emAcompanhamento
-    ? 'Em Acompanhamento, ajuda de custo fica somente leitura — apenas o status pode ser atualizado.'
+    ? 'Em Acompanhamento, ajuda de custo fica somente leitura — apenas o status pode ser atualizado pelo drawer de edição.'
     : tooltipLocked(s, 'ajuda_custo');
 
   function abrirNovaPassagem() { setPassagemEditar(undefined); setPassagemOpen(true); }
@@ -169,7 +172,7 @@ export default function FinanceiroTab({ s }: Props) {
           <Lock size={16} style={{ flexShrink: 0, marginTop: 1, color: '#64748B' }} />
           <div className="text-[12.5px] leading-relaxed">
             <strong style={{ color: '#1A1D2B' }}>Somente leitura em Acompanhamento.</strong>{' '}
-            Só o status da passagem e o status da ajuda de custo podem ser atualizados aqui — as demais ações ficam bloqueadas.
+            Abra o drawer de edição da passagem ou da ajuda de custo para atualizar o status — os demais campos ficam travados lá dentro.
           </div>
         </div>
       )}
@@ -298,14 +301,7 @@ export default function FinanceiroTab({ s }: Props) {
                       </td>
                       <td className="px-3 py-2 capitalize" style={{ color: '#475569' }}>{v.tipo}</td>
                       <td className="px-3 py-2">
-                        {emAcompanhamento ? (
-                          <ViagemStatusSelect
-                            status={v.status}
-                            onChange={(novo) => editarViagem(s.id, v.id, { status: novo })}
-                          />
-                        ) : (
-                          <ViagemStatusBadge status={v.status} />
-                        )}
+                        <ViagemStatusBadge status={v.status} />
                       </td>
                       <td className="px-3 py-2 text-right font-mono" style={{ color: v.ativa === false ? '#94A3B8' : '#1A1D2B', textDecoration: v.ativa === false ? 'line-through' : undefined }}>
                         {fmtBRL(v.valor)}
@@ -321,6 +317,7 @@ export default function FinanceiroTab({ s }: Props) {
                           onExcluir={() => setPassagemCancelar(v)}
                           labelExcluir={v.ativa === false ? 'Já cancelada' : 'Cancelar passagem'}
                           disabled={lockedPassagens}
+                          disabledEditar={editarPassagensDisabled}
                           tooltipDisabled={lockedTipPassagens}
                         />
                       </td>
@@ -454,14 +451,7 @@ export default function FinanceiroTab({ s }: Props) {
                         </span>
                       )}
                     </span>
-                    {emAcompanhamento ? (
-                      <AjudaStatusSelect
-                        status={a.status}
-                        onChange={(novo) => editarAjudaCusto(s.id, a.id, { status: novo })}
-                      />
-                    ) : (
-                      <AjudaStatusBadge status={a.status} />
-                    )}
+                    <AjudaStatusBadge status={a.status} />
                     <span style={{ color: '#9CA3AF', fontSize: 10 }}>{a.id.slice(-4)}</span>
                     <ItemRowActions
                       onEditar={() => abrirEditarAjuda(a)}
@@ -471,6 +461,7 @@ export default function FinanceiroTab({ s }: Props) {
                       labelReembolso={a.valorReembolso != null ? 'Editar reembolso' : 'Reembolsar'}
                       reembolsado={a.valorReembolso != null && a.valorReembolso > 0}
                       disabled={lockedAjuda}
+                      disabledEditar={editarAjudaDisabled}
                       tooltipDisabled={lockedTipAjuda}
                     />
                   </div>
@@ -524,12 +515,14 @@ export default function FinanceiroTab({ s }: Props) {
         onClose={() => setPassagemOpen(false)}
         solicitacaoId={s.id}
         editar={passagemEditar}
+        somenteStatus={emAcompanhamento}
       />
       <NewAjudaCustoDrawer
         open={ajudaOpen}
         onClose={() => setAjudaOpen(false)}
         solicitacaoId={s.id}
         editar={ajudaEditar}
+        somenteStatus={emAcompanhamento}
       />
       <NewAdicionalDrawer
         open={adicionalOpen}
@@ -649,24 +642,6 @@ function ViagemStatusBadge({ status }: { status: StatusViagem }) {
   return <StatusDot tone={VIAGEM_TONE[status]}>{STATUS_VIAGEM_LABEL[status]}</StatusDot>;
 }
 
-/** Select inline do status da passagem — única edição permitida em
- *  Acompanhamento (o setor confirma embarque, remarcação, no-show etc.). */
-function ViagemStatusSelect({ status, onChange }: { status: StatusViagem; onChange: (novo: StatusViagem) => void }) {
-  return (
-    <select
-      value={status}
-      onChange={(e) => onChange(e.target.value as StatusViagem)}
-      className="text-[12px]"
-      style={{ border: '1px solid var(--tfd-surface-border)', borderRadius: 6, padding: '2px 6px', color: '#1A1D2B', background: 'white' }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {(Object.keys(STATUS_VIAGEM_LABEL) as StatusViagem[]).map((opt) => (
-        <option key={opt} value={opt}>{STATUS_VIAGEM_LABEL[opt]}</option>
-      ))}
-    </select>
-  );
-}
-
 const AJUDA_TONE: Record<StatusAjuda, StatusDotTone> = {
   emitido:   'info',
   concluido: 'success',
@@ -674,24 +649,6 @@ const AJUDA_TONE: Record<StatusAjuda, StatusDotTone> = {
 };
 function AjudaStatusBadge({ status }: { status: StatusAjuda }) {
   return <StatusDot tone={AJUDA_TONE[status]}>{STATUS_AJUDA_LABEL[status]}</StatusDot>;
-}
-
-/** Select inline do status da ajuda de custo — única edição permitida em
- *  Acompanhamento (o setor confirma se foi paga, reembolsada, glosada etc.). */
-function AjudaStatusSelect({ status, onChange }: { status: StatusAjuda; onChange: (novo: StatusAjuda) => void }) {
-  return (
-    <select
-      value={status}
-      onChange={(e) => onChange(e.target.value as StatusAjuda)}
-      className="text-[12px]"
-      style={{ border: '1px solid var(--tfd-surface-border)', borderRadius: 6, padding: '2px 6px', color: '#1A1D2B', background: 'white' }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {(Object.keys(STATUS_AJUDA_LABEL) as StatusAjuda[]).map((opt) => (
-        <option key={opt} value={opt}>{STATUS_AJUDA_LABEL[opt]}</option>
-      ))}
-    </select>
-  );
 }
 
 /** Beneficiário — texto cinza neutro com ícone, sem cor. */

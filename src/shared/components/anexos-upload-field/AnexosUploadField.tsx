@@ -34,6 +34,8 @@ interface Props {
   hint?: string;
   /** Tom visual do FormSection. Default: 'info'. */
   tone?: 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info';
+  /** Desabilita o upload (somente leitura). */
+  disabled?: boolean;
 }
 
 /**
@@ -50,6 +52,7 @@ export default function AnexosUploadField({
   title = 'Documentos anexos',
   hint = 'Opcional — múltiplos arquivos permitidos.',
   tone = 'info',
+  disabled = false,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [tiposDocumento, setTiposDocumento] = useState<TipoDocRow[]>([]);
@@ -83,6 +86,7 @@ export default function AnexosUploadField({
       icon={<Paperclip size={12} />}
       tone={tone}
       hint={hint}
+      disabled={disabled}
       action={
         <a
           href="/sistema/configuracoes"

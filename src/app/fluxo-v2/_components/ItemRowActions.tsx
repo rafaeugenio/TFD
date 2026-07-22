@@ -19,6 +19,11 @@ interface Props {
   tooltipDisabled?: string;
   /** Quando true, botão de reembolso fica destacado (amarelo cheio). */
   reembolsado?: boolean;
+  /** Sobrepõe `disabled` só no botão Editar — usado quando a edição continua
+   *  liberada (ex.: Acompanhamento, que só edita o status pelo drawer). */
+  disabledEditar?: boolean;
+  /** Tooltip do botão Editar quando `disabledEditar` difere de `tooltipDisabled`. */
+  tooltipDisabledEditar?: string;
 }
 
 export default function ItemRowActions({
@@ -30,6 +35,8 @@ export default function ItemRowActions({
   disabled = false,
   tooltipDisabled,
   reembolsado = false,
+  disabledEditar,
+  tooltipDisabledEditar,
 }: Props) {
   return (
     <span className="inline-flex items-center gap-0.5">
@@ -37,8 +44,8 @@ export default function ItemRowActions({
         icon={Pencil}
         label="Editar"
         onClick={onEditar}
-        disabled={disabled}
-        tooltipDisabled={tooltipDisabled}
+        disabled={disabledEditar ?? disabled}
+        tooltipDisabled={tooltipDisabledEditar ?? tooltipDisabled}
         color="var(--tfd-blue-700, #1D4ED8)"
         hoverBg="#EBF0FF"
       />
