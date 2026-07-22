@@ -67,12 +67,20 @@ export async function excluirPapel(id: string) {
   return getSupabase().from('papeis').delete().eq('id', id);
 }
 
+export interface TelaMenu {
+  id: string;
+  nome: string;
+  modulo: string;
+  rota: string;
+  ordem: number;
+}
+
 export async function listarTelas() {
   return getSupabase()
     .from('telas_sistema')
-    .select('*')
+    .select('id, nome, modulo, rota, ordem')
     .order('modulo')
-    .order('ordem');
+    .order('ordem') as unknown as Promise<{ data: TelaMenu[] | null; error: unknown }>;
 }
 
 /**
@@ -153,20 +161,30 @@ export interface Permissao {
   descricao: string | null;
   grupo: string | null;
   ordem: number;
+  /** Tela dona da permissão, usada para agrupar por tela na tela de Permissões. */
+  tela_id: string | null;
+  /** Ordem de exibição da permissão dentro da tela dona. */
+  ordem_tela: number;
+  /** Rótulo curto da pill (ex.: "Visualizar", "Criar", "Encerrar"). */
+  rotulo_curto: string | null;
+  /** Outras telas onde esta mesma permissão também vale (permissão é única e global). */
+  tambem_em: string[];
 }
 
 /**
- * Lista o catálogo de permissões do modelo simplificado: as três famílias
- * `tela.<id>.visualizar`, `<item>.criar|editar|excluir` e `acao.<nome>`.
- * Ver migration `00068_pbi13230_permissoes_simplificadas.sql`.
+ * Lista o catálogo de permissões do modelo simplificado, agrupável por tela
+ * dona (`tela_id`) e módulo (via `telas_sistema.modulo`). Ver migrations
+ * `00068_pbi13230_permissoes_simplificadas.sql`,
+ * `00069_pbi13230_permissoes_por_tela.sql` e
+ * `00070_pbi13230_rotulos_curtos.sql`.
  */
 export async function listarPermissoes(): Promise<{ data: Permissao[]; error: unknown }> {
   const supabase = getSupabase();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const res = await (supabase as any)
     .from('permissoes')
-    .select('id, familia, nome, descricao, grupo, ordem')
-    .order('ordem');
+    .select('id, familia, nome, descricao, grupo, ordem, tela_id, ordem_tela, rotulo_curto, tambem_em')
+    .order('ordem_tela');
   return { data: (res.data as Permissao[]) ?? [], error: res.error };
 }
 

@@ -25,6 +25,7 @@ import { useToast } from '@/shared/components/toast/Toast';
 import {
   listarPapeis,
   listarPermissoes,
+  listarTelas,
   contarUsuariosPorPapel,
   listarPermissoesDoPapel,
   listarTodosPapelPermissoes,
@@ -33,7 +34,7 @@ import {
   excluirPapel,
   salvarPermissoesDoPapel,
 } from '@/services/papeis.service';
-import type { Papel, Permissao } from '@/services/papeis.service';
+import type { Papel, Permissao, TelaMenu } from '@/services/papeis.service';
 import { TableRowsSkeleton } from '@/shared/components/skeleton';
 import { Can } from '@/shared/auth/Can';
 
@@ -56,57 +57,43 @@ function getInitials(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
-/** Rótulo de cada ação de cadastro (família `item`). */
-const ACAO_ITEM_LABELS: Record<string, string> = { criar: 'Criar', editar: 'Editar', excluir: 'Excluir' };
+interface TelaComPermissoes {
+  telaId: string;
+  telaNome: string;
+  permissoes: Permissao[];
+}
 
-interface PermissaoItemGroup {
-  itemId: string;
-  label: string;
-  grupo: string;
-  ordem: number;
-  acoes: { id: string; label: string }[];
+interface ModuloComTelas {
+  modulo: string;
+  telas: TelaComPermissoes[];
 }
 
 /**
- * Separa o catálogo de permissões nas três famílias do modelo simplificado
- * e, na família `item`, agrupa as ações criar/editar/excluir do mesmo
- * cadastro numa única linha (ex: "Paciente" com pills Criar/Editar/Excluir).
+ * Agrupa o catálogo de permissões por módulo e por tela, seguindo o mesmo
+ * desenho do sistema de desenvolvimento e homologação: módulo > tela > ações
+ * em pills. O módulo e a ordem de cada tela vêm de `telas_sistema`; telas sem
+ * nenhuma permissão cadastrada não aparecem na tela de Permissões.
  */
-function agruparPermissoes(permissoes: Permissao[]) {
-  const telas = permissoes.filter((p) => p.familia === 'tela').sort((a, b) => a.ordem - b.ordem);
-  const acoes = permissoes.filter((p) => p.familia === 'acao').sort((a, b) => a.ordem - b.ordem);
-
-  const itemMap = new Map<string, PermissaoItemGroup>();
-  for (const p of permissoes.filter((p) => p.familia === 'item')) {
-    const match = p.id.match(/^(.+)\.(criar|editar|excluir)$/);
-    if (!match) continue;
-    const [, itemId, acaoChave] = match;
-    if (!itemMap.has(itemId)) {
-      itemMap.set(itemId, {
-        itemId,
-        // "Criar solicitação" → "Solicitação"
-        label: p.nome.replace(/^(Criar|Editar|Excluir)\s+/, '').replace(/^\w/, (c) => c.toUpperCase()),
-        grupo: p.grupo ?? 'Outros',
-        ordem: p.ordem,
-        acoes: [],
-      });
-    }
-    itemMap.get(itemId)!.acoes.push({ id: p.id, label: ACAO_ITEM_LABELS[acaoChave] ?? acaoChave });
+function agruparPorModuloETela(permissoes: Permissao[], telas: TelaMenu[]): ModuloComTelas[] {
+  const permissoesPorTela = new Map<string, Permissao[]>();
+  for (const p of permissoes) {
+    if (!p.tela_id) continue;
+    if (!permissoesPorTela.has(p.tela_id)) permissoesPorTela.set(p.tela_id, []);
+    permissoesPorTela.get(p.tela_id)!.push(p);
   }
-  const itens = Array.from(itemMap.values()).sort((a, b) => a.ordem - b.ordem);
+  for (const lista of permissoesPorTela.values()) lista.sort((a, b) => a.ordem_tela - b.ordem_tela);
 
-  return { telas, acoes, itens };
-}
-
-/** Agrupa uma lista de permissões (ou grupos de item) pelo campo `grupo`, preservando a ordem de aparição. */
-function agruparPorGrupo<T extends { grupo: string | null }>(rows: T[]): Record<string, T[]> {
-  const groups: Record<string, T[]> = {};
-  for (const row of rows) {
-    const chave = row.grupo ?? 'Outros';
-    if (!groups[chave]) groups[chave] = [];
-    groups[chave].push(row);
+  const telasPorModulo = new Map<string, TelaComPermissoes[]>();
+  for (const tela of telas) {
+    const permissoesDaTela = permissoesPorTela.get(tela.id);
+    if (!permissoesDaTela || permissoesDaTela.length === 0) continue;
+    if (!telasPorModulo.has(tela.modulo)) telasPorModulo.set(tela.modulo, []);
+    telasPorModulo.get(tela.modulo)!.push({ telaId: tela.id, telaNome: tela.nome, permissoes: permissoesDaTela });
   }
-  return groups;
+
+  // `telas` já vem ordenada por módulo e ordem (ver listarTelas), então a
+  // ordem de inserção do Map preserva a ordem correta dos módulos e telas.
+  return Array.from(telasPorModulo.entries()).map(([modulo, telasDoModulo]) => ({ modulo, telas: telasDoModulo }));
 }
 
 /* -------------------------------------------------- */
@@ -163,6 +150,7 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
   /* ---- Data state ---- */
   const [papeis, setPapeis] = useState<Papel[]>([]);
   const [permissoes, setPermissoes] = useState<Permissao[]>([]);
+  const [telas, setTelas] = useState<TelaMenu[]>([]);
   const [userCounts, setUserCounts] = useState<Record<string, number>>({});
   /** Nº de permissões `tela.*.visualizar` que cada papel tem, para a coluna "Telas" da listagem. */
   const [telaCountsByPapel, setTelaCountsByPapel] = useState<Record<string, number>>({});
@@ -192,13 +180,18 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
   /** IDs de permissão selecionados (ex: "tela.pacientes.visualizar", "paciente.criar", "acao.tramitar"). */
   const [formPermissoes, setFormPermissoes] = useState<Set<string>>(new Set());
 
-  /* ---- Permissões agrupadas pelas três famílias do modelo simplificado ---- */
-  const { telas: permissoesTelas, acoes: permissoesAcoes, itens: permissoesItens } = useMemo(
-    () => agruparPermissoes(permissoes),
+  /* ---- Permissões agrupadas por módulo e por tela (desenho do dev/homologação) ---- */
+  const estruturaPermissoes = useMemo(
+    () => agruparPorModuloETela(permissoes, telas),
+    [permissoes, telas],
+  );
+  /** Nome da tela por id, para o texto de apoio "Vale também em ..." das pills. */
+  const telaNomeById = useMemo(() => new Map(telas.map((t) => [t.id, t.nome])), [telas]);
+  /** Permissões de acesso à tela (`tela.*.visualizar`), usadas para a contagem "Telas com permissão". */
+  const permissoesDeAcessoATela = useMemo(
+    () => permissoes.filter((p) => p.familia === 'tela'),
     [permissoes],
   );
-  const permissoesTelasPorGrupo = useMemo(() => agruparPorGrupo(permissoesTelas), [permissoesTelas]);
-  const permissoesItensPorGrupo = useMemo(() => agruparPorGrupo(permissoesItens), [permissoesItens]);
 
   /* ---- Debounce search (300ms) ---- */
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -212,21 +205,24 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [papeisRes, permissoesRes, usersRes, papelPermissoesRes] = await Promise.all([
+      const [papeisRes, permissoesRes, telasRes, usersRes, papelPermissoesRes] = await Promise.all([
         listarPapeis(),
         listarPermissoes(),
+        listarTelas(),
         contarUsuariosPorPapel(),
         listarTodosPapelPermissoes(),
       ]);
 
       const papeisData = (papeisRes.data as unknown as Papel[]) ?? [];
       const permissoesData = permissoesRes.data ?? [];
+      const telasData = telasRes.data ?? [];
       const usersData = (usersRes.data as unknown as { papel_id: string }[]) ?? [];
       const papelPermissoesData =
         (papelPermissoesRes.data as unknown as { papel_id: string; permissao_id: string }[]) ?? [];
 
       setPapeis(papeisData);
       setPermissoes(permissoesData);
+      setTelas(telasData);
 
       const counts: Record<string, number> = {};
       for (const row of usersData) {
@@ -356,7 +352,7 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
   function handleRequestSave() {
     if (!formNome.trim()) { toast.error('Campo obrigatório', 'Informe o nome do papel.'); return; }
 
-    const novoTelaCount = permissoesTelas.filter((p) => formPermissoes.has(p.id)).length;
+    const novoTelaCount = permissoesDeAcessoATela.filter((p) => formPermissoes.has(p.id)).length;
 
     if (editingPapel) {
       // Carrega contagem atual de telas a partir do editingPapel.id no telaCountsByPapel... mas o estado pode estar desatualizado.
@@ -377,7 +373,7 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
         { key: 'cor', label: 'Cor' },
       ]);
       // Permissões serão sempre re-salvas — adiciona como info informativa.
-      diff.push({ label: 'Telas com permissão', before: '', after: `${novoTelaCount} de ${permissoesTelas.length}` });
+      diff.push({ label: 'Telas com permissão', before: '', after: `${novoTelaCount} de ${permissoesDeAcessoATela.length}` });
       setSaveConfirm({ tone: 'edit', diff });
     } else {
       setSaveConfirm({
@@ -385,7 +381,7 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
         diff: [
           { label: 'Nome', after: formNome.trim() },
           { label: 'Descrição', after: formDescricao.trim() },
-          { label: 'Telas com permissão', after: `${novoTelaCount} de ${permissoesTelas.length}` },
+          { label: 'Telas com permissão', after: `${novoTelaCount} de ${permissoesDeAcessoATela.length}` },
         ],
       });
     }
@@ -446,7 +442,7 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
 
   const formPermissoesCount = formPermissoes.size;
   const totalPermissoes = permissoes.length;
-  const totalTelas = permissoesTelas.length;
+  const totalTelas = permissoesDeAcessoATela.length;
 
   /* -------------------------------------------------- */
   /*  Render                                             */
@@ -748,10 +744,10 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
 
         <hr className="tfd-divider" />
 
-        {/* Permissões — modelo simplificado: acesso às telas, cadastros, ações de fluxo */}
+        {/* Permissões agrupadas por módulo e por tela, como no sistema de dev/homologação */}
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>
-            Permissões ({formPermissoesCount} de {totalPermissoes})
+            Telas e ações ({formPermissoesCount} de {totalPermissoes})
           </h3>
           <div className="flex items-center gap-2">
             <button type="button" className="tfd-btn tfd-btn-secondary tfd-btn--sm" onClick={selectAllPermissoes}>
@@ -765,144 +761,97 @@ export function PapeisPanel({ showHeader = true }: { showHeader?: boolean }) {
           </div>
         </div>
 
-        {/* Família 1 — Acesso às telas */}
-        <div className="mb-5">
-          <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--tfd-text-muted)' }}>
-            Acesso às telas
-          </p>
-          {Object.entries(permissoesTelasPorGrupo).map(([grupo, telasDoGrupo]) => (
-            <div key={grupo} className="flex flex-col gap-1.5 mb-3 pl-1">
-              <span className="text-xs font-medium" style={{ color: 'var(--tfd-text-secondary)' }}>{grupo}</span>
-              {telasDoGrupo.map((tela) => {
-                const checked = formPermissoes.has(tela.id);
-                return (
-                  <label
-                    key={tela.id}
-                    htmlFor={`perm-${tela.id}`}
-                    className="flex items-center gap-2 rounded-md p-1.5 cursor-pointer select-none"
-                    style={{ background: checked ? 'var(--tfd-primary-50)' : 'transparent' }}
-                    title={tela.descricao ?? undefined}
-                  >
-                    <input
-                      id={`perm-${tela.id}`}
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => togglePermissao(tela.id)}
-                      style={{ accentColor: 'var(--tfd-primary-500)' }}
-                    />
-                    <span
-                      className="text-sm"
-                      style={{ color: checked ? 'var(--tfd-text-primary)' : 'var(--tfd-text-secondary)' }}
-                    >
-                      {tela.nome}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          ))}
-        </div>
+        {estruturaPermissoes.map((mod) => {
+          const idsDoModulo = mod.telas.flatMap((tela) => tela.permissoes.map((p) => p.id));
+          const selecionadasNoModulo = idsDoModulo.filter((id) => formPermissoes.has(id)).length;
+          const moduloTodoSelecionado = selecionadasNoModulo === idsDoModulo.length;
+          const moduloParcialSelecionado = selecionadasNoModulo > 0 && !moduloTodoSelecionado;
 
-        {/* Família 2 — Cadastros (criar/editar/excluir por item, válido em todos os pontos de entrada) */}
-        <div className="mb-5">
-          <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--tfd-text-muted)' }}>
-            Cadastros
-          </p>
-          {Object.entries(permissoesItensPorGrupo).map(([grupo, itensDoGrupo]) => (
-            <div key={grupo} className="flex flex-col gap-2 mb-3 pl-1">
-              <span className="text-xs font-medium" style={{ color: 'var(--tfd-text-secondary)' }}>{grupo}</span>
-              {itensDoGrupo.map((item) => {
-                const idsDoItem = item.acoes.map((a) => a.id);
-                const selectedCount = idsDoItem.filter((id) => formPermissoes.has(id)).length;
-                const allSelected = selectedCount === idsDoItem.length;
-                const someSelected = selectedCount > 0 && !allSelected;
-
-                return (
-                  <div
-                    key={item.itemId}
-                    className="rounded-lg p-2"
-                    style={{
-                      background: selectedCount > 0 ? 'var(--tfd-primary-50)' : 'var(--tfd-surface-100)',
-                      border: `1px solid ${selectedCount > 0 ? 'var(--tfd-primary-100, #DBEAFE)' : 'var(--tfd-surface-border)'}`,
-                    }}
-                  >
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <IndeterminateCheckbox
-                        id={`item-${item.itemId}`}
-                        checked={allSelected}
-                        indeterminate={someSelected}
-                        onChange={() => toggleGrupoPermissoes(idsDoItem)}
-                      />
-                      <label
-                        htmlFor={`item-${item.itemId}`}
-                        className="text-sm font-medium cursor-pointer select-none flex-1"
-                        style={{ color: selectedCount > 0 ? 'var(--tfd-text-primary)' : 'var(--tfd-text-secondary)' }}
-                      >
-                        {item.label}
-                      </label>
-                    </div>
-
-                    <div className="flex flex-wrap gap-1">
-                      {item.acoes.map((acao) => {
-                        const isSelected = formPermissoes.has(acao.id);
-                        return (
-                          <button
-                            key={acao.id}
-                            type="button"
-                            className="text-[11px] px-2 py-0.5 rounded-full border transition-colors"
-                            style={{
-                              background: isSelected ? 'var(--tfd-primary-500)' : 'var(--tfd-surface-card)',
-                              color: isSelected ? '#FFFFFF' : 'var(--tfd-text-muted)',
-                              borderColor: isSelected ? 'var(--tfd-primary-500)' : 'var(--tfd-surface-border)',
-                            }}
-                            onClick={() => togglePermissao(acao.id)}
-                          >
-                            {acao.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-
-        {/* Família 3 — Ações de fluxo */}
-        <div className="mb-2">
-          <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--tfd-text-muted)' }}>
-            Ações de fluxo
-          </p>
-          <div className="flex flex-col gap-1.5 pl-1">
-            {permissoesAcoes.map((acao) => {
-              const checked = formPermissoes.has(acao.id);
-              return (
+          return (
+            <div key={mod.modulo} className="mb-5">
+              <div className="flex items-center gap-2 mb-2">
+                <IndeterminateCheckbox
+                  id={`modulo-${mod.modulo}`}
+                  checked={moduloTodoSelecionado}
+                  indeterminate={moduloParcialSelecionado}
+                  onChange={() => toggleGrupoPermissoes(idsDoModulo)}
+                />
                 <label
-                  key={acao.id}
-                  htmlFor={`perm-${acao.id}`}
-                  className="flex items-center gap-2 rounded-md p-1.5 cursor-pointer select-none"
-                  style={{ background: checked ? 'var(--tfd-primary-50)' : 'transparent' }}
-                  title={acao.descricao ?? undefined}
+                  htmlFor={`modulo-${mod.modulo}`}
+                  className="text-sm font-semibold cursor-pointer select-none"
+                  style={{ color: 'var(--tfd-text-primary)' }}
                 >
-                  <input
-                    id={`perm-${acao.id}`}
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => togglePermissao(acao.id)}
-                    style={{ accentColor: 'var(--tfd-primary-500)' }}
-                  />
-                  <span
-                    className="text-sm"
-                    style={{ color: checked ? 'var(--tfd-text-primary)' : 'var(--tfd-text-secondary)' }}
-                  >
-                    {acao.nome}
-                  </span>
+                  {mod.modulo}
                 </label>
-              );
-            })}
-          </div>
-        </div>
+                <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>
+                  ({mod.telas.length})
+                </span>
+              </div>
+
+              <div className="flex flex-col gap-2 pl-1">
+                {mod.telas.map((tela) => {
+                  const idsDaTela = tela.permissoes.map((p) => p.id);
+                  const selecionadasNaTela = idsDaTela.filter((id) => formPermissoes.has(id)).length;
+                  const telaTodaSelecionada = selecionadasNaTela === idsDaTela.length;
+                  const telaParcialSelecionada = selecionadasNaTela > 0 && !telaTodaSelecionada;
+
+                  return (
+                    <div
+                      key={tela.telaId}
+                      className="rounded-lg p-2.5"
+                      style={{ background: 'var(--tfd-surface-100)', border: '1px solid var(--tfd-surface-border)' }}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <IndeterminateCheckbox
+                          id={`tela-${tela.telaId}`}
+                          checked={telaTodaSelecionada}
+                          indeterminate={telaParcialSelecionada}
+                          onChange={() => toggleGrupoPermissoes(idsDaTela)}
+                        />
+                        <label
+                          htmlFor={`tela-${tela.telaId}`}
+                          className="text-sm font-medium cursor-pointer select-none"
+                          style={{ color: 'var(--tfd-text-primary)' }}
+                        >
+                          {tela.telaNome}
+                        </label>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5 pl-6">
+                        {tela.permissoes.map((p) => {
+                          const isSelected = formPermissoes.has(p.id);
+                          const valeTambemEm =
+                            p.tambem_em.length > 0
+                              ? `Vale também em ${p.tambem_em.map((id) => telaNomeById.get(id) ?? id).join(', ')}`
+                              : undefined;
+
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              className="text-[11px] px-2.5 py-1 rounded-full border transition-colors"
+                              style={{
+                                background: isSelected ? 'var(--tfd-primary-500)' : 'var(--tfd-surface-card)',
+                                color: isSelected ? '#FFFFFF' : 'var(--tfd-text-muted)',
+                                borderColor: isSelected ? 'var(--tfd-primary-500)' : 'var(--tfd-surface-border)',
+                                textDecoration: valeTambemEm ? 'underline dotted' : undefined,
+                                textUnderlineOffset: valeTambemEm ? 2 : undefined,
+                              }}
+                              title={valeTambemEm ?? p.descricao ?? undefined}
+                              onClick={() => togglePermissao(p.id)}
+                            >
+                              {p.rotulo_curto ?? p.nome}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
       </Drawer>
     </>
   );
