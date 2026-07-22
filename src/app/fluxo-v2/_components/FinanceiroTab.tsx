@@ -177,17 +177,6 @@ export default function FinanceiroTab({ s }: Props) {
         </div>
       )}
 
-      {/* Card de fechamento: checklist, despacho e recibo de ajuda de custo (SEI).
-          PBI 13279: os dois documentos só existem no setor Ajuda de Custo,
-          que é quem referencia o ciclo de ajuda de custo pago. */}
-      {setorAtualS === 'ajuda_custo' && (
-        <FechamentoSolicitacaoCard
-          s={s}
-          locked={locked || emAcompanhamento}
-          lockedTip={emAcompanhamento ? 'Somente leitura em Acompanhamento.' : lockedTip}
-        />
-      )}
-
       {/* Linha tipográfica horizontal — 4 stats neutros com divisor vertical */}
       <div
         className="flex items-stretch mb-6"
@@ -507,6 +496,18 @@ export default function FinanceiroTab({ s }: Props) {
           locked={lockedAjuda}
           lockedTip={lockedTipAjuda}
         />
+
+        {/* ── Sub-bloco: documentos do fechamento (despacho + recibo, PBI 13279) ──
+            Os dois documentos referenciam um ciclo de ajuda de custo, então
+            moram aqui dentro da própria seção. Só existem no setor Ajuda de
+            Custo, que é quem paga a ajuda referenciada. */}
+        {setorAtualS === 'ajuda_custo' && (
+          <FechamentoSolicitacaoCard
+            s={s}
+            locked={locked || emAcompanhamento}
+            lockedTip={emAcompanhamento ? 'Somente leitura em Acompanhamento.' : lockedTip}
+          />
+        )}
       </Section>
 
       {/* Drawers */}
