@@ -109,7 +109,7 @@ export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Prop
           Documentos da ajuda de custo
         </h4>
         <span className="text-[11px]" style={{ color: '#94A3B8' }}>
-          Despacho financeiro e recibo de ajuda de custo (SEI), por ciclo.
+          Dois documentos distintos, gerados a partir do mesmo ciclo.
         </span>
       </div>
 
@@ -144,51 +144,96 @@ export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Prop
         </p>
       )}
 
-      <div className="flex items-center gap-2 mt-3 flex-wrap">
-        {carregandoDespacho ? (
-          <Loader2 size={16} className="animate-spin" style={{ color: '#94A3B8' }} />
-        ) : despachoId ? (
-          <>
+      {/*
+        Dois sub-cartões lado a lado, um por documento, cada um com ícone,
+        título e descrição próprios: o cliente pediu distinção visual clara
+        entre o despacho (decisão do processo) e o recibo (comprovante de
+        pagamento ao beneficiário). A PBI 13279 continua intocada; só a
+        organização visual do bloco mudou.
+      */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+        <div
+          className="flex flex-col gap-2 p-3"
+          style={{ background: 'var(--tfd-blue-50)', border: '1px solid var(--tfd-blue-100)', borderRadius: 10 }}
+        >
+          <div className="flex items-center gap-2">
+            <span className="tfd-kpi-icon tfd-kpi-icon--blue" style={{ width: 28, height: 28, borderRadius: 8 }}>
+              <FileSignature size={14} />
+            </span>
+            <span className="text-[12.5px] font-semibold" style={{ color: '#0F172A' }}>
+              Despacho financeiro
+            </span>
+          </div>
+          <p className="text-[11px] leading-snug" style={{ color: '#475569' }}>
+            Documento decisório do processo, com o texto e os representantes
+            que autorizam a ajuda de custo.
+          </p>
+          <div className="flex items-center gap-2 mt-1">
+            {carregandoDespacho ? (
+              <Loader2 size={16} className="animate-spin" style={{ color: '#94A3B8' }} />
+            ) : despachoId ? (
+              <>
+                <button
+                  type="button"
+                  onClick={visualizarDespacho}
+                  disabled={locked}
+                  title="Abrir o despacho em nova aba, pronto para imprimir ou salvar como PDF"
+                  className="tfd-btn tfd-btn-primary tfd-btn--sm"
+                >
+                  <Eye size={13} /> Visualizar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { if (!locked) setDrawerAberto(true); }}
+                  disabled={locked}
+                  title="Editar os dados do despacho"
+                  className="tfd-btn tfd-btn-secondary tfd-btn--sm"
+                >
+                  <Pencil size={13} /> Editar
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { if (!emitirDisabled) setDrawerAberto(true); }}
+                disabled={emitirDisabled}
+                title={tipEmitir}
+                className="tfd-btn tfd-btn-primary tfd-btn--sm"
+              >
+                <FileSignature size={13} /> Emitir despacho
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div
+          className="flex flex-col gap-2 p-3"
+          style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10 }}
+        >
+          <div className="flex items-center gap-2">
+            <span className="tfd-kpi-icon tfd-kpi-icon--green" style={{ width: 28, height: 28, borderRadius: 8 }}>
+              <Receipt size={14} />
+            </span>
+            <span className="text-[12.5px] font-semibold" style={{ color: '#0F172A' }}>
+              Recibo de ajuda de custo (SEI)
+            </span>
+          </div>
+          <p className="text-[11px] leading-snug" style={{ color: '#475569' }}>
+            Comprovante de pagamento ao beneficiário, gerado com os dados
+            bancários do sacador, para anexar ao SEI.
+          </p>
+          <div className="flex items-center gap-2 mt-1">
             <button
               type="button"
-              onClick={visualizarDespacho}
-              disabled={locked}
-              title="Abrir o despacho em nova aba, pronto para imprimir ou salvar como PDF"
-              className="tfd-btn tfd-btn-primary tfd-btn--sm"
-            >
-              <Eye size={13} /> Visualizar
-            </button>
-            <button
-              type="button"
-              onClick={() => { if (!locked) setDrawerAberto(true); }}
-              disabled={locked}
-              title="Editar os dados do despacho"
+              onClick={gerarRecibo}
+              disabled={reciboDisabled}
+              title={tipRecibo}
               className="tfd-btn tfd-btn-secondary tfd-btn--sm"
             >
-              <Pencil size={13} /> Editar
+              <Receipt size={13} /> Gerar recibo
             </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            onClick={() => { if (!emitirDisabled) setDrawerAberto(true); }}
-            disabled={emitirDisabled}
-            title={tipEmitir}
-            className="tfd-btn tfd-btn-primary tfd-btn--sm"
-          >
-            <FileSignature size={13} /> Emitir despacho
-          </button>
-        )}
-
-        <button
-          type="button"
-          onClick={gerarRecibo}
-          disabled={reciboDisabled}
-          title={tipRecibo}
-          className="tfd-btn tfd-btn-secondary tfd-btn--sm"
-        >
-          <Receipt size={13} /> Gerar recibo de ajuda de custo (SEI)
-        </button>
+          </div>
+        </div>
       </div>
 
       <DespachoFinanceiroDrawer
