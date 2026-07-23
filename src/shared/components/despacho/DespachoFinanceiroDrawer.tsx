@@ -67,6 +67,14 @@ interface Props {
   /** PBI 13279: ajuda de custo já escolhida no select unificado do card de
    *  fechamento; prefila o select deste drawer na criação de um despacho novo. */
   ajudaCustoIdInicial?: string;
+  /**
+   * Ajuste do cliente (2026-07): a seleção da ajuda de custo agora acontece
+   * dentro do drawer (não há mais um seletor global no card). Chamado sempre
+   * que `ajudaCustoId` fica definido, seja pela troca manual no select, seja
+   * pelo carregamento de um despacho já existente, para o card de fechamento
+   * manter os botões de Despacho e Recibo sincronizados com a mesma ajuda.
+   */
+  onAjudaCustoChange?: (id: string) => void;
 }
 
 interface DespachoData {
@@ -108,6 +116,7 @@ export default function DespachoFinanceiroDrawer({
   ajudasCusto = [],
   nomePaciente,
   ajudaCustoIdInicial,
+  onAjudaCustoChange,
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -127,6 +136,13 @@ export default function DespachoFinanceiroDrawer({
   const [ajudaCustoId, setAjudaCustoId] = useState<string | null>(null);
   // Remonta o Autocomplete para limpar o input após cada escolha.
   const [buscaKey, setBuscaKey] = useState(0);
+
+  // Ajuste do cliente: propaga a ajuda de custo (do select ou do despacho já
+  // salvo) para o card de fechamento, que não tem mais seletor próprio.
+  useEffect(() => {
+    if (ajudaCustoId) onAjudaCustoChange?.(ajudaCustoId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ajudaCustoId]);
 
   useEffect(() => {
     if (!open) return;
