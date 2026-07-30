@@ -85,12 +85,9 @@ export default function AprovacoesListPage() {
   );
 
   const stats = useMemo(() => {
-    const recebidasHoje = filaBase.filter((s) => horasEmAprovacao(s) < 24 && dentroDoMesAtual(s.ultimaTramitacao?.data ?? s.dataCriacao)).length;
-    const setoresSolicitantes = new Set(filaBase.map((s) => s.setorOrigemAprovacao).filter(Boolean)).size;
-    const maisDe48h = filaBase.filter((s) => horasEmAprovacao(s) > 48).length;
-    // "Tramitadas no mês" aproxima quantas solicitações entraram em Aprovação
-    // neste mês, olhando `ultimaTramitacao` em TODAS as solicitações (não só
-    // as que ainda estão na fila) — o protótipo guarda apenas a última
+    // "Tramitadas no mês" conta as solicitações que passaram pelo status de
+    // Aprovação neste mês, olhando `ultimaTramitacao` em TODAS as solicitações
+    // (não só as que ainda estão na fila). O protótipo guarda apenas a última
     // tramitação de cada uma, então um envio mais recente para outro setor
     // sobrescreve este dado.
     const tramitadasNoMes = solicitacoes.filter(
@@ -98,9 +95,6 @@ export default function AprovacoesListPage() {
     ).length;
     return {
       total: filaBase.length,
-      recebidasHoje,
-      setoresSolicitantes,
-      maisDe48h,
       tramitadasNoMes,
       encerradasNoMes: contarEncerradasNoMes(solicitacoes),
     };
@@ -196,28 +190,10 @@ export default function AprovacoesListPage() {
             title: 'Solicitações no status geral Aprovação',
           },
           {
-            label: 'Recebidas hoje',
-            value: stats.recebidasHoje,
-            hint: 'nas últimas 24h',
-            title: 'Solicitações enviadas para Aprovação nas últimas 24 horas',
-          },
-          {
-            label: 'Setores solicitantes',
-            value: stats.setoresSolicitantes,
-            hint: 'setores distintos',
-            title: 'Quantidade de setores distintos que enviaram solicitações para Aprovação',
-          },
-          {
-            label: 'Há mais de 48h',
-            value: stats.maisDe48h,
-            hint: 'aguardando decisão',
-            title: 'Solicitações há mais de 48 horas em Aprovação',
-          },
-          {
             label: 'Tramitadas no mês',
             value: stats.tramitadasNoMes,
-            hint: 'enviadas p/ Aprovação',
-            title: 'Solicitações enviadas para Aprovação no mês corrente',
+            hint: 'passaram por Aprovação',
+            title: 'Solicitações que passaram pelo status de Aprovação no mês corrente',
           },
           {
             label: 'Encerradas no mês',
