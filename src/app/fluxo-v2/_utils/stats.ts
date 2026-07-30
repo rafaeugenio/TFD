@@ -42,6 +42,7 @@ export function contarPorStatus(
     em_passagens: 0,
     em_ajuda_custo: 0,
     em_acompanhamento: 0,
+    em_aprovacao: 0,
     em_encerramento: 0,
   };
   for (const s of solicitacoes) acc[s.status] += 1;

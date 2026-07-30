@@ -201,10 +201,11 @@ interface FluxoV2ContextValue {
 
   addObservacao: (id: string, texto: string) => void;
 
-  // T2.AB — Tramitação genérica entre setores (PBI 13237 — 5 setores ativos)
+  // T2.AB — Tramitação genérica entre setores (PBI 13237 — 5 setores ativos,
+  // mais 'aprovacao' como destino de análise/decisão de setor responsável)
   enviarParaSetor: (
     id: string,
-    destino: 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento',
+    destino: 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento' | 'aprovacao',
     observacao?: string,
     tipo?: 'enviar' | 'devolver',
   ) => void;
@@ -298,11 +299,12 @@ const PERSONA_POR_STATUS: Record<StatusGlobalV2, { autor: string; perfilAutor: s
   em_passagens:      { autor: 'João Pereira',         perfilAutor: 'Passagens' },
   em_ajuda_custo:    { autor: 'Carla Nogueira',       perfilAutor: 'Ajuda de Custo' },
   em_acompanhamento: { autor: 'Patrícia Gomes',       perfilAutor: 'Acompanhamento' },
+  em_aprovacao:      { autor: 'Comitê de Aprovação',  perfilAutor: 'Aprovação' },
   em_encerramento:   { autor: 'Sistema',              perfilAutor: 'Sistema' },
 };
 
 const STATUS_POR_DESTINO: Record<
-  'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento',
+  'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento' | 'aprovacao',
   StatusGlobalV2
 > = {
   dados_basicos:  'em_dados_basicos',
@@ -310,6 +312,7 @@ const STATUS_POR_DESTINO: Record<
   passagens:      'em_passagens',
   ajuda_custo:    'em_ajuda_custo',
   acompanhamento: 'em_acompanhamento',
+  aprovacao:      'em_aprovacao',
 };
 
 export function FluxoV2Provider({ children }: { children: ReactNode }) {
@@ -1220,6 +1223,12 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
    */
   const enviarParaSetor = useCallback<FluxoV2ContextValue['enviarParaSetor']>(
     (id, destino, observacao, tipo = 'enviar') => {
+      // Setor de onde a solicitação está saindo, capturado ANTES da mutação —
+      // é o que a fila de Aprovações exibe como "setor de origem" quando o
+      // destino é 'aprovacao'.
+      const solicitacaoAtual = getById(id);
+      const setorOrigem = solicitacaoAtual ? statusGlobalToSetor(solicitacaoAtual.status) : undefined;
+
       mutate(id, (s) => {
         const obs = observacao?.trim() || undefined;
         const { autor, perfilAutor } = PERSONA_POR_STATUS[s.status];
@@ -1253,6 +1262,20 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
           observacao: obs,
         };
 
+        // Fila de Aprovações precisa do setor de origem e da observação (motivo
+        // do pedido) mesmo depois de um reload — por isso ficam gravados na
+        // própria solicitação, e não só em `ultimaTramitacao`. Ao sair da
+        // Aprovação para qualquer outro setor, os dois são limpos.
+        if (destino === 'aprovacao') {
+          s.setorOrigemAprovacao = setorOrigem !== 'aprovacao' && setorOrigem !== 'encerramento'
+            ? setorOrigem
+            : undefined;
+          s.observacaoAprovacao = obs;
+        } else {
+          s.setorOrigemAprovacao = undefined;
+          s.observacaoAprovacao = undefined;
+        }
+
         s.status = STATUS_POR_DESTINO[destino];
 
         return s;
@@ -1260,7 +1283,12 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
 
       // Persiste a troca de setor no Supabase (best-effort)
       const supabase = createClient();
-      const payload = buildEnvioSetor(destino);
+      const payload = buildEnvioSetor(
+        destino,
+        destino === 'aprovacao' && setorOrigem && setorOrigem !== 'aprovacao' && setorOrigem !== 'encerramento'
+          ? { setorOrigem, observacao }
+          : undefined,
+      );
       supabase
         .from('solicitacoes')
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1270,7 +1298,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
           if (error) console.warn('[FluxoV2] enviarParaSetor persistência falhou:', error.message);
         });
     },
-    [mutate],
+    [mutate, getById],
   );
 
   const encaminharParaFinanceiro = useCallback<FluxoV2ContextValue['encaminharParaFinanceiro']>(

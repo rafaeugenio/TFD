@@ -9,6 +9,7 @@ import {
   Plane,
   Wallet,
   HeartHandshake,
+  ShieldCheck,
   type LucideIcon,
 } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
@@ -36,11 +37,13 @@ const LABEL_DESTINO: Record<DestinoEnvio, string> = {
   passagens: 'Passagens',
   ajuda_custo: 'Ajuda de Custo',
   acompanhamento: 'Acompanhamento',
+  aprovacao: 'Aprovação',
 };
 
-/** Cadeia linear do fluxo (PBI 13237). Cada setor só pode enviar para o
- *  próximo e devolver para o anterior — nunca pular etapas. */
-const ORDEM: SetorAcao[] = ['dados_basicos', 'regulacao', 'passagens', 'ajuda_custo', 'acompanhamento'];
+/** Cadeia linear do fluxo (PBI 13237), com 'aprovacao' ao final — destino
+ *  extra alcançável a partir de qualquer um dos cinco setores operacionais,
+ *  sem posição fixa na ordem de tramitação. */
+const ORDEM: SetorAcao[] = ['dados_basicos', 'regulacao', 'passagens', 'ajuda_custo', 'acompanhamento', 'aprovacao'];
 
 const ICON_DESTINO: Record<DestinoEnvio, LucideIcon> = {
   dados_basicos: ClipboardList,
@@ -48,6 +51,7 @@ const ICON_DESTINO: Record<DestinoEnvio, LucideIcon> = {
   passagens: Plane,
   ajuda_custo: Wallet,
   acompanhamento: HeartHandshake,
+  aprovacao: ShieldCheck,
 };
 
 const DESCRICAO_DESTINO: Record<DestinoEnvio, string> = {
@@ -56,6 +60,7 @@ const DESCRICAO_DESTINO: Record<DestinoEnvio, string> = {
   passagens: 'Emissão e remarcação de passagens.',
   ajuda_custo: 'Cálculo e pagamento de diárias.',
   acompanhamento: 'Acompanhamento da viagem e do tratamento em curso.',
+  aprovacao: 'Análise e decisão do setor responsável.',
 };
 
 const HINT_DESTINO: Record<DestinoEnvio, string> = {
@@ -64,6 +69,7 @@ const HINT_DESTINO: Record<DestinoEnvio, string> = {
   passagens: 'Ex.: paciente prefere voo direto pela manhã, sem conexão.',
   ajuda_custo: 'Ex.: confirmar dados bancários antes de liberar as diárias.',
   acompanhamento: 'Ex.: paciente embarcou, acompanhar internação e retorno.',
+  aprovacao: 'Ex.: valor excepcional da ajuda de custo precisa de aval da coordenação.',
 };
 
 /** Infere se vai pra "frente" (enviar) ou pra "atrás" (devolver). */
@@ -137,8 +143,16 @@ export default function EnviarParaSetorDrawer({
     };
   }, [destino, tipo]);
 
+  // Observação vira obrigatória quando o destino é Aprovação — é o motivo do
+  // pedido, exibido na coluna "Observação para aprovação" daquela fila.
+  const observacaoObrigatoria = destino === 'aprovacao';
+
   function handleConfirmar() {
     if (!destino || !tipo) return;
+    if (observacaoObrigatoria && !observacao.trim()) {
+      toast.error('Campo obrigatório', 'Informe o motivo do pedido de aprovação.');
+      return;
+    }
     enviarParaSetor(
       solicitacaoId,
       destino,
@@ -155,7 +169,7 @@ export default function EnviarParaSetorDrawer({
   // azul Citiesoft sólido. Cards selecionados ganham borda azul + bg muito sutil.
   const PRIMARY = '#146BFA';
   const Icon = !destino || !tipo ? Send : tipo === 'devolver' ? ArrowRight : Send;
-  const disabled = !destino;
+  const disabled = !destino || (observacaoObrigatoria && !observacao.trim());
 
   return (
     <Drawer
@@ -280,16 +294,20 @@ export default function EnviarParaSetorDrawer({
         style={{ color: '#6B7280' }}
       >
         Observação para o setor de destino{' '}
-        <span
-          style={{
-            color: '#9CA3AF',
-            fontWeight: 500,
-            textTransform: 'none',
-            letterSpacing: 0,
-          }}
-        >
-          (opcional)
-        </span>
+        {observacaoObrigatoria ? (
+          <span style={{ color: 'var(--tfd-status-danger)' }}>*</span>
+        ) : (
+          <span
+            style={{
+              color: '#9CA3AF',
+              fontWeight: 500,
+              textTransform: 'none',
+              letterSpacing: 0,
+            }}
+          >
+            (opcional)
+          </span>
+        )}
       </label>
       <textarea
         ref={ref}
@@ -297,6 +315,8 @@ export default function EnviarParaSetorDrawer({
         onChange={(e) => setObservacao(e.target.value)}
         rows={5}
         placeholder={conteudo.hint}
+        required={observacaoObrigatoria}
+        aria-required={observacaoObrigatoria}
         className="w-full px-3 py-2 text-[13px]"
         style={{
           background: 'white',
@@ -305,7 +325,9 @@ export default function EnviarParaSetorDrawer({
         }}
       />
       <p className="text-[11px] mt-1" style={{ color: '#9CA3AF' }}>
-        A observação aparece destacada na fila do destino nas próximas 24 horas.
+        {observacaoObrigatoria
+          ? 'Obrigatória para Aprovação — explica o motivo do pedido para quem for decidir.'
+          : 'A observação aparece destacada na fila do destino nas próximas 24 horas.'}
       </p>
     </Drawer>
   );

@@ -484,6 +484,8 @@ export function solicitacaoFromSupabase(row: Row, despesasFunerariasRows: Row[] 
     devolucoes,
     numeroSEI: opt(row.numero_protocolo),
     seiUrl: opt(row.url_sei),
+    setorOrigemAprovacao: opt(row.setor_origem_aprovacao) as SolicitacaoMock['setorOrigemAprovacao'],
+    observacaoAprovacao: opt(row.observacao_aprovacao),
   };
 }
 

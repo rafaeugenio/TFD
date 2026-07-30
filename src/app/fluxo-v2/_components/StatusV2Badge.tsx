@@ -9,6 +9,7 @@ const TONE: Record<StatusGlobalV2, StatusDotTone> = {
   em_passagens:      'warning',
   em_ajuda_custo:    'warning',
   em_acompanhamento: 'info',
+  em_aprovacao:      'muted',
   em_encerramento:   'success',
 };
 

@@ -5,7 +5,17 @@ import {
 } from '@/core/mocks/fluxo-v2-v3-seed';
 
 /** Setor de ação (exclui 'encerramento' — quando encerrada, ninguém edita). */
-export type SetorAcao = 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento';
+export type SetorAcao = 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento' | 'aprovacao';
+
+/** Rótulo de cada setor de ação, usado em chips, filtros e selects. */
+export const SETOR_LABEL: Record<SetorAcao, string> = {
+  dados_basicos:  'Dados Básicos',
+  regulacao:      'Regulação',
+  passagens:      'Passagens',
+  ajuda_custo:    'Ajuda de Custo',
+  acompanhamento: 'Acompanhamento',
+  aprovacao:      'Aprovação',
+};
 
 /** Setor responsável pela próxima ação na solicitação, derivado do status. */
 export function setorAtual(s: SolicitacaoMock): SetorAtivo {
@@ -16,6 +26,7 @@ export function setorAtual(s: SolicitacaoMock): SetorAtivo {
     case 'em_passagens':      return 'passagens';
     case 'em_ajuda_custo':    return 'ajuda_custo';
     case 'em_acompanhamento': return 'acompanhamento';
+    case 'em_aprovacao':      return 'aprovacao';
     default:                  return 'dados_basicos';
   }
 }
@@ -54,6 +65,7 @@ export const COR_DESTINO: Record<SetorAcao, string> = {
   passagens: '#D97706',
   ajuda_custo: '#C2410C',
   acompanhamento: '#1D4ED8',
+  aprovacao: '#BE185D',
   dados_basicos: '#475569',
 };
 
@@ -63,6 +75,7 @@ export const BG_DESTINO: Record<SetorAcao, string> = {
   passagens: '#FFFBEB',
   ajuda_custo: '#FFF7ED',
   acompanhamento: '#EFF6FF',
+  aprovacao: '#FDF2F8',
   dados_basicos: '#F1F5F9',
 };
 
@@ -71,5 +84,19 @@ export const BORDER_DESTINO: Record<SetorAcao, string> = {
   passagens: '#FCD34D',
   ajuda_custo: '#FED7AA',
   acompanhamento: '#BFDBFE',
+  aprovacao: '#FBCFE8',
   dados_basicos: '#CBD5E1',
+};
+
+/** Cor sólida do ponto na chip "Setor de origem" (Aprovações). Distinta das
+ *  cores de destaque de botão acima para não confundir os dois usos. */
+export const SETOR_ORIGEM_DOT_COLOR: Record<
+  'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento',
+  string
+> = {
+  dados_basicos:  '#64748B',
+  regulacao:      '#146BFA',
+  passagens:      '#D97706',
+  ajuda_custo:    '#16A34A',
+  acompanhamento: '#7C3AED',
 };

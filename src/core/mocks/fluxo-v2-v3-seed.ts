@@ -23,6 +23,7 @@ export type StatusGlobalV2 =
   | 'em_passagens'
   | 'em_ajuda_custo'
   | 'em_acompanhamento'
+  | 'em_aprovacao'
   | 'em_encerramento';
 
 /**
@@ -36,6 +37,7 @@ export type SetorAtivo =
   | 'passagens'
   | 'ajuda_custo'
   | 'acompanhamento'
+  | 'aprovacao'
   | 'encerramento';
 
 /* ── Entidades ─────────────────────────────────────────────────────────── */
@@ -468,7 +470,7 @@ export interface DevolucaoFinanceiroParaRegulacao {
 export interface UltimaTramitacao {
   /** Direção do movimento — `destino` diz para qual setor. */
   tipo: 'envio' | 'devolucao';
-  destino: 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento';
+  destino: 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento' | 'aprovacao';
   data: string;          // ISO datetime
   autor: string;
   perfilAutor: string;
@@ -507,6 +509,12 @@ export interface SolicitacaoMock {
   numeroSEI?: string;
   /** T2.AG — URL completa para o processo no SEI. */
   seiUrl?: string;
+  /** Setor em que a solicitação estava no momento em que foi enviada para
+   *  Aprovação — preenchido junto com `observacaoAprovacao` e limpo quando a
+   *  solicitação sai do setor Aprovação. */
+  setorOrigemAprovacao?: 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento';
+  /** Motivo do pedido de aprovação — obrigatório ao enviar para Aprovação. */
+  observacaoAprovacao?: string;
 }
 
 /* ── Helpers ───────────────────────────────────────────────────────────── */
@@ -1127,6 +1135,7 @@ export const STATUS_LABEL: Record<StatusGlobalV2, string> = {
   em_passagens:       'Passagens',
   em_ajuda_custo:     'Ajuda de Custo',
   em_acompanhamento:  'Acompanhamento',
+  em_aprovacao:       'Aprovação',
   em_encerramento:    'Encerramento',
 };
 
@@ -1136,6 +1145,7 @@ export const STATUS_BADGE_COLOR: Record<StatusGlobalV2, { bg: string; fg: string
   em_passagens:      { bg: '#FEF3C7', fg: '#92400E' }, // âmbar
   em_ajuda_custo:    { bg: '#FFEDD5', fg: '#C2410C' }, // laranja
   em_acompanhamento: { bg: '#DBEAFE', fg: '#1D4ED8' }, // azul
+  em_aprovacao:      { bg: '#FCE7F3', fg: '#BE185D' }, // rosa
   em_encerramento:   { bg: '#DCFCE7', fg: '#166534' }, // verde escuro
 };
 

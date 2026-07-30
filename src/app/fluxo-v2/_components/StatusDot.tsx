@@ -34,6 +34,9 @@ interface Props {
   /** Para rótulos críticos pode-se ativar negrito leve. Default false. */
   strong?: boolean;
   title?: string;
+  /** Cor hex do ponto, sobrepondo `tone`. Uso pontual quando a paleta fixa de
+   *  tons não cobre o número de categorias (ex.: chip de setor de origem). */
+  dotColor?: string;
 }
 
 export default function StatusDot({
@@ -41,6 +44,7 @@ export default function StatusDot({
   children,
   strong = false,
   title,
+  dotColor,
 }: Props) {
   return (
     <span
@@ -66,7 +70,7 @@ export default function StatusDot({
           width: 7,
           height: 7,
           borderRadius: 999,
-          background: DOT_COLOR[tone],
+          background: dotColor ?? DOT_COLOR[tone],
           flexShrink: 0,
         }}
       />

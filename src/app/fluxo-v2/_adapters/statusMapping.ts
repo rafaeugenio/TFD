@@ -26,6 +26,7 @@ export type StatusDb =
   | 'EM_PERMANENCIA'
   | 'REMARCACAO'
   | 'EM_PAGAMENTO'
+  | 'EM_APROVACAO'
   | 'CONCLUIDO'
   | 'INDEFERIDO';
 
@@ -46,13 +47,14 @@ export type SetorDb =
   | 'passagens'
   | 'ajuda_custo'
   | 'acompanhamento'
+  | 'aprovacao'
   | 'encerramento'
   /** @deprecated legado — trate como 'passagens' na leitura */
   | 'financeiro'
   /** @deprecated legado — trate como 'encerramento' na leitura */
   | 'encerrada';
 
-/** Normaliza um setor_atual possivelmente legado para os 6 setores atuais. */
+/** Normaliza um setor_atual possivelmente legado para os setores atuais. */
 export function normalizarSetorDb(setor: string): Exclude<SetorDb, 'financeiro' | 'encerrada'> {
   if (setor === 'financeiro') return 'passagens';
   if (setor === 'encerrada') return 'encerramento';
@@ -62,6 +64,7 @@ export function normalizarSetorDb(setor: string): Exclude<SetorDb, 'financeiro' 
     setor === 'passagens' ||
     setor === 'ajuda_custo' ||
     setor === 'acompanhamento' ||
+    setor === 'aprovacao' ||
     setor === 'encerramento'
   ) {
     return setor;
@@ -92,6 +95,8 @@ export function setorFromStatus(status: StatusDb): Exclude<SetorDb, 'financeiro'
     case 'EM_VIAGEM':
     case 'EM_PERMANENCIA':
       return 'acompanhamento';
+    case 'EM_APROVACAO':
+      return 'aprovacao';
     case 'CONCLUIDO':
     case 'INDEFERIDO':
       return 'encerramento';
@@ -116,6 +121,8 @@ export function entryStatusForSetor(
       return 'EM_PAGAMENTO';
     case 'acompanhamento':
       return 'EM_VIAGEM';
+    case 'aprovacao':
+      return 'EM_APROVACAO';
     case 'encerramento':
       return 'CONCLUIDO';
   }
@@ -132,6 +139,7 @@ export function setorToStatusGlobal(s: SetorDb): StatusGlobalV2 {
     case 'passagens':       return 'em_passagens';
     case 'ajuda_custo':     return 'em_ajuda_custo';
     case 'acompanhamento':  return 'em_acompanhamento';
+    case 'aprovacao':       return 'em_aprovacao';
     case 'encerramento':    return 'em_encerramento';
   }
 }
@@ -143,6 +151,7 @@ export function statusGlobalToSetor(s: StatusGlobalV2): Exclude<SetorDb, 'financ
     case 'em_passagens':      return 'passagens';
     case 'em_ajuda_custo':    return 'ajuda_custo';
     case 'em_acompanhamento': return 'acompanhamento';
+    case 'em_aprovacao':      return 'aprovacao';
     case 'em_encerramento':   return 'encerramento';
   }
 }

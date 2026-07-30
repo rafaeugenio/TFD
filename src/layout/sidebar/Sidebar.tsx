@@ -11,6 +11,7 @@ import {
   Plane,
   Wallet,
   CalendarCheck,
+  ClipboardCheck,
   LogOut,
   BarChart3,
   Settings,
@@ -57,6 +58,7 @@ const navSections: NavSection[] = [
       { icon: Plane,        label: 'Passagens',      href: '/fluxo-v2/passagens',      tela: 'passagens' },
       { icon: Wallet,       label: 'Ajuda de Custo', href: '/fluxo-v2/ajuda-custo',    tela: 'ajuda_custo' },
       { icon: CalendarCheck, label: 'Acompanhamento', href: '/fluxo-v2/acompanhamento', tela: 'acompanhamento' },
+      { icon: ClipboardCheck, label: 'Aprovações',    href: '/fluxo-v2/aprovacoes',     tela: 'aprovacoes' },
     ],
   },
   {

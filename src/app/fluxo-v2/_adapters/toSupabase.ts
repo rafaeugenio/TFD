@@ -491,16 +491,30 @@ export function buildObservacao(
  * UPDATE em solicitacoes mudando status + setor_atual. O trigger
  * trg_sync_setor_atual no banco também atualiza setor_atual quando status
  * muda — aqui setamos os dois explicitamente para deixar claro.
+ *
+ * Quando o destino é `'aprovacao'`, grava também o setor de onde a
+ * solicitação saiu e a observação (motivo do pedido) — únicos dados que a
+ * fila de Aprovações precisa exibir e que não sobreviveriam a um reload sem
+ * persistência própria. Ao sair da Aprovação para qualquer outro setor, os
+ * dois campos são limpos.
  */
 export function buildEnvioSetor(
-  setor: 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento',
+  setor: 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento' | 'aprovacao',
+  aprovacao?: {
+    setorOrigem: 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento';
+    observacao?: string;
+  },
 ): {
   status: StatusDb;
   setor_atual: SetorDb;
+  setor_origem_aprovacao: string | null;
+  observacao_aprovacao: string | null;
 } {
   return {
     status: entryStatusForSetor(setor),
     setor_atual: setor,
+    setor_origem_aprovacao: setor === 'aprovacao' ? aprovacao?.setorOrigem ?? null : null,
+    observacao_aprovacao: setor === 'aprovacao' ? aprovacao?.observacao?.trim() || null : null,
   };
 }
 
