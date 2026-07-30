@@ -5,7 +5,9 @@ import { FileSignature, Eye, Pencil, Loader2, Receipt } from 'lucide-react';
 import { buscarPorSolicitacao as buscarDadosBancarios } from '@/services/dados-bancarios.service';
 import { buscarPorSolicitacao as buscarDespacho } from '@/services/despachos-financeiros.service';
 import DespachoFinanceiroDrawer from '@/shared/components/despacho/DespachoFinanceiroDrawer';
-import ReciboAjudaCustoDrawer from '@/shared/components/despacho/ReciboAjudaCustoDrawer';
+import ReciboAjudaCustoDrawer, {
+  type ReciboSelecaoItem,
+} from '@/shared/components/despacho/ReciboAjudaCustoDrawer';
 import { REPRESENTANTES_PADRAO } from '@/core/despacho/representantes';
 import { montarCorpoDespacho } from '../_utils/corpoDespacho';
 import { calcularValorAjuda, type SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
@@ -23,19 +25,20 @@ interface Props {
 
 /**
  * Sub-bloco da seção "Ajuda de custo" que reúne os dois documentos do
- * fechamento (despacho financeiro e recibo de pagamento a beneficiário,
+ * fechamento (despacho financeiro e recibo de ajuda de custo do SEI,
  * PBI 13279). Enquanto não há despacho, mostra "Emitir despacho", que abre
- * o drawer de cadastro. Depois de emitido, mostra "Visualizar" (abre o
+ * o drawer de cadastro; depois de emitido, mostra "Visualizar" (abre o
  * documento pronto para imprimir/PDF em nova aba) e "Editar" (reabre o
- * mesmo drawer em edição). O recibo não é persistido: cada clique gera o
- * documento na hora, com os dados atuais da ajuda de custo escolhida.
+ * mesmo drawer em edição). O despacho referencia uma única ajuda de custo,
+ * escolhida no seletor embutido do próprio `DespachoFinanceiroDrawer`
+ * (estado `ajudaSelecionadaId`).
  *
- * Ajuste do cliente (2026-07): não há mais um seletor de ciclo global no
- * topo do bloco. Cada cartão escolhe a ajuda de custo pelo próprio botão
- * "Editar": o do despacho abre o `DespachoFinanceiroDrawer` (que já tem o
- * seletor embutido) e o do recibo abre o `ReciboAjudaCustoDrawer`. Os dois
- * mantêm o mesmo estado `ajudaSelecionadaId`, então escolher a ajuda em um
- * cartão também habilita o outro.
+ * Ajuste do cliente (2026-07): o recibo deixou de referenciar um único
+ * ciclo. O botão "Gerar recibo" abre direto o `ReciboAjudaCustoDrawer`, que
+ * permite marcar uma ou mais ajudas de custo (cada uma com sua própria
+ * justificativa) e já dispara a geração do documento com a seleção
+ * escolhida, sem passo de "Editar" em separado. O recibo não é persistido:
+ * cada geração remonta o documento com os dados atuais.
  */
 export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Props) {
   const [temBancario, setTemBancario] = useState<boolean | null>(null);
@@ -43,20 +46,41 @@ export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Prop
   const [reciboDrawerAberto, setReciboDrawerAberto] = useState(false);
   const [despachoId, setDespachoId] = useState<string | null>(null);
   const [carregandoDespacho, setCarregandoDespacho] = useState(true);
-  // PBI 13279 (ajuste do cliente): a ajuda de custo referenciada pelos dois
-  // documentos não vem mais de um select global; cada cartão define este
-  // mesmo estado pelo próprio drawer de edição.
+  // PBI 13279 (ajuste do cliente): a ajuda de custo referenciada pelo
+  // despacho não vem de um select global; o cartão define este estado pelo
+  // próprio drawer de edição do despacho.
   const [ajudaSelecionadaId, setAjudaSelecionadaId] = useState('');
+  // Última seleção confirmada no drawer do recibo (ajudas + justificativas),
+  // só para reabrir o drawer já preenchido — não é persistida no banco.
+  const [reciboSelecao, setReciboSelecao] = useState<ReciboSelecaoItem[]>([]);
 
   const ajudasAtivas = s.ajudasCusto.filter((a) => a.ativa !== false);
+  const acompanhantesPorId = new Map(s.acompanhantes.map((a) => [a.id, a.nome]));
 
-  // PBI 13195 — opções do select de ajuda de custo referenciada pelo despacho.
-  const ajudasCustoOptions = ajudasAtivas.map((a) => ({
-    id: a.id,
-    numeroSEI: a.numeroSEI,
-    periodoLabel: `${fmtDataBR(a.dataInicio)} → ${fmtDataBR(a.dataFim)}`,
-    valorLabel: fmtBRL(calcularValorAjuda(a.dataInicio, a.dataFim, a.pernoiteRetorno).valor),
-  }));
+  // PBI 13195 — opções do select de ajuda de custo referenciada pelo despacho
+  // e, agora, também do multi-select do recibo (com beneficiário e tipo).
+  // Ordenadas com o paciente primeiro e os acompanhantes em seguida, cada
+  // grupo por data de início, para casar com a ordem exibida no recibo.
+  const ajudasCustoOptions = [...ajudasAtivas]
+    .sort((a, b) => {
+      if (a.beneficiarioTipo !== b.beneficiarioTipo) {
+        return a.beneficiarioTipo === 'paciente' ? -1 : 1;
+      }
+      return a.dataInicio.localeCompare(b.dataInicio);
+    })
+    .map((a) => ({
+      id: a.id,
+      numeroSEI: a.numeroSEI,
+      periodoLabel: `${fmtDataBR(a.dataInicio)} → ${fmtDataBR(a.dataFim)}`,
+      valorLabel: fmtBRL(calcularValorAjuda(a.dataInicio, a.dataFim, a.pernoiteRetorno).valor),
+      beneficiario:
+        a.beneficiarioTipo === 'acompanhante'
+          ? (acompanhantesPorId.get(a.beneficiarioId ?? '') ?? 'Acompanhante')
+          : (s.paciente?.nome ?? 'Paciente'),
+      tipo: (a.beneficiarioTipo === 'acompanhante' ? 'ACOMPANHANTE' : 'PACIENTE') as
+        | 'PACIENTE'
+        | 'ACOMPANHANTE',
+    }));
 
   useEffect(() => {
     let cancel = false;
@@ -85,35 +109,42 @@ export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Prop
       ? 'Cadastre um período de ajuda de custo antes de emitir o despacho.'
       : 'Cadastrar e emitir o despacho financeiro para anexar ao SEI';
 
-  // PBI 13279: o recibo (RPB) exige ajuda de custo cadastrada e selecionada
-  // (pelo botão Editar do próprio cartão), além dos dados bancários do
-  // sacador (CA05). O despacho não exige dados bancários.
+  // PBI 13279 (ajuste do cliente): o recibo exige ajuda de custo cadastrada
+  // e os dados bancários do sacador (CA05); a seleção de quais ajudas
+  // entram no documento e as justificativas acontecem dentro do próprio
+  // drawer, aberto por este botão. O despacho não exige dados bancários.
   const semDadosBancarios = temBancario !== true;
-  const reciboDisabled = locked || semAjudaCadastrada || semDadosBancarios || !ajudaSelecionadaId;
+  const reciboDisabled = locked || semAjudaCadastrada || semDadosBancarios;
   const tipRecibo = locked
     ? lockedTip
     : semAjudaCadastrada
       ? 'Cadastre um período de ajuda de custo antes de gerar o recibo.'
       : semDadosBancarios
         ? 'Cadastre os dados bancários do sacador antes de gerar o recibo.'
-        : !ajudaSelecionadaId
-          ? 'Selecione, no botão Editar, a ajuda de custo que este recibo referencia.'
-          : 'Gerar o recibo de pagamento a beneficiário (RPB) para anexar ao SEI';
-  const editarReciboDisabled = locked || semAjudaCadastrada;
-  const tipEditarRecibo = locked
-    ? lockedTip
-    : semAjudaCadastrada
-      ? 'Cadastre um período de ajuda de custo antes de selecionar.'
-      : 'Escolher a ajuda de custo que este recibo referencia';
+        : 'Selecionar as ajudas de custo e gerar o recibo (SEI) para o beneficiário';
 
   function visualizarDespacho() {
     if (!despachoId) return;
     window.open(`/despacho/${despachoId}`, '_blank');
   }
 
-  function gerarRecibo() {
-    if (reciboDisabled) return;
-    window.open(`/recibo-ajuda-custo/${ajudaSelecionadaId}`, '_blank');
+  /** Monta a URL do documento com as ajudas escolhidas, a justificativa de
+   *  cada uma e o nome do beneficiário (a tabela `ajudas_custo` ainda não
+   *  vincula o período a um acompanhante específico quando há mais de um
+   *  na solicitação — ver "Pontos de atenção" na entrega). */
+  function abrirRecibo(selecao: ReciboSelecaoItem[]) {
+    if (selecao.length === 0) return;
+    const ids = selecao.map((item) => item.id);
+    const justificativas = Object.fromEntries(selecao.map((item) => [item.id, item.justificativa]));
+    const nomes = Object.fromEntries(
+      ids.map((id) => [id, ajudasCustoOptions.find((a) => a.id === id)?.beneficiario ?? '']),
+    );
+    const params = new URLSearchParams({
+      ids: ids.join(','),
+      just: JSON.stringify(justificativas),
+      nomes: JSON.stringify(nomes),
+    });
+    window.open(`/recibo-ajuda-custo/${ids[0]}?${params.toString()}`, '_blank');
   }
 
   return (
@@ -215,21 +246,12 @@ export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Prop
           <div className="flex items-center gap-2 mt-1">
             <button
               type="button"
-              onClick={gerarRecibo}
+              onClick={() => { if (!reciboDisabled) setReciboDrawerAberto(true); }}
               disabled={reciboDisabled}
               title={tipRecibo}
               className="tfd-btn tfd-btn-primary tfd-btn--sm"
             >
               <Receipt size={13} /> Gerar recibo
-            </button>
-            <button
-              type="button"
-              onClick={() => { if (!editarReciboDisabled) setReciboDrawerAberto(true); }}
-              disabled={editarReciboDisabled}
-              title={tipEditarRecibo}
-              className="tfd-btn tfd-btn-secondary tfd-btn--sm"
-            >
-              <Pencil size={13} /> Editar
             </button>
           </div>
         </div>
@@ -261,9 +283,13 @@ export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Prop
       <ReciboAjudaCustoDrawer
         open={reciboDrawerAberto}
         ajudasCusto={ajudasCustoOptions}
-        ajudaCustoIdInicial={ajudaSelecionadaId || undefined}
+        selecaoInicial={reciboSelecao}
         onClose={() => setReciboDrawerAberto(false)}
-        onConfirmar={setAjudaSelecionadaId}
+        onGerar={(selecao) => {
+          setReciboSelecao(selecao);
+          setReciboDrawerAberto(false);
+          abrirRecibo(selecao);
+        }}
       />
     </div>
   );

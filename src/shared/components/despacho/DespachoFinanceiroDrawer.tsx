@@ -42,6 +42,14 @@ export interface AjudaCustoOption {
   numeroSEI?: string;
   periodoLabel: string;
   valorLabel: string;
+  /**
+   * Ajuste do cliente (2026-07) — nome do beneficiário deste período e o
+   * tipo (paciente ou acompanhante), usados na seleção multi-item do
+   * recibo de ajuda de custo (SEI). Opcionais porque a barra do despacho
+   * (`/despacho/[id]`) monta suas próprias opções sem esses dois campos.
+   */
+  beneficiario?: string;
+  tipo?: 'PACIENTE' | 'ACOMPANHANTE';
 }
 
 interface Props {

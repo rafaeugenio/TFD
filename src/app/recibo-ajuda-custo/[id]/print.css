@@ -85,118 +85,281 @@
 }
 
 /* ═════════════════════════════════════════════════════════
-   Layout do Recibo de Pagamento a Beneficiário (RPB): espelha o
-   documento hoje emitido pelo sistema legado da SES-MA (PBI 13279).
+   Layout do Recibo de Ajuda de Custo (SEI), PBI 13279. Ajuste do
+   cliente (2026-07): documento multi-item, com uma linha por ajuda
+   de custo selecionada e a justificativa correspondente.
    ═════════════════════════════════════════════════════════ */
 .recibo-page {
-  font-family: Arial, Helvetica, sans-serif;
-  color: #000;
+  font-family: 'Inter', Arial, Helvetica, sans-serif;
+  color: #1A1D2B;
   font-size: 9.5pt;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 
 .recibo-cabecalho {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 20px;
   border-bottom: 2px solid #1A1D2B;
-  padding-bottom: 12px;
-  margin-bottom: 18px;
+  padding-bottom: 16px;
+  margin-bottom: 20px;
 }
 
 .recibo-brasao {
-  height: 46px;
+  height: 40px;
   width: auto;
+  flex-shrink: 0;
+}
+
+.recibo-titulo-bloco {
+  flex: 1;
+  text-align: center;
+}
+
+.recibo-eyebrow {
+  margin: 0 0 2px;
+  font-size: 7.5pt;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #146BFA;
 }
 
 .recibo-titulo {
-  flex: 1;
-  text-align: center;
-  font-size: 12pt;
-  font-weight: 700;
-}
-
-.recibo-logo-tfd {
-  font-size: 22pt;
+  margin: 0;
+  font-size: 13pt;
   font-weight: 800;
-  color: #146BFA;
   letter-spacing: 0.01em;
 }
 
+.recibo-subtitulo {
+  margin: 3px 0 0;
+  font-size: 8.5pt;
+  color: #64748B;
+}
+
+.recibo-logo-tfd {
+  font-size: 20pt;
+  font-weight: 800;
+  color: #146BFA;
+  letter-spacing: 0.01em;
+  flex-shrink: 0;
+}
+
 .recibo-section-title {
-  background: #DCE3EA;
-  border: 1px solid #94A3B8;
-  padding: 5px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 20px 0 8px;
+  font-size: 9.5pt;
   font-weight: 700;
-  font-size: 10pt;
-  text-align: center;
-  margin: 16px 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.recibo-section-title::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 12px;
+  background: #146BFA;
+  border-radius: 2px;
+}
+
+.recibo-grid-card {
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.recibo-grid {
+  display: grid;
+}
+
+.recibo-grid-3 { grid-template-columns: repeat(3, 1fr); }
+.recibo-grid-2 { grid-template-columns: repeat(2, 1fr); }
+.recibo-grid-5 { grid-template-columns: repeat(5, 1fr); }
+
+.recibo-grid + .recibo-grid {
+  border-top: 1px solid #E2E8F0;
+}
+
+.recibo-grid-cel {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 14px;
+}
+
+.recibo-grid-cel + .recibo-grid-cel {
+  border-left: 1px solid #E2E8F0;
+}
+
+.recibo-grid-label {
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #94A3B8;
+}
+
+.recibo-grid-valor {
+  font-size: 9.5pt;
+  font-weight: 600;
+  color: #0F172A;
 }
 
 .recibo-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 8.7pt;
+  font-size: 8.5pt;
   margin: 0 0 16px;
 }
 
 .recibo-table th,
 .recibo-table td {
-  border: 1px solid #94A3B8;
-  padding: 5px 8px;
+  border: 1px solid #E2E8F0;
+  padding: 8px 10px;
   vertical-align: top;
 }
 
 .recibo-table th {
   background: #F1F5F9;
   font-weight: 700;
-  text-align: center;
-}
-
-.recibo-table td.recibo-rotulo {
-  font-weight: 700;
-  width: 220px;
-  background: #F8FAFC;
+  font-size: 7.5pt;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: left;
+  color: #475569;
 }
 
 .recibo-table td.recibo-direita { text-align: right; }
-.recibo-table td.recibo-centro { text-align: center; }
 
-.recibo-table tr.recibo-total td {
+.recibo-valor-forte {
   font-weight: 700;
-  background: #F8FAFC;
+}
+
+.recibo-beneficiario {
+  display: block;
+  font-weight: 700;
+  color: #0F172A;
+}
+
+.recibo-badge {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 6.5pt;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.recibo-badge-paciente {
+  background: #DBEAFE;
+  color: #1D4ED8;
+}
+
+.recibo-badge-acompanhante {
+  background: #EDE9FE;
+  color: #6D28D9;
+}
+
+.recibo-justificativa {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #334155;
 }
 
 .recibo-vazio {
-  padding: 10px 12px;
+  padding: 12px;
   color: #64748B;
   font-style: italic;
   text-align: center;
 }
 
-.recibo-bloco-auditoria {
-  margin-top: 32px;
-  background: #F1F5F9;
-  border: 1px solid #94A3B8;
-  padding: 10px 14px;
-  font-size: 9pt;
+.recibo-resumo {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px 24px;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
-.recibo-rodape {
-  margin-top: 28px;
+.recibo-resumo-caixa {
+  background: #F1F5F9;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.recibo-valor-total {
+  margin: 4px 0 2px;
+  font-size: 15pt;
+  font-weight: 800;
+  color: #0F172A;
+}
+
+.recibo-valor-extenso {
+  margin: 0;
+  font-size: 8pt;
+  color: #64748B;
+}
+
+.recibo-data-geracao-legenda {
+  margin: 4px 0 0;
   font-size: 8.5pt;
+  color: #475569;
+}
+
+.recibo-data-geracao {
+  margin: 2px 0 0;
+  font-size: 12pt;
+  font-weight: 700;
+  color: #0F172A;
+  text-align: right;
+}
+
+.recibo-hora-geracao {
+  margin: 0;
+  font-size: 8.5pt;
+  color: #64748B;
+  text-align: right;
+}
+
+.recibo-declaracao {
+  background: #F8FAFC;
+  border-left: 3px solid #94A3B8;
+  padding: 14px 16px;
+  font-size: 8.5pt;
+  color: #334155;
+  margin-bottom: 24px;
+}
+
+.recibo-declaracao p {
+  margin: 0;
+}
+
+.recibo-rodape-pagina {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid #CBD5E1;
+  padding-top: 10px;
+  font-size: 8pt;
+  color: #64748B;
+}
+
+.recibo-rodape-pagina p { margin: 0; }
+
+.recibo-rodape-forte {
+  font-weight: 700;
   color: #1A1D2B;
 }
 
-.recibo-pagina {
-  margin-top: 10px;
-  padding-top: 6px;
-  border-top: 1px solid #CBD5E1;
+.recibo-rodape-direita {
   text-align: right;
-  font-size: 8.5pt;
-  color: #475569;
 }
