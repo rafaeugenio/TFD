@@ -18,9 +18,13 @@ import {
   Key,
   Plus,
   Trash2,
+  Wallet,
+  ArrowUpCircle,
+  ArrowDownCircle,
 } from 'lucide-react';
 
 import StatusTag from '@/shared/components/status-tag/StatusTag';
+import { useSaldoPaciente } from '@/app/fluxo-v2/_state/saldoAjudaCustoStore';
 import { DetailPageSkeleton, CardListSkeleton } from '@/shared/components/skeleton';
 import { useToast } from '@/shared/components/toast/Toast';
 import { buscarPaciente, historicoProcessos } from '@/services/pacientes.service';
@@ -123,6 +127,10 @@ function PacienteDetalheInner({ id }: { id: string }) {
   const [editOpen, setEditOpen] = useState(false);
   const [contaDrawer, setContaDrawer] = useState<{ open: boolean; conta: DadosBancariosRow | null }>({ open: false, conta: null });
   const [reloadFlag, setReloadFlag] = useState(0);
+  // PBI — Saldo de ajuda de custo entre ciclos (07/08/2026). O store não
+  // depende do FluxoV2Provider (esta tela fica fora de /fluxo-v2), por isso
+  // pode ser consultado diretamente aqui.
+  const { saldo: saldoAjudaCusto, extrato: extratoSaldoAjudaCusto } = useSaldoPaciente(id);
 
   useEffect(() => {
     async function load() {
@@ -465,6 +473,69 @@ function PacienteDetalheInner({ id }: { id: string }) {
             </div>
           )}
         </Section>
+
+        {/* Saldo de ajuda de custo — crédito acumulado entre ciclos, quando a
+            volta é emitida antes do período pago. Nunca é devolvido em
+            dinheiro, só abatido no pagamento de uma ajuda futura. */}
+        {extratoSaldoAjudaCusto.length > 0 && (
+          <Section
+            title="Saldo de ajuda de custo"
+            icon={<Wallet size={18} />}
+            badge={
+              <span
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                style={{
+                  backgroundColor: saldoAjudaCusto > 0.005 ? '#F0FDF4' : 'var(--tfd-surface-100)',
+                  color: saldoAjudaCusto > 0.005 ? '#15803D' : 'var(--tfd-text-secondary)',
+                }}
+              >
+                {saldoAjudaCusto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </span>
+            }
+          >
+            <ul className="flex flex-col gap-1.5">
+              {extratoSaldoAjudaCusto.map((m) => {
+                const positivo = m.tipo === 'CREDITO';
+                return (
+                  <li
+                    key={m.id}
+                    className="flex items-start gap-2.5 px-3 py-2"
+                    style={{ background: 'var(--tfd-surface-50)', borderRadius: 8, border: '1px solid var(--tfd-surface-border)' }}
+                  >
+                    {positivo ? (
+                      <ArrowUpCircle size={15} style={{ color: '#15803D', flexShrink: 0, marginTop: 1 }} />
+                    ) : (
+                      <ArrowDownCircle size={15} style={{ color: '#B45309', flexShrink: 0, marginTop: 1 }} />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[12px]" style={{ color: 'var(--tfd-text-muted)' }}>
+                          {formatDate(m.data)}
+                          {(m.solicitacaoOrigemNumero || m.solicitacaoDestinoNumero) && (
+                            <>
+                              {' · '}
+                              {m.solicitacaoOrigemNumero ? `origem ${m.solicitacaoOrigemNumero}` : `destino ${m.solicitacaoDestinoNumero}`}
+                            </>
+                          )}
+                        </span>
+                        <span
+                          className="text-[13px] font-semibold font-mono shrink-0"
+                          style={{ color: positivo ? '#15803D' : '#B45309' }}
+                        >
+                          {positivo ? '+' : '−'}
+                          {m.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </span>
+                      </div>
+                      <p className="text-[12.5px] mt-0.5" style={{ color: 'var(--tfd-text-secondary)' }}>
+                        {m.motivo}
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </Section>
+        )}
 
         {/* Endereço */}
         <Section title="Endereço" icon={<MapPin size={18} />}>

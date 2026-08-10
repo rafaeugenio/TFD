@@ -7,6 +7,7 @@ import OrdinalBadge from './OrdinalBadge';
 import ItemRowActions from './ItemRowActions';
 import ConfirmarExclusaoModal from './ConfirmarExclusaoModal';
 import ReembolsoModal from './ReembolsoModal';
+import RecalcularVoltaAjudaModal from './RecalcularVoltaAjudaModal';
 import NewPassagemDrawer from './drawers/NewPassagemDrawer';
 import NewAjudaCustoDrawer from './drawers/NewAjudaCustoDrawer';
 import NewAdicionalDrawer from './drawers/NewAdicionalDrawer';
@@ -14,6 +15,7 @@ import FechamentoSolicitacaoCard from './FechamentoSolicitacaoCard';
 import DadosBancariosBlock from './DadosBancariosBlock';
 import { tooltipLocked, setorAtual } from '../_utils/lock';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
+import { useSaldoPaciente } from '../_state/saldoAjudaCustoStore';
 import { useToast } from '@/shared/components/toast/Toast';
 import { fmtDataBR } from '@/shared/utils/fmtData';
 import {
@@ -51,6 +53,9 @@ export default function FinanceiroTab({ s }: Props) {
   const [ajudaEditar, setAjudaEditar] = useState<AjudaCustoMock | undefined>(undefined);
   const [adicionalOpen, setAdicionalOpen] = useState(false);
   const [adicionalEditar, setAdicionalEditar] = useState<AdicionalMock | undefined>(undefined);
+  const [ajudaPrefill, setAjudaPrefill] = useState<{ dataInicio: string; dataFim: string; observacao?: string } | undefined>(undefined);
+  const [ajudaRecalcular, setAjudaRecalcular] = useState<AjudaCustoMock | null>(null);
+  const { saldo: saldoPaciente } = useSaldoPaciente(s.paciente.id);
 
   /** O "Excluir" da passagem virou Cancelar (inativar) — mantém histórico mas
    *  sai dos KPIs/relatórios. Modal de confirmação reusa o ConfirmarExclusaoModal. */
@@ -90,8 +95,8 @@ export default function FinanceiroTab({ s }: Props) {
 
   function abrirNovaPassagem() { setPassagemEditar(undefined); setPassagemOpen(true); }
   function abrirEditarPassagem(v: ViagemMock) { setPassagemEditar(v); setPassagemOpen(true); }
-  function abrirNovaAjuda() { setAjudaEditar(undefined); setAjudaOpen(true); }
-  function abrirEditarAjuda(a: AjudaCustoMock) { setAjudaEditar(a); setAjudaOpen(true); }
+  function abrirNovaAjuda() { setAjudaEditar(undefined); setAjudaPrefill(undefined); setAjudaOpen(true); }
+  function abrirEditarAjuda(a: AjudaCustoMock) { setAjudaEditar(a); setAjudaPrefill(undefined); setAjudaOpen(true); }
   function abrirNovoAdicional() { setAdicionalEditar(undefined); setAdicionalOpen(true); }
   function abrirEditarAdicional(a: AdicionalMock) { setAdicionalEditar(a); setAdicionalOpen(true); }
 
@@ -394,6 +399,20 @@ export default function FinanceiroTab({ s }: Props) {
         <p className="text-[11px] mb-3" style={{ color: '#9CA3AF' }}>
           Memória de cálculo: <code>(dias − 1) × {fmtBRL(VALOR_DIARIA_PERNOITE)} + {fmtBRL(VALOR_DIARIA_RETORNO)}</code>
         </p>
+
+        {/* PBI — saldo de ajuda de custo trazido de ciclos anteriores. */}
+        {saldoPaciente > 0.005 && (
+          <div
+            className="flex items-center gap-2 mb-3 px-3 py-2"
+            style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8 }}
+          >
+            <Wallet size={14} style={{ color: '#15803D', flexShrink: 0 }} />
+            <span className="text-[12px]" style={{ color: '#15803D' }}>
+              Saldo do paciente disponível: <strong>{fmtBRL(saldoPaciente)}</strong> (de ciclos anteriores)
+            </span>
+          </div>
+        )}
+
         {s.ajudasCusto.length > 0 ? (
           <ul className="flex flex-col gap-1.5 max-h-[380px] overflow-y-auto" style={{ paddingRight: 4 }}>
             {s.ajudasCusto.map((a, idx) => {
@@ -444,6 +463,7 @@ export default function FinanceiroTab({ s }: Props) {
                     <span style={{ color: '#9CA3AF', fontSize: 10 }}>{a.id.slice(-4)}</span>
                     <ItemRowActions
                       onEditar={() => abrirEditarAjuda(a)}
+                      onRecalcular={a.ativa === false ? undefined : () => setAjudaRecalcular(a)}
                       onReembolso={a.ativa === false ? undefined : () => setAjudaReembolso(a)}
                       onExcluir={() => setAjudaCancelar(a)}
                       labelExcluir={a.ativa === false ? 'Já cancelada' : 'Cancelar ajuda'}
@@ -520,10 +540,26 @@ export default function FinanceiroTab({ s }: Props) {
       />
       <NewAjudaCustoDrawer
         open={ajudaOpen}
-        onClose={() => setAjudaOpen(false)}
+        onClose={() => { setAjudaOpen(false); setAjudaPrefill(undefined); }}
         solicitacaoId={s.id}
         editar={ajudaEditar}
+        prefill={ajudaPrefill}
         somenteStatus={emAcompanhamento}
+      />
+
+      {/* PBI — recalcular período pela data real de volta (saldo entre ciclos). */}
+      <RecalcularVoltaAjudaModal
+        open={!!ajudaRecalcular}
+        onClose={() => setAjudaRecalcular(null)}
+        solicitacaoId={s.id}
+        solicitacaoNumero={s.numero}
+        pacienteId={s.paciente.id}
+        ajuda={ajudaRecalcular}
+        onAbrirComplemento={(prefill) => {
+          setAjudaEditar(undefined);
+          setAjudaPrefill(prefill);
+          setAjudaOpen(true);
+        }}
       />
       <NewAdicionalDrawer
         open={adicionalOpen}

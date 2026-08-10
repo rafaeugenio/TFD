@@ -355,6 +355,30 @@ export interface AjudaCustoMock {
   linkProcesso?: string;
 }
 
+/**
+ * PBI — Saldo de ajuda de custo entre ciclos (07/08/2026). Quando a volta é
+ * emitida antes do período base pago, a diferença NUNCA é devolvida pelo
+ * paciente — vira crédito para o próximo ciclo dele. Quando a ajuda de
+ * custo de uma solicitação futura é paga, esse crédito é abatido (débito).
+ * O saldo é sempre derivado da soma dos créditos menos os débitos — nunca
+ * um valor materializado.
+ */
+export type TipoMovimentacaoSaldo = 'CREDITO' | 'DEBITO';
+
+export interface MovimentacaoSaldoMock {
+  id: string;
+  /** Aponta para `PacienteMock.id` — o saldo é do paciente, atravessa ciclos. */
+  pacienteId: string;
+  tipo: TipoMovimentacaoSaldo;
+  valor: number;
+  motivo: string;
+  /** Número da solicitação onde o crédito foi gerado (volta antecipada). */
+  solicitacaoOrigemNumero?: string;
+  /** Número da solicitação onde o débito foi aplicado (abatimento no pagamento). */
+  solicitacaoDestinoNumero?: string;
+  data: string; // ISO datetime
+}
+
 export type CategoriaAdicional =
   | 'passagem_extra'
   | 'ajuda_extra'
@@ -1124,6 +1148,40 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       perfilAutor: 'Financeiro',
       observacao: 'Laudo sem CID secundário e indicação cirúrgica precisa ser reforçada — o hospital de destino exige isso pra liberar a vaga. Por favor, complementem o parecer e devolvam.',
     },
+  },
+];
+
+/* ── Saldo de ajuda de custo — movimentações-exemplo ─────────────────────
+ * Pacientes com mais de um ciclo na seed (pacientesPool[1] e pacientesPool[3])
+ * ganham histórico de exemplo para a tela nascer com dado visível. */
+
+export const seedMovimentacoesSaldo: MovimentacaoSaldoMock[] = [
+  {
+    id: 'ms1',
+    pacienteId: pacientesPool[3].id, // Ana Beatriz Costa — ciclos s5 → s9
+    tipo: 'CREDITO',
+    valor: 49.5,
+    motivo: 'Volta antecipada em 22/05/2025: pago R$ 132,75 para 6 dias, devido R$ 83,25 para 4 dias. Diferença creditada para o próximo ciclo.',
+    solicitacaoOrigemNumero: '2025/000127',
+    data: isoAt('2025-05-23', 10, 0),
+  },
+  {
+    id: 'ms2',
+    pacienteId: pacientesPool[1].id, // José Ribeiro Santos — ciclos s3 → s8
+    tipo: 'CREDITO',
+    valor: 33.15,
+    motivo: 'Volta antecipada em 08/06/2025: pago R$ 157,80 para 7 dias, devido R$ 124,65 para 6 dias. Diferença creditada para o próximo ciclo.',
+    solicitacaoOrigemNumero: '2025/000125',
+    data: isoAt('2025-06-09', 9, 30),
+  },
+  {
+    id: 'ms3',
+    pacienteId: pacientesPool[1].id,
+    tipo: 'DEBITO',
+    valor: 20,
+    motivo: 'Abatido no pagamento da ajuda de custo da solicitação TFD-2025-0008.',
+    solicitacaoDestinoNumero: 'TFD-2025-0008',
+    data: isoAt('2025-06-21', 14, 0),
   },
 ];
 

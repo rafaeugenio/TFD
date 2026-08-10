@@ -46,6 +46,12 @@ import {
 } from '../_adapters/toSupabase';
 import { statusGlobalToSetor } from '../_adapters/statusMapping';
 import { persistInsert, persistUpdate, persistDelete, currentUserId } from './persist';
+import {
+  criarCreditoSaldo as criarCreditoSaldoStore,
+  aplicarDebitoSaldo as aplicarDebitoSaldoStore,
+  saldoDoPaciente as saldoDoPacienteStore,
+  extratoDoPaciente as extratoDoPacienteStore,
+} from './saldoAjudaCustoStore';
 
 /* -------------------------------------------------------------------------- */
 /*  Context                                                                   */
@@ -236,6 +242,21 @@ interface FluxoV2ContextValue {
       acompanhantes?: import('@/core/mocks/fluxo-v2-v3-seed').AcompanhanteMock[];
     },
   ) => void;
+
+  /**
+   * Saldo de ajuda de custo entre ciclos (07/08/2026) — quando a volta é
+   * emitida antes do período pago, a diferença vira crédito do paciente
+   * para o próximo ciclo; nunca é devolvida. Wrappers finos sobre o store
+   * `saldoAjudaCustoStore`, que também é consultável fora do Provider (ex.:
+   * a tela de detalhe do paciente em `/pacientes/[id]`, que não está dentro
+   * de `/fluxo-v2`). Para leitura reativa em componentes, prefira o hook
+   * `useSaldoPaciente` do próprio store — estes métodos aqui são para
+   * mutação (criar crédito/débito) a partir de dentro do fluxo.
+   */
+  criarCreditoSaldo: typeof criarCreditoSaldoStore;
+  aplicarDebitoSaldo: typeof aplicarDebitoSaldoStore;
+  saldoDoPaciente: typeof saldoDoPacienteStore;
+  extratoDoPaciente: typeof extratoDoPacienteStore;
 }
 
 export interface EditarSolicitacaoPatch {
@@ -1425,6 +1446,10 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     marcarDevolucaoResolvida,
     editarSolicitacao,
     trocarPaciente,
+    criarCreditoSaldo: criarCreditoSaldoStore,
+    aplicarDebitoSaldo: aplicarDebitoSaldoStore,
+    saldoDoPaciente: saldoDoPacienteStore,
+    extratoDoPaciente: extratoDoPacienteStore,
   }), [
     solicitacoes, isLoading, getById, createSolicitacao, updateSolicitacao, setStatus,
     addAnexos,

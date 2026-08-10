@@ -1,20 +1,24 @@
 'use client';
 
-import { Pencil, Trash2, RotateCcw } from 'lucide-react';
+import { Pencil, Trash2, RotateCcw, RefreshCw } from 'lucide-react';
 
 /**
  * T2.AL — Botões de Editar/Reembolso/Cancelar (Excluir) para itens das listas.
  * `onReembolso` opcional — quando informado, adiciona o botão amarelo entre
- * Editar e Excluir.
+ * Editar e Excluir. `onRecalcular` opcional — usado hoje só na ajuda de
+ * custo, para recalcular o período pela data real de volta.
  */
 interface Props {
   onEditar: () => void;
   onExcluir: () => void;
   onReembolso?: () => void;
+  onRecalcular?: () => void;
   /** Tooltip do botão de excluir — útil pra dizer "Cancelar passagem". */
   labelExcluir?: string;
   /** Tooltip do botão de reembolso. */
   labelReembolso?: string;
+  /** Tooltip do botão de recalcular. */
+  labelRecalcular?: string;
   disabled?: boolean;
   tooltipDisabled?: string;
   /** Quando true, botão de reembolso fica destacado (amarelo cheio). */
@@ -30,8 +34,10 @@ export default function ItemRowActions({
   onEditar,
   onExcluir,
   onReembolso,
+  onRecalcular,
   labelExcluir = 'Excluir',
   labelReembolso = 'Reembolsar',
+  labelRecalcular = 'Recalcular pela volta real',
   disabled = false,
   tooltipDisabled,
   reembolsado = false,
@@ -49,6 +55,17 @@ export default function ItemRowActions({
         color="var(--tfd-blue-700, #1D4ED8)"
         hoverBg="#EBF0FF"
       />
+      {onRecalcular && (
+        <IconButton
+          icon={RefreshCw}
+          label={labelRecalcular}
+          onClick={onRecalcular}
+          disabled={disabled}
+          tooltipDisabled={tooltipDisabled}
+          color="#0E7490"
+          hoverBg="#ECFEFF"
+        />
+      )}
       {onReembolso && (
         <IconButton
           icon={RotateCcw}

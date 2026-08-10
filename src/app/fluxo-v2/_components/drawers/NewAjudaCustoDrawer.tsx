@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarRange, Calculator, Hash, Lock } from 'lucide-react';
+import { CalendarRange, Calculator, Hash, Lock, Info, Wallet } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormSection from '@/shared/components/drawer/FormSection';
 import AnexosUploadField, { type AnexoLocal } from '@/shared/components/anexos-upload-field/AnexosUploadField';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
+import { useSaldoPaciente } from '../../_state/saldoAjudaCustoStore';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import {
   STATUS_AJUDA_LABEL,
@@ -17,6 +18,17 @@ import {
   type StatusAjuda,
 } from '@/core/mocks/fluxo-v2-v3-seed';
 import { calcularIdade } from '@/shared/utils/idade';
+
+/** PBI — Período base sem data de volta comprada (07/08/2026): 5 dias
+ *  contados a partir do início (mesma convenção de `calcularValorAjuda`,
+ *  onde início = fim conta 1 dia — logo início + 4 dias fecha 5 dias). */
+const DIAS_PERIODO_BASE = 5;
+
+function addDias(dataIso: string, dias: number): string {
+  const d = new Date(`${dataIso}T00:00:00`);
+  d.setDate(d.getDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
 
 const inputStyle: React.CSSProperties = {
   background: 'white',
@@ -37,27 +49,44 @@ interface Props {
   /** PBI 13237 — Acompanhamento edita pelo drawer, mas só o status é
    *  editável e salvável; os demais campos ficam somente leitura. */
   somenteStatus?: boolean;
+  /** PBI — pré-preenche um lançamento novo (usado pelo complemento de
+   *  "Recalcular pela volta real" quando a volta é postergada). Ignorado em
+   *  modo edição. */
+  prefill?: { dataInicio: string; dataFim: string; observacao?: string };
 }
 
-export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar, somenteStatus }: Props) {
-  const { addAjudaCusto, editarAjudaCusto, getById, addAnexos } = useFluxoV2State();
+export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar, somenteStatus, prefill }: Props) {
+  const { addAjudaCusto, editarAjudaCusto, getById, addAnexos, aplicarDebitoSaldo } = useFluxoV2State();
   const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
   const toast = useToast();
   const isEdicao = !!editar;
   const firstInputRef = useRef<HTMLSelectElement>(null);
 
   const solicitacao = getById(solicitacaoId);
+  const { saldo: saldoPaciente } = useSaldoPaciente(solicitacao?.paciente.id);
 
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
+  const [fimTocadoManualmente, setFimTocadoManualmente] = useState(false);
   // T2.AQ — beneficiário no formato dos passagens: "p" = paciente, "a:<id>" = acompanhante.
   const [beneficiario, setBeneficiario] = useState<string>('p');
   const [pernoiteRetorno, setPernoiteRetorno] = useState(false);
   const [status, setStatus] = useState<StatusAjuda>('emitido');
+  const [observacao, setObservacao] = useState('');
   // PBI 13218 — cada ajuda de custo abre processo próprio no SEI, distinto
   // do processo da solicitação. Ambos os campos são obrigatórios.
   const [numeroSEI, setNumeroSEI] = useState('');
   const [linkProcesso, setLinkProcesso] = useState('');
+  // PBI — abatimento do saldo do paciente no pagamento (07/08/2026).
+  const [abaterSaldo, setAbaterSaldo] = useState(true);
+
+  // PBI — Período base de 5 dias quando ainda não há passagem de volta com
+  // data definida. Só se aplica a lançamentos NOVOS.
+  const temVoltaComprada = useMemo(
+    () => (solicitacao?.viagens ?? []).some((v) => v.tipo === 'volta' && v.ativa !== false && !!v.data),
+    [solicitacao],
+  );
+  const mostraAvisoPeriodoBase = !isEdicao && !temVoltaComprada;
 
   useEffect(() => {
     if (open) {
@@ -71,20 +100,49 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         );
         setPernoiteRetorno(!!editar.pernoiteRetorno);
         setStatus(editar.status);
+        setObservacao(editar.observacao ?? '');
         setNumeroSEI(editar.numeroSEI ?? '');
         setLinkProcesso(editar.linkProcesso ?? '');
+        setFimTocadoManualmente(true);
+      } else if (prefill) {
+        setDataInicio(prefill.dataInicio);
+        setDataFim(prefill.dataFim);
+        setBeneficiario('p');
+        setPernoiteRetorno(false);
+        setStatus('emitido');
+        setObservacao(prefill.observacao ?? '');
+        setNumeroSEI('');
+        setLinkProcesso('');
+        setFimTocadoManualmente(true);
       } else {
         setDataInicio('');
         setDataFim('');
         setBeneficiario('p');
         setPernoiteRetorno(false);
         setStatus('emitido');
+        setObservacao('');
         setNumeroSEI('');
         setLinkProcesso('');
+        setFimTocadoManualmente(false);
       }
+      setAbaterSaldo(true);
       setTimeout(() => firstInputRef.current?.focus(), 100);
     }
-  }, [open, editar]);
+  }, [open, editar, prefill]);
+
+  function handleDataInicioChange(value: string) {
+    setDataInicio(value);
+    // Sem passagem de volta comprada: sugere período base de 5 dias,
+    // continua editável — só sugere se o usuário ainda não mexeu no fim.
+    if (!isEdicao && !temVoltaComprada && !fimTocadoManualmente && value) {
+      setDataFim(addDias(value, DIAS_PERIODO_BASE - 1));
+    }
+  }
+
+  function handleDataFimChange(value: string) {
+    setFimTocadoManualmente(true);
+    setDataFim(value);
+  }
 
   const beneficiarioPayload = useMemo(() => {
     if (beneficiario === 'p') {
@@ -110,6 +168,14 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
     !!linkProcesso.trim() &&
     !linkProcessoInvalido;
 
+  // PBI — abatimento do saldo só faz sentido no momento em que a ajuda passa
+  // a ser 'concluido' (paga). Editar uma ajuda já concluída sem trocar o
+  // status não reabate — o débito já foi aplicado quando ela foi concluída.
+  const transicionandoParaConcluido =
+    status === 'concluido' && (!isEdicao || editar?.status !== 'concluido');
+  const mostraAbatimento = transicionandoParaConcluido && !somenteStatus && saldoPaciente > 0.005;
+  const valorAbatido = mostraAbatimento && abaterSaldo && calc ? Math.min(saldoPaciente, calc.valor) : 0;
+
   function handleSalvar() {
     if (!valid) return;
     // Data de conclusão: gravada ao marcar como "Concluído". Em edição,
@@ -124,6 +190,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         dataFim,
         status,
         dataConclusao,
+        observacao: observacao.trim() || undefined,
         ...beneficiarioPayload,
         pernoiteRetorno: pernoiteRetorno || undefined,
         numeroSEI: numeroSEI.trim(),
@@ -135,6 +202,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         dataFim,
         status,
         dataConclusao,
+        observacao: observacao.trim() || undefined,
         ...beneficiarioPayload,
         pernoiteRetorno: pernoiteRetorno || undefined,
         numeroSEI: numeroSEI.trim(),
@@ -142,6 +210,17 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
       });
     }
     toast.success(isEdicao ? 'Ajuda de custo atualizada' : 'Ajuda de custo registrada', `${dataInicio} → ${dataFim}`);
+
+    if (valorAbatido > 0.005 && solicitacao) {
+      aplicarDebitoSaldo({
+        pacienteId: solicitacao.paciente.id,
+        valor: valorAbatido,
+        motivo: `Abatido no pagamento da ajuda de custo de ${dataInicio} a ${dataFim} (processo ${numeroSEI.trim()}).`,
+        solicitacaoDestinoNumero: solicitacao.numero,
+      });
+      toast.success('Saldo abatido', `${fmtBRL(valorAbatido)} descontados do saldo do paciente`);
+    }
+
     if (anexos.length > 0) {
       addAnexos(solicitacaoId, anexos, 'ajuda_custo');
       setAnexos([]);
@@ -220,7 +299,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
           <input
             type="date"
             value={dataInicio}
-            onChange={(e) => setDataInicio(e.target.value)}
+            onChange={(e) => handleDataInicioChange(e.target.value)}
             className="w-full px-3 py-2 text-[13px]"
             style={inputStyle}
           />
@@ -232,12 +311,26 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
           <input
             type="date"
             value={dataFim}
-            onChange={(e) => setDataFim(e.target.value)}
+            onChange={(e) => handleDataFimChange(e.target.value)}
             className="w-full px-3 py-2 text-[13px]"
             style={inputStyle}
           />
         </div>
       </div>
+
+      {/* PBI — Período base de 5 dias quando ainda não há volta comprada. */}
+      {mostraAvisoPeriodoBase && (
+        <div
+          className="flex items-start gap-2 mb-4 px-3 py-2.5"
+          style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8 }}
+        >
+          <Info size={14} style={{ color: '#1D4ED8', flexShrink: 0, marginTop: 2 }} />
+          <span className="text-[11.5px] leading-relaxed" style={{ color: '#1E40AF' }}>
+            Período base de {DIAS_PERIODO_BASE} dias. Sem data de volta comprada; recalcule quando a
+            volta for emitida.
+          </span>
+        </div>
+      )}
 
       {/* T2.Y — Pernoite no retorno */}
       <label
@@ -319,6 +412,42 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
           </option>
         ))}
       </select>
+
+      <label className="block text-[12px] font-semibold mb-2 mt-4" style={{ color: '#6B7280' }}>
+        Observação <span className="font-normal" style={{ color: '#94A3B8' }}>(opcional)</span>
+      </label>
+      <textarea
+        value={observacao}
+        onChange={(e) => setObservacao(e.target.value)}
+        rows={2}
+        placeholder="Ex.: complemento por remarcação da volta..."
+        className="w-full px-3 py-2 text-[13px]"
+        style={inputStyle}
+      />
+
+      {/* PBI — abatimento do saldo do paciente no momento do pagamento. */}
+      {mostraAbatimento && calc && (
+        <div
+          className="flex items-start gap-3 mt-4 px-3 py-2.5"
+          style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8 }}
+        >
+          <input
+            type="checkbox"
+            checked={abaterSaldo}
+            onChange={(e) => setAbaterSaldo(e.target.checked)}
+            className="mt-[3px] shrink-0"
+          />
+          <label className="flex-1 cursor-pointer" onClick={() => setAbaterSaldo((v) => !v)}>
+            <span className="flex items-center gap-1.5 text-[13px] font-medium" style={{ color: '#15803D' }}>
+              <Wallet size={13} /> Saldo do paciente: {fmtBRL(saldoPaciente)}
+            </span>
+            <span className="block text-[11px] mt-0.5" style={{ color: '#166534' }}>
+              Abater do valor desta ajuda de custo. Valor a pagar: {fmtBRL(calc.valor - valorAbatido)}
+              {valorAbatido < saldoPaciente - 0.005 && ', que abate parcialmente o saldo'}.
+            </span>
+          </label>
+        </div>
+      )}
       </FormSection>
 
       {/* PBI 13218 — Processo SEI próprio da ajuda de custo (obrigatório). */}
