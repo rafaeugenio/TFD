@@ -21,17 +21,6 @@ import {
 } from '@/core/mocks/fluxo-v2-v3-seed';
 import { calcularIdade } from '@/shared/utils/idade';
 
-/** PBI — Período base sem data de volta comprada (07/08/2026): 5 dias
- *  contados a partir do início (mesma convenção de `calcularValorAjuda`,
- *  onde início = fim conta 1 dia — logo início + 4 dias fecha 5 dias). */
-const DIAS_PERIODO_BASE = 5;
-
-function addDias(dataIso: string, dias: number): string {
-  const d = new Date(`${dataIso}T00:00:00`);
-  d.setDate(d.getDate() + dias);
-  return d.toISOString().slice(0, 10);
-}
-
 const inputStyle: React.CSSProperties = {
   background: 'white',
   border: '1px solid var(--tfd-surface-border)',
@@ -86,7 +75,6 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
 
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
-  const [fimTocadoManualmente, setFimTocadoManualmente] = useState(false);
   // T2.AQ, ampliado (11/08/2026) — multi-select de beneficiários: "p" =
   // paciente, "a:<id>" = acompanhante. Ao salvar um lançamento novo com N
   // marcados, criam-se N ajudas idênticas, uma por beneficiário.
@@ -101,13 +89,6 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
   // PBI — abatimento do saldo do paciente no pagamento (07/08/2026).
   const [abaterSaldo, setAbaterSaldo] = useState(true);
 
-  // PBI — Período base de 5 dias quando ainda não há passagem de volta com
-  // data definida. Só se aplica a lançamentos NOVOS.
-  const temVoltaComprada = useMemo(
-    () => (solicitacao?.viagens ?? []).some((v) => v.tipo === 'volta' && v.ativa !== false && !!v.data),
-    [solicitacao],
-  );
-  const mostraAvisoPeriodoBase = !isEdicao && !temVoltaComprada;
 
   // Ajudas anteriores ATIVAS da mesma solicitação — base do select de
   // referência. Só períodos base (padrão/integral) entram: não há suporte a
@@ -134,8 +115,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         setObservacao(editar.observacao ?? '');
         setNumeroSEI(editar.numeroSEI ?? '');
         setLinkProcesso(editar.linkProcesso ?? '');
-        setFimTocadoManualmente(true);
-      } else if (prefill) {
+          } else if (prefill) {
         setAjudaReferenciaId('');
         setDataInicio(prefill.dataInicio);
         setDataFim(prefill.dataFim);
@@ -145,8 +125,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         setObservacao(prefill.observacao ?? '');
         setNumeroSEI('');
         setLinkProcesso('');
-        setFimTocadoManualmente(true);
-      } else {
+          } else {
         setAjudaReferenciaId('');
         setDataInicio('');
         setDataFim('');
@@ -156,8 +135,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         setObservacao('');
         setNumeroSEI('');
         setLinkProcesso('');
-        setFimTocadoManualmente(false);
-      }
+          }
       setAbaterSaldo(true);
       setTimeout(() => firstInputRef.current?.focus(), 100);
     }
@@ -178,15 +156,9 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
 
   function handleDataInicioChange(value: string) {
     setDataInicio(value);
-    // Sem passagem de volta comprada: sugere período base de 5 dias,
-    // continua editável — só sugere se o usuário ainda não mexeu no fim.
-    if (!isEdicao && !temVoltaComprada && !fimTocadoManualmente && value) {
-      setDataFim(addDias(value, DIAS_PERIODO_BASE - 1));
-    }
   }
 
   function handleDataFimChange(value: string) {
-    setFimTocadoManualmente(true);
     setDataFim(value);
   }
 
@@ -555,19 +527,6 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         </div>
       </div>
 
-      {/* PBI — Período base de 5 dias quando ainda não há volta comprada. */}
-      {mostraAvisoPeriodoBase && (
-        <div
-          className="flex items-start gap-2 mb-4 px-3 py-2.5"
-          style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8 }}
-        >
-          <Info size={14} style={{ color: '#1D4ED8', flexShrink: 0, marginTop: 2 }} />
-          <span className="text-[11.5px] leading-relaxed" style={{ color: '#1E40AF' }}>
-            Período base de {DIAS_PERIODO_BASE} dias. Sem data de volta comprada; recalcule quando a
-            volta for emitida.
-          </span>
-        </div>
-      )}
 
       {/* T2.Y — Pernoite no retorno. Correção de regra (11/08/2026): esse
           checkbox é quem decide a diária do último dia, no lugar dos botões
