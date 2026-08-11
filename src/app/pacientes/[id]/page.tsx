@@ -483,7 +483,7 @@ function PacienteDetalheInner({ id }: { id: string }) {
             (ex.: ajuda aditiva ainda não paga). Negativo: ele recebeu a mais
             (ex.: ajuda subtrativa ou volta antecipada) e a diferença é
             descontada do próximo pagamento — nunca devolvida em dinheiro. */}
-        {extratoSaldoAjudaCusto.length > 0 && (
+        {(
           <Section
             title="Saldo de ajuda de custo"
             icon={<Wallet size={18} />}
@@ -500,6 +500,12 @@ function PacienteDetalheInner({ id }: { id: string }) {
               </span>
             }
           >
+            {extratoSaldoAjudaCusto.length === 0 && (
+              <p className="text-sm py-4 text-center" style={{ color: 'var(--tfd-text-muted)' }}>
+                Nenhuma movimentação de saldo. O valor entra aqui quando uma ajuda de custo do
+                paciente gera complemento a receber ou acerto a descontar.
+              </p>
+            )}
             <ul className="flex flex-col gap-1.5">
               {extratoSaldoAjudaCusto.map((m) => {
                 const positivo = m.tipo === 'CREDITO';
