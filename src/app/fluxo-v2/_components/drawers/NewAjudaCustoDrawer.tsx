@@ -399,7 +399,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
               className="shrink-0"
             />
             <span className="text-[13px] font-medium" style={{ color: '#1A1D2B' }}>
-              Paciente — {solicitacao.paciente.nome} ({calcularIdade(solicitacao.paciente.dataNascimento)} anos)
+              Paciente: {solicitacao.paciente.nome} ({calcularIdade(solicitacao.paciente.dataNascimento)} anos)
             </span>
           </label>
         )}
@@ -422,7 +422,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
                 className="shrink-0"
               />
               <span className="text-[13px] font-medium" style={{ color: '#1A1D2B' }}>
-                {a.doador ? "Acompanhante Doador" : "Acompanhante"} — {a.nome} ({calcularIdade(a.dataNascimento)} anos) — {a.vinculo}
+                {a.doador ? "Acompanhante Doador" : "Acompanhante"}: {a.nome} ({calcularIdade(a.dataNascimento)} anos), {a.vinculo}
               </span>
             </label>
           );
@@ -443,7 +443,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
           className="w-full px-3 py-2 text-[13px]"
           style={inputStyle}
         >
-          <option value="">Nenhuma — lançamento novo</option>
+          <option value="">Nenhuma, lançamento novo</option>
           {ajudasAnteriores.map((a) => {
             const calcA = calcularAjudaCustoTipo({
               tipoCalculo: a.tipoCalculo ?? 'padrao',
