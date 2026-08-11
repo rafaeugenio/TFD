@@ -616,9 +616,12 @@ export const cloneSolicitacao = (s: SolicitacaoMock): SolicitacaoMock =>
   structuredClone(s);
 
 /**
- * Calcula o valor de uma ajuda de custo (Ata 7).
- * - Base sem pernoite: `(dias − 1) × 24,75 + 8,40`
- * - Com pernoite no retorno (chegou após meia-noite no dia final): base + 24,75
+ * Calcula o valor de uma ajuda de custo (Ata 7, corrigido em 11/08/2026).
+ * A diária do último dia do período é a de retorno (R$8,40); o pernoite no
+ * retorno (chegada após meia-noite no dia final) SUBSTITUI essa diária pela
+ * diária completa (R$24,75), não soma uma diária extra por cima.
+ * - Sem pernoite: `(dias − 1) × 24,75 + 8,40`
+ * - Com pernoite no retorno: `dias × 24,75`
  */
 export function calcularValorAjuda(
   dataInicio: string,
@@ -627,21 +630,16 @@ export function calcularValorAjuda(
 ): {
   dias: number;
   valor: number;
-  base: number;
-  pernoiteRetornoExtra: 0 | 24.75;
 } {
   const ini = new Date(dataInicio);
   const fim = new Date(dataFim);
   const ms = fim.getTime() - ini.getTime();
   const dias = Math.max(1, Math.round(ms / (1000 * 60 * 60 * 24)) + 1);
-  const base = (dias - 1) * VALOR_DIARIA_PERNOITE + VALOR_DIARIA_RETORNO;
-  const pernoiteRetornoExtra: 0 | 24.75 = pernoiteRetorno ? VALOR_DIARIA_PERNOITE : 0;
-  const valor = base + pernoiteRetornoExtra;
+  const diariaFinal = pernoiteRetorno ? VALOR_DIARIA_PERNOITE : VALOR_DIARIA_RETORNO;
+  const valor = (dias - 1) * VALOR_DIARIA_PERNOITE + diariaFinal;
   return {
     dias,
     valor: Math.round(valor * 100) / 100,
-    base: Math.round(base * 100) / 100,
-    pernoiteRetornoExtra,
   };
 }
 
@@ -696,10 +694,15 @@ export function calcularAjudaCustoTipo(input: {
   tipoCalculo: TipoCalculoAjuda;
   dataInicio: string;
   dataFim: string;
-  /** Diária do último dia do período (8,40 ou 24,75). Ausente = default do
-   *  tipo; em 'subtrativa', o default é herdado da ajuda de referência. */
+  /** Diária do último dia do período (8,40 ou 24,75). Ausente = derivada de
+   *  `pernoiteRetorno` (sem pernoite = retorno, com pernoite = completa); em
+   *  'subtrativa', o default é herdado da ajuda de referência. */
   valorDiariaFinal?: number;
-  /** Só usado em 'padrao'/'integral' — dia extra por chegada após meia-noite. */
+  /**
+   * Chegada após meia-noite no dia final do período. Substitui a diária de
+   * retorno do último dia pela diária completa — não soma uma diária extra
+   * por cima (correção de 11/08/2026, Ata 7).
+   */
   pernoiteRetorno?: boolean;
   /**
    * Ajuda de custo de referência da MESMA solicitação — presente apenas
@@ -714,12 +717,11 @@ export function calcularAjudaCustoTipo(input: {
   const { tipoCalculo, dataInicio, dataFim, pernoiteRetorno, ajudaReferencia } = input;
 
   if (tipoCalculo === 'padrao' || tipoCalculo === 'integral') {
-    const diariaFinal = input.valorDiariaFinal ?? DEFAULT_VALOR_DIARIA_FINAL[tipoCalculo];
+    const diariaFinal = input.valorDiariaFinal ?? (pernoiteRetorno ? VALOR_DIARIA_PERNOITE : VALOR_DIARIA_RETORNO);
     const dias = diasPeriodo(dataInicio, dataFim);
-    const extra = pernoiteRetorno ? VALOR_DIARIA_PERNOITE : 0;
-    const valor = Math.round((valorPeriodoBase(dias, diariaFinal) + extra) * 100) / 100;
+    const valor = valorPeriodoBase(dias, diariaFinal);
     const memoria = `(${dias}−1) × ${fmtBRLSeed(VALOR_DIARIA_PERNOITE)} + ${fmtBRLSeed(diariaFinal)}` +
-      (extra > 0 ? ` + ${fmtBRLSeed(VALOR_DIARIA_PERNOITE)} (pernoite retorno)` : '') +
+      (pernoiteRetorno ? ' (pernoite no retorno)' : '') +
       ` = ${fmtBRLSeed(valor)}`;
     return { dias, valor, memoria };
   }
@@ -732,12 +734,11 @@ export function calcularAjudaCustoTipo(input: {
     return { dias: 0, valor: 0, memoria: 'Selecione a ajuda de custo de referência.' };
   }
   const dias = diasPeriodo(dataInicio, dataFim);
-  const diariaFinal = input.valorDiariaFinal ?? DEFAULT_VALOR_DIARIA_FINAL.padrao;
-  const extra = pernoiteRetorno ? VALOR_DIARIA_PERNOITE : 0;
-  const valorNovo = Math.round((valorPeriodoBase(dias, diariaFinal) + extra) * 100) / 100;
+  const diariaFinal = input.valorDiariaFinal ?? (pernoiteRetorno ? VALOR_DIARIA_PERNOITE : VALOR_DIARIA_RETORNO);
+  const valorNovo = valorPeriodoBase(dias, diariaFinal);
 
   const tipoRef = ajudaReferencia.tipoCalculo ?? 'padrao';
-  const diariaFinalRef = ajudaReferencia.valorDiariaFinal ?? DEFAULT_VALOR_DIARIA_FINAL[tipoRef];
+  const diariaFinalRef = ajudaReferencia.valorDiariaFinal ?? (ajudaReferencia.pernoiteRetorno ? VALOR_DIARIA_PERNOITE : VALOR_DIARIA_RETORNO);
   const refCalc = calcularAjudaCustoTipo({
     // A referência é sempre um período base — nunca um ajuste encadeado.
     tipoCalculo: tipoRef === 'aditiva' || tipoRef === 'subtrativa' ? 'padrao' : tipoRef,

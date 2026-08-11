@@ -12,9 +12,8 @@ import { useSaldoPaciente } from '../../_state/saldoAjudaCustoStore';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import {
   STATUS_AJUDA_LABEL,
-  DEFAULT_VALOR_DIARIA_FINAL,
-  OPCOES_VALOR_DIARIA_FINAL,
   VALOR_DIARIA_PERNOITE,
+  VALOR_DIARIA_RETORNO,
   calcularAjudaCustoTipo,
   type AjudaCustoMock,
   type StatusAjuda,
@@ -79,10 +78,10 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
   const { saldo: saldoPaciente } = useSaldoPaciente(solicitacao?.paciente.id);
 
   // Refinamento (11/08/2026) — o operador não escolhe mais o tipo de
-  // cálculo. Ele escolhe a diária do último dia e, opcionalmente, uma ajuda
-  // de referência; o sistema deduz sozinho se é padrão/integral (sem
-  // referência) ou aditiva/subtrativa (com referência, comparando valores).
-  const [valorDiariaFinal, setValorDiariaFinal] = useState<number>(DEFAULT_VALOR_DIARIA_FINAL.padrao);
+  // cálculo. A diária do último dia vem do checkbox "Pernoite no retorno"
+  // logo abaixo e, opcionalmente, de uma ajuda de referência; o sistema
+  // deduz sozinho se é padrão/integral (sem referência) ou aditiva/subtrativa
+  // (com referência, comparando valores).
   const [ajudaReferenciaId, setAjudaReferenciaId] = useState('');
 
   const [dataInicio, setDataInicio] = useState('');
@@ -124,7 +123,6 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
   useEffect(() => {
     if (open) {
       if (editar) {
-        setValorDiariaFinal(editar.valorDiariaFinal ?? DEFAULT_VALOR_DIARIA_FINAL[editar.tipoCalculo ?? 'padrao']);
         setAjudaReferenciaId(editar.ajudaReferenciaId ?? '');
         setDataInicio(editar.dataInicio);
         setDataFim(editar.dataFim);
@@ -138,7 +136,6 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         setLinkProcesso(editar.linkProcesso ?? '');
         setFimTocadoManualmente(true);
       } else if (prefill) {
-        setValorDiariaFinal(DEFAULT_VALOR_DIARIA_FINAL.padrao);
         setAjudaReferenciaId('');
         setDataInicio(prefill.dataInicio);
         setDataFim(prefill.dataFim);
@@ -150,7 +147,6 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         setLinkProcesso('');
         setFimTocadoManualmente(true);
       } else {
-        setValorDiariaFinal(DEFAULT_VALOR_DIARIA_FINAL.padrao);
         setAjudaReferenciaId('');
         setDataInicio('');
         setDataFim('');
@@ -194,10 +190,14 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
     setDataFim(value);
   }
 
-  // Diária final escolhida decide a base entre 'padrao' (retorno) e
-  // 'integral' (completa) — usada tanto sem referência quanto para calcular
-  // o valor do novo período que entra na comparação com a referência.
-  const tipoBase: TipoCalculoAjuda = valorDiariaFinal === VALOR_DIARIA_PERNOITE ? 'integral' : 'padrao';
+  // Correção de regra (11/08/2026) — o pernoite no retorno decide sozinho a
+  // diária do último dia: substitui a diária de retorno (R$8,40) pela
+  // diária completa (R$24,75), nunca soma uma diária extra. Essa escolha
+  // decide também a base entre 'padrao' (retorno) e 'integral' (completa),
+  // usada tanto sem referência quanto para calcular o valor do novo período
+  // que entra na comparação com a referência.
+  const valorDiariaFinal = pernoiteRetorno ? VALOR_DIARIA_PERNOITE : VALOR_DIARIA_RETORNO;
+  const tipoBase: TipoCalculoAjuda = pernoiteRetorno ? 'integral' : 'padrao';
 
   const calcBase =
     dataInicio && dataFim
@@ -495,31 +495,6 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         </div>
       </div>
 
-      {/* Refinamento (11/08/2026) — diária do último dia, configurável em
-          qualquer lançamento. É essa escolha, e não mais um seletor de tipo,
-          que decide o valor do último dia do período. */}
-      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
-        Diária do último dia
-      </label>
-      <div className="flex gap-2 mb-4">
-        {OPCOES_VALOR_DIARIA_FINAL.map((op) => (
-          <button
-            key={op.valor}
-            type="button"
-            onClick={() => setValorDiariaFinal(op.valor)}
-            className="flex-1 px-3 py-2 text-[12.5px] font-medium text-left"
-            style={{
-              borderRadius: 8,
-              border: '1px solid ' + (valorDiariaFinal === op.valor ? '#C7DAFF' : 'var(--tfd-surface-border)'),
-              background: valorDiariaFinal === op.valor ? '#EBF0FF' : 'white',
-              color: valorDiariaFinal === op.valor ? 'var(--tfd-blue-700)' : '#475569',
-            }}
-          >
-            {op.label}
-          </button>
-        ))}
-      </div>
-
       {/* PBI — Período base de 5 dias quando ainda não há volta comprada. */}
       {mostraAvisoPeriodoBase && (
         <div
@@ -534,7 +509,10 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         </div>
       )}
 
-      {/* T2.Y — Pernoite no retorno. */}
+      {/* T2.Y — Pernoite no retorno. Correção de regra (11/08/2026): esse
+          checkbox é quem decide a diária do último dia, no lugar dos botões
+          removidos. Não soma diária extra, substitui a diária de retorno
+          pela diária completa. */}
       <label
         className="flex items-start gap-2 mb-4 cursor-pointer px-3 py-2.5"
         style={{
@@ -554,8 +532,8 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
             Pernoite no retorno (chegou após meia-noite)
           </span>
           <span className="block text-[11px] mt-0.5" style={{ color: '#6B7280' }}>
-            Quando o paciente chega ao destino após meia-noite no dia final,
-            soma uma diária extra de {fmtBRL(VALOR_DIARIA_PERNOITE)} (regra Ata 7).
+            Sem pernoite, a última diária é a de retorno ({fmtBRL(VALOR_DIARIA_RETORNO)}).
+            Com pernoite, a última diária é completa ({fmtBRL(VALOR_DIARIA_PERNOITE)}).
           </span>
         </span>
       </label>
