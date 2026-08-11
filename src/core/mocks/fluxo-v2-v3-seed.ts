@@ -443,8 +443,13 @@ export type TipoMovimentacaoSaldo = 'CREDITO' | 'DEBITO';
 
 export interface MovimentacaoSaldoMock {
   id: string;
-  /** Aponta para `PacienteMock.id` — o saldo é do paciente, atravessa ciclos. */
-  pacienteId: string;
+  /** Chave real de agrupamento do saldo — CPF do paciente, só dígitos.
+   *  O saldo é do paciente e atravessa qualquer solicitação dele, inclusive
+   *  entre o fluxo-v2 (ids de seed como 'p1') e a base real (ids Supabase). */
+  pacienteCpf: string;
+  /** Id do paciente na solicitação de origem do lançamento — mantido só
+   *  para rastreio, nunca usado para agrupar o saldo. */
+  pacienteId?: string;
   tipo: TipoMovimentacaoSaldo;
   valor: number;
   motivo: string;
@@ -1374,6 +1379,48 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       observacao: 'Laudo sem CID secundário e indicação cirúrgica precisa ser reforçada — o hospital de destino exige isso pra liberar a vaga. Por favor, complementem o parecer e devolvam.',
     },
   },
+
+  /* ── Caso 10 — Segundo ciclo de Ana Beatriz Costa, sem ajuda de custo ainda
+   * (demonstra o saldo atravessando solicitações, correção 11/08/2026). O
+   * débito de R$ 49,50 gerado na volta antecipada de 2025/000127 (ms1, ver
+   * seedMovimentacoesSaldo abaixo) precisa aparecer aqui quando o operador
+   * abrir "Novo período de ajuda": o saldo negativo do paciente entra na
+   * conta do primeiro lançamento desta solicitação, mesmo ela nunca tendo
+   * tido ajuda de custo própria. ── */
+  {
+    id: 's10',
+    numero: '2025/000130',
+    status: 'em_ajuda_custo',
+    dataCriacao: isoAt('2025-06-25'),
+    dataLaudo: '2025-06-24',
+    paciente: pacientesPool[3], // Ana Beatriz Costa — mesmo paciente de s5 (2025/000127)
+    acompanhantes: [acompanhantesPool[4]],
+    anexos: [],
+    pareceres: [
+      { id: 'pa10', data: isoAt('2025-06-26', 10), decisao: 'deferido', cidPrincipal: 'C34.9', medico: 'Dr. Ricardo Mello' },
+    ],
+    carimboRegulacao: 'APROVADO_DIRETO',
+    agendamento: {
+      id: 'ag10',
+      origem: 'criacao',
+      tentativas: [
+        {
+          id: 't10-conf',
+          unidade: 'INCA - Rio de Janeiro',
+          data: '2025-07-07',
+          desfecho: 'agendamento_confirmado',
+          hora: '08:00',
+        },
+      ],
+    },
+    viagens: [
+      { id: 'v10a', origem: 'Bacabal - MA', destino: 'Rio de Janeiro - RJ', data: '2025-07-06', modal: 'aereo', tipo: 'ida', status: 'confirmada', valor: 1490, beneficiarioTipo: 'paciente' },
+    ],
+    ajudasCusto: [],
+    adicionais: [],
+    despesasFunerarias: [],
+    observacoes: [],
+  },
 ];
 
 /* ── Saldo de ajuda de custo — movimentações-exemplo ─────────────────────
@@ -1383,12 +1430,22 @@ export const seedFluxoV2: SolicitacaoMock[] = [
  * antecipada), descontado do próximo pagamento, nunca devolvido em dinheiro.
  * Pacientes com mais de um ciclo na seed ganham histórico de exemplo para a
  * tela nascer com dado visível — um caso de saldo POSITIVO (Lucas Pereira
- * Lima, pacientesPool[2]) e três de saldo NEGATIVO. */
+ * Lima, pacientesPool[2]) e três de saldo NEGATIVO.
+ *
+ * Correção de regra (11/08/2026): a chave de agrupamento passou a ser o CPF
+ * do paciente (`pacienteCpf`, normalizado — só dígitos), não mais o id do
+ * seed. O `pacienteId` é mantido em cada registro só para rastreio da
+ * origem. Exemplo de saldo atravessando solicitações: Ana Beatriz Costa
+ * (pacientesPool[3]) tem o débito ms1 gerado em 2025/000127 (s5) e uma
+ * segunda solicitação, 2025/000130 (s10), em Ajuda de Custo e sem nenhum
+ * período lançado ainda — abrir "Novo período de ajuda" nela mostra o saldo
+ * negativo de -R$ 49,50 e o consome no primeiro pagamento. */
 
 export const seedMovimentacoesSaldo: MovimentacaoSaldoMock[] = [
   {
     id: 'ms1',
-    pacienteId: pacientesPool[3].id, // Ana Beatriz Costa — ciclos s5 → s9
+    pacienteCpf: pacientesPool[3].cpf, // Ana Beatriz Costa — ciclos s5 → s10
+    pacienteId: pacientesPool[3].id,
     tipo: 'DEBITO',
     valor: 49.5,
     motivo: 'Volta antecipada em 22/05/2025: pago R$ 132,75 para 6 dias, devido R$ 83,25 para 4 dias. Diferença de R$ 49,50 vira saldo negativo, descontada do próximo pagamento.',
@@ -1397,7 +1454,8 @@ export const seedMovimentacoesSaldo: MovimentacaoSaldoMock[] = [
   },
   {
     id: 'ms2',
-    pacienteId: pacientesPool[1].id, // José Ribeiro Santos — ciclos s3 → s8
+    pacienteCpf: pacientesPool[1].cpf, // José Ribeiro Santos — ciclos s3 → s8
+    pacienteId: pacientesPool[1].id,
     tipo: 'DEBITO',
     valor: 33.15,
     motivo: 'Volta antecipada em 08/06/2025: pago R$ 157,80 para 7 dias, devido R$ 124,65 para 6 dias. Diferença de R$ 33,15 vira saldo negativo, descontada do próximo pagamento.',
@@ -1406,6 +1464,7 @@ export const seedMovimentacoesSaldo: MovimentacaoSaldoMock[] = [
   },
   {
     id: 'ms3',
+    pacienteCpf: pacientesPool[1].cpf,
     pacienteId: pacientesPool[1].id,
     tipo: 'CREDITO',
     valor: 20,
@@ -1415,7 +1474,8 @@ export const seedMovimentacoesSaldo: MovimentacaoSaldoMock[] = [
   },
   {
     id: 'ms4',
-    pacienteId: pacientesPool[6].id, // Paulo Henrique Rocha — ac7b, ajuda subtrativa (2025/000129)
+    pacienteCpf: pacientesPool[6].cpf, // Paulo Henrique Rocha — ac7b, ajuda subtrativa (2025/000129)
+    pacienteId: pacientesPool[6].id,
     tipo: 'DEBITO',
     valor: 74.25,
     motivo: 'Ajuda subtrativa: pago R$ 156,90 para 7 dias, devido R$ 82,65 para 4 dias. Diferença de R$ 74,25 vira saldo negativo, descontada do próximo pagamento.',
@@ -1424,7 +1484,8 @@ export const seedMovimentacoesSaldo: MovimentacaoSaldoMock[] = [
   },
   {
     id: 'ms5',
-    pacienteId: pacientesPool[2].id, // Lucas Pereira Lima — ac2b, ajuda aditiva (2025/000124)
+    pacienteCpf: pacientesPool[2].cpf, // Lucas Pereira Lima — ac2b, ajuda aditiva (2025/000124)
+    pacienteId: pacientesPool[2].id,
     tipo: 'CREDITO',
     valor: 123.75,
     motivo: 'Ajuda aditiva: complemento de R$ 123,75 por prorrogação do tratamento pediátrico, ainda não pago ao paciente. Vira saldo positivo, a receber no próximo pagamento.',

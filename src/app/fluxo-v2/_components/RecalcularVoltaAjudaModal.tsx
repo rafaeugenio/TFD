@@ -14,6 +14,9 @@ interface Props {
   onClose: () => void;
   solicitacaoId: string;
   solicitacaoNumero: string;
+  /** Chave real do saldo — CPF do paciente, atravessa qualquer solicitação. */
+  pacienteCpf: string;
+  /** Mantido só para rastreio da origem do lançamento. */
   pacienteId: string;
   ajuda: AjudaCustoMock | null;
   /** Abre o drawer de novo período já preenchido para o complemento (volta postergada). */
@@ -36,6 +39,7 @@ export default function RecalcularVoltaAjudaModal({
   onClose,
   solicitacaoId,
   solicitacaoNumero,
+  pacienteCpf,
   pacienteId,
   ajuda,
   onAbrirComplemento,
@@ -66,6 +70,7 @@ export default function RecalcularVoltaAjudaModal({
     if (antecipada) {
       editarAjudaCusto(solicitacaoId, ajuda.id, { dataFim: novaDataVolta });
       aplicarDebitoSaldo({
+        pacienteCpf,
         pacienteId,
         valor: delta,
         motivo: `Volta antecipada em ${fmtDataBR(novaDataVolta)}: pago ${fmtBRL(valorAnterior.valor)} para ${valorAnterior.dias} dias, devido ${fmtBRL(preview.valor)} para ${preview.dias} dias. Diferença vira saldo negativo, descontada do próximo pagamento.`,

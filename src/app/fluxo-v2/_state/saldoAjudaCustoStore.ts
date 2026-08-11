@@ -2,7 +2,7 @@
 
 /* -------------------------------------------------------------------------- */
 /*  Saldo de ajuda de custo entre ciclos (PBI 07/08/2026, sinal corrigido em  */
-/*  11/08/2026)                                                              */
+/*  11/08/2026, chave corrigida para CPF em 11/08/2026)                      */
 /*                                                                            */
 /*  Store em memória, independente do FluxoV2Provider. O saldo é do          */
 /*  PACIENTE e precisa ser lido tanto em telas dentro de /fluxo-v2 (que têm   */
@@ -10,6 +10,15 @@
 /*  serviços ligados ao Supabase real). Por isso vive num store module-level  */
 /*  com `useSyncExternalStore`, consultável de qualquer árvore de componentes */
 /*  sem depender de um Context em comum.                                     */
+/*                                                                            */
+/*  Chave de agrupamento (correção 11/08/2026): o fluxo-v2 usa o id do        */
+/*  paciente do seed mock (ex.: 'p1'), enquanto /pacientes/[id] usa o id da   */
+/*  base real (Supabase). São espaços de identificador diferentes, então o   */
+/*  saldo passou a ser agrupado pelo CPF do paciente, que existe nos dois     */
+/*  mundos e é estável entre solicitações. O CPF é normalizado (só dígitos)  */
+/*  tanto na gravação quanto na leitura, para que "052.231.973-48" e         */
+/*  "05223197348" caiam no mesmo lugar. O id do paciente é mantido como      */
+/*  informação adicional de rastreio quando disponível, mas nunca é a chave. */
 /*                                                                            */
 /*  Sinal do saldo (correção de regra 11/08/2026):                           */
 /*  - CREDITO → saldo POSITIVO. O paciente tem valor a receber (ex.: ajuda    */
@@ -34,6 +43,12 @@ const listeners = new Set<() => void>();
 
 const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 
+/** Normaliza um CPF para só dígitos, a chave real de agrupamento do saldo.
+ *  "052.231.973-48" e "05223197348" resultam no mesmo valor. */
+export function normalizarCpf(cpf: string | undefined | null): string {
+  return (cpf ?? '').replace(/\D/g, '');
+}
+
 function emit() {
   listeners.forEach((l) => l());
 }
@@ -49,20 +64,26 @@ function getSnapshot(): MovimentacaoSaldoMock[] {
 
 /** Soma de créditos menos débitos — nunca um valor materializado.
  *  Pode ser negativo (paciente recebeu a mais em algum ciclo anterior). */
-export function saldoDoPaciente(pacienteId: string): number {
+export function saldoDoPaciente(pacienteCpf: string): number {
+  const cpf = normalizarCpf(pacienteCpf);
   return movimentacoes
-    .filter((m) => m.pacienteId === pacienteId)
+    .filter((m) => normalizarCpf(m.pacienteCpf) === cpf)
     .reduce((acc, m) => acc + (m.tipo === 'CREDITO' ? m.valor : -m.valor), 0);
 }
 
-export function extratoDoPaciente(pacienteId: string): MovimentacaoSaldoMock[] {
+export function extratoDoPaciente(pacienteCpf: string): MovimentacaoSaldoMock[] {
+  const cpf = normalizarCpf(pacienteCpf);
   return movimentacoes
-    .filter((m) => m.pacienteId === pacienteId)
+    .filter((m) => normalizarCpf(m.pacienteCpf) === cpf)
     .sort((a, b) => b.data.localeCompare(a.data));
 }
 
 interface NovaMovimentacaoInput {
-  pacienteId: string;
+  /** Chave real de agrupamento do saldo — atravessa qualquer solicitação do
+   *  mesmo paciente, inclusive entre o fluxo-v2 e a base real. */
+  pacienteCpf: string;
+  /** Id do paciente na origem do lançamento, guardado só para rastreio. */
+  pacienteId?: string;
   valor: number;
   motivo: string;
   solicitacaoOrigemNumero?: string;
@@ -75,6 +96,7 @@ interface NovaMovimentacaoInput {
 export function criarCreditoSaldo(input: NovaMovimentacaoInput): MovimentacaoSaldoMock {
   const mov: MovimentacaoSaldoMock = {
     id: uid('ms'),
+    pacienteCpf: normalizarCpf(input.pacienteCpf),
     pacienteId: input.pacienteId,
     tipo: 'CREDITO',
     valor: Math.round(input.valor * 100) / 100,
@@ -96,6 +118,7 @@ export function criarCreditoSaldo(input: NovaMovimentacaoInput): MovimentacaoSal
 export function aplicarDebitoSaldo(input: NovaMovimentacaoInput): MovimentacaoSaldoMock {
   const mov: MovimentacaoSaldoMock = {
     id: uid('ms'),
+    pacienteCpf: normalizarCpf(input.pacienteCpf),
     pacienteId: input.pacienteId,
     tipo: 'DEBITO',
     valor: Math.round(input.valor * 100) / 100,
@@ -110,12 +133,14 @@ export function aplicarDebitoSaldo(input: NovaMovimentacaoInput): MovimentacaoSa
 }
 
 /** Hook reativo — saldo + extrato de um paciente, atualiza em qualquer tela
- *  quando uma movimentação é criada em outra parte do app. */
-export function useSaldoPaciente(pacienteId: string | undefined): {
+ *  quando uma movimentação é criada em outra parte do app. Recebe o CPF do
+ *  paciente, a chave que atravessa fluxo-v2 e /pacientes/[id]. */
+export function useSaldoPaciente(pacienteCpf: string | undefined): {
   saldo: number;
   extrato: MovimentacaoSaldoMock[];
 } {
   useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  if (!pacienteId) return { saldo: 0, extrato: [] };
-  return { saldo: saldoDoPaciente(pacienteId), extrato: extratoDoPaciente(pacienteId) };
+  const cpf = normalizarCpf(pacienteCpf);
+  if (!cpf) return { saldo: 0, extrato: [] };
+  return { saldo: saldoDoPaciente(cpf), extrato: extratoDoPaciente(cpf) };
 }

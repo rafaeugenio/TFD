@@ -64,7 +64,9 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
   const firstInputRef = useRef<HTMLInputElement>(null);
 
   const solicitacao = getById(solicitacaoId);
-  const { saldo: saldoPaciente } = useSaldoPaciente(solicitacao?.paciente.id);
+  // Correção de regra (11/08/2026) — o saldo é do paciente pelo CPF, não pelo
+  // id da solicitação atual, para atravessar qualquer ciclo dele.
+  const { saldo: saldoPaciente } = useSaldoPaciente(solicitacao?.paciente.cpf);
 
   // Refinamento (11/08/2026) — o operador não escolhe mais o tipo de
   // cálculo. A diária do último dia vem do checkbox "Pernoite no retorno"
@@ -353,6 +355,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
     // POSITIVO dele (correção de regra 11/08/2026).
     if (tipoDeduzido === 'aditiva' && calc && calc.valor > 0.005 && solicitacao) {
       criarCreditoSaldo({
+        pacienteCpf: solicitacao.paciente.cpf,
         pacienteId: solicitacao.paciente.id,
         valor: calc.valor,
         motivo: `Ajuda aditiva: ${calc.memoria}`,
@@ -366,6 +369,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
     // próximo pagamento (correção de regra 11/08/2026).
     if (tipoDeduzido === 'subtrativa' && calc?.diferencaGerada && calc.diferencaGerada > 0.005 && solicitacao) {
       aplicarDebitoSaldo({
+        pacienteCpf: solicitacao.paciente.cpf,
         pacienteId: solicitacao.paciente.id,
         valor: calc.diferencaGerada,
         motivo: `Ajuda subtrativa: ${calc.memoria}`,
@@ -382,6 +386,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
     if (aplicaSaldoNormal && solicitacao) {
       if (saldoPaciente > 0.005) {
         aplicarDebitoSaldo({
+          pacienteCpf: solicitacao.paciente.cpf,
           pacienteId: solicitacao.paciente.id,
           valor: saldoPaciente,
           motivo: `Saldo do paciente incluído no pagamento da ajuda de custo de ${dataInicio} a ${dataFim}${numeroSEI.trim() ? ` (processo ${numeroSEI.trim()})` : ''}.`,
@@ -391,6 +396,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
       } else if (saldoPaciente < -0.005) {
         const valorQuitado = Math.abs(saldoPaciente);
         criarCreditoSaldo({
+          pacienteCpf: solicitacao.paciente.cpf,
           pacienteId: solicitacao.paciente.id,
           valor: valorQuitado,
           motivo: `Saldo negativo descontado no pagamento da ajuda de custo de ${dataInicio} a ${dataFim}${numeroSEI.trim() ? ` (processo ${numeroSEI.trim()})` : ''}.`,

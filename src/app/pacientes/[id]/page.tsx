@@ -127,10 +127,14 @@ function PacienteDetalheInner({ id }: { id: string }) {
   const [editOpen, setEditOpen] = useState(false);
   const [contaDrawer, setContaDrawer] = useState<{ open: boolean; conta: DadosBancariosRow | null }>({ open: false, conta: null });
   const [reloadFlag, setReloadFlag] = useState(0);
-  // PBI — Saldo de ajuda de custo entre ciclos (07/08/2026). O store não
-  // depende do FluxoV2Provider (esta tela fica fora de /fluxo-v2), por isso
-  // pode ser consultado diretamente aqui.
-  const { saldo: saldoAjudaCusto, extrato: extratoSaldoAjudaCusto } = useSaldoPaciente(id);
+  // PBI — Saldo de ajuda de custo entre ciclos (07/08/2026, chave corrigida
+  // para CPF em 11/08/2026). O store não depende do FluxoV2Provider (esta
+  // tela fica fora de /fluxo-v2), por isso pode ser consultado diretamente
+  // aqui. O saldo é agrupado pelo CPF do paciente, não pelo id da rota — o
+  // fluxo-v2 usa ids de outro espaço (seed mock), então só o CPF atravessa
+  // os dois mundos.
+  const pacienteCpf = paciente?.cpf as string | undefined;
+  const { saldo: saldoAjudaCusto, extrato: extratoSaldoAjudaCusto } = useSaldoPaciente(pacienteCpf);
 
   useEffect(() => {
     async function load() {
@@ -183,7 +187,7 @@ function PacienteDetalheInner({ id }: { id: string }) {
   }
 
   const nome = paciente.nome_completo as string;
-  const cpf = paciente.cpf as string;
+  const cpf = pacienteCpf as string;
   const cns = paciente.cns as string;
   const sexo = paciente.sexo as string;
   const dataNascimento = paciente.data_nascimento as string;

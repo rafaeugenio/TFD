@@ -55,7 +55,9 @@ export default function FinanceiroTab({ s }: Props) {
   const [adicionalEditar, setAdicionalEditar] = useState<AdicionalMock | undefined>(undefined);
   const [ajudaPrefill, setAjudaPrefill] = useState<{ dataInicio: string; dataFim: string; observacao?: string } | undefined>(undefined);
   const [ajudaRecalcular, setAjudaRecalcular] = useState<AjudaCustoMock | null>(null);
-  const { saldo: saldoPaciente } = useSaldoPaciente(s.paciente.id);
+  // Correção de regra (11/08/2026) — saldo agrupado pelo CPF do paciente,
+  // atravessa qualquer solicitação dele.
+  const { saldo: saldoPaciente } = useSaldoPaciente(s.paciente.cpf);
   // Correção de regra (11/08/2026) — saldo com sinal: positivo (a receber)
   // em verde, negativo (recebeu a mais) em vermelho, zero neutro.
   const saldoCor = saldoPaciente > 0.005 ? '#15803D' : saldoPaciente < -0.005 ? '#B91C1C' : '#94A3B8';
@@ -578,6 +580,7 @@ export default function FinanceiroTab({ s }: Props) {
         onClose={() => setAjudaRecalcular(null)}
         solicitacaoId={s.id}
         solicitacaoNumero={s.numero}
+        pacienteCpf={s.paciente.cpf}
         pacienteId={s.paciente.id}
         ajuda={ajudaRecalcular}
         onAbrirComplemento={(prefill) => {
