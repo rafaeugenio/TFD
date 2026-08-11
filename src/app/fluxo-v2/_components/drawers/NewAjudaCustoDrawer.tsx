@@ -86,8 +86,6 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
   // distinto do processo da solicitação. Opcional.
   const [numeroSEI, setNumeroSEI] = useState('');
   const [linkProcesso, setLinkProcesso] = useState('');
-  // PBI — abatimento do saldo do paciente no pagamento (07/08/2026).
-  const [abaterSaldo, setAbaterSaldo] = useState(true);
 
 
   // Ajudas anteriores ATIVAS da mesma solicitação — base do select de
@@ -136,7 +134,6 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         setNumeroSEI('');
         setLinkProcesso('');
           }
-      setAbaterSaldo(true);
       setTimeout(() => firstInputRef.current?.focus(), 100);
     }
   }, [open, editar, prefill]);
@@ -225,6 +222,12 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
     frase: string | null;
   };
 
+  // Correção de regra (11/08/2026) — só entra na conta em lançamento NOVO
+  // (não em edição, pra não reconsumir um saldo já aplicado na criação) e
+  // sem ajuda de referência (aditiva/subtrativa já têm sua própria regra de
+  // saldo, tratada em `handleSalvar`).
+  const aplicaSaldoNormal = !isEdicao && !ajudaReferenciaId && Math.abs(saldoPaciente) > 0.005;
+
   function montarBlocoCalculo(): BlocoCalculo | null {
     if (!calc || !dataInicio || !dataFim) return null;
     const periodoBase = `${fmtDataBR(dataInicio)} a ${fmtDataBR(dataFim)}, ${calc.dias} diária(s)`;
@@ -249,9 +252,9 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
           { label: `Pago na ajuda de ${refPeriodoLabel}`, valor: calc.valorPago },
           { label: 'Devido pelo período real', valor: calc.valorDevido },
         ],
-        totalLabel: 'Vira saldo do paciente',
-        totalValor: calc.creditoGerado ?? 0,
-        frase: `Acerto sobre a ajuda de ${refPeriodoLabel}.`,
+        totalLabel: 'Vira saldo negativo do paciente',
+        totalValor: -(calc.diferencaGerada ?? 0),
+        frase: `Acerto sobre a ajuda de ${refPeriodoLabel}. O paciente recebeu a mais e a diferença é descontada do próximo pagamento.`,
       };
     }
 
@@ -268,12 +271,29 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
       label: pernoiteRetorno ? '1 diária completa (pernoite no retorno)' : '1 diária de retorno',
       valor: valorDiariaFinal,
     });
+
+    // Correção de regra (11/08/2026) — lançamento novo sem referência: o
+    // saldo do paciente entra na conta antes do total, com sinal. Saldo
+    // positivo (ele não recebeu essa diferença ainda) acrescenta; saldo
+    // negativo (ele recebeu a mais em algum ciclo) desconta. Só se aplica na
+    // criação (não reaplica saldo já consumido ao editar) e sem referência.
+    let totalValor = calc.valor;
+    if (aplicaSaldoNormal) {
+      linhas.push({
+        label: saldoPaciente > 0 ? 'Saldo do paciente a acrescentar' : 'Saldo do paciente a descontar',
+        valor: saldoPaciente,
+      });
+      totalValor = Math.round((calc.valor + saldoPaciente) * 100) / 100;
+    }
+
     return {
       periodoLabel: `Período: ${periodoBase}`,
       linhas,
       totalLabel: 'Total',
-      totalValor: calc.valor,
-      frase: ajudaReferencia ? `Ajuste de datas sobre a ajuda de ${refPeriodoLabel}, sem diferença de valor.` : null,
+      totalValor,
+      frase: ajudaReferencia
+        ? `Ajuste de datas sobre a ajuda de ${refPeriodoLabel}, sem diferença de valor.`
+        : (aplicaSaldoNormal ? `Inclui o saldo do paciente (${fmtBRL(saldoPaciente)}) neste pagamento.` : null),
     };
   }
 
@@ -287,14 +307,6 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
     !!dataFim &&
     beneficiarios.length > 0 &&
     !linkProcessoInvalido;
-
-  // PBI — abatimento do saldo só faz sentido no momento em que a ajuda passa
-  // a ser 'concluido' (paga). Editar uma ajuda já concluída sem trocar o
-  // status não reabate — o débito já foi aplicado quando ela foi concluída.
-  const transicionandoParaConcluido =
-    status === 'concluido' && (!isEdicao || editar?.status !== 'concluido');
-  const mostraAbatimento = transicionandoParaConcluido && !somenteStatus && saldoPaciente > 0.005;
-  const valorAbatido = mostraAbatimento && abaterSaldo && calc ? Math.min(saldoPaciente, calc.valor) : 0;
 
   function handleSalvar() {
     if (!valid) return;
@@ -336,26 +348,56 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
     // Movimentações de saldo do paciente são únicas por lançamento (mesmo
     // quando N ajudas idênticas são criadas para N beneficiários) — o saldo é
     // sempre do paciente da solicitação, não se multiplica por beneficiário.
-    if (valorAbatido > 0.005 && solicitacao) {
-      aplicarDebitoSaldo({
-        pacienteId: solicitacao.paciente.id,
-        valor: valorAbatido,
-        motivo: `Abatido no pagamento da ajuda de custo de ${dataInicio} a ${dataFim}${numeroSEI.trim() ? ` (processo ${numeroSEI.trim()})` : ''}.`,
-        solicitacaoDestinoNumero: solicitacao.numero,
-      });
-      toast.success('Saldo abatido', `${fmtBRL(valorAbatido)} descontados do saldo do paciente`);
-    }
 
-    // Subtrativa — a diferença entre o pago e o devido pelos dias reais nunca
-    // é devolvida em dinheiro, vira crédito do paciente para o próximo ciclo.
-    if (tipoDeduzido === 'subtrativa' && calc?.creditoGerado && calc.creditoGerado > 0.005 && solicitacao) {
+    // Aditiva — a diferença ainda não foi paga ao paciente, vira saldo
+    // POSITIVO dele (correção de regra 11/08/2026).
+    if (tipoDeduzido === 'aditiva' && calc && calc.valor > 0.005 && solicitacao) {
       criarCreditoSaldo({
         pacienteId: solicitacao.paciente.id,
-        valor: calc.creditoGerado,
-        motivo: `Ajuda subtrativa: ${calc.memoria}`,
+        valor: calc.valor,
+        motivo: `Ajuda aditiva: ${calc.memoria}`,
         solicitacaoOrigemNumero: solicitacao.numero,
       });
-      toast.success('Saldo creditado', `${fmtBRL(calc.creditoGerado)} para o próximo ciclo do paciente`);
+      toast.success('Saldo creditado', `${fmtBRL(calc.valor)} a receber pelo paciente`);
+    }
+
+    // Subtrativa — o paciente recebeu a mais na referência; a diferença
+    // nunca é devolvida em dinheiro, vira saldo NEGATIVO dele, descontado do
+    // próximo pagamento (correção de regra 11/08/2026).
+    if (tipoDeduzido === 'subtrativa' && calc?.diferencaGerada && calc.diferencaGerada > 0.005 && solicitacao) {
+      aplicarDebitoSaldo({
+        pacienteId: solicitacao.paciente.id,
+        valor: calc.diferencaGerada,
+        motivo: `Ajuda subtrativa: ${calc.memoria}`,
+        solicitacaoDestinoNumero: solicitacao.numero,
+      });
+      toast.success('Saldo descontado', `${fmtBRL(calc.diferencaGerada)} descontados do saldo do paciente`);
+    }
+
+    // Lançamento normal (sem referência), criado com o paciente já tendo
+    // saldo: o saldo entra na conta deste pagamento e é consumido agora —
+    // positivo vira débito (a diferença foi paga junto), negativo vira
+    // crédito (a dívida foi parcialmente ou totalmente quitada). Só na
+    // criação, pra não reconsumir o mesmo saldo a cada edição.
+    if (aplicaSaldoNormal && solicitacao) {
+      if (saldoPaciente > 0.005) {
+        aplicarDebitoSaldo({
+          pacienteId: solicitacao.paciente.id,
+          valor: saldoPaciente,
+          motivo: `Saldo do paciente incluído no pagamento da ajuda de custo de ${dataInicio} a ${dataFim}${numeroSEI.trim() ? ` (processo ${numeroSEI.trim()})` : ''}.`,
+          solicitacaoDestinoNumero: solicitacao.numero,
+        });
+        toast.success('Saldo incluído no pagamento', `${fmtBRL(saldoPaciente)} acrescentados a esta ajuda`);
+      } else if (saldoPaciente < -0.005) {
+        const valorQuitado = Math.abs(saldoPaciente);
+        criarCreditoSaldo({
+          pacienteId: solicitacao.paciente.id,
+          valor: valorQuitado,
+          motivo: `Saldo negativo descontado no pagamento da ajuda de custo de ${dataInicio} a ${dataFim}${numeroSEI.trim() ? ` (processo ${numeroSEI.trim()})` : ''}.`,
+          solicitacaoOrigemNumero: solicitacao.numero,
+        });
+        toast.success('Saldo negativo descontado', `${fmtBRL(valorQuitado)} descontados desta ajuda`);
+      }
     }
 
     if (anexos.length > 0) {
@@ -401,6 +443,35 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
             <strong style={{ color: '#1A1D2B' }}>Somente leitura em Acompanhamento.</strong>{' '}
             Os demais campos ficam travados. Apenas o status pode ser atualizado aqui.
           </div>
+        </div>
+      )}
+
+      {/* Correção de regra (11/08/2026) — saldo do paciente sempre visível no
+          topo do drawer, com sinal: positivo (a receber) em verde, negativo
+          (recebeu a mais) em vermelho, zero neutro. */}
+      {solicitacao && (
+        <div
+          className="flex items-center gap-2 mb-4 px-3 py-2.5"
+          style={{
+            background: saldoPaciente > 0.005 ? '#F0FDF4' : saldoPaciente < -0.005 ? '#FEF2F2' : '#F8FAFC',
+            border: `1px solid ${saldoPaciente > 0.005 ? '#BBF7D0' : saldoPaciente < -0.005 ? '#FECACA' : 'var(--tfd-surface-border)'}`,
+            borderRadius: 8,
+          }}
+        >
+          <Wallet
+            size={14}
+            style={{
+              color: saldoPaciente > 0.005 ? '#15803D' : saldoPaciente < -0.005 ? '#B91C1C' : '#64748B',
+              flexShrink: 0,
+            }}
+          />
+          <span
+            className="text-[12.5px]"
+            style={{ color: saldoPaciente > 0.005 ? '#15803D' : saldoPaciente < -0.005 ? '#B91C1C' : '#475569' }}
+          >
+            Saldo do paciente:{' '}
+            <strong>{saldoPaciente > 0.005 ? '+' : ''}{fmtBRL(saldoPaciente)}</strong>
+          </span>
         </div>
       )}
 
@@ -579,7 +650,10 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
               <span className="text-[13px] font-semibold" style={{ color: '#1A1D2B' }}>
                 {blocoCalculo.totalLabel}
               </span>
-              <span className="text-[16px] font-bold tabular-nums" style={{ color: 'var(--tfd-blue)' }}>
+              <span
+                className="text-[16px] font-bold tabular-nums"
+                style={{ color: blocoCalculo.totalValor < -0.005 ? '#B91C1C' : 'var(--tfd-blue)' }}
+              >
                 {fmtBRL(blocoCalculo.totalValor)}
               </span>
             </div>
@@ -621,29 +695,6 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         style={inputStyle}
       />
 
-      {/* PBI — abatimento do saldo do paciente no momento do pagamento. */}
-      {mostraAbatimento && calc && (
-        <div
-          className="flex items-start gap-3 mt-4 px-3 py-2.5"
-          style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8 }}
-        >
-          <input
-            type="checkbox"
-            checked={abaterSaldo}
-            onChange={(e) => setAbaterSaldo(e.target.checked)}
-            className="mt-[3px] shrink-0"
-          />
-          <label className="flex-1 cursor-pointer" onClick={() => setAbaterSaldo((v) => !v)}>
-            <span className="flex items-center gap-1.5 text-[13px] font-medium" style={{ color: '#15803D' }}>
-              <Wallet size={13} /> Saldo do paciente: {fmtBRL(saldoPaciente)}
-            </span>
-            <span className="block text-[11px] mt-0.5" style={{ color: '#166534' }}>
-              Abater do valor desta ajuda de custo. Valor a pagar: {fmtBRL(calc.valor - valorAbatido)}
-              {valorAbatido < saldoPaciente - 0.005 && ', que abate parcialmente o saldo'}.
-            </span>
-          </label>
-        </div>
-      )}
       </FormSection>
 
       {/* PBI 13218 — Processo SEI próprio da ajuda de custo (opcional). */}

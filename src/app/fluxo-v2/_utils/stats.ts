@@ -242,6 +242,11 @@ export function totalDiariasNoMes(solicitacoes: SolicitacaoMock[]): number {
       if (a.ativa === false) continue;
       if (a.status !== 'concluido') continue;
       if (!a.dataConclusao || !dentroDoMesAtual(a.dataConclusao)) continue;
+      // Correção de regra (11/08/2026) — aditiva e subtrativa não são
+      // pagamento de fato, ficam fora do total (alimentam o saldo do
+      // paciente em vez disso).
+      const tipo = a.tipoCalculo ?? 'padrao';
+      if (tipo === 'aditiva' || tipo === 'subtrativa') continue;
       const calc = calcularValorAjuda(a.dataInicio, a.dataFim, a.pernoiteRetorno).valor;
       total += calc - (a.valorReembolso ?? 0);
     }

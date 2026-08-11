@@ -1,7 +1,8 @@
 'use client';
 
 /* -------------------------------------------------------------------------- */
-/*  Saldo de ajuda de custo entre ciclos (PBI 07/08/2026)                     */
+/*  Saldo de ajuda de custo entre ciclos (PBI 07/08/2026, sinal corrigido em  */
+/*  11/08/2026)                                                              */
 /*                                                                            */
 /*  Store em memória, independente do FluxoV2Provider. O saldo é do          */
 /*  PACIENTE e precisa ser lido tanto em telas dentro de /fluxo-v2 (que têm   */
@@ -9,6 +10,14 @@
 /*  serviços ligados ao Supabase real). Por isso vive num store module-level  */
 /*  com `useSyncExternalStore`, consultável de qualquer árvore de componentes */
 /*  sem depender de um Context em comum.                                     */
+/*                                                                            */
+/*  Sinal do saldo (correção de regra 11/08/2026):                           */
+/*  - CREDITO → saldo POSITIVO. O paciente tem valor a receber (ex.: ajuda    */
+/*    aditiva lançada, cuja diferença ainda não foi paga a ele).             */
+/*  - DEBITO  → saldo NEGATIVO. O paciente recebeu a mais do que devia (ex.:  */
+/*    ajuda subtrativa ou volta antecipada) e essa diferença é descontada do  */
+/*    próximo pagamento. Saldo negativo é um estado válido — nunca é         */
+/*    devolvido em dinheiro pelo paciente, só compensado nos próximos ciclos. */
 /*                                                                            */
 /*  Sem tabela própria no Supabase ainda — puramente mock, como o restante   */
 /*  do fluxo-v2. Persistência real fica para quando a regra for validada.     */
@@ -38,7 +47,8 @@ function getSnapshot(): MovimentacaoSaldoMock[] {
   return movimentacoes;
 }
 
-/** Soma de créditos menos débitos — nunca um valor materializado. */
+/** Soma de créditos menos débitos — nunca um valor materializado.
+ *  Pode ser negativo (paciente recebeu a mais em algum ciclo anterior). */
 export function saldoDoPaciente(pacienteId: string): number {
   return movimentacoes
     .filter((m) => m.pacienteId === pacienteId)
@@ -78,13 +88,12 @@ export function criarCreditoSaldo(input: NovaMovimentacaoInput): MovimentacaoSal
   return mov;
 }
 
-/** Registra um débito (abatimento no pagamento de uma ajuda de custo futura).
- *  Nunca deixa o saldo do paciente ficar negativo. */
+/** Registra um débito (abatimento no pagamento de uma ajuda de custo futura,
+ *  ou diferença de uma ajuda subtrativa). Correção de regra (11/08/2026):
+ *  saldo negativo é um estado válido — o débito não fica mais limitado ao
+ *  saldo disponível, porque agora ele é quem leva o saldo do paciente para
+ *  negativo quando o paciente recebeu a mais. */
 export function aplicarDebitoSaldo(input: NovaMovimentacaoInput): MovimentacaoSaldoMock {
-  const saldoAtual = saldoDoPaciente(input.pacienteId);
-  if (input.valor > saldoAtual + 0.005) {
-    throw new Error('O débito não pode exceder o saldo disponível do paciente.');
-  }
   const mov: MovimentacaoSaldoMock = {
     id: uid('ms'),
     pacienteId: input.pacienteId,

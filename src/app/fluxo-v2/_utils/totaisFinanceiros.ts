@@ -90,6 +90,11 @@ export function totaisFinanceiros(s: SolicitacaoMock): TotaisFinanceiros {
 
   const ajudas: TotaisCategoria = { ...ZERO };
   for (const a of s.ajudasCusto) {
+    // Correção de regra (11/08/2026) — aditiva e subtrativa não representam
+    // pagamento de fato: existem para registrar a diferença e alimentar o
+    // saldo do paciente (saldoAjudaCustoStore), fora deste total.
+    const tipo = a.tipoCalculo ?? 'padrao';
+    if (tipo === 'aditiva' || tipo === 'subtrativa') continue;
     const calc = calcularValorAjuda(a.dataInicio, a.dataFim, a.pernoiteRetorno).valor;
     const liquido = calc - (a.valorReembolso ?? 0);
     switch (a.status) {

@@ -474,9 +474,11 @@ function PacienteDetalheInner({ id }: { id: string }) {
           )}
         </Section>
 
-        {/* Saldo de ajuda de custo — crédito acumulado entre ciclos, quando a
-            volta é emitida antes do período pago. Nunca é devolvido em
-            dinheiro, só abatido no pagamento de uma ajuda futura. */}
+        {/* Saldo de ajuda de custo — entre ciclos do paciente (correção de
+            regra 11/08/2026, tem sinal). Positivo: ele tem valor a receber
+            (ex.: ajuda aditiva ainda não paga). Negativo: ele recebeu a mais
+            (ex.: ajuda subtrativa ou volta antecipada) e a diferença é
+            descontada do próximo pagamento — nunca devolvida em dinheiro. */}
         {extratoSaldoAjudaCusto.length > 0 && (
           <Section
             title="Saldo de ajuda de custo"
@@ -485,10 +487,11 @@ function PacienteDetalheInner({ id }: { id: string }) {
               <span
                 className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
                 style={{
-                  backgroundColor: saldoAjudaCusto > 0.005 ? '#F0FDF4' : 'var(--tfd-surface-100)',
-                  color: saldoAjudaCusto > 0.005 ? '#15803D' : 'var(--tfd-text-secondary)',
+                  backgroundColor: saldoAjudaCusto > 0.005 ? '#F0FDF4' : saldoAjudaCusto < -0.005 ? '#FEF2F2' : 'var(--tfd-surface-100)',
+                  color: saldoAjudaCusto > 0.005 ? '#15803D' : saldoAjudaCusto < -0.005 ? '#B91C1C' : 'var(--tfd-text-secondary)',
                 }}
               >
+                {saldoAjudaCusto > 0.005 ? '+' : ''}
                 {saldoAjudaCusto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </span>
             }

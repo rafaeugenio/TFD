@@ -361,10 +361,13 @@ export interface AjudaCustoMock {
    * - padrao: lançamento novo, sem referência, diária final de R$8,40.
    * - integral: lançamento novo, sem referência, diária final de R$24,75.
    * - aditiva: com referência, o valor do novo período supera o da
-   *   referência; o lançamento cobra só a diferença (dias a mais).
+   *   referência; o lançamento cobra só a diferença (dias a mais), que
+   *   também vira saldo POSITIVO do paciente (ele ainda não recebeu esse
+   *   valor — correção de regra 11/08/2026).
    * - subtrativa: com referência, o valor do novo período é menor que o da
-   *   referência; a diferença vira crédito do paciente, nunca devolução em
-   *   dinheiro.
+   *   referência; o paciente recebeu a mais na referência, então a
+   *   diferença vira saldo NEGATIVO dele, descontado do próximo pagamento,
+   *   nunca devolução em dinheiro (correção de regra 11/08/2026).
    * Default 'padrao' — cobre os registros antigos, lançados antes do
    * discovery, que só conheciam a regra com diária de retorno.
    */
@@ -425,12 +428,16 @@ export const TIPO_CALCULO_AJUDA_DESCRICAO: Record<TipoCalculoAjuda, string> = {
 };
 
 /**
- * PBI — Saldo de ajuda de custo entre ciclos (07/08/2026). Quando a volta é
- * emitida antes do período base pago, a diferença NUNCA é devolvida pelo
- * paciente — vira crédito para o próximo ciclo dele. Quando a ajuda de
- * custo de uma solicitação futura é paga, esse crédito é abatido (débito).
+ * PBI — Saldo de ajuda de custo entre ciclos (07/08/2026, sinal corrigido em
+ * 11/08/2026). O saldo tem sinal:
+ * - CREDITO → saldo POSITIVO: o paciente tem valor a receber (ex.: ajuda
+ *   aditiva lançada, cuja diferença ainda não foi paga a ele).
+ * - DEBITO  → saldo NEGATIVO: o paciente recebeu a mais do que devia (ex.:
+ *   ajuda subtrativa ou volta antecipada) e a diferença NUNCA é devolvida
+ *   por ele em dinheiro — é descontada do próximo pagamento de ajuda de
+ *   custo dele (em qualquer solicitação, não só a que originou o débito).
  * O saldo é sempre derivado da soma dos créditos menos os débitos — nunca
- * um valor materializado.
+ * um valor materializado, podendo ser positivo, negativo ou zero.
  */
 export type TipoMovimentacaoSaldo = 'CREDITO' | 'DEBITO';
 
@@ -660,9 +667,10 @@ export interface CalculoAjudaCustoResultado {
   valor: number;
   /** Memória de cálculo já formatada em BRL, pronta para exibir na UI. */
   memoria: string;
-  /** Só preenchido para 'subtrativa' — diferença (pago − devido) creditada
-   *  na conta do paciente. Nunca é o `valor` desta ajuda, que fica em 0. */
-  creditoGerado?: number;
+  /** Só preenchido para 'subtrativa' — diferença (pago − devido) que vira
+   *  saldo NEGATIVO do paciente (ele recebeu a mais). Nunca é o `valor`
+   *  desta ajuda, que fica em 0 (correção de regra 11/08/2026). */
+  diferencaGerada?: number;
   /** Só preenchido para 'subtrativa' — valor originalmente pago pela ajuda
    *  de referência, para exibir o resumo pago × devido na UI. */
   valorPago?: number;
@@ -759,14 +767,15 @@ export function calcularAjudaCustoTipo(input: {
     };
   }
 
-  // subtrativa — a diferença nunca é devolvida em dinheiro, vira crédito do
-  // paciente para o próximo ciclo.
-  const credito = Math.max(-diferenca, 0);
+  // subtrativa — o paciente recebeu a mais na referência; a diferença nunca
+  // é devolvida em dinheiro, vira saldo NEGATIVO dele, descontado do próximo
+  // pagamento (correção de regra 11/08/2026).
+  const diferencaGerada = Math.max(-diferenca, 0);
   return {
     dias,
     valor: 0,
-    memoria: `Valor pago na referência ${refPeriodo}: ${fmtBRLSeed(refCalc.valor)}. Valor devido pelo período real ${fmtDataBRSeed(dataInicio)}→${fmtDataBRSeed(dataFim)} (${dias} dia(s)): ${fmtBRLSeed(valorNovo)}. Diferença de ${fmtBRLSeed(credito)} creditada ao paciente para o próximo ciclo, sem devolução em dinheiro.`,
-    creditoGerado: credito,
+    memoria: `Valor pago na referência ${refPeriodo}: ${fmtBRLSeed(refCalc.valor)}. Valor devido pelo período real ${fmtDataBRSeed(dataInicio)}→${fmtDataBRSeed(dataFim)} (${dias} dia(s)): ${fmtBRLSeed(valorNovo)}. Diferença de ${fmtBRLSeed(diferencaGerada)} vira saldo negativo do paciente, descontada do próximo pagamento, sem devolução em dinheiro.`,
+    diferencaGerada,
     valorPago: refCalc.valor,
     valorDevido: valorNovo,
   };
@@ -1368,45 +1377,59 @@ export const seedFluxoV2: SolicitacaoMock[] = [
 ];
 
 /* ── Saldo de ajuda de custo — movimentações-exemplo ─────────────────────
- * Pacientes com mais de um ciclo na seed (pacientesPool[1] e pacientesPool[3])
- * ganham histórico de exemplo para a tela nascer com dado visível. */
+ * Correção de regra (11/08/2026): saldo tem sinal. CREDITO = saldo positivo
+ * (paciente a receber, ex.: ajuda aditiva ainda não paga). DEBITO = saldo
+ * negativo (paciente recebeu a mais, ex.: ajuda subtrativa ou volta
+ * antecipada), descontado do próximo pagamento, nunca devolvido em dinheiro.
+ * Pacientes com mais de um ciclo na seed ganham histórico de exemplo para a
+ * tela nascer com dado visível — um caso de saldo POSITIVO (Lucas Pereira
+ * Lima, pacientesPool[2]) e três de saldo NEGATIVO. */
 
 export const seedMovimentacoesSaldo: MovimentacaoSaldoMock[] = [
   {
     id: 'ms1',
     pacienteId: pacientesPool[3].id, // Ana Beatriz Costa — ciclos s5 → s9
-    tipo: 'CREDITO',
+    tipo: 'DEBITO',
     valor: 49.5,
-    motivo: 'Volta antecipada em 22/05/2025: pago R$ 132,75 para 6 dias, devido R$ 83,25 para 4 dias. Diferença creditada para o próximo ciclo.',
+    motivo: 'Volta antecipada em 22/05/2025: pago R$ 132,75 para 6 dias, devido R$ 83,25 para 4 dias. Diferença de R$ 49,50 vira saldo negativo, descontada do próximo pagamento.',
     solicitacaoOrigemNumero: '2025/000127',
     data: isoAt('2025-05-23', 10, 0),
   },
   {
     id: 'ms2',
     pacienteId: pacientesPool[1].id, // José Ribeiro Santos — ciclos s3 → s8
-    tipo: 'CREDITO',
+    tipo: 'DEBITO',
     valor: 33.15,
-    motivo: 'Volta antecipada em 08/06/2025: pago R$ 157,80 para 7 dias, devido R$ 124,65 para 6 dias. Diferença creditada para o próximo ciclo.',
+    motivo: 'Volta antecipada em 08/06/2025: pago R$ 157,80 para 7 dias, devido R$ 124,65 para 6 dias. Diferença de R$ 33,15 vira saldo negativo, descontada do próximo pagamento.',
     solicitacaoOrigemNumero: '2025/000125',
     data: isoAt('2025-06-09', 9, 30),
   },
   {
     id: 'ms3',
     pacienteId: pacientesPool[1].id,
-    tipo: 'DEBITO',
+    tipo: 'CREDITO',
     valor: 20,
-    motivo: 'Abatido no pagamento da ajuda de custo da solicitação TFD-2025-0008.',
+    motivo: 'Saldo negativo parcialmente descontado no pagamento da ajuda de custo da solicitação TFD-2025-0008.',
     solicitacaoDestinoNumero: 'TFD-2025-0008',
     data: isoAt('2025-06-21', 14, 0),
   },
   {
     id: 'ms4',
-    pacienteId: pacientesPool[6].id, // paciente da ac7b — ajuda subtrativa (2025/000129)
-    tipo: 'CREDITO',
+    pacienteId: pacientesPool[6].id, // Paulo Henrique Rocha — ac7b, ajuda subtrativa (2025/000129)
+    tipo: 'DEBITO',
     valor: 74.25,
-    motivo: 'Ajuda subtrativa: pago R$ 156,90 para 7 dias, devido R$ 82,65 para 4 dias. Diferença creditada para o próximo ciclo.',
+    motivo: 'Ajuda subtrativa: pago R$ 156,90 para 7 dias, devido R$ 82,65 para 4 dias. Diferença de R$ 74,25 vira saldo negativo, descontada do próximo pagamento.',
     solicitacaoOrigemNumero: '2025/000129',
     data: isoAt('2025-06-16', 9, 0),
+  },
+  {
+    id: 'ms5',
+    pacienteId: pacientesPool[2].id, // Lucas Pereira Lima — ac2b, ajuda aditiva (2025/000124)
+    tipo: 'CREDITO',
+    valor: 123.75,
+    motivo: 'Ajuda aditiva: complemento de R$ 123,75 por prorrogação do tratamento pediátrico, ainda não pago ao paciente. Vira saldo positivo, a receber no próximo pagamento.',
+    solicitacaoOrigemNumero: '2025/000124',
+    data: isoAt('2025-06-01', 9, 0),
   },
 ];
 

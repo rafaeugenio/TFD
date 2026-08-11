@@ -22,8 +22,6 @@ import {
   STATUS_AJUDA_LABEL,
   STATUS_VIAGEM_LABEL,
   TIPO_CALCULO_AJUDA_LABEL,
-  VALOR_DIARIA_PERNOITE,
-  VALOR_DIARIA_RETORNO,
   calcularAjudaCustoTipo,
   type StatusViagem,
   type StatusAjuda,
@@ -58,6 +56,10 @@ export default function FinanceiroTab({ s }: Props) {
   const [ajudaPrefill, setAjudaPrefill] = useState<{ dataInicio: string; dataFim: string; observacao?: string } | undefined>(undefined);
   const [ajudaRecalcular, setAjudaRecalcular] = useState<AjudaCustoMock | null>(null);
   const { saldo: saldoPaciente } = useSaldoPaciente(s.paciente.id);
+  // Correção de regra (11/08/2026) — saldo com sinal: positivo (a receber)
+  // em verde, negativo (recebeu a mais) em vermelho, zero neutro.
+  const saldoCor = saldoPaciente > 0.005 ? '#15803D' : saldoPaciente < -0.005 ? '#B91C1C' : '#94A3B8';
+  const saldoLabel = `${saldoPaciente > 0.005 ? '+' : ''}${fmtBRL(saldoPaciente)}`;
 
   /** O "Excluir" da passagem virou Cancelar (inativar) — mantém histórico mas
    *  sai dos KPIs/relatórios. Modal de confirmação reusa o ConfirmarExclusaoModal. */
@@ -111,17 +113,25 @@ export default function FinanceiroTab({ s }: Props) {
         .reduce((acc, v) => acc + (v.valor - (v.valorReembolso ?? 0)), 0),
     [s.viagens],
   );
+  // Correção de regra (11/08/2026) — o total só conta períodos que
+  // representam pagamento de fato (padrão e integral). Aditiva e subtrativa
+  // existem para registrar a diferença e alimentar o saldo do paciente
+  // (ver saldoAjudaCustoStore), nunca entram no total pago — senão o mesmo
+  // valor apareceria contado duas vezes (uma no período, outra no saldo).
   const totalAjuda = useMemo(
     () =>
       s.ajudasCusto
-        .filter((a) => a.ativa !== false)
+        .filter((a) => {
+          if (a.ativa === false) return false;
+          const tipo = a.tipoCalculo ?? 'padrao';
+          return tipo !== 'aditiva' && tipo !== 'subtrativa';
+        })
         .reduce((acc, a) => acc + (calcularAjudaCustoTipo({
           tipoCalculo: a.tipoCalculo ?? 'padrao',
           dataInicio: a.dataInicio,
           dataFim: a.dataFim,
           valorDiariaFinal: a.valorDiariaFinal,
           pernoiteRetorno: a.pernoiteRetorno,
-          ajudaReferencia: a.ajudaReferenciaId ? s.ajudasCusto.find((x) => x.id === a.ajudaReferenciaId) : undefined,
         }).valor - (a.valorReembolso ?? 0)), 0),
     [s.ajudasCusto],
   );
@@ -388,7 +398,12 @@ export default function FinanceiroTab({ s }: Props) {
       <Section
         icon={Wallet}
         title="Ajuda de custo"
-        subtitle={`${s.ajudasCusto.length} período(s) · Total: ${fmtBRL(totalAjuda)}`}
+        subtitle={
+          <>
+            {s.ajudasCusto.length} período(s) · Pago {fmtBRL(totalAjuda)} · Saldo do paciente{' '}
+            <span style={{ color: saldoCor, fontWeight: 600 }}>{saldoLabel}</span>
+          </>
+        }
         action={
           <button
             type="button"
@@ -401,25 +416,19 @@ export default function FinanceiroTab({ s }: Props) {
           </button>
         }
       >
-        <p className="text-[11px] mb-3" style={{ color: '#9CA3AF' }}>
-          Padrão: <code>(dias − 1) × {fmtBRL(VALOR_DIARIA_PERNOITE)} + {fmtBRL(VALOR_DIARIA_RETORNO)}</code>. O
-          cálculo completo de cada período aparece abaixo dele.
-        </p>
-
         {/* PBI — saldo de ajuda de custo do paciente, sempre visível (mesmo
             zerado) porque é usado no cálculo do próximo período lançado. */}
         <div
           className="flex items-center gap-2 mb-3 px-3 py-2"
           style={{
-            background: saldoPaciente > 0.005 ? '#F0FDF4' : '#F8FAFC',
-            border: `1px solid ${saldoPaciente > 0.005 ? '#BBF7D0' : 'var(--tfd-surface-border)'}`,
+            background: saldoPaciente > 0.005 ? '#F0FDF4' : saldoPaciente < -0.005 ? '#FEF2F2' : '#F8FAFC',
+            border: `1px solid ${saldoPaciente > 0.005 ? '#BBF7D0' : saldoPaciente < -0.005 ? '#FECACA' : 'var(--tfd-surface-border)'}`,
             borderRadius: 8,
           }}
         >
-          <Wallet size={14} style={{ color: saldoPaciente > 0.005 ? '#15803D' : '#64748B', flexShrink: 0 }} />
-          <span className="text-[12px]" style={{ color: saldoPaciente > 0.005 ? '#15803D' : '#475569' }}>
-            Saldo do paciente: <strong>{fmtBRL(saldoPaciente)}</strong>
-            {' '}· usado para abater ou compor o valor da próxima ajuda de custo dele.
+          <Wallet size={14} style={{ color: saldoCor, flexShrink: 0 }} />
+          <span className="text-[12px]" style={{ color: saldoCor }}>
+            Saldo do paciente: <strong>{saldoLabel}</strong>
           </span>
         </div>
 
@@ -673,7 +682,7 @@ export default function FinanceiroTab({ s }: Props) {
 }
 
 function Section({ icon: Icon, title, subtitle, action, children }: {
-  icon: typeof Plane; title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode;
+  icon: typeof Plane; title: string; subtitle?: React.ReactNode; action?: React.ReactNode; children: React.ReactNode;
 }) {
   return (
     <div className="mb-6 p-6" style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 10, boxShadow: '0 1px 0 rgba(15,23,42,0.02)' }}>

@@ -21,10 +21,12 @@ interface Props {
 }
 
 /**
- * PBI — Saldo de ajuda de custo entre ciclos (07/08/2026). Recalcula um
- * período já lançado a partir da data real de volta:
+ * PBI — Saldo de ajuda de custo entre ciclos (07/08/2026, sinal corrigido em
+ * 11/08/2026). Recalcula um período já lançado a partir da data real de
+ * volta:
  * - Volta antecipada (pagou mais do que devia): mantém o período atualizado
- *   e credita a diferença como saldo do paciente para o próximo ciclo.
+ *   e a diferença vira saldo NEGATIVO do paciente (ele recebeu a mais),
+ *   descontada do próximo pagamento, nunca devolvida em dinheiro.
  * - Volta postergada (pagou menos do que devia): mantém o período como
  *   estava e abre um novo lançamento complementar pelos dias que faltam.
  * - Sem diferença: só atualiza as datas.
@@ -38,7 +40,7 @@ export default function RecalcularVoltaAjudaModal({
   ajuda,
   onAbrirComplemento,
 }: Props) {
-  const { editarAjudaCusto, criarCreditoSaldo } = useFluxoV2State();
+  const { editarAjudaCusto, aplicarDebitoSaldo } = useFluxoV2State();
   const toast = useToast();
   const [novaDataVolta, setNovaDataVolta] = useState('');
 
@@ -63,13 +65,13 @@ export default function RecalcularVoltaAjudaModal({
 
     if (antecipada) {
       editarAjudaCusto(solicitacaoId, ajuda.id, { dataFim: novaDataVolta });
-      criarCreditoSaldo({
+      aplicarDebitoSaldo({
         pacienteId,
         valor: delta,
-        motivo: `Volta antecipada em ${fmtDataBR(novaDataVolta)}: pago ${fmtBRL(valorAnterior.valor)} para ${valorAnterior.dias} dias, devido ${fmtBRL(preview.valor)} para ${preview.dias} dias. Diferença creditada para o próximo ciclo.`,
-        solicitacaoOrigemNumero: solicitacaoNumero,
+        motivo: `Volta antecipada em ${fmtDataBR(novaDataVolta)}: pago ${fmtBRL(valorAnterior.valor)} para ${valorAnterior.dias} dias, devido ${fmtBRL(preview.valor)} para ${preview.dias} dias. Diferença vira saldo negativo, descontada do próximo pagamento.`,
+        solicitacaoDestinoNumero: solicitacaoNumero,
       });
-      toast.success('Período atualizado e diferença creditada', `${fmtBRL(delta)} para o próximo ciclo do paciente`);
+      toast.success('Período atualizado e diferença descontada', `${fmtBRL(delta)} viram saldo negativo do paciente`);
       onClose();
       return;
     }
@@ -132,21 +134,21 @@ export default function RecalcularVoltaAjudaModal({
           <div
             className="flex items-start gap-2 px-3 py-2.5 mb-2"
             style={{
-              background: antecipada ? '#F0FDF4' : postergada ? '#FFFBEB' : '#F8FAFC',
-              border: `1px solid ${antecipada ? '#BBF7D0' : postergada ? '#FDE68A' : 'var(--tfd-surface-border)'}`,
+              background: antecipada ? '#FEF2F2' : postergada ? '#FFFBEB' : '#F8FAFC',
+              border: `1px solid ${antecipada ? '#FECACA' : postergada ? '#FDE68A' : 'var(--tfd-surface-border)'}`,
               borderRadius: 8,
             }}
           >
-            {antecipada && <TrendingDown size={15} style={{ color: '#15803D', flexShrink: 0, marginTop: 1 }} />}
+            {antecipada && <TrendingDown size={15} style={{ color: '#B91C1C', flexShrink: 0, marginTop: 1 }} />}
             {postergada && <TrendingUp size={15} style={{ color: '#B45309', flexShrink: 0, marginTop: 1 }} />}
-            <div className="text-[12px]" style={{ color: antecipada ? '#15803D' : postergada ? '#92400E' : '#475569' }}>
+            <div className="text-[12px]" style={{ color: antecipada ? '#B91C1C' : postergada ? '#92400E' : '#475569' }}>
               <p className="font-semibold mb-0.5">
                 Novo período: {preview.dias} dia(s), {fmtBRL(preview.valor)}
               </p>
               {antecipada && (
                 <p>
-                  Volta antecipada. A diferença de <strong>{fmtBRL(delta)}</strong> vira crédito do paciente
-                  para o próximo ciclo, sem devolução.
+                  Volta antecipada. A diferença de <strong>{fmtBRL(delta)}</strong> vira saldo negativo do
+                  paciente, descontada do próximo pagamento, sem devolução.
                 </p>
               )}
               {postergada && (
