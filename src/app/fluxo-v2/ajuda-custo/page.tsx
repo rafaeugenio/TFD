@@ -70,6 +70,7 @@ function valorAjudaPeriodo(a: AjudaCustoMock, s: SolicitacaoMock): number {
     tipoCalculo: a.tipoCalculo ?? 'padrao',
     dataInicio: a.dataInicio,
     dataFim: a.dataFim,
+    valorDiariaFinal: a.valorDiariaFinal,
     pernoiteRetorno: a.pernoiteRetorno,
     ajudaReferencia: a.ajudaReferenciaId ? s.ajudasCusto.find((x) => x.id === a.ajudaReferenciaId) : undefined,
   }).valor;

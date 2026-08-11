@@ -119,6 +119,7 @@ export default function FinanceiroTab({ s }: Props) {
           tipoCalculo: a.tipoCalculo ?? 'padrao',
           dataInicio: a.dataInicio,
           dataFim: a.dataFim,
+          valorDiariaFinal: a.valorDiariaFinal,
           pernoiteRetorno: a.pernoiteRetorno,
           ajudaReferencia: a.ajudaReferenciaId ? s.ajudasCusto.find((x) => x.id === a.ajudaReferenciaId) : undefined,
         }).valor - (a.valorReembolso ?? 0)), 0),
@@ -425,6 +426,7 @@ export default function FinanceiroTab({ s }: Props) {
                 tipoCalculo: a.tipoCalculo ?? 'padrao',
                 dataInicio: a.dataInicio,
                 dataFim: a.dataFim,
+                valorDiariaFinal: a.valorDiariaFinal,
                 pernoiteRetorno: a.pernoiteRetorno,
                 ajudaReferencia: a.ajudaReferenciaId ? s.ajudasCusto.find((x) => x.id === a.ajudaReferenciaId) : undefined,
               });
@@ -643,6 +645,7 @@ export default function FinanceiroTab({ s }: Props) {
                 tipoCalculo: ajudaReembolso.tipoCalculo ?? 'padrao',
                 dataInicio: ajudaReembolso.dataInicio,
                 dataFim: ajudaReembolso.dataFim,
+                valorDiariaFinal: ajudaReembolso.valorDiariaFinal,
                 pernoiteRetorno: ajudaReembolso.pernoiteRetorno,
                 ajudaReferencia: ajudaReembolso.ajudaReferenciaId
                   ? s.ajudasCusto.find((x) => x.id === ajudaReembolso.ajudaReferenciaId)
