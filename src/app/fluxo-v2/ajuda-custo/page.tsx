@@ -20,7 +20,13 @@ import RegiaoRegionalMunicipioFilter from '../_components/RegiaoRegionalMunicipi
 import Pagination from '@/shared/components/pagination/Pagination';
 import StatsRow from '@/shared/components/stats-row/StatsRow';
 import { totalDiariasNoMes, formatBRL } from '../_utils/stats';
-import { calcularValorAjuda, type SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
+import {
+  calcularAjudaCustoTipo,
+  TIPO_CALCULO_AJUDA_LABEL,
+  type AjudaCustoMock,
+  type SolicitacaoMock,
+} from '@/core/mocks/fluxo-v2-v3-seed';
+import StatusDot from '../_components/StatusDot';
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import SortTh, { compareValues, nextSort, type SortDir } from '@/shared/components/sort-th/SortTh';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -55,6 +61,18 @@ function ultimaAjudaLancada(s: SolicitacaoMock) {
   const ativas = s.ajudasCusto.filter((a) => a.ativa !== false);
   if (ativas.length === 0) return null;
   return [...ativas].sort((a, b) => b.dataFim.localeCompare(a.dataFim))[0];
+}
+
+/** Valor de um período respeitando o tipo de cálculo (discovery 09/08/2026) —
+ *  resolve a ajuda de referência dentro da mesma solicitação quando aplicável. */
+function valorAjudaPeriodo(a: AjudaCustoMock, s: SolicitacaoMock): number {
+  return calcularAjudaCustoTipo({
+    tipoCalculo: a.tipoCalculo ?? 'padrao',
+    dataInicio: a.dataInicio,
+    dataFim: a.dataFim,
+    pernoiteRetorno: a.pernoiteRetorno,
+    ajudaReferencia: a.ajudaReferenciaId ? s.ajudasCusto.find((x) => x.id === a.ajudaReferenciaId) : undefined,
+  }).valor;
 }
 
 /**
@@ -150,7 +168,7 @@ export default function AjudaCustoListPage() {
   const filaOrdenada = useMemo(() => {
     if (!sort.field || !sort.dir) return fila;
     const totalAjuda = (s: SolicitacaoMock): number => s.ajudasCusto.reduce(
-      (a, x) => a + calcularValorAjuda(x.dataInicio, x.dataFim, x.pernoiteRetorno).valor, 0,
+      (a, x) => a + valorAjudaPeriodo(x, s), 0,
     );
     const getValue = (s: SolicitacaoMock): unknown => {
       switch (sort.field) {
@@ -283,9 +301,7 @@ export default function AjudaCustoListPage() {
             )}
             {!isLoading && paginadas.map((s) => {
               const ajudasAtivas = s.ajudasCusto.filter((a) => a.ativa !== false);
-              const totalAjuda = ajudasAtivas.reduce(
-                (acc, a) => acc + calcularValorAjuda(a.dataInicio, a.dataFim, a.pernoiteRetorno).valor, 0,
-              );
+              const totalAjuda = ajudasAtivas.reduce((acc, a) => acc + valorAjudaPeriodo(a, s), 0);
               const ultima = ultimaAjudaLancada(s);
               const proximo = proximoPeriodoAjuda(s);
 
@@ -338,8 +354,11 @@ export default function AjudaCustoListPage() {
                   <td className="px-4 py-3.5">
                     {ultima ? (
                       <div className="leading-tight">
-                        <div style={{ color: '#1E293B', fontSize: 13, fontWeight: 500 }}>
-                          {fmtDataBR(ultima.dataInicio)} → {fmtDataBR(ultima.dataFim)}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span style={{ color: '#1E293B', fontSize: 13, fontWeight: 500 }}>
+                            {fmtDataBR(ultima.dataInicio)} → {fmtDataBR(ultima.dataFim)}
+                          </span>
+                          <StatusDot tone="neutral">{TIPO_CALCULO_AJUDA_LABEL[ultima.tipoCalculo ?? 'padrao']}</StatusDot>
                         </div>
                         {ajudasAtivas.length > 1 && (
                           <div style={{ color: '#94A3B8', fontSize: 12 }}>

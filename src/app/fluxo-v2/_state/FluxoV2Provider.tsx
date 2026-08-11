@@ -43,6 +43,7 @@ import {
   buildEncerramento,
   buildObservacao,
   buildNewSolicitacao,
+  STATUS_AJUDA_TO_DB,
 } from '../_adapters/toSupabase';
 import { statusGlobalToSetor } from '../_adapters/statusMapping';
 import { persistInsert, persistUpdate, persistDelete, currentUserId } from './persist';
@@ -997,19 +998,23 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     const dbPatch: Record<string, unknown> = {};
     if (patch.dataInicio !== undefined) dbPatch.data_inicio = patch.dataInicio;
     if (patch.dataFim !== undefined) dbPatch.data_fim = patch.dataFim;
-    if (patch.status !== undefined) {
-      const m: Record<string, string> = {
-        em_analise: 'EM_ANALISE', aprovada: 'APROVADA', em_pagamento: 'EM_PAGAMENTO',
-        concluida: 'CONCLUIDA', glosada: 'GLOSADA',
-      };
-      dbPatch.status = m[patch.status] ?? 'EM_ANALISE';
-    }
+    // Alinhado ao mesmo mapa usado no insert (buildAjudaCusto) — o mapa
+    // antigo aqui usava os 5 status legados (pre-migration 00061) e nunca
+    // batia com o StatusAjuda atual de 3 valores, gravando sempre EM_ANALISE.
+    if (patch.status !== undefined) dbPatch.status = STATUS_AJUDA_TO_DB[patch.status] ?? 'EMITIDO';
     if (patch.observacao !== undefined) dbPatch.observacoes = patch.observacao;
     if (patch.beneficiarioTipo !== undefined) {
       dbPatch.tipo = patch.beneficiarioTipo === 'acompanhante' ? 'ACOMPANHANTE' : 'PACIENTE';
     }
     if (patch.numeroSEI !== undefined) dbPatch.numero_sei = patch.numeroSEI?.trim() || null;
     if (patch.linkProcesso !== undefined) dbPatch.link_processo = patch.linkProcesso?.trim() || null;
+    // Discovery Ajuda de Custo (migration 00076).
+    if (patch.tipoCalculo !== undefined) {
+      const m: Record<string, string> = { padrao: 'PADRAO', integral: 'INTEGRAL', aditiva: 'ADITIVA', subtrativa: 'SUBTRATIVA' };
+      dbPatch.tipo_calculo = m[patch.tipoCalculo] ?? 'PADRAO';
+    }
+    if (patch.ajudaReferenciaId !== undefined) dbPatch.ajuda_referencia_id = patch.ajudaReferenciaId || null;
+    if (patch.valorDiariaFinal !== undefined) dbPatch.valor_diaria_final = patch.valorDiariaFinal ?? null;
     if (Object.keys(dbPatch).length) persistUpdate('ajudas_custo', ajudaId, dbPatch);
   }, [mutate]);
 

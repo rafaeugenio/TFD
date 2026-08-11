@@ -299,10 +299,18 @@ export function buildViagem(
 /*  Ajuda de custo                                                     */
 /* ------------------------------------------------------------------ */
 
-const STATUS_AJUDA_TO_DB: Record<string, string> = {
+export const STATUS_AJUDA_TO_DB: Record<string, string> = {
   emitido: 'EMITIDO',
   concluido: 'CONCLUIDO',
   glosada: 'GLOSADA',
+};
+
+// Discovery Ajuda de Custo (migration 00076) — tipo de cálculo em maiúsculas no banco.
+const TIPO_CALCULO_AJUDA_TO_DB: Record<string, string> = {
+  padrao: 'PADRAO',
+  integral: 'INTEGRAL',
+  aditiva: 'ADITIVA',
+  subtrativa: 'SUBTRATIVA',
 };
 
 export interface AjudaDb {
@@ -323,6 +331,10 @@ export interface AjudaDb {
   /** PBI 13218 — processo próprio da ajuda no SEI. */
   numero_sei?: string | null;
   link_processo?: string | null;
+  /** Discovery Ajuda de Custo (migration 00076). */
+  tipo_calculo?: string;
+  ajuda_referencia_id?: string | null;
+  valor_diaria_final?: number | null;
 }
 
 export function buildAjudaCusto(
@@ -345,6 +357,9 @@ export function buildAjudaCusto(
     motivo_cancelamento_texto: a.motivoCancelamentoTexto ?? null,
     numero_sei: a.numeroSEI?.trim() || null,
     link_processo: a.linkProcesso?.trim() || null,
+    tipo_calculo: TIPO_CALCULO_AJUDA_TO_DB[a.tipoCalculo ?? 'padrao'],
+    ajuda_referencia_id: a.ajudaReferenciaId ?? null,
+    valor_diaria_final: a.valorDiariaFinal ?? null,
   };
 }
 

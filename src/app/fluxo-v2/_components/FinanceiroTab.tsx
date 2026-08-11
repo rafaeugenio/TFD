@@ -21,11 +21,13 @@ import { fmtDataBR } from '@/shared/utils/fmtData';
 import {
   STATUS_AJUDA_LABEL,
   STATUS_VIAGEM_LABEL,
+  TIPO_CALCULO_AJUDA_LABEL,
   VALOR_DIARIA_PERNOITE,
   VALOR_DIARIA_RETORNO,
-  calcularValorAjuda,
+  calcularAjudaCustoTipo,
   type StatusViagem,
   type StatusAjuda,
+  type TipoCalculoAjuda,
   type SolicitacaoMock,
   type ViagemMock,
   type AjudaCustoMock,
@@ -113,11 +115,13 @@ export default function FinanceiroTab({ s }: Props) {
     () =>
       s.ajudasCusto
         .filter((a) => a.ativa !== false)
-        .reduce(
-          (acc, a) =>
-            acc + (calcularValorAjuda(a.dataInicio, a.dataFim, a.pernoiteRetorno).valor - (a.valorReembolso ?? 0)),
-          0,
-        ),
+        .reduce((acc, a) => acc + (calcularAjudaCustoTipo({
+          tipoCalculo: a.tipoCalculo ?? 'padrao',
+          dataInicio: a.dataInicio,
+          dataFim: a.dataFim,
+          pernoiteRetorno: a.pernoiteRetorno,
+          ajudaReferencia: a.ajudaReferenciaId ? s.ajudasCusto.find((x) => x.id === a.ajudaReferenciaId) : undefined,
+        }).valor - (a.valorReembolso ?? 0)), 0),
     [s.ajudasCusto],
   );
   const totalAdicionais = useMemo(() => s.adicionais.reduce((acc, a) => acc + a.valor, 0), [s.adicionais]);
@@ -397,7 +401,8 @@ export default function FinanceiroTab({ s }: Props) {
         }
       >
         <p className="text-[11px] mb-3" style={{ color: '#9CA3AF' }}>
-          Memória de cálculo: <code>(dias − 1) × {fmtBRL(VALOR_DIARIA_PERNOITE)} + {fmtBRL(VALOR_DIARIA_RETORNO)}</code>
+          Padrão: <code>(dias − 1) × {fmtBRL(VALOR_DIARIA_PERNOITE)} + {fmtBRL(VALOR_DIARIA_RETORNO)}</code>. A
+          memória de cálculo completa de cada tipo aparece abaixo do período.
         </p>
 
         {/* PBI — saldo de ajuda de custo trazido de ciclos anteriores. */}
@@ -416,10 +421,14 @@ export default function FinanceiroTab({ s }: Props) {
         {s.ajudasCusto.length > 0 ? (
           <ul className="flex flex-col gap-1.5 max-h-[380px] overflow-y-auto" style={{ paddingRight: 4 }}>
             {s.ajudasCusto.map((a, idx) => {
-              const calc = calcularValorAjuda(a.dataInicio, a.dataFim, a.pernoiteRetorno);
-              const memoria = a.pernoiteRetorno
-                ? `(${calc.dias}−1) × ${VALOR_DIARIA_PERNOITE} + ${VALOR_DIARIA_RETORNO} + ${VALOR_DIARIA_PERNOITE} (pernoite retorno) = ${fmtBRL(calc.valor)}`
-                : `(${calc.dias}−1) × ${VALOR_DIARIA_PERNOITE} + ${VALOR_DIARIA_RETORNO} = ${fmtBRL(calc.valor)}`;
+              const calc = calcularAjudaCustoTipo({
+                tipoCalculo: a.tipoCalculo ?? 'padrao',
+                dataInicio: a.dataInicio,
+                dataFim: a.dataFim,
+                pernoiteRetorno: a.pernoiteRetorno,
+                ajudaReferencia: a.ajudaReferenciaId ? s.ajudasCusto.find((x) => x.id === a.ajudaReferenciaId) : undefined,
+              });
+              const memoria = calc.memoria;
               const acomp =
                 a.beneficiarioTipo === 'acompanhante' && a.beneficiarioId
                   ? s.acompanhantes.find((ac) => ac.id === a.beneficiarioId)
@@ -460,6 +469,7 @@ export default function FinanceiroTab({ s }: Props) {
                       )}
                     </span>
                     <AjudaStatusBadge status={a.status} />
+                    <TipoCalculoAjudaBadge tipo={a.tipoCalculo ?? 'padrao'} />
                     <span style={{ color: '#9CA3AF', fontSize: 10 }}>{a.id.slice(-4)}</span>
                     <ItemRowActions
                       onEditar={() => abrirEditarAjuda(a)}
@@ -629,7 +639,15 @@ export default function FinanceiroTab({ s }: Props) {
         }
         valorTotal={
           ajudaReembolso
-            ? calcularValorAjuda(ajudaReembolso.dataInicio, ajudaReembolso.dataFim, ajudaReembolso.pernoiteRetorno).valor
+            ? calcularAjudaCustoTipo({
+                tipoCalculo: ajudaReembolso.tipoCalculo ?? 'padrao',
+                dataInicio: ajudaReembolso.dataInicio,
+                dataFim: ajudaReembolso.dataFim,
+                pernoiteRetorno: ajudaReembolso.pernoiteRetorno,
+                ajudaReferencia: ajudaReembolso.ajudaReferenciaId
+                  ? s.ajudasCusto.find((x) => x.id === ajudaReembolso.ajudaReferenciaId)
+                  : undefined,
+              }).valor
             : 0
         }
         valorAtual={ajudaReembolso?.valorReembolso}
@@ -686,6 +704,18 @@ const AJUDA_TONE: Record<StatusAjuda, StatusDotTone> = {
 };
 function AjudaStatusBadge({ status }: { status: StatusAjuda }) {
   return <StatusDot tone={AJUDA_TONE[status]}>{STATUS_AJUDA_LABEL[status]}</StatusDot>;
+}
+
+/** Tipo de cálculo da ajuda (discovery 09/08/2026) — badge neutro, a cor já
+ *  está ocupada pelo status ao lado. */
+const TIPO_CALCULO_TONE: Record<TipoCalculoAjuda, StatusDotTone> = {
+  padrao: 'neutral',
+  integral: 'muted',
+  aditiva: 'warning',
+  subtrativa: 'danger',
+};
+function TipoCalculoAjudaBadge({ tipo }: { tipo: TipoCalculoAjuda }) {
+  return <StatusDot tone={TIPO_CALCULO_TONE[tipo]}>{TIPO_CALCULO_AJUDA_LABEL[tipo]}</StatusDot>;
 }
 
 /** Beneficiário — texto cinza neutro com ícone, sem cor. */

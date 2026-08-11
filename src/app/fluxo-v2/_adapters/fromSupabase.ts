@@ -12,6 +12,7 @@ import type {
   AgendamentoMock,
   ViagemMock,
   AjudaCustoMock,
+  TipoCalculoAjuda,
   AdicionalMock,
   DespesaFunerariaMock,
   EncerramentoMock,
@@ -313,6 +314,13 @@ const STATUS_AJUDA_FROM_DB: Record<string, StatusAjuda> = {
   GLOSADA: 'glosada',
 };
 
+const TIPO_CALCULO_AJUDA_FROM_DB: Record<string, TipoCalculoAjuda> = {
+  PADRAO: 'padrao',
+  INTEGRAL: 'integral',
+  ADITIVA: 'aditiva',
+  SUBTRATIVA: 'subtrativa',
+};
+
 function ajudasFromRows(rows: Row[]): AjudaCustoMock[] {
   return rows.map((r) => ({
     id: str(r.id),
@@ -325,6 +333,11 @@ function ajudasFromRows(rows: Row[]): AjudaCustoMock[] {
     // PBI 13218 — processo próprio da ajuda no SEI.
     numeroSEI: opt(r.numero_sei),
     linkProcesso: opt(r.link_processo),
+    // Discovery Ajuda de Custo (migration 00076) — tipo de cálculo, ajuda de
+    // referência (aditiva/subtrativa) e diária do último dia.
+    tipoCalculo: TIPO_CALCULO_AJUDA_FROM_DB[str(r.tipo_calculo)] ?? 'padrao',
+    ajudaReferenciaId: opt(r.ajuda_referencia_id),
+    valorDiariaFinal: typeof r.valor_diaria_final === 'number' ? r.valor_diaria_final : undefined,
   }));
 }
 

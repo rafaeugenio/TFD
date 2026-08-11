@@ -353,7 +353,72 @@ export interface AjudaCustoMock {
   numeroSEI?: string;
   /** PBI 13218 — URL completa para o processo próprio da ajuda no SEI. */
   linkProcesso?: string;
+  /**
+   * Discovery com o setor de Ajuda de Custo (09/08/2026) — quatro formas de
+   * lançar ajuda de custo, cada uma com regra de cálculo própria:
+   * - padrao: base do Ata 7, com diária de retorno de R$8,40.
+   * - integral: todas as diárias completas, sem diária de retorno.
+   * - aditiva: complemento de uma ajuda anterior da mesma solicitação; a
+   *   diária de retorno já foi paga na ajuda original, então não entra aqui.
+   * - subtrativa: paciente ficou menos dias que o pago; a diferença entre o
+   *   pago e o devido vira crédito do paciente, nunca devolução em dinheiro.
+   * Default 'padrao' — cobre os registros antigos, lançados antes do
+   * discovery, que só conheciam a regra com diária de retorno.
+   */
+  tipoCalculo?: TipoCalculoAjuda;
+  /**
+   * Ajuda de custo anterior da MESMA solicitação sendo complementada
+   * ('aditiva') ou corrigida ('subtrativa'). Ausente em 'padrao'/'integral'.
+   * Só referencia períodos base ('padrao'/'integral') — não há suporte a
+   * encadear um aditivo/subtrativo sobre outro ajuste.
+   */
+  ajudaReferenciaId?: string;
+  /**
+   * Refinamento do discovery (11/08/2026) — o ponto que separa 'padrao' de
+   * 'integral' é só qual é a diária do ÚLTIMO dia do período: R$8,40
+   * (retorno) ou R$24,75 (completa). Essa escolha ficou explícita e
+   * editável em qualquer tipo, em vez de fixa por tipo. Quando ausente,
+   * usa o default do tipo (ver `DEFAULT_VALOR_DIARIA_FINAL`).
+   */
+  valorDiariaFinal?: number;
 }
+
+/** T2.AQ — os quatro tipos de cálculo de ajuda de custo (ver `AjudaCustoMock.tipoCalculo`). */
+export type TipoCalculoAjuda = 'padrao' | 'integral' | 'aditiva' | 'subtrativa';
+
+export const TIPO_CALCULO_AJUDA_LABEL: Record<TipoCalculoAjuda, string> = {
+  padrao: 'Padrão',
+  integral: 'Integral',
+  aditiva: 'Aditiva',
+  subtrativa: 'Subtrativa',
+};
+
+/**
+ * Refinamento (11/08/2026) — diária default do ÚLTIMO dia por tipo, usada
+ * quando `AjudaCustoMock.valorDiariaFinal` está ausente. O operador sempre
+ * pode trocar no drawer; 'subtrativa' na prática herda da ajuda referenciada
+ * (resolvido em `calcularAjudaCustoTipo`, não aqui).
+ */
+export const DEFAULT_VALOR_DIARIA_FINAL: Record<TipoCalculoAjuda, number> = {
+  padrao: VALOR_DIARIA_RETORNO,
+  integral: VALOR_DIARIA_PERNOITE,
+  aditiva: VALOR_DIARIA_PERNOITE,
+  subtrativa: VALOR_DIARIA_RETORNO,
+};
+
+/** As duas únicas diárias válidas para o último dia do período. */
+export const OPCOES_VALOR_DIARIA_FINAL: { valor: number; label: string }[] = [
+  { valor: VALOR_DIARIA_RETORNO, label: `Diária de retorno (${VALOR_DIARIA_RETORNO.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})` },
+  { valor: VALOR_DIARIA_PERNOITE, label: `Diária completa (${VALOR_DIARIA_PERNOITE.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})` },
+];
+
+/** Explicação curta de quando usar cada tipo — exibida no seletor do drawer. */
+export const TIPO_CALCULO_AJUDA_DESCRICAO: Record<TipoCalculoAjuda, string> = {
+  padrao: 'Diárias completas mais uma diária de retorno reduzida. Uso padrão da maioria dos lançamentos.',
+  integral: 'Todas as diárias completas, sem diária de retorno reduzida.',
+  aditiva: 'Complementa dias a mais sobre uma ajuda já lançada nesta solicitação.',
+  subtrativa: 'Corrige uma ajuda já paga quando o paciente ficou menos dias do que o previsto.',
+};
 
 /**
  * PBI — Saldo de ajuda de custo entre ciclos (07/08/2026). Quando a volta é
@@ -574,6 +639,136 @@ export function calcularValorAjuda(
     base: Math.round(base * 100) / 100,
     pernoiteRetornoExtra,
   };
+}
+
+/** Quantidade de dias de um período (início e fim contam como dias cheios,
+ *  mesma convenção de `calcularValorAjuda`). */
+function diasPeriodo(dataInicio: string, dataFim: string): number {
+  const ini = new Date(dataInicio);
+  const fim = new Date(dataFim);
+  const ms = fim.getTime() - ini.getTime();
+  return Math.max(1, Math.round(ms / (1000 * 60 * 60 * 24)) + 1);
+}
+
+const fmtBRLSeed = (v: number) =>
+  v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+export interface CalculoAjudaCustoResultado {
+  dias: number;
+  valor: number;
+  /** Memória de cálculo já formatada em BRL, pronta para exibir na UI. */
+  memoria: string;
+  /** Só preenchido para 'subtrativa' — diferença (pago − devido) creditada
+   *  na conta do paciente. Nunca é o `valor` desta ajuda, que fica em 0. */
+  creditoGerado?: number;
+  /** Só preenchido para 'subtrativa' — valor originalmente pago pela ajuda
+   *  de referência, para exibir o resumo pago × devido na UI. */
+  valorPago?: number;
+  /** Só preenchido para 'subtrativa' — valor devido pelos dias reais. */
+  valorDevido?: number;
+}
+
+/** dias × 24,75, com o último dia trocado pela diária escolhida — a base
+ *  matemática comum aos quatro tipos (Ata 7, refinada em 11/08/2026: o que
+ *  antes separava 'padrao' de 'integral' virou uma escolha explícita). */
+function valorPeriodoBase(dias: number, valorDiariaFinal: number): number {
+  return Math.round(((dias - 1) * VALOR_DIARIA_PERNOITE + valorDiariaFinal) * 100) / 100;
+}
+
+/**
+ * Calcula uma ajuda de custo considerando os quatro tipos do discovery com o
+ * setor de Ajuda de Custo (09/08/2026, refinado em 11/08/2026). O tipo
+ * 'padrao' com diária final default (R$8,40) reproduz exatamente
+ * `calcularValorAjuda` (Ata 7) — mantida intocada porque outras telas ainda
+ * a chamam diretamente (ex.: recálculo pela volta real).
+ */
+export function calcularAjudaCustoTipo(input: {
+  tipoCalculo: TipoCalculoAjuda;
+  dataInicio: string;
+  dataFim: string;
+  /** Diária do último dia do período (8,40 ou 24,75). Ausente = default do
+   *  tipo; em 'subtrativa', o default é herdado da ajuda de referência. */
+  valorDiariaFinal?: number;
+  /** Só usado em 'padrao'/'integral' — dia extra por chegada após meia-noite. */
+  pernoiteRetorno?: boolean;
+  /**
+   * Ajuda anterior da MESMA solicitação — obrigatória para 'aditiva' e
+   * 'subtrativa'. Em ambas, `dataFim` é a NOVA data final informada pelo
+   * operador (pode ser depois ou antes da data final da ajuda referenciada);
+   * `dataInicio` é ignorado e substituído pelo início/fim corretos do
+   * cálculo. Deve ser sempre um período base ('padrao'/'integral') — não há
+   * suporte a encadear um ajuste sobre outro ajuste.
+   */
+  ajudaReferencia?: AjudaCustoMock;
+}): CalculoAjudaCustoResultado {
+  const { tipoCalculo, dataInicio, dataFim, pernoiteRetorno, ajudaReferencia } = input;
+
+  if (tipoCalculo === 'padrao' || tipoCalculo === 'integral') {
+    const diariaFinal = input.valorDiariaFinal ?? DEFAULT_VALOR_DIARIA_FINAL[tipoCalculo];
+    const dias = diasPeriodo(dataInicio, dataFim);
+    const extra = pernoiteRetorno ? VALOR_DIARIA_PERNOITE : 0;
+    const valor = Math.round((valorPeriodoBase(dias, diariaFinal) + extra) * 100) / 100;
+    const memoria = `(${dias}−1) × ${fmtBRLSeed(VALOR_DIARIA_PERNOITE)} + ${fmtBRLSeed(diariaFinal)}` +
+      (extra > 0 ? ` + ${fmtBRLSeed(VALOR_DIARIA_PERNOITE)} (pernoite retorno)` : '') +
+      ` = ${fmtBRLSeed(valor)}`;
+    return { dias, valor, memoria };
+  }
+
+  if (tipoCalculo === 'aditiva') {
+    const diariaFinal = input.valorDiariaFinal ?? DEFAULT_VALOR_DIARIA_FINAL.aditiva;
+    if (!ajudaReferencia) {
+      return { dias: 0, valor: 0, memoria: 'Selecione a ajuda de custo anterior e a nova data final.' };
+    }
+    const inicioComplemento = addDiasSeed(ajudaReferencia.dataFim, 1);
+    const dias = diasPeriodo(inicioComplemento, dataFim);
+    const valor = valorPeriodoBase(dias, diariaFinal);
+    return {
+      dias,
+      valor,
+      memoria: `${dias} dia(s) a mais sobre ${fmtDataBRSeed(ajudaReferencia.dataInicio)}→${fmtDataBRSeed(ajudaReferencia.dataFim)}: (${dias}−1) × ${fmtBRLSeed(VALOR_DIARIA_PERNOITE)} + ${fmtBRLSeed(diariaFinal)} = ${fmtBRLSeed(valor)}`,
+    };
+  }
+
+  // subtrativa — recalcula o período da ajuda de referência até a NOVA data
+  // final informada; a diferença entre o pago e o devido vira crédito.
+  if (!ajudaReferencia) {
+    return { dias: 0, valor: 0, memoria: 'Selecione a ajuda de custo anterior e a nova data final.' };
+  }
+  const tipoOriginal = ajudaReferencia.tipoCalculo ?? 'padrao';
+  const diariaFinalOriginal = ajudaReferencia.valorDiariaFinal ?? DEFAULT_VALOR_DIARIA_FINAL[tipoOriginal];
+  const pago = calcularAjudaCustoTipo({
+    tipoCalculo: tipoOriginal,
+    dataInicio: ajudaReferencia.dataInicio,
+    dataFim: ajudaReferencia.dataFim,
+    valorDiariaFinal: diariaFinalOriginal,
+    pernoiteRetorno: ajudaReferencia.pernoiteRetorno,
+  });
+  // A diária final do devido herda a da ajuda original, mas o operador pode
+  // trocar (ex.: o novo dia final passa a ser um retorno de verdade).
+  const diariaFinalDevido = input.valorDiariaFinal ?? diariaFinalOriginal;
+  const dias = diasPeriodo(ajudaReferencia.dataInicio, dataFim);
+  const valorDevido = valorPeriodoBase(dias, diariaFinalDevido);
+  const diferenca = Math.round((pago.valor - valorDevido) * 100) / 100;
+  return {
+    dias,
+    valor: 0,
+    memoria: `Pago ${fmtBRLSeed(pago.valor)} para ${pago.dias} dia(s), devido ${fmtBRLSeed(valorDevido)} para ${dias} dia(s). Diferença de ${fmtBRLSeed(diferenca)} creditada para o próximo ciclo, sem devolução em dinheiro.`,
+    creditoGerado: diferenca,
+    valorPago: pago.valor,
+    valorDevido,
+  };
+}
+
+const fmtDataBRSeed = (iso: string) => {
+  const [y, m, d] = iso.split('-');
+  if (!y || !m || !d) return iso;
+  return `${d}/${m}/${y}`;
+};
+
+function addDiasSeed(dataIso: string, dias: number): string {
+  const d = new Date(`${dataIso}T00:00:00`);
+  d.setDate(d.getDate() + dias);
+  return d.toISOString().slice(0, 10);
 }
 
 /* ── Pacientes mock pool (selecionáveis) ──────────────────────────────── */
@@ -818,7 +1013,9 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       { id: 'v3', origem: 'Caxias - MA', destino: 'Curitiba - PR', data: '2025-06-01', modal: 'aereo', tipo: 'ida', status: 'confirmada', valor: 1450, beneficiarioTipo: 'paciente' },
     ],
     ajudasCusto: [
-      { id: 'ac2', beneficiarioTipo: 'paciente', dataInicio: '2025-06-01', dataFim: '2025-06-10', status: 'emitido' },
+      { id: 'ac2', beneficiarioTipo: 'paciente', dataInicio: '2025-06-01', dataFim: '2025-06-10', status: 'concluido', dataConclusao: '2025-06-10', tipoCalculo: 'padrao' },
+      // Exemplo de tipo ADITIVA — tratamento se estendeu, complemento de dias sobre a ac2.
+      { id: 'ac2b', beneficiarioTipo: 'paciente', dataInicio: '2025-06-11', dataFim: '2025-06-15', status: 'emitido', tipoCalculo: 'aditiva', ajudaReferenciaId: 'ac2', observacao: 'Complemento por prorrogação do tratamento pediátrico.' },
     ],
     adicionais: [],
     despesasFunerarias: [],
@@ -973,7 +1170,8 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       { id: 'v5d', origem: 'Rio de Janeiro - RJ', destino: 'Bacabal - MA',  data: '2025-05-30', modal: 'aereo',     tipo: 'volta',    status: 'agendada',       valor: 1520, beneficiarioTipo: 'acompanhante', beneficiarioId: 'a5' },
     ],
     ajudasCusto: [
-      { id: 'ac5', beneficiarioTipo: 'acompanhante', beneficiarioId: 'a5', dataInicio: '2025-05-04', dataFim: '2025-05-12', status: 'emitido' },
+      // Exemplo de tipo INTEGRAL — todas as diárias completas, sem diária de retorno reduzida.
+      { id: 'ac5', beneficiarioTipo: 'acompanhante', beneficiarioId: 'a5', dataInicio: '2025-05-04', dataFim: '2025-05-12', status: 'emitido', tipoCalculo: 'integral' },
     ],
     adicionais: [
       { id: 'ad5a', categoria: 'transfer', descricao: 'Transfer Aeroporto GIG → INCA', data: '2025-05-04', valor: 180, status: 'pago',     beneficiarioTipo: 'paciente' },
@@ -1058,7 +1256,10 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       { id: 'v7a', origem: 'Açailândia - MA', destino: 'São Paulo - SP', data: '2025-06-09', modal: 'aereo', tipo: 'ida', status: 'confirmada', valor: 1340, beneficiarioTipo: 'paciente' },
     ],
     ajudasCusto: [
-      { id: 'ac7', beneficiarioTipo: 'paciente', dataInicio: '2025-06-09', dataFim: '2025-06-15', status: 'emitido' },
+      { id: 'ac7', beneficiarioTipo: 'paciente', dataInicio: '2025-06-09', dataFim: '2025-06-15', status: 'concluido', dataConclusao: '2025-06-15', tipoCalculo: 'padrao' },
+      // Exemplo de tipo SUBTRATIVA — paciente recebeu alta e voltou antes do previsto (4 dias em vez de 7).
+      // A diferença (R$74,25) vira crédito do paciente via saldoAjudaCustoStore, nunca devolução.
+      { id: 'ac7b', beneficiarioTipo: 'paciente', dataInicio: '2025-06-09', dataFim: '2025-06-12', status: 'concluido', dataConclusao: '2025-06-12', tipoCalculo: 'subtrativa', ajudaReferenciaId: 'ac7', observacao: 'Paciente recebeu alta antecipada, ficou 4 dias em vez dos 7 pagos.' },
     ],
     adicionais: [
       { id: 'ad7a', categoria: 'bagagem',         descricao: 'Bagagem extra (cadeira de rodas)',    data: '2025-06-09', valor: 90,  status: 'aprovado' },
@@ -1182,6 +1383,15 @@ export const seedMovimentacoesSaldo: MovimentacaoSaldoMock[] = [
     motivo: 'Abatido no pagamento da ajuda de custo da solicitação TFD-2025-0008.',
     solicitacaoDestinoNumero: 'TFD-2025-0008',
     data: isoAt('2025-06-21', 14, 0),
+  },
+  {
+    id: 'ms4',
+    pacienteId: pacientesPool[6].id, // paciente da ac7b — ajuda subtrativa (2025/000129)
+    tipo: 'CREDITO',
+    valor: 74.25,
+    motivo: 'Ajuda subtrativa: pago R$ 156,90 para 7 dias, devido R$ 82,65 para 4 dias. Diferença creditada para o próximo ciclo.',
+    solicitacaoOrigemNumero: '2025/000129',
+    data: isoAt('2025-06-16', 9, 0),
   },
 ];
 

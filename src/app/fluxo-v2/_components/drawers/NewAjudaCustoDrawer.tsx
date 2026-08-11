@@ -6,16 +6,22 @@ import Drawer from '@/shared/components/drawer/Drawer';
 import FormSection from '@/shared/components/drawer/FormSection';
 import AnexosUploadField, { type AnexoLocal } from '@/shared/components/anexos-upload-field/AnexosUploadField';
 import { useToast } from '@/shared/components/toast/Toast';
+import { fmtDataBR } from '@/shared/utils/fmtData';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import { useSaldoPaciente } from '../../_state/saldoAjudaCustoStore';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import {
   STATUS_AJUDA_LABEL,
+  TIPO_CALCULO_AJUDA_LABEL,
+  TIPO_CALCULO_AJUDA_DESCRICAO,
+  DEFAULT_VALOR_DIARIA_FINAL,
+  OPCOES_VALOR_DIARIA_FINAL,
   VALOR_DIARIA_PERNOITE,
   VALOR_DIARIA_RETORNO,
-  calcularValorAjuda,
+  calcularAjudaCustoTipo,
   type AjudaCustoMock,
   type StatusAjuda,
+  type TipoCalculoAjuda,
 } from '@/core/mocks/fluxo-v2-v3-seed';
 import { calcularIdade } from '@/shared/utils/idade';
 
@@ -56,7 +62,7 @@ interface Props {
 }
 
 export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar, somenteStatus, prefill }: Props) {
-  const { addAjudaCusto, editarAjudaCusto, getById, addAnexos, aplicarDebitoSaldo } = useFluxoV2State();
+  const { addAjudaCusto, editarAjudaCusto, getById, addAnexos, aplicarDebitoSaldo, criarCreditoSaldo } = useFluxoV2State();
   const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
   const toast = useToast();
   const isEdicao = !!editar;
@@ -64,6 +70,13 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
 
   const solicitacao = getById(solicitacaoId);
   const { saldo: saldoPaciente } = useSaldoPaciente(solicitacao?.paciente.id);
+
+  // PBI — discovery Ajuda de Custo (09/08/2026, refinado 11/08/2026): os
+  // quatro tipos de cálculo + diária configurável do último dia.
+  const [tipoCalculo, setTipoCalculo] = useState<TipoCalculoAjuda>('padrao');
+  const [valorDiariaFinal, setValorDiariaFinal] = useState<number>(DEFAULT_VALOR_DIARIA_FINAL.padrao);
+  // Ajuda anterior da mesma solicitação, usada por 'aditiva' e 'subtrativa'.
+  const [ajudaReferenciaId, setAjudaReferenciaId] = useState('');
 
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
@@ -86,11 +99,27 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
     () => (solicitacao?.viagens ?? []).some((v) => v.tipo === 'volta' && v.ativa !== false && !!v.data),
     [solicitacao],
   );
-  const mostraAvisoPeriodoBase = !isEdicao && !temVoltaComprada;
+  const mostraAvisoPeriodoBase = !isEdicao && !temVoltaComprada && (tipoCalculo === 'padrao' || tipoCalculo === 'integral');
+
+  // Ajudas anteriores ATIVAS da mesma solicitação — base do select de
+  // referência em 'aditiva'/'subtrativa'. Só períodos base (padrão/integral)
+  // entram: não há suporte a encadear um ajuste sobre outro ajuste. Exclui a
+  // própria ajuda em edição.
+  const ajudasAnteriores = useMemo(
+    () => (solicitacao?.ajudasCusto ?? []).filter(
+      (a) => a.ativa !== false && a.id !== editar?.id && (a.tipoCalculo ?? 'padrao') !== 'aditiva' && (a.tipoCalculo ?? 'padrao') !== 'subtrativa',
+    ),
+    [solicitacao, editar],
+  );
+  const ajudaReferencia = ajudasAnteriores.find((a) => a.id === ajudaReferenciaId);
 
   useEffect(() => {
     if (open) {
       if (editar) {
+        const tipo = editar.tipoCalculo ?? 'padrao';
+        setTipoCalculo(tipo);
+        setValorDiariaFinal(editar.valorDiariaFinal ?? DEFAULT_VALOR_DIARIA_FINAL[tipo]);
+        setAjudaReferenciaId(editar.ajudaReferenciaId ?? '');
         setDataInicio(editar.dataInicio);
         setDataFim(editar.dataFim);
         setBeneficiario(
@@ -105,6 +134,9 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         setLinkProcesso(editar.linkProcesso ?? '');
         setFimTocadoManualmente(true);
       } else if (prefill) {
+        setTipoCalculo('padrao');
+        setValorDiariaFinal(DEFAULT_VALOR_DIARIA_FINAL.padrao);
+        setAjudaReferenciaId('');
         setDataInicio(prefill.dataInicio);
         setDataFim(prefill.dataFim);
         setBeneficiario('p');
@@ -115,6 +147,9 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         setLinkProcesso('');
         setFimTocadoManualmente(true);
       } else {
+        setTipoCalculo('padrao');
+        setValorDiariaFinal(DEFAULT_VALOR_DIARIA_FINAL.padrao);
+        setAjudaReferenciaId('');
         setDataInicio('');
         setDataFim('');
         setBeneficiario('p');
@@ -129,6 +164,47 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
       setTimeout(() => firstInputRef.current?.focus(), 100);
     }
   }, [open, editar, prefill]);
+
+  // Ao escolher/trocar a ajuda de referência, o formulário vira "essa ajuda +
+  // nova data final": início trava (dia seguinte ao fim, na aditiva; mesmo
+  // início da original, na subtrativa) e só a nova data final fica aberta
+  // para o operador informar.
+  function aplicarReferencia(tipo: TipoCalculoAjuda, novoId: string) {
+    setAjudaReferenciaId(novoId);
+    const ref = ajudasAnteriores.find((a) => a.id === novoId);
+    if (!ref) return;
+    if (tipo === 'subtrativa') {
+      setDataInicio(ref.dataInicio);
+      setDataFim('');
+      setFimTocadoManualmente(false);
+      // Subtrativa herda a diária final da ajuda original, mas continua editável.
+      setValorDiariaFinal(ref.valorDiariaFinal ?? DEFAULT_VALOR_DIARIA_FINAL[ref.tipoCalculo ?? 'padrao']);
+    } else if (tipo === 'aditiva') {
+      setDataInicio(addDias(ref.dataFim, 1));
+      setDataFim('');
+      setFimTocadoManualmente(false);
+    }
+  }
+
+  // Troca de tipo — cada tipo tem uma base de datas e uma diária final
+  // default diferente, então limpamos/realinhamos os campos que não fazem
+  // sentido no tipo anterior para não carregar valor de outro cálculo.
+  function handleTipoCalculoChange(novoTipo: TipoCalculoAjuda) {
+    setTipoCalculo(novoTipo);
+    if (novoTipo === 'padrao' || novoTipo === 'integral') {
+      setAjudaReferenciaId('');
+      setValorDiariaFinal(DEFAULT_VALOR_DIARIA_FINAL[novoTipo]);
+      return;
+    }
+    setPernoiteRetorno(false);
+    setValorDiariaFinal(DEFAULT_VALOR_DIARIA_FINAL[novoTipo]);
+    const primeiraReferencia = ajudasAnteriores[0]?.id ?? '';
+    if (primeiraReferencia) aplicarReferencia(novoTipo, primeiraReferencia);
+  }
+
+  function handleAjudaReferenciaChange(novoId: string) {
+    aplicarReferencia(tipoCalculo, novoId);
+  }
 
   function handleDataInicioChange(value: string) {
     setDataInicio(value);
@@ -152,9 +228,18 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
     return { beneficiarioTipo: 'acompanhante' as const, beneficiarioId: id };
   }, [beneficiario]);
 
+  const exigeReferencia = tipoCalculo === 'aditiva' || tipoCalculo === 'subtrativa';
+
   const calc =
     dataInicio && dataFim
-      ? calcularValorAjuda(dataInicio, dataFim, pernoiteRetorno)
+      ? calcularAjudaCustoTipo({
+          tipoCalculo,
+          dataInicio,
+          dataFim,
+          valorDiariaFinal,
+          pernoiteRetorno: !exigeReferencia ? pernoiteRetorno : undefined,
+          ajudaReferencia,
+        })
       : null;
 
   const linkProcessoInvalido =
@@ -166,7 +251,8 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
     !!beneficiario &&
     !!numeroSEI.trim() &&
     !!linkProcesso.trim() &&
-    !linkProcessoInvalido;
+    !linkProcessoInvalido &&
+    (!exigeReferencia || !!ajudaReferenciaId);
 
   // PBI — abatimento do saldo só faz sentido no momento em que a ajuda passa
   // a ser 'concluido' (paga). Editar uma ajuda já concluída sem trocar o
@@ -184,30 +270,24 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
     const dataConclusao = status === 'concluido'
       ? (isEdicao && editar?.status === 'concluido' && editar.dataConclusao ? editar.dataConclusao : hoje)
       : undefined;
+    const payload = {
+      dataInicio,
+      dataFim,
+      status,
+      dataConclusao,
+      observacao: observacao.trim() || undefined,
+      ...beneficiarioPayload,
+      pernoiteRetorno: tipoCalculo === 'padrao' ? (pernoiteRetorno || undefined) : undefined,
+      numeroSEI: numeroSEI.trim(),
+      linkProcesso: linkProcesso.trim(),
+      tipoCalculo,
+      ajudaReferenciaId: exigeReferencia ? ajudaReferenciaId : undefined,
+      valorDiariaFinal,
+    };
     if (isEdicao && editar) {
-      editarAjudaCusto(solicitacaoId, editar.id, {
-        dataInicio,
-        dataFim,
-        status,
-        dataConclusao,
-        observacao: observacao.trim() || undefined,
-        ...beneficiarioPayload,
-        pernoiteRetorno: pernoiteRetorno || undefined,
-        numeroSEI: numeroSEI.trim(),
-        linkProcesso: linkProcesso.trim(),
-      });
+      editarAjudaCusto(solicitacaoId, editar.id, payload);
     } else {
-      addAjudaCusto(solicitacaoId, {
-        dataInicio,
-        dataFim,
-        status,
-        dataConclusao,
-        observacao: observacao.trim() || undefined,
-        ...beneficiarioPayload,
-        pernoiteRetorno: pernoiteRetorno || undefined,
-        numeroSEI: numeroSEI.trim(),
-        linkProcesso: linkProcesso.trim(),
-      });
+      addAjudaCusto(solicitacaoId, payload);
     }
     toast.success(isEdicao ? 'Ajuda de custo atualizada' : 'Ajuda de custo registrada', `${dataInicio} → ${dataFim}`);
 
@@ -219,6 +299,18 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         solicitacaoDestinoNumero: solicitacao.numero,
       });
       toast.success('Saldo abatido', `${fmtBRL(valorAbatido)} descontados do saldo do paciente`);
+    }
+
+    // Subtrativa — a diferença entre o pago e o devido pelos dias reais nunca
+    // é devolvida em dinheiro, vira crédito do paciente para o próximo ciclo.
+    if (tipoCalculo === 'subtrativa' && calc?.creditoGerado && calc.creditoGerado > 0.005 && solicitacao) {
+      criarCreditoSaldo({
+        pacienteId: solicitacao.paciente.id,
+        valor: calc.creditoGerado,
+        motivo: `Ajuda subtrativa: ${calc.memoria}`,
+        solicitacaoOrigemNumero: solicitacao.numero,
+      });
+      toast.success('Saldo creditado', `${fmtBRL(calc.creditoGerado)} para o próximo ciclo do paciente`);
     }
 
     if (anexos.length > 0) {
@@ -267,6 +359,44 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         </div>
       )}
 
+      {/* Discovery Ajuda de Custo (09/08/2026) — tipo de cálculo. */}
+      <FormSection title="Tipo de ajuda de custo" icon={<Calculator size={12} />} tone="primary" disabled={somenteStatus || isEdicao}>
+      <div className="flex flex-col gap-2">
+        {(Object.keys(TIPO_CALCULO_AJUDA_LABEL) as TipoCalculoAjuda[]).map((t) => (
+          <label
+            key={t}
+            className="flex items-start gap-2.5 cursor-pointer px-3 py-2.5"
+            style={{
+              background: tipoCalculo === t ? '#EBF0FF' : '#F8FAFC',
+              border: '1px solid ' + (tipoCalculo === t ? '#C7DAFF' : 'var(--tfd-surface-border)'),
+              borderRadius: 8,
+            }}
+          >
+            <input
+              type="radio"
+              name="tipoCalculoAjuda"
+              checked={tipoCalculo === t}
+              onChange={() => handleTipoCalculoChange(t)}
+              className="mt-[3px] shrink-0"
+            />
+            <span className="flex-1">
+              <span className="block text-[13px] font-medium" style={{ color: '#1A1D2B' }}>
+                {TIPO_CALCULO_AJUDA_LABEL[t]}
+              </span>
+              <span className="block text-[11px] mt-0.5" style={{ color: '#6B7280' }}>
+                {TIPO_CALCULO_AJUDA_DESCRICAO[t]}
+              </span>
+            </span>
+          </label>
+        ))}
+      </div>
+      {isEdicao && (
+        <p className="text-[11px] mt-2 flex items-center gap-1.5" style={{ color: '#94A3B8' }}>
+          <Lock size={11} /> O tipo não muda depois de lançado. Para corrigir, cancele e lance de novo.
+        </p>
+      )}
+      </FormSection>
+
       {/* T2.AQ — Select de beneficiário (mesmo padrão de NewPassagemDrawer). */}
       <FormSection title="Beneficiário e Período" icon={<CalendarRange size={12} />} tone="primary" disabled={somenteStatus}>
       <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
@@ -291,31 +421,95 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         ))}
       </select>
 
+      {/* Aditiva/subtrativa — select da ajuda anterior da mesma solicitação. */}
+      {exigeReferencia && (
+        <>
+          <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
+            Ajuda de custo anterior
+          </label>
+          {ajudasAnteriores.length > 0 ? (
+            <select
+              value={ajudaReferenciaId}
+              onChange={(e) => handleAjudaReferenciaChange(e.target.value)}
+              className="w-full px-3 py-2 text-[13px] mb-4"
+              style={inputStyle}
+            >
+              <option value="">Selecione…</option>
+              {ajudasAnteriores.map((a) => {
+                const calcA = calcularAjudaCustoTipo({
+                  tipoCalculo: a.tipoCalculo ?? 'padrao',
+                  dataInicio: a.dataInicio,
+                  dataFim: a.dataFim,
+                  valorDiariaFinal: a.valorDiariaFinal,
+                  pernoiteRetorno: a.pernoiteRetorno,
+                });
+                return (
+                  <option key={a.id} value={a.id}>
+                    {fmtDataBR(a.dataInicio)} → {fmtDataBR(a.dataFim)} ({TIPO_CALCULO_AJUDA_LABEL[a.tipoCalculo ?? 'padrao']}, {fmtBRL(calcA.valor)})
+                  </option>
+                );
+              })}
+            </select>
+          ) : (
+            <p className="text-[12px] mb-4 flex items-center gap-1.5" style={{ color: '#B91C1C' }}>
+              <Info size={13} /> Nenhuma ajuda de custo anterior nesta solicitação para referenciar.
+            </p>
+          )}
+        </>
+      )}
+
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div>
           <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
-            Data início
+            {exigeReferencia ? 'Data início (da ajuda referenciada)' : 'Data início'}
           </label>
           <input
             type="date"
             value={dataInicio}
             onChange={(e) => handleDataInicioChange(e.target.value)}
+            disabled={exigeReferencia}
             className="w-full px-3 py-2 text-[13px]"
-            style={inputStyle}
+            style={exigeReferencia ? { ...inputStyle, background: '#F1F5F9', color: '#64748B' } : inputStyle}
           />
         </div>
         <div>
           <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
-            Data fim
+            {exigeReferencia ? 'Nova data final' : 'Data fim'}
           </label>
           <input
             type="date"
             value={dataFim}
+            min={dataInicio || undefined}
             onChange={(e) => handleDataFimChange(e.target.value)}
             className="w-full px-3 py-2 text-[13px]"
             style={inputStyle}
           />
         </div>
+      </div>
+
+      {/* Refinamento (11/08/2026) — diária do último dia, configurável em
+          qualquer tipo. É essa escolha, não mais o tipo, que decide o valor
+          do último dia do período. */}
+      <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
+        Diária do último dia
+      </label>
+      <div className="flex gap-2 mb-4">
+        {OPCOES_VALOR_DIARIA_FINAL.map((op) => (
+          <button
+            key={op.valor}
+            type="button"
+            onClick={() => setValorDiariaFinal(op.valor)}
+            className="flex-1 px-3 py-2 text-[12.5px] font-medium text-left"
+            style={{
+              borderRadius: 8,
+              border: '1px solid ' + (valorDiariaFinal === op.valor ? '#C7DAFF' : 'var(--tfd-surface-border)'),
+              background: valorDiariaFinal === op.valor ? '#EBF0FF' : 'white',
+              color: valorDiariaFinal === op.valor ? 'var(--tfd-blue-700)' : '#475569',
+            }}
+          >
+            {op.label}
+          </button>
+        ))}
       </div>
 
       {/* PBI — Período base de 5 dias quando ainda não há volta comprada. */}
@@ -332,31 +526,48 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         </div>
       )}
 
-      {/* T2.Y — Pernoite no retorno */}
-      <label
-        className="flex items-start gap-2 mb-4 cursor-pointer px-3 py-2.5"
-        style={{
-          background: pernoiteRetorno ? '#EBF0FF' : '#F8FAFC',
-          border: '1px solid ' + (pernoiteRetorno ? '#C7DAFF' : 'var(--tfd-surface-border)'),
-          borderRadius: 8,
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={pernoiteRetorno}
-          onChange={(e) => setPernoiteRetorno(e.target.checked)}
-          className="mt-[3px] shrink-0"
-        />
-        <span className="flex-1">
-          <span className="block text-[13px] font-medium" style={{ color: '#1A1D2B' }}>
-            Pernoite no retorno (chegou após meia-noite)
+      {/* Aditiva — a diária de retorno já foi paga na ajuda original. */}
+      {tipoCalculo === 'aditiva' && (
+        <div
+          className="flex items-start gap-2 mb-4 px-3 py-2.5"
+          style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8 }}
+        >
+          <Info size={14} style={{ color: '#B45309', flexShrink: 0, marginTop: 2 }} />
+          <span className="text-[11.5px] leading-relaxed" style={{ color: '#92400E' }}>
+            A diária de retorno de {fmtBRL(VALOR_DIARIA_RETORNO)} já foi paga na ajuda original.
+            Este aditivo, por padrão, soma diárias completas pelos dias a mais.
           </span>
-          <span className="block text-[11px] mt-0.5" style={{ color: '#6B7280' }}>
-            Quando o paciente chega ao destino após meia-noite no dia final,
-            soma uma diária extra de {fmtBRL(VALOR_DIARIA_PERNOITE)} (regra Ata 7).
+        </div>
+      )}
+
+      {/* T2.Y — Pernoite no retorno (só faz sentido em período direto — a
+          diária do último dia já é escolhida acima em aditiva/subtrativa). */}
+      {!exigeReferencia && (
+        <label
+          className="flex items-start gap-2 mb-4 cursor-pointer px-3 py-2.5"
+          style={{
+            background: pernoiteRetorno ? '#EBF0FF' : '#F8FAFC',
+            border: '1px solid ' + (pernoiteRetorno ? '#C7DAFF' : 'var(--tfd-surface-border)'),
+            borderRadius: 8,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={pernoiteRetorno}
+            onChange={(e) => setPernoiteRetorno(e.target.checked)}
+            className="mt-[3px] shrink-0"
+          />
+          <span className="flex-1">
+            <span className="block text-[13px] font-medium" style={{ color: '#1A1D2B' }}>
+              Pernoite no retorno (chegou após meia-noite)
+            </span>
+            <span className="block text-[11px] mt-0.5" style={{ color: '#6B7280' }}>
+              Quando o paciente chega ao destino após meia-noite no dia final,
+              soma uma diária extra de {fmtBRL(VALOR_DIARIA_PERNOITE)} (regra Ata 7).
+            </span>
           </span>
-        </span>
-      </label>
+        </label>
+      )}
 
       </FormSection>
 
@@ -368,34 +579,39 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         <p className="text-[11px] uppercase tracking-wider font-semibold mb-1" style={{ color: '#6B7280' }}>
           Memória de cálculo
         </p>
-        <p className="text-[12px] mb-1" style={{ color: '#475569' }}>
-          {pernoiteRetorno ? (
-            <code>
-              (dias − 1) × {fmtBRL(VALOR_DIARIA_PERNOITE)} + {fmtBRL(VALOR_DIARIA_RETORNO)} +{' '}
-              {fmtBRL(VALOR_DIARIA_PERNOITE)} <em>(pernoite retorno)</em>
-            </code>
-          ) : (
-            <code>(dias − 1) × {fmtBRL(VALOR_DIARIA_PERNOITE)} + {fmtBRL(VALOR_DIARIA_RETORNO)}</code>
-          )}
-        </p>
         {calc ? (
           <>
             <p className="text-[14px] font-semibold" style={{ color: '#1A1D2B' }}>
               {calc.dias} dia(s) — <span style={{ color: 'var(--tfd-blue)' }}>{fmtBRL(calc.valor)}</span>
             </p>
-            <p className="text-[11px] mt-0.5" style={{ color: '#6B7280' }}>
-              Base: {fmtBRL(calc.base)}
-              {calc.pernoiteRetornoExtra > 0 && (
-                <> + pernoite retorno: {fmtBRL(calc.pernoiteRetornoExtra)}</>
-              )}
-            </p>
+            <p className="text-[11px] mt-1 font-mono" style={{ color: '#6B7280' }}>{calc.memoria}</p>
           </>
         ) : (
           <p className="text-[12px]" style={{ color: '#9CA3AF' }}>
-            Selecione as datas para visualizar o valor.
+            {exigeReferencia && !ajudaReferenciaId
+              ? 'Selecione a ajuda de custo anterior e as datas para visualizar o valor.'
+              : 'Selecione as datas para visualizar o valor.'}
           </p>
         )}
       </div>
+
+      {/* Subtrativa — resumo pago × devido × diferença que vira saldo. */}
+      {tipoCalculo === 'subtrativa' && calc && calc.valorPago !== undefined && calc.valorDevido !== undefined && (
+        <div
+          className="flex items-start gap-3 mb-4 px-3 py-2.5"
+          style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8 }}
+        >
+          <Wallet size={15} style={{ color: '#15803D', flexShrink: 0, marginTop: 1 }} />
+          <div className="text-[12px]" style={{ color: '#15803D' }}>
+            <p>Valor pago: <strong>{fmtBRL(calc.valorPago)}</strong></p>
+            <p>Valor devido pelos dias reais: <strong>{fmtBRL(calc.valorDevido)}</strong></p>
+            <p className="mt-1">
+              Diferença de <strong>{fmtBRL(calc.creditoGerado ?? 0)}</strong> vira saldo do paciente
+              para o próximo ciclo, sem devolução em dinheiro.
+            </p>
+          </div>
+        </div>
+      )}
 
       <label className="block text-[12px] font-semibold mb-2" style={{ color: '#6B7280' }}>
         Status
