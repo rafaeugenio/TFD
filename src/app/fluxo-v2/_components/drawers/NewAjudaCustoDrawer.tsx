@@ -234,18 +234,78 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
       ? calcularAjudaCustoTipo({ tipoCalculo: tipoDeduzido, dataInicio, dataFim, valorDiariaFinal, pernoiteRetorno, ajudaReferencia })
       : null;
 
-  // Texto discreto explicando, em linguagem do usuário, o que o sistema
-  // deduziu a partir da referência escolhida.
+  // Período da referência em texto, usado na frase do bloco de cálculo.
   const refPeriodoLabel = ajudaReferencia
-    ? `${fmtDataBR(ajudaReferencia.dataInicio)} → ${fmtDataBR(ajudaReferencia.dataFim)}`
+    ? `${fmtDataBR(ajudaReferencia.dataInicio)} a ${fmtDataBR(ajudaReferencia.dataFim)}`
     : '';
-  const deducaoTexto = !ajudaReferencia
-    ? null
-    : tipoDeduzido === 'aditiva'
-    ? `Complemento sobre a ajuda de ${refPeriodoLabel}.`
-    : tipoDeduzido === 'subtrativa'
-    ? `Acerto sobre a ajuda de ${refPeriodoLabel}, diferença creditada ao paciente.`
-    : `Ajuste de datas sobre a ajuda de ${refPeriodoLabel}, sem diferença de valor.`;
+
+  // Refinamento (11/08/2026) — bloco único de cálculo, em formato de conta
+  // (itens alinhados à direita + total em destaque), no lugar das caixas
+  // separadas de memória de cálculo e resumo pago/devido/diferença. Três
+  // formatos conforme o tipo deduzido: lançamento novo, complemento (aditiva)
+  // e acerto (subtrativa).
+  type LinhaCalculo = { label: string; valor: number };
+  type BlocoCalculo = {
+    periodoLabel: string;
+    linhas: LinhaCalculo[];
+    totalLabel: string;
+    totalValor: number;
+    frase: string | null;
+  };
+
+  function montarBlocoCalculo(): BlocoCalculo | null {
+    if (!calc || !dataInicio || !dataFim) return null;
+    const periodoBase = `${fmtDataBR(dataInicio)} a ${fmtDataBR(dataFim)}, ${calc.dias} diária(s)`;
+
+    if (tipoDeduzido === 'aditiva' && calcBase && calcReferencia) {
+      return {
+        periodoLabel: `Período: ${periodoBase}`,
+        linhas: [
+          { label: 'Valor do novo período', valor: calcBase.valor },
+          { label: `Já lançado na ajuda de ${refPeriodoLabel}`, valor: calcReferencia.valor },
+        ],
+        totalLabel: 'A lançar agora',
+        totalValor: calc.valor,
+        frase: `Complemento sobre a ajuda de ${refPeriodoLabel}.`,
+      };
+    }
+
+    if (tipoDeduzido === 'subtrativa' && calc.valorPago !== undefined && calc.valorDevido !== undefined) {
+      return {
+        periodoLabel: `Período real: ${periodoBase}`,
+        linhas: [
+          { label: `Pago na ajuda de ${refPeriodoLabel}`, valor: calc.valorPago },
+          { label: 'Devido pelo período real', valor: calc.valorDevido },
+        ],
+        totalLabel: 'Vira saldo do paciente',
+        totalValor: calc.creditoGerado ?? 0,
+        frase: `Acerto sobre a ajuda de ${refPeriodoLabel}.`,
+      };
+    }
+
+    // Lançamento novo (sem referência ou ajuste de datas sem diferença de valor).
+    const diariasCompletas = Math.max(calc.dias - 1, 0);
+    const linhas: LinhaCalculo[] = [];
+    if (diariasCompletas > 0) {
+      linhas.push({
+        label: `${diariasCompletas} diária(s) completa(s) (${fmtBRL(VALOR_DIARIA_PERNOITE)})`,
+        valor: Math.round(diariasCompletas * VALOR_DIARIA_PERNOITE * 100) / 100,
+      });
+    }
+    linhas.push({
+      label: pernoiteRetorno ? '1 diária completa (pernoite no retorno)' : '1 diária de retorno',
+      valor: valorDiariaFinal,
+    });
+    return {
+      periodoLabel: `Período: ${periodoBase}`,
+      linhas,
+      totalLabel: 'Total',
+      totalValor: calc.valor,
+      frase: ajudaReferencia ? `Ajuste de datas sobre a ajuda de ${refPeriodoLabel}, sem diferença de valor.` : null,
+    };
+  }
+
+  const blocoCalculo = montarBlocoCalculo();
 
   const linkProcessoInvalido =
     linkProcesso.trim().length > 0 && !/^https?:\/\//i.test(linkProcesso.trim());
@@ -542,17 +602,30 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         className="p-3"
         style={{ background: '#F8FAFC', borderRadius: 8, border: '1px solid var(--tfd-surface-border)' }}
       >
-        <p className="text-[11px] uppercase tracking-wider font-semibold mb-1" style={{ color: '#6B7280' }}>
-          Memória de cálculo
-        </p>
-        {calc ? (
+        {blocoCalculo ? (
           <>
-            <p className="text-[14px] font-semibold" style={{ color: '#1A1D2B' }}>
-              {calc.dias} dia(s) — <span style={{ color: 'var(--tfd-blue)' }}>{fmtBRL(calc.valor)}</span>
+            <p className="text-[12px] font-medium mb-2" style={{ color: '#475569' }}>
+              {blocoCalculo.periodoLabel}
             </p>
-            <p className="text-[11px] mt-1 font-mono" style={{ color: '#6B7280' }}>{calc.memoria}</p>
-            {deducaoTexto && (
-              <p className="text-[11px] mt-1.5" style={{ color: '#94A3B8' }}>{deducaoTexto}</p>
+            <div className="flex flex-col gap-1.5">
+              {blocoCalculo.linhas.map((linha, i) => (
+                <div key={i} className="flex items-baseline justify-between gap-3 text-[13px]" style={{ color: '#334155' }}>
+                  <span>{linha.label}</span>
+                  <span className="tabular-nums">{fmtBRL(linha.valor)}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ borderTop: '1px solid #CBD5E1', margin: '10px 0 8px' }} />
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-[13px] font-semibold" style={{ color: '#1A1D2B' }}>
+                {blocoCalculo.totalLabel}
+              </span>
+              <span className="text-[16px] font-bold tabular-nums" style={{ color: 'var(--tfd-blue)' }}>
+                {fmtBRL(blocoCalculo.totalValor)}
+              </span>
+            </div>
+            {blocoCalculo.frase && (
+              <p className="text-[11px] mt-2" style={{ color: '#94A3B8' }}>{blocoCalculo.frase}</p>
             )}
           </>
         ) : (
@@ -561,24 +634,6 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
           </p>
         )}
       </div>
-
-      {/* Subtrativa deduzida — resumo pago × devido × diferença que vira saldo. */}
-      {tipoDeduzido === 'subtrativa' && calc && calc.valorPago !== undefined && calc.valorDevido !== undefined && (
-        <div
-          className="flex items-start gap-3 mt-4 px-3 py-2.5"
-          style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8 }}
-        >
-          <Wallet size={15} style={{ color: '#15803D', flexShrink: 0, marginTop: 1 }} />
-          <div className="text-[12px]" style={{ color: '#15803D' }}>
-            <p>Valor pago na referência: <strong>{fmtBRL(calc.valorPago)}</strong></p>
-            <p>Valor devido pelo período real: <strong>{fmtBRL(calc.valorDevido)}</strong></p>
-            <p className="mt-1">
-              Diferença de <strong>{fmtBRL(calc.creditoGerado ?? 0)}</strong> vira saldo do paciente
-              para o próximo ciclo, sem devolução em dinheiro.
-            </p>
-          </div>
-        </div>
-      )}
       </FormSection>
 
       <FormSection title="Status" icon={<Calculator size={12} />} tone="info">

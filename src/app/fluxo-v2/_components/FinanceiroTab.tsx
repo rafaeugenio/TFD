@@ -402,22 +402,26 @@ export default function FinanceiroTab({ s }: Props) {
         }
       >
         <p className="text-[11px] mb-3" style={{ color: '#9CA3AF' }}>
-          Padrão: <code>(dias − 1) × {fmtBRL(VALOR_DIARIA_PERNOITE)} + {fmtBRL(VALOR_DIARIA_RETORNO)}</code>. A
-          memória de cálculo completa de cada tipo aparece abaixo do período.
+          Padrão: <code>(dias − 1) × {fmtBRL(VALOR_DIARIA_PERNOITE)} + {fmtBRL(VALOR_DIARIA_RETORNO)}</code>. O
+          cálculo completo de cada período aparece abaixo dele.
         </p>
 
-        {/* PBI — saldo de ajuda de custo trazido de ciclos anteriores. */}
-        {saldoPaciente > 0.005 && (
-          <div
-            className="flex items-center gap-2 mb-3 px-3 py-2"
-            style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8 }}
-          >
-            <Wallet size={14} style={{ color: '#15803D', flexShrink: 0 }} />
-            <span className="text-[12px]" style={{ color: '#15803D' }}>
-              Saldo do paciente disponível: <strong>{fmtBRL(saldoPaciente)}</strong> (de ciclos anteriores)
-            </span>
-          </div>
-        )}
+        {/* PBI — saldo de ajuda de custo do paciente, sempre visível (mesmo
+            zerado) porque é usado no cálculo do próximo período lançado. */}
+        <div
+          className="flex items-center gap-2 mb-3 px-3 py-2"
+          style={{
+            background: saldoPaciente > 0.005 ? '#F0FDF4' : '#F8FAFC',
+            border: `1px solid ${saldoPaciente > 0.005 ? '#BBF7D0' : 'var(--tfd-surface-border)'}`,
+            borderRadius: 8,
+          }}
+        >
+          <Wallet size={14} style={{ color: saldoPaciente > 0.005 ? '#15803D' : '#64748B', flexShrink: 0 }} />
+          <span className="text-[12px]" style={{ color: saldoPaciente > 0.005 ? '#15803D' : '#475569' }}>
+            Saldo do paciente: <strong>{fmtBRL(saldoPaciente)}</strong>
+            {' '}· usado para abater ou compor o valor da próxima ajuda de custo dele.
+          </span>
+        </div>
 
         {s.ajudasCusto.length > 0 ? (
           <ul className="flex flex-col gap-1.5 max-h-[380px] overflow-y-auto" style={{ paddingRight: 4 }}>
