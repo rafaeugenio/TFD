@@ -3,12 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  AlertTriangle,
   ArrowUpRight,
   CalendarClock,
-  Clock,
+  ClipboardList,
   FileText,
-  ListOrdered,
   Plane,
   Stethoscope,
   User,
@@ -16,11 +14,16 @@ import {
 } from 'lucide-react';
 import { listarLogs, ENTIDADE_LABEL, type LogAuditoria } from '@/services/logs.service';
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
   LabelList,
+  Legend,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -29,15 +32,9 @@ import {
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import { FluxoV2Provider, useFluxoV2State } from '@/app/fluxo-v2/_state/FluxoV2Provider';
-import {
-  contarPorStatus,
-  contarEncerradasNoMes,
-  taxaAprovacao,
-  urgenciaGeral,
-  envelhecimentoPorEtapa,
-} from '@/app/fluxo-v2/_utils/stats';
-import { STATUS_LABEL, type StatusGlobalV2 } from '@/core/mocks/fluxo-v2-v3-seed';
+import { contarPorStatus } from '@/app/fluxo-v2/_utils/stats';
 import { Skeleton } from '@/components/ui/skeleton';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
 
 /* ── Paleta dos charts ───────────────────────────────── */
@@ -49,7 +46,6 @@ const COLORS = {
   orange: '#F97316',
   cyan: '#0891B2',
   green: '#10B981',
-  rose: '#EC4899',
   slate: '#94A3B8',
   red: '#EF4444',
   border: '#E2E8F0',
@@ -87,7 +83,7 @@ const REGIONAL_POR_MUNICIPIO: Record<string, string> = {
 
 function derivarRegional(municipio: string | undefined): string {
   if (!municipio) return 'Regional indefinida';
-  // Strip UF suffix ("São Luís - MA" → "São Luís") + normalize acentos.
+  // Strip UF suffix ("São Luís - MA" → "São Luís") + normaliza acentos.
   const cidade = municipio.split(' - ')[0].trim();
   const key = cidade
     .toLowerCase()
@@ -96,87 +92,65 @@ function derivarRegional(municipio: string | undefined): string {
   return REGIONAL_POR_MUNICIPIO[key] ?? 'Regional indefinida';
 }
 
-/** Ordem real do fluxo, do início ao fim do processo. */
-const ORDEM_ETAPAS: StatusGlobalV2[] = [
-  'em_dados_basicos',
-  'em_regulacao',
-  'em_passagens',
-  'em_ajuda_custo',
-  'em_acompanhamento',
-  'em_aprovacao',
-  'em_encerramento',
-];
-
-const COR_ETAPA: Record<StatusGlobalV2, string> = {
-  em_dados_basicos:  COLORS.blue,
-  em_regulacao:      COLORS.indigo,
-  em_passagens:      COLORS.amber,
-  em_ajuda_custo:    COLORS.orange,
-  em_acompanhamento: COLORS.cyan,
-  em_aprovacao:      COLORS.rose,
-  em_encerramento:   COLORS.green,
-};
-
 /* ── Componente principal ────────────────────────────── */
 
 function PainelContent() {
   const { solicitacoes, isLoading } = useFluxoV2State();
   const { user, isLoading: isLoadingPerfil } = usePermissions();
 
-  /* ── KPIs gerais: total ativas, encerradas no mês, taxa de aprovação ── */
-  const kpis = useMemo(() => {
+  /* ── Distribuição por setor (donut) ── */
+  const distribuicao = useMemo(() => {
     const porStatus = contarPorStatus(solicitacoes);
     const ativas =
       porStatus.em_dados_basicos +
       porStatus.em_regulacao +
       porStatus.em_passagens +
       porStatus.em_ajuda_custo +
-      porStatus.em_acompanhamento +
-      porStatus.em_aprovacao;
+      porStatus.em_acompanhamento;
     return {
       ativas,
-      encerradasMes: contarEncerradasNoMes(solicitacoes),
-      aprovacao: taxaAprovacao(solicitacoes),
-    };
-  }, [solicitacoes]);
-
-  /* ── Fila por etapa do processo — ordem real do fluxo ── */
-  const filaPorEtapa = useMemo(() => {
-    const porStatus = contarPorStatus(solicitacoes);
-    return ORDEM_ETAPAS.map((etapa) => ({
-      name: STATUS_LABEL[etapa],
-      value: porStatus[etapa],
-      fill: COR_ETAPA[etapa],
-    }));
-  }, [solicitacoes]);
-
-  /* ── Urgência pelo próximo agendamento — todas as solicitações ativas ── */
-  const urgencia = useMemo(() => {
-    const u = urgenciaGeral(solicitacoes);
-    return {
-      raw: u,
       data: [
-        { name: 'Atrasadas',      value: u.atrasados,   fill: COLORS.red },
-        { name: 'Até 3 dias',     value: u.ate3Dias,    fill: COLORS.amber },
-        { name: '4 a 7 dias',     value: u.de4a7Dias,   fill: COLORS.blue },
-        { name: 'Mais de 7 dias', value: u.maisDe7Dias, fill: COLORS.cyan },
-        { name: 'Sem data',       value: u.semData,     fill: COLORS.slate },
-      ].filter((d) => d.value > 0),
+        { name: 'Dados básicos',   value: porStatus.em_dados_basicos,  fill: COLORS.blue },
+        { name: 'Regulação',       value: porStatus.em_regulacao,      fill: COLORS.indigo },
+        { name: 'Passagens',       value: porStatus.em_passagens,      fill: COLORS.amber },
+        { name: 'Ajuda de custo',  value: porStatus.em_ajuda_custo,    fill: COLORS.orange },
+        { name: 'Acompanhamento',  value: porStatus.em_acompanhamento, fill: COLORS.cyan },
+      ],
     };
   }, [solicitacoes]);
 
-  /* ── Tempo parado na etapa atual — envelhecimento, qualquer setor ── */
-  const envelhecimento = useMemo(() => {
-    const e = envelhecimentoPorEtapa(solicitacoes);
-    return {
-      raw: e,
-      data: [
-        { name: 'Até 3 dias',    value: e.ate3Dias,     fill: COLORS.green },
-        { name: '4 a 7 dias',    value: e.de4a7Dias,    fill: COLORS.blue },
-        { name: '8 a 15 dias',   value: e.de8a15Dias,   fill: COLORS.amber },
-        { name: 'Mais de 15',    value: e.maisDe15Dias, fill: COLORS.red },
-      ].filter((d) => d.value > 0),
-    };
+  /* ── Novas solicitações nos últimos 14 dias ── */
+  const tendenciaNovas = useMemo(() => {
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const days: { dia: string; novas: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(hoje);
+      d.setDate(d.getDate() - i);
+      const dStr = d.toISOString().slice(0, 10);
+      const count = solicitacoes.filter((s) => s.dataCriacao.slice(0, 10) === dStr).length;
+      days.push({
+        dia: d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+        novas: count,
+      });
+    }
+    const total14d = days.reduce((acc, d) => acc + d.novas, 0);
+    return { data: days, total14d };
+  }, [solicitacoes]);
+
+  /* ── Solicitação stats secundárias ── */
+  const solicitacaoStats = useMemo(() => {
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const novasHoje = solicitacoes.filter((s) => {
+      const d = new Date(s.dataCriacao);
+      d.setHours(0, 0, 0, 0);
+      return d.getTime() === hoje.getTime();
+    }).length;
+    const emAnalise = solicitacoes.filter(
+      (s) => s.status === 'em_dados_basicos' && s.pareceres.length === 0,
+    ).length;
+    return { novasHoje, emAnalise };
   }, [solicitacoes]);
 
   /* ── Histórico mensal (últimos 6 meses) ── */
@@ -249,6 +223,7 @@ function PainelContent() {
   if (isLoading || isLoadingPerfil) {
     return (
       <div className="space-y-4">
+        <Skeleton className="h-40 w-full" />
         <Skeleton className="h-72 w-full" />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Skeleton className="h-72 w-full" />
@@ -261,108 +236,143 @@ function PainelContent() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* ─── KPIs gerais ─── */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <KpiTile label="Solicitações ativas" value={kpis.ativas} tone="blue" />
-        <KpiTile label="Encerradas no mês" value={kpis.encerradasMes} tone="green" />
-        <KpiTile
-          label="Taxa de aprovação"
-          value={`${kpis.aprovacao}%`}
-          tone="amber"
-          progress={kpis.aprovacao}
-        />
-      </section>
+      {/* ─── Meus KPIs — produção pessoal do usuário logado ─── */}
+      {user && <MeusKpis usuarioId={user.id} />}
 
-      {/* ─── Meu trabalho + Atividades da equipe ─── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
-        {user && <MeuTrabalho usuarioId={user.id} />}
-        <AtividadesRecentes />
-      </div>
-
-      {/* ─── Fila por etapa do processo — funil transversal ─── */}
-      <section
-        className="p-5"
-        style={{
-          background: 'white',
-          border: `1px solid ${COLORS.border}`,
-          borderRadius: 12,
-          boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
-        }}
-      >
-        <div className="flex items-center gap-2 mb-1">
-          <ListOrdered size={16} style={{ color: COLORS.blue }} />
-          <h2 className="text-[14px] font-semibold" style={{ color: COLORS.text }}>
-            Fila por etapa do processo
-          </h2>
-        </div>
-        <p className="text-[12px] mb-4" style={{ color: COLORS.muted }}>
-          Quantas solicitações estão em cada etapa agora, na ordem real do fluxo
-        </p>
-        <div style={{ width: '100%', height: 260 }}>
-          <ResponsiveContainer>
-            <BarChart
-              data={filaPorEtapa}
-              layout="vertical"
-              margin={{ top: 4, right: 32, left: 0, bottom: 0 }}
-            >
-              <XAxis type="number" hide allowDecimals={false} />
-              <YAxis
-                type="category"
-                dataKey="name"
-                tick={{ fontSize: 12, fill: COLORS.text }}
-                axisLine={false}
-                tickLine={false}
-                width={110}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: 'white',
-                  border: `1px solid ${COLORS.border}`,
-                  borderRadius: 8,
-                  fontSize: 12,
+      {/* ─── Hero: Donut + Atividades recentes ─── */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+        <div
+          className="p-5 flex flex-col"
+          style={{
+            background: 'white',
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 12,
+            boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
+          }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h2 className="text-[14px] font-semibold" style={{ color: COLORS.text }}>
+                Distribuição por setor
+              </h2>
+              <p className="text-[12px] mt-0.5" style={{ color: COLORS.muted }}>
+                Solicitações ativas agora
+              </p>
+            </div>
+            <div className="text-right">
+              <div
+                className="font-mono"
+                style={{
+                  color: COLORS.text,
+                  fontSize: 28,
+                  fontWeight: 700,
+                  letterSpacing: '-0.02em',
+                  lineHeight: 1,
+                  fontVariantNumeric: 'tabular-nums',
                 }}
-                cursor={{ fill: '#F8FAFC' }}
-              />
-              <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={22}>
-                {filaPorEtapa.map((entry, idx) => (
-                  <Cell key={idx} fill={entry.fill} />
-                ))}
-                <LabelList
+              >
+                {distribuicao.ativas}
+              </div>
+              <div
+                className="text-[11px] uppercase font-semibold mt-1"
+                style={{ color: COLORS.muted, letterSpacing: '0.06em' }}
+              >
+                Total ativas
+              </div>
+            </div>
+          </div>
+          <div style={{ width: '100%', height: 220 }}>
+            <ResponsiveContainer>
+              <PieChart>
+                <Pie
+                  data={distribuicao.data}
                   dataKey="value"
-                  position="right"
-                  style={{ fontSize: 12, fill: COLORS.muted, fontWeight: 600 }}
+                  nameKey="name"
+                  innerRadius={60}
+                  outerRadius={90}
+                  paddingAngle={2}
+                  strokeWidth={0}
+                >
+                  {distribuicao.data.map((entry, idx) => (
+                    <Cell key={idx} fill={entry.fill} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    background: 'white',
+                    border: `1px solid ${COLORS.border}`,
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
                 />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+                <Legend
+                  verticalAlign="bottom"
+                  iconType="circle"
+                  iconSize={8}
+                  wrapperStyle={{ fontSize: 12, color: COLORS.text }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
         </div>
+
+        <AtividadesRecentes />
       </section>
 
-      {/* ─── Urgência x Envelhecimento — réguas transversais ─── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
-        <ChartCard
-          titulo="Urgência pelo próximo agendamento"
-          subtitulo="Solicitações ativas, por proximidade do retorno ou agendamento"
-          icone={<AlertTriangle size={16} />}
+      {/* ─── Setores: Solicitação ─── */}
+      <div className="grid grid-cols-1 gap-4">
+        <SetorCard
+          titulo="Solicitação"
+          icone={<ClipboardList size={16} />}
+          href="/fluxo-v2/solicitacoes"
         >
-          {urgencia.data.length > 0 ? (
-            <SetorBarChart data={urgencia.data} labelWidth={92} />
-          ) : (
-            <EmptyChart>Nenhuma solicitação ativa com data de referência</EmptyChart>
-          )}
-        </ChartCard>
-
-        <ChartCard
-          titulo="Tempo parado na etapa atual"
-          subtitulo="Solicitações ativas, por dias sem sair do setor"
-          icone={<Clock size={16} />}
-        >
-          {envelhecimento.data.length > 0 ? (
-            <SetorBarChart data={envelhecimento.data} labelWidth={92} />
-          ) : (
-            <EmptyChart>Nenhuma solicitação ativa no momento</EmptyChart>
-          )}
-        </ChartCard>
+          <p className="text-[11.5px]" style={{ color: COLORS.muted }}>
+            Novas solicitações — últimos 14 dias
+          </p>
+          <div style={{ width: '100%', height: 120 }}>
+            <ResponsiveContainer>
+              <AreaChart data={tendenciaNovas.data} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="grad-novas" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%"   stopColor={COLORS.blue} stopOpacity={0.35} />
+                    <stop offset="100%" stopColor={COLORS.blue} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis
+                  dataKey="dia"
+                  tick={{ fontSize: 10, fill: COLORS.muted }}
+                  axisLine={false}
+                  tickLine={false}
+                  interval={2}
+                />
+                <YAxis hide />
+                <Tooltip
+                  contentStyle={{
+                    background: 'white',
+                    border: `1px solid ${COLORS.border}`,
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
+                  formatter={(v) => [v as number, 'Novas']}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="novas"
+                  stroke={COLORS.blue}
+                  strokeWidth={2}
+                  fill="url(#grad-novas)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          <InlineStats
+            stats={[
+              { label: 'Hoje',        value: solicitacaoStats.novasHoje },
+              { label: '14 dias',     value: tendenciaNovas.total14d },
+              { label: 'Em análise',  value: solicitacaoStats.emAnalise },
+            ]}
+          />
+        </SetorCard>
       </div>
 
       {/* ─── Histórico mensal (6 meses) — full width ─── */}
@@ -441,84 +451,13 @@ function PainelContent() {
 
 /* ── Helpers de UI ───────────────────────────────────── */
 
-function KpiTile({
-  label,
-  value,
-  tone,
-  progress,
-}: {
-  label: string;
-  value: string | number;
-  tone: 'blue' | 'green' | 'amber';
-  progress?: number;
-}) {
-  const accent =
-    tone === 'green' ? COLORS.green : tone === 'amber' ? COLORS.amber : COLORS.blue;
-  return (
-    <div
-      className="p-5 flex-1 flex flex-col"
-      style={{
-        background: 'white',
-        border: `1px solid ${COLORS.border}`,
-        borderRadius: 12,
-        boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
-      }}
-    >
-      <div
-        className="text-[11.5px] font-semibold uppercase"
-        style={{ color: COLORS.muted, letterSpacing: '0.06em' }}
-      >
-        {label}
-      </div>
-      <div
-        className="font-mono mt-2"
-        style={{
-          color: COLORS.text,
-          fontSize: 32,
-          fontWeight: 700,
-          letterSpacing: '-0.02em',
-          lineHeight: 1,
-          fontVariantNumeric: 'tabular-nums',
-        }}
-      >
-        {value}
-      </div>
-      {progress !== undefined && (
-        <div className="mt-4">
-          <div
-            style={{
-              height: 6,
-              borderRadius: 3,
-              background: '#F1F5F9',
-              overflow: 'hidden',
-            }}
-          >
-            <div
-              style={{
-                width: '100%',
-                height: '100%',
-                background: accent,
-                transform: `scaleX(${Math.min(100, Math.max(0, progress)) / 100})`,
-                transformOrigin: 'left',
-                transition: 'transform 240ms ease',
-              }}
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function ChartCard({
   titulo,
   subtitulo,
-  icone,
   children,
 }: {
   titulo: string;
   subtitulo?: string;
-  icone?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -531,18 +470,15 @@ function ChartCard({
         boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
       }}
     >
-      <div className="flex items-center gap-2">
-        {icone && <span style={{ color: COLORS.blue }}>{icone}</span>}
-        <div>
-          <h2 className="text-[14px] font-semibold" style={{ color: COLORS.text }}>
-            {titulo}
-          </h2>
-          {subtitulo && (
-            <p className="text-[12px] mt-0.5" style={{ color: COLORS.muted }}>
-              {subtitulo}
-            </p>
-          )}
-        </div>
+      <div>
+        <h2 className="text-[14px] font-semibold" style={{ color: COLORS.text }}>
+          {titulo}
+        </h2>
+        {subtitulo && (
+          <p className="text-[12px] mt-0.5" style={{ color: COLORS.muted }}>
+            {subtitulo}
+          </p>
+        )}
       </div>
       {children}
     </section>
@@ -604,56 +540,9 @@ function EmptyChart({ children }: { children: React.ReactNode }) {
   return (
     <div
       className="flex items-center justify-center text-[12px]"
-      style={{ color: COLORS.muted, height: 130 }}
+      style={{ color: COLORS.muted, height: 220 }}
     >
       {children}
-    </div>
-  );
-}
-
-/** Barra horizontal compacta usada pelos gráficos transversais (Urgência,
- *  Envelhecimento). Mostra estado vazio quando não há dado em vez de
- *  renderizar um gráfico em branco. */
-function SetorBarChart({
-  data,
-  labelWidth = 75,
-}: {
-  data: { name: string; value: number; fill: string }[];
-  labelWidth?: number;
-}) {
-  return (
-    <div style={{ width: '100%', height: 160 }}>
-      <ResponsiveContainer>
-        <BarChart
-          data={data}
-          layout="vertical"
-          margin={{ top: 4, right: 16, left: 0, bottom: 0 }}
-        >
-          <XAxis type="number" hide />
-          <YAxis
-            type="category"
-            dataKey="name"
-            tick={{ fontSize: 11, fill: COLORS.text }}
-            axisLine={false}
-            tickLine={false}
-            width={labelWidth}
-          />
-          <Tooltip
-            contentStyle={{
-              background: 'white',
-              border: `1px solid ${COLORS.border}`,
-              borderRadius: 8,
-              fontSize: 12,
-            }}
-            cursor={{ fill: '#F8FAFC' }}
-          />
-          <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={18}>
-            {data.map((entry, idx) => (
-              <Cell key={idx} fill={entry.fill} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
     </div>
   );
 }
@@ -675,20 +564,123 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   );
 }
 
+function SetorCard({
+  titulo,
+  icone,
+  href,
+  children,
+}: {
+  titulo: string;
+  icone: React.ReactNode;
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      className="p-4 flex flex-col gap-3"
+      style={{
+        background: 'white',
+        border: `1px solid ${COLORS.border}`,
+        borderRadius: 12,
+        boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
+      }}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              background: '#F8FAFC',
+              border: `1px solid ${COLORS.border}`,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: COLORS.blue,
+            }}
+          >
+            {icone}
+          </span>
+          <h2 className="text-[14px] font-semibold" style={{ color: COLORS.text }}>
+            {titulo}
+          </h2>
+        </div>
+        <Link
+          href={href}
+          className="text-[11.5px] inline-flex items-center gap-1 hover:underline"
+          style={{ color: COLORS.blue }}
+        >
+          Ver setor
+          <ArrowUpRight size={11} />
+        </Link>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+type InlineStatTone = 'blue' | 'green' | 'amber' | 'red' | 'indigo';
+
+function InlineStats({
+  stats,
+}: {
+  stats: { label: string; value: string | number; tone?: InlineStatTone; icon?: React.ReactNode }[];
+}) {
+  return (
+    <div
+      className="grid grid-cols-3 gap-2"
+      style={{ borderTop: `1px solid ${COLORS.border}`, paddingTop: 12, marginTop: 4 }}
+    >
+      {stats.map((s, idx) => {
+        const accent =
+          s.tone === 'green'  ? COLORS.green :
+          s.tone === 'amber'  ? COLORS.amber :
+          s.tone === 'red'    ? COLORS.red   :
+          s.tone === 'blue'   ? COLORS.blue  :
+          s.tone === 'indigo' ? COLORS.indigo :
+          COLORS.text;
+        return (
+          <div key={idx} className="flex items-baseline gap-2">
+            <div
+              className="flex items-center gap-1.5 text-[11px] font-semibold uppercase"
+              style={{ color: COLORS.muted, letterSpacing: '0.04em' }}
+            >
+              {s.icon}
+              {s.label}
+            </div>
+            <div
+              className="font-mono"
+              style={{
+                color: accent,
+                fontSize: 14,
+                fontWeight: 600,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {s.value}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ── Page wrapper ─────────────────────────────────────── */
 
 export default function DashboardPage() {
   return (
     <FluxoV2Provider>
-      <PageHeader title="Painel" subtitle="Visão geral do TFD" />
+      <PageHeader title="Painel" subtitle="Visão por setor do TFD" />
       <PainelContent />
     </FluxoV2Provider>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Feed de logs de operações do fluxo — base compartilhada por Meu trabalho  */
-/*  e Atividades da equipe                                                    */
+/*  Feed de logs de operações do fluxo — base compartilhada por Meus KPIs     */
+/*  e Atividades recentes                                                     */
 /* -------------------------------------------------------------------------- */
 
 const ENTIDADES_RELEVANTES = new Set([
@@ -717,6 +709,24 @@ const ENTIDADE_META: Record<string, { icon: React.ComponentType<{ size?: number 
   documentos:             { icon: FileText,     color: '#64748B' },
   devolucoes:             { icon: FileText,     color: '#DC2626' },
   encerramentos:          { icon: FileText,     color: '#16A34A' },
+};
+
+/** Rótulo em português no plural, usado pela lista de produção pessoal
+ *  (ex: "3 pareceres", "1 passagem"). Diverge do singular de ENTIDADE_LABEL
+ *  só onde a forma do plural não é regular (parecer → pareceres já é regular,
+ *  mas "viagem" vira "passagem" na linguagem do usuário). */
+const ENTIDADE_LABEL_PLURAL: Record<string, string> = {
+  solicitacoes:           'solicitações',
+  pareceres:              'pareceres médicos',
+  agendamentos:           'agendamentos',
+  tentativas_agendamento: 'tentativas de agendamento',
+  rotas_regulacao:        'rotas de regulação',
+  viagens:                'passagens',
+  ajudas_custo:           'ajudas de custo',
+  adicionais:             'adicionais financeiros',
+  documentos:             'anexos',
+  devolucoes:             'devoluções',
+  encerramentos:          'encerramentos',
 };
 
 function acaoVerbo(acao: string): string {
@@ -807,30 +817,40 @@ function ListaDeLogs({ logs }: { logs: LogAuditoria[] }) {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Meu trabalho — atividade do usuário logado                                */
+/*  Meus KPIs — produção pessoal do usuário logado, filtrável por mês/ano     */
 /* -------------------------------------------------------------------------- */
 
-function inicioDoDia(d: Date): Date {
-  const r = new Date(d);
-  r.setHours(0, 0, 0, 0);
-  return r;
+const MESES_LABEL = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+];
+
+function anosDisponiveis(): number[] {
+  const anoAtual = new Date().getFullYear();
+  return [anoAtual, anoAtual - 1, anoAtual - 2];
 }
 
-function MeuTrabalho({ usuarioId }: { usuarioId: string }) {
+function MeusKpis({ usuarioId }: { usuarioId: string }) {
+  const hoje = new Date();
+  const [mes, setMes] = useState(hoje.getMonth());
+  const [ano, setAno] = useState(hoje.getFullYear());
   const [logs, setLogs] = useState<LogAuditoria[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState(false);
 
   useEffect(() => {
     let cancel = false;
+    setLoading(true);
+    setErro(false);
     (async () => {
-      const inicioMes = new Date();
-      inicioMes.setDate(1);
-      inicioMes.setHours(0, 0, 0, 0);
+      const inicio = new Date(ano, mes, 1, 0, 0, 0, 0);
+      const fim = new Date(ano, mes + 1, 1, 0, 0, 0, 0);
       const { data, error } = await listarLogs({
         usuarioId,
-        dataInicio: inicioMes.toISOString(),
-        limit: 300,
+        acao: 'INSERT',
+        dataInicio: inicio.toISOString(),
+        dataFim: fim.toISOString(),
+        limit: 1000,
       });
       if (cancel) return;
       if (error) {
@@ -843,25 +863,26 @@ function MeuTrabalho({ usuarioId }: { usuarioId: string }) {
       setLoading(false);
     })();
     return () => { cancel = true; };
-  }, [usuarioId]);
+  }, [usuarioId, mes, ano]);
 
-  const { hoje, ultimos7, noMes, recentes } = useMemo(() => {
-    const hojeInicio = inicioDoDia(new Date());
-    const seteDiasAtras = new Date(hojeInicio);
-    seteDiasAtras.setDate(seteDiasAtras.getDate() - 6);
-    let hoje = 0;
-    let ultimos7 = 0;
+  const producao = useMemo(() => {
+    const contagem = new Map<string, number>();
     for (const l of logs) {
-      const dInicio = inicioDoDia(new Date(l.created_at));
-      if (dInicio.getTime() === hojeInicio.getTime()) hoje += 1;
-      if (dInicio.getTime() >= seteDiasAtras.getTime()) ultimos7 += 1;
+      contagem.set(l.entidade_alterada, (contagem.get(l.entidade_alterada) ?? 0) + 1);
     }
-    return { hoje, ultimos7, noMes: logs.length, recentes: logs.slice(0, 6) };
+    return Array.from(contagem.entries())
+      .filter(([, valor]) => valor > 0)
+      .map(([entidade, valor]) => ({
+        entidade,
+        label: ENTIDADE_LABEL_PLURAL[entidade] ?? entidade,
+        valor,
+      }))
+      .sort((a, b) => b.valor - a.valor);
   }, [logs]);
 
   return (
     <section
-      className="p-5 flex flex-col"
+      className="p-5 flex flex-col gap-4"
       style={{
         background: 'white',
         border: `1px solid ${COLORS.border}`,
@@ -869,71 +890,93 @@ function MeuTrabalho({ usuarioId }: { usuarioId: string }) {
         boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
       }}
     >
-      <div className="flex items-center gap-2 mb-1 shrink-0">
-        <User size={16} style={{ color: COLORS.blue }} />
-        <h2 className="text-[14px] font-semibold" style={{ color: COLORS.text }}>
-          Meu trabalho
-        </h2>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2">
+          <User size={16} style={{ color: COLORS.blue }} />
+          <div>
+            <h2 className="text-[14px] font-semibold" style={{ color: COLORS.text }}>
+              Meus indicadores
+            </h2>
+            <p className="text-[12px] mt-0.5" style={{ color: COLORS.muted }}>
+              O que você registrou no sistema no período
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <NativeSelect
+            size="sm"
+            value={mes}
+            onChange={(e) => setMes(Number(e.target.value))}
+            aria-label="Mês"
+          >
+            {MESES_LABEL.map((label, idx) => (
+              <NativeSelectOption key={idx} value={idx}>{label}</NativeSelectOption>
+            ))}
+          </NativeSelect>
+          <NativeSelect
+            size="sm"
+            value={ano}
+            onChange={(e) => setAno(Number(e.target.value))}
+            aria-label="Ano"
+          >
+            {anosDisponiveis().map((a) => (
+              <NativeSelectOption key={a} value={a}>{a}</NativeSelectOption>
+            ))}
+          </NativeSelect>
+        </div>
       </div>
-      <p className="text-[12px] mb-4 shrink-0" style={{ color: COLORS.muted }}>
-        O que você fez no sistema
-      </p>
 
       {loading ? (
-        <div className="flex flex-col gap-2">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-9 w-full" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-16 w-full" />
           ))}
         </div>
       ) : erro ? (
         <p className="text-[12px] py-4 text-center" style={{ color: COLORS.muted }}>
-          Não foi possível carregar suas atividades. Fale com o administrador do sistema
+          Não foi possível carregar seus indicadores. Fale com o administrador do sistema
           sobre a permissão de leitura do seu próprio histórico.
         </p>
+      ) : producao.length === 0 ? (
+        <p className="text-[12px] py-4 text-center" style={{ color: COLORS.muted }}>
+          Nenhum registro seu no período selecionado.
+        </p>
       ) : (
-        <>
-          <div
-            className="grid grid-cols-3 gap-2 shrink-0"
-            style={{ borderBottom: `1px solid ${COLORS.border}`, paddingBottom: 12, marginBottom: 4 }}
-          >
-            <MiniContador label="Hoje" value={hoje} />
-            <MiniContador label="7 dias" value={ultimos7} />
-            <MiniContador label="No mês" value={noMes} />
-          </div>
-          {recentes.length === 0 ? (
-            <p className="text-[12px] py-4 text-center" style={{ color: COLORS.muted }}>
-              Nenhuma atividade sua registrada neste mês.
-            </p>
-          ) : (
-            <ListaDeLogs logs={recentes} />
-          )}
-        </>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {producao.map((p) => (
+            <div
+              key={p.entidade}
+              className="p-3 flex flex-col"
+              style={{
+                background: '#F8FAFC',
+                border: `1px solid ${COLORS.border}`,
+                borderRadius: 10,
+              }}
+            >
+              <div
+                className="font-mono"
+                style={{
+                  color: COLORS.text,
+                  fontSize: 24,
+                  fontWeight: 700,
+                  letterSpacing: '-0.02em',
+                  lineHeight: 1,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {p.valor}
+              </div>
+              <div
+                className="text-[11px] font-medium mt-1 capitalize"
+                style={{ color: COLORS.muted }}
+              >
+                {p.label}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </section>
-  );
-}
-
-function MiniContador({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex flex-col items-center">
-      <div
-        className="font-mono"
-        style={{
-          color: COLORS.text,
-          fontSize: 20,
-          fontWeight: 700,
-          fontVariantNumeric: 'tabular-nums',
-        }}
-      >
-        {value}
-      </div>
-      <div
-        className="text-[10.5px] uppercase font-semibold"
-        style={{ color: COLORS.muted, letterSpacing: '0.05em' }}
-      >
-        {label}
-      </div>
-    </div>
   );
 }
 

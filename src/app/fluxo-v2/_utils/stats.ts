@@ -9,7 +9,6 @@ import {
   type StatusGlobalV2,
   type CarimboRegulacao,
 } from '@/core/mocks/fluxo-v2-v3-seed';
-import { tempoNoSetor } from './tempoSetor';
 
 /* ------------------------------------------------------------------ *
  * Helpers genéricos
@@ -244,94 +243,3 @@ export function totalDiariasNoMes(solicitacoes: SolicitacaoMock[]): number {
   return total;
 }
 
-/* ------------------------------------------------------------------ *
- * Acompanhamento
- * ------------------------------------------------------------------ */
-
-/** Última viagem de volta ativa da solicitação, ou `null` quando não há. */
-function viagemVoltaAtiva(s: SolicitacaoMock) {
-  const voltas = s.viagens.filter(
-    (v) => v.ativa !== false && v.tipo === 'volta' && v.status !== 'cancelada' && v.status !== 'reembolso',
-  );
-  if (voltas.length === 0) return null;
-  const hoje = new Date().toISOString().slice(0, 10);
-  const futuras = voltas.filter((v) => v.data >= hoje).sort((a, b) => a.data.localeCompare(b.data));
-  return futuras.length > 0 ? futuras[0] : [...voltas].sort((a, b) => b.data.localeCompare(a.data))[0];
-}
-
-/**
- * Data que prioriza a solicitação em Acompanhamento: o retorno já agendado
- * (viagem de volta) ou, na ausência, a data do agendamento médico
- * confirmado. Mesmo critério da fila `/fluxo-v2/acompanhamento`.
- */
-export function dataLimiteAcompanhamento(s: SolicitacaoMock): string | null {
-  const volta = viagemVoltaAtiva(s);
-  if (volta) return volta.data;
-  const confirmadas = (s.agendamento?.tentativas ?? []).filter(
-    (t) => t.desfecho === 'agendamento_confirmado' && t.dataAgendamento,
-  );
-  if (confirmadas.length === 0) return null;
-  return [...confirmadas].sort((a, b) =>
-    (a.dataAgendamento ?? '').localeCompare(b.dataAgendamento ?? ''),
-  )[0].dataAgendamento as string;
-}
-
-export interface UrgenciaGeral {
-  atrasados: number;
-  ate3Dias: number;
-  de4a7Dias: number;
-  maisDe7Dias: number;
-  semData: number;
-}
-
-/**
- * Distribui todas as solicitações ativas (qualquer etapa, exceto
- * Encerramento) pela urgência do próximo retorno ou agendamento: atrasadas,
- * com prazo em até 3 dias, de 4 a 7 dias, mais de 7 dias, e sem nenhuma data
- * definida ainda. É a régua de prioridade transversal do painel — cada
- * solicitação carrega essa data desde que exista viagem de volta ou
- * agendamento confirmado, independente do setor em que está agora.
- */
-export function urgenciaGeral(solicitacoes: SolicitacaoMock[]): UrgenciaGeral {
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-  const acc: UrgenciaGeral = { atrasados: 0, ate3Dias: 0, de4a7Dias: 0, maisDe7Dias: 0, semData: 0 };
-  for (const s of solicitacoes) {
-    if (s.status === 'em_encerramento') continue;
-    const limite = dataLimiteAcompanhamento(s);
-    if (!limite) { acc.semData += 1; continue; }
-    const alvo = new Date(`${limite}T00:00:00`);
-    const dias = Math.round((alvo.getTime() - hoje.getTime()) / 86_400_000);
-    if (dias < 0) acc.atrasados += 1;
-    else if (dias <= 3) acc.ate3Dias += 1;
-    else if (dias <= 7) acc.de4a7Dias += 1;
-    else acc.maisDe7Dias += 1;
-  }
-  return acc;
-}
-
-export interface EnvelhecimentoEtapa {
-  ate3Dias: number;
-  de4a7Dias: number;
-  de8a15Dias: number;
-  maisDe15Dias: number;
-}
-
-/**
- * Distribui as solicitações ativas por quanto tempo estão paradas na etapa
- * atual, usando o mesmo critério de `tempoNoSetor` já aplicado nas filas de
- * Regulação, Passagens, Ajuda de Custo e Acompanhamento (tempo desde
- * `dataCriacao`). Serve pra qualquer setor enxergar gargalo, não só o seu.
- */
-export function envelhecimentoPorEtapa(solicitacoes: SolicitacaoMock[]): EnvelhecimentoEtapa {
-  const acc: EnvelhecimentoEtapa = { ate3Dias: 0, de4a7Dias: 0, de8a15Dias: 0, maisDe15Dias: 0 };
-  for (const s of solicitacoes) {
-    if (s.status === 'em_encerramento') continue;
-    const dias = tempoNoSetor(s.dataCriacao);
-    if (dias <= 3) acc.ate3Dias += 1;
-    else if (dias <= 7) acc.de4a7Dias += 1;
-    else if (dias <= 15) acc.de8a15Dias += 1;
-    else acc.maisDe15Dias += 1;
-  }
-  return acc;
-}
