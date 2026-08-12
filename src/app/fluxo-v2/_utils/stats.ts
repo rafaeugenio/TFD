@@ -8,9 +8,8 @@ import {
   type SolicitacaoMock,
   type StatusGlobalV2,
   type CarimboRegulacao,
-  type TipoViagem,
-  type StatusAjuda,
 } from '@/core/mocks/fluxo-v2-v3-seed';
+import { tempoNoSetor } from './tempoSetor';
 
 /* ------------------------------------------------------------------ *
  * Helpers genéricos
@@ -85,26 +84,6 @@ export function taxaAprovacao(solicitacoes: SolicitacaoMock[]): number {
   return Math.round((def / total) * 100);
 }
 
-/**
- * Volume da etapa de Dados Básicos por status inicial: aguardando a
- * primeira análise ou com exigência aberta (devolução ainda não resolvida).
- * As duas contagens são mutuamente exclusivas e somam o total em
- * `em_dados_basicos`.
- */
-export function contarAguardandoAnaliseInicial(solicitacoes: SolicitacaoMock[]): number {
-  return solicitacoes.filter((s) => {
-    if (s.status !== 'em_dados_basicos') return false;
-    return !(s.devolucoes ?? []).some((d) => !d.resolvida);
-  }).length;
-}
-
-export function contarEmExigencia(solicitacoes: SolicitacaoMock[]): number {
-  return solicitacoes.filter((s) => {
-    if (s.status !== 'em_dados_basicos') return false;
-    return (s.devolucoes ?? []).some((d) => !d.resolvida);
-  }).length;
-}
-
 /* ------------------------------------------------------------------ *
  * Regulação
  * ------------------------------------------------------------------ */
@@ -161,17 +140,6 @@ const EM_FINANCEIRO_OU_ACOMPANHAMENTO = new Set<StatusGlobalV2>([
   'em_ajuda_custo',
   'em_acompanhamento',
 ]);
-
-export function contarSolicitacoesAguardandoEmissao(solicitacoes: SolicitacaoMock[]): number {
-  // Solicitações no setor de Passagens ainda sem passagem ativa.
-  let n = 0;
-  for (const s of solicitacoes) {
-    if (s.status !== 'em_passagens') continue;
-    const temPassagem = s.viagens.some((v) => v.ativa !== false);
-    if (!temPassagem) n += 1;
-  }
-  return n;
-}
 
 export function contarSolicitacoesAjudaPendente(solicitacoes: SolicitacaoMock[]): number {
   // Solicitações com passagem ativa, mas sem nenhuma ajuda de custo ativa.
@@ -277,61 +245,6 @@ export function totalDiariasNoMes(solicitacoes: SolicitacaoMock[]): number {
 }
 
 /* ------------------------------------------------------------------ *
- * Passagens
- * ------------------------------------------------------------------ */
-
-/** Trechos ativos cadastrados no sistema, agrupados por tipo (ida, volta,
- *  transfer). `transfer` está descontinuado para registros novos (virou
- *  categoria de Adicional) mas ainda pode existir em dados legados. */
-export function trechosPorTipo(solicitacoes: SolicitacaoMock[]): Record<TipoViagem, number> {
-  const acc: Record<TipoViagem, number> = { ida: 0, volta: 0, transfer: 0 };
-  for (const s of solicitacoes) {
-    for (const v of s.viagens) {
-      if (v.ativa === false) continue;
-      if (v.status === 'cancelada' || v.status === 'reembolso') continue;
-      acc[v.tipo] += 1;
-    }
-  }
-  return acc;
-}
-
-/**
- * Valor de passagens no mês — só o valor das viagens em si (sem os
- * adicionais vinculados, diferente de `totalEmitidoNoMes`). Usado no bloco
- * próprio de Passagens, que não se mistura mais com Ajuda de Custo desde a
- * divisão do antigo setor "Financeiro" (PBI 13237).
- */
-export function totalPassagensNoMes(solicitacoes: SolicitacaoMock[]): number {
-  let total = 0;
-  for (const s of solicitacoes) {
-    for (const v of s.viagens) {
-      if (v.ativa === false) continue;
-      const dataRef = v.dataCriacao ?? v.data;
-      if (!dentroDoMesAtual(dataRef)) continue;
-      total += v.valor - (v.valorReembolso ?? 0);
-    }
-  }
-  return total;
-}
-
-/* ------------------------------------------------------------------ *
- * Ajuda de Custo
- * ------------------------------------------------------------------ */
-
-/** Períodos de ajuda de custo ativos, agrupados por status (emitido,
- *  concluído, glosada) — visão geral do setor, não só da fila atual. */
-export function contarAjudasPorStatus(solicitacoes: SolicitacaoMock[]): Record<StatusAjuda, number> {
-  const acc: Record<StatusAjuda, number> = { emitido: 0, concluido: 0, glosada: 0 };
-  for (const s of solicitacoes) {
-    for (const a of s.ajudasCusto) {
-      if (a.ativa === false) continue;
-      acc[a.status] += 1;
-    }
-  }
-  return acc;
-}
-
-/* ------------------------------------------------------------------ *
  * Acompanhamento
  * ------------------------------------------------------------------ */
 
@@ -363,67 +276,62 @@ export function dataLimiteAcompanhamento(s: SolicitacaoMock): string | null {
   )[0].dataAgendamento as string;
 }
 
-export interface UrgenciaAcompanhamento {
+export interface UrgenciaGeral {
   atrasados: number;
-  proximos7Dias: number;
-  demais: number;
+  ate3Dias: number;
+  de4a7Dias: number;
+  maisDe7Dias: number;
   semData: number;
 }
 
 /**
- * Distribui as solicitações em Acompanhamento pela urgência do retorno ou
- * agendamento: atrasadas, com prazo em até 7 dias, com prazo mais distante,
- * e sem nenhuma data definida ainda.
+ * Distribui todas as solicitações ativas (qualquer etapa, exceto
+ * Encerramento) pela urgência do próximo retorno ou agendamento: atrasadas,
+ * com prazo em até 3 dias, de 4 a 7 dias, mais de 7 dias, e sem nenhuma data
+ * definida ainda. É a régua de prioridade transversal do painel — cada
+ * solicitação carrega essa data desde que exista viagem de volta ou
+ * agendamento confirmado, independente do setor em que está agora.
  */
-export function urgenciaAcompanhamento(solicitacoes: SolicitacaoMock[]): UrgenciaAcompanhamento {
+export function urgenciaGeral(solicitacoes: SolicitacaoMock[]): UrgenciaGeral {
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
-  const acc: UrgenciaAcompanhamento = { atrasados: 0, proximos7Dias: 0, demais: 0, semData: 0 };
+  const acc: UrgenciaGeral = { atrasados: 0, ate3Dias: 0, de4a7Dias: 0, maisDe7Dias: 0, semData: 0 };
   for (const s of solicitacoes) {
-    if (s.status !== 'em_acompanhamento') continue;
+    if (s.status === 'em_encerramento') continue;
     const limite = dataLimiteAcompanhamento(s);
     if (!limite) { acc.semData += 1; continue; }
     const alvo = new Date(`${limite}T00:00:00`);
     const dias = Math.round((alvo.getTime() - hoje.getTime()) / 86_400_000);
     if (dias < 0) acc.atrasados += 1;
-    else if (dias <= 7) acc.proximos7Dias += 1;
-    else acc.demais += 1;
+    else if (dias <= 3) acc.ate3Dias += 1;
+    else if (dias <= 7) acc.de4a7Dias += 1;
+    else acc.maisDe7Dias += 1;
   }
   return acc;
 }
 
-/* ------------------------------------------------------------------ *
- * Aprovação
- * ------------------------------------------------------------------ */
-
-export type SetorOrigemAprovacao = NonNullable<SolicitacaoMock['setorOrigemAprovacao']>;
+export interface EnvelhecimentoEtapa {
+  ate3Dias: number;
+  de4a7Dias: number;
+  de8a15Dias: number;
+  maisDe15Dias: number;
+}
 
 /**
- * Fila atual de Aprovação, agrupada pelo setor que a enviou. A Aprovação
- * não tem um campo de decisão (deferido/indeferido) — apenas registra o
- * setor de origem e é tramitada de volta quando resolvida — por isso este
- * agrupamento, e não um resultado de análise, é o indicador disponível.
+ * Distribui as solicitações ativas por quanto tempo estão paradas na etapa
+ * atual, usando o mesmo critério de `tempoNoSetor` já aplicado nas filas de
+ * Regulação, Passagens, Ajuda de Custo e Acompanhamento (tempo desde
+ * `dataCriacao`). Serve pra qualquer setor enxergar gargalo, não só o seu.
  */
-export function distribuicaoOrigemAprovacao(
-  solicitacoes: SolicitacaoMock[],
-): Record<SetorOrigemAprovacao | 'sem_origem', number> {
-  const acc: Record<SetorOrigemAprovacao | 'sem_origem', number> = {
-    dados_basicos: 0, regulacao: 0, passagens: 0, ajuda_custo: 0, acompanhamento: 0, sem_origem: 0,
-  };
+export function envelhecimentoPorEtapa(solicitacoes: SolicitacaoMock[]): EnvelhecimentoEtapa {
+  const acc: EnvelhecimentoEtapa = { ate3Dias: 0, de4a7Dias: 0, de8a15Dias: 0, maisDe15Dias: 0 };
   for (const s of solicitacoes) {
-    if (s.status !== 'em_aprovacao') continue;
-    acc[s.setorOrigemAprovacao ?? 'sem_origem'] += 1;
+    if (s.status === 'em_encerramento') continue;
+    const dias = tempoNoSetor(s.dataCriacao);
+    if (dias <= 3) acc.ate3Dias += 1;
+    else if (dias <= 7) acc.de4a7Dias += 1;
+    else if (dias <= 15) acc.de8a15Dias += 1;
+    else acc.maisDe15Dias += 1;
   }
   return acc;
-}
-
-/**
- * Solicitações que passaram pelo status de Aprovação no mês corrente —
- * olha `ultimaTramitacao` de todas as solicitações (não só as que ainda
- * estão na fila), mesmo critério usado na StatsRow de `/fluxo-v2/aprovacoes`.
- */
-export function contarTramitadasAprovacaoNoMes(solicitacoes: SolicitacaoMock[]): number {
-  return solicitacoes.filter(
-    (s) => s.ultimaTramitacao?.destino === 'aprovacao' && dentroDoMesAtual(s.ultimaTramitacao.data),
-  ).length;
 }
