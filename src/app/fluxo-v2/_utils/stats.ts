@@ -8,6 +8,8 @@ import {
   type SolicitacaoMock,
   type StatusGlobalV2,
   type CarimboRegulacao,
+  type TipoViagem,
+  type StatusAjuda,
 } from '@/core/mocks/fluxo-v2-v3-seed';
 
 /* ------------------------------------------------------------------ *
@@ -81,6 +83,26 @@ export function taxaAprovacao(solicitacoes: SolicitacaoMock[]): number {
   if (total === 0) return 0;
   const def = contarPareceres(solicitacoes, 'deferido');
   return Math.round((def / total) * 100);
+}
+
+/**
+ * Volume da etapa de Dados Básicos por status inicial: aguardando a
+ * primeira análise ou com exigência aberta (devolução ainda não resolvida).
+ * As duas contagens são mutuamente exclusivas e somam o total em
+ * `em_dados_basicos`.
+ */
+export function contarAguardandoAnaliseInicial(solicitacoes: SolicitacaoMock[]): number {
+  return solicitacoes.filter((s) => {
+    if (s.status !== 'em_dados_basicos') return false;
+    return !(s.devolucoes ?? []).some((d) => !d.resolvida);
+  }).length;
+}
+
+export function contarEmExigencia(solicitacoes: SolicitacaoMock[]): number {
+  return solicitacoes.filter((s) => {
+    if (s.status !== 'em_dados_basicos') return false;
+    return (s.devolucoes ?? []).some((d) => !d.resolvida);
+  }).length;
 }
 
 /* ------------------------------------------------------------------ *
@@ -252,4 +274,156 @@ export function totalDiariasNoMes(solicitacoes: SolicitacaoMock[]): number {
     }
   }
   return total;
+}
+
+/* ------------------------------------------------------------------ *
+ * Passagens
+ * ------------------------------------------------------------------ */
+
+/** Trechos ativos cadastrados no sistema, agrupados por tipo (ida, volta,
+ *  transfer). `transfer` está descontinuado para registros novos (virou
+ *  categoria de Adicional) mas ainda pode existir em dados legados. */
+export function trechosPorTipo(solicitacoes: SolicitacaoMock[]): Record<TipoViagem, number> {
+  const acc: Record<TipoViagem, number> = { ida: 0, volta: 0, transfer: 0 };
+  for (const s of solicitacoes) {
+    for (const v of s.viagens) {
+      if (v.ativa === false) continue;
+      if (v.status === 'cancelada' || v.status === 'reembolso') continue;
+      acc[v.tipo] += 1;
+    }
+  }
+  return acc;
+}
+
+/**
+ * Valor de passagens no mês — só o valor das viagens em si (sem os
+ * adicionais vinculados, diferente de `totalEmitidoNoMes`). Usado no bloco
+ * próprio de Passagens, que não se mistura mais com Ajuda de Custo desde a
+ * divisão do antigo setor "Financeiro" (PBI 13237).
+ */
+export function totalPassagensNoMes(solicitacoes: SolicitacaoMock[]): number {
+  let total = 0;
+  for (const s of solicitacoes) {
+    for (const v of s.viagens) {
+      if (v.ativa === false) continue;
+      const dataRef = v.dataCriacao ?? v.data;
+      if (!dentroDoMesAtual(dataRef)) continue;
+      total += v.valor - (v.valorReembolso ?? 0);
+    }
+  }
+  return total;
+}
+
+/* ------------------------------------------------------------------ *
+ * Ajuda de Custo
+ * ------------------------------------------------------------------ */
+
+/** Períodos de ajuda de custo ativos, agrupados por status (emitido,
+ *  concluído, glosada) — visão geral do setor, não só da fila atual. */
+export function contarAjudasPorStatus(solicitacoes: SolicitacaoMock[]): Record<StatusAjuda, number> {
+  const acc: Record<StatusAjuda, number> = { emitido: 0, concluido: 0, glosada: 0 };
+  for (const s of solicitacoes) {
+    for (const a of s.ajudasCusto) {
+      if (a.ativa === false) continue;
+      acc[a.status] += 1;
+    }
+  }
+  return acc;
+}
+
+/* ------------------------------------------------------------------ *
+ * Acompanhamento
+ * ------------------------------------------------------------------ */
+
+/** Última viagem de volta ativa da solicitação, ou `null` quando não há. */
+function viagemVoltaAtiva(s: SolicitacaoMock) {
+  const voltas = s.viagens.filter(
+    (v) => v.ativa !== false && v.tipo === 'volta' && v.status !== 'cancelada' && v.status !== 'reembolso',
+  );
+  if (voltas.length === 0) return null;
+  const hoje = new Date().toISOString().slice(0, 10);
+  const futuras = voltas.filter((v) => v.data >= hoje).sort((a, b) => a.data.localeCompare(b.data));
+  return futuras.length > 0 ? futuras[0] : [...voltas].sort((a, b) => b.data.localeCompare(a.data))[0];
+}
+
+/**
+ * Data que prioriza a solicitação em Acompanhamento: o retorno já agendado
+ * (viagem de volta) ou, na ausência, a data do agendamento médico
+ * confirmado. Mesmo critério da fila `/fluxo-v2/acompanhamento`.
+ */
+export function dataLimiteAcompanhamento(s: SolicitacaoMock): string | null {
+  const volta = viagemVoltaAtiva(s);
+  if (volta) return volta.data;
+  const confirmadas = (s.agendamento?.tentativas ?? []).filter(
+    (t) => t.desfecho === 'agendamento_confirmado' && t.dataAgendamento,
+  );
+  if (confirmadas.length === 0) return null;
+  return [...confirmadas].sort((a, b) =>
+    (a.dataAgendamento ?? '').localeCompare(b.dataAgendamento ?? ''),
+  )[0].dataAgendamento as string;
+}
+
+export interface UrgenciaAcompanhamento {
+  atrasados: number;
+  proximos7Dias: number;
+  demais: number;
+  semData: number;
+}
+
+/**
+ * Distribui as solicitações em Acompanhamento pela urgência do retorno ou
+ * agendamento: atrasadas, com prazo em até 7 dias, com prazo mais distante,
+ * e sem nenhuma data definida ainda.
+ */
+export function urgenciaAcompanhamento(solicitacoes: SolicitacaoMock[]): UrgenciaAcompanhamento {
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const acc: UrgenciaAcompanhamento = { atrasados: 0, proximos7Dias: 0, demais: 0, semData: 0 };
+  for (const s of solicitacoes) {
+    if (s.status !== 'em_acompanhamento') continue;
+    const limite = dataLimiteAcompanhamento(s);
+    if (!limite) { acc.semData += 1; continue; }
+    const alvo = new Date(`${limite}T00:00:00`);
+    const dias = Math.round((alvo.getTime() - hoje.getTime()) / 86_400_000);
+    if (dias < 0) acc.atrasados += 1;
+    else if (dias <= 7) acc.proximos7Dias += 1;
+    else acc.demais += 1;
+  }
+  return acc;
+}
+
+/* ------------------------------------------------------------------ *
+ * Aprovação
+ * ------------------------------------------------------------------ */
+
+export type SetorOrigemAprovacao = NonNullable<SolicitacaoMock['setorOrigemAprovacao']>;
+
+/**
+ * Fila atual de Aprovação, agrupada pelo setor que a enviou. A Aprovação
+ * não tem um campo de decisão (deferido/indeferido) — apenas registra o
+ * setor de origem e é tramitada de volta quando resolvida — por isso este
+ * agrupamento, e não um resultado de análise, é o indicador disponível.
+ */
+export function distribuicaoOrigemAprovacao(
+  solicitacoes: SolicitacaoMock[],
+): Record<SetorOrigemAprovacao | 'sem_origem', number> {
+  const acc: Record<SetorOrigemAprovacao | 'sem_origem', number> = {
+    dados_basicos: 0, regulacao: 0, passagens: 0, ajuda_custo: 0, acompanhamento: 0, sem_origem: 0,
+  };
+  for (const s of solicitacoes) {
+    if (s.status !== 'em_aprovacao') continue;
+    acc[s.setorOrigemAprovacao ?? 'sem_origem'] += 1;
+  }
+  return acc;
+}
+
+/**
+ * Solicitações que passaram pelo status de Aprovação no mês corrente —
+ * olha `ultimaTramitacao` de todas as solicitações (não só as que ainda
+ * estão na fila), mesmo critério usado na StatsRow de `/fluxo-v2/aprovacoes`.
+ */
+export function contarTramitadasAprovacaoNoMes(solicitacoes: SolicitacaoMock[]): number {
+  return solicitacoes.filter(
+    (s) => s.ultimaTramitacao?.destino === 'aprovacao' && dentroDoMesAtual(s.ultimaTramitacao.data),
+  ).length;
 }

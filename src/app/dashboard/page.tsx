@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
+  Activity,
   ArrowUpRight,
   CalendarClock,
   ClipboardCheck,
@@ -10,6 +11,7 @@ import {
   FileText,
   LayoutDashboard,
   Plane,
+  ShieldCheck,
   Stethoscope,
   Wallet,
 } from 'lucide-react';
@@ -41,15 +43,22 @@ import {
   contarAguardandoAgendamento,
   contarPorCarimbo,
   contarPareceres,
-  contarViagensAguardandoEmissao,
-  contarAdicionaisPendentes,
-  contarAjudasPendentes,
-  totalEmitidoNoMes,
+  contarAguardandoAnaliseInicial,
+  contarEmExigencia,
+  contarSolicitacoesAguardandoEmissao,
+  trechosPorTipo,
+  totalPassagensNoMes,
+  contarAjudasPorStatus,
   totalDiariasNoMes,
+  urgenciaAcompanhamento,
+  distribuicaoOrigemAprovacao,
+  contarTramitadasAprovacaoNoMes,
   formatBRL,
 } from '@/app/fluxo-v2/_utils/stats';
+import { saldoAgregadoTodosPacientes } from '@/app/fluxo-v2/_state/saldoAjudaCustoStore';
+import { SETOR_LABEL, SETOR_ORIGEM_DOT_COLOR } from '@/app/fluxo-v2/_utils/lock';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
+import { STATUS_AJUDA_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
 import type { PerfilUsuario } from '@/lib/supabase/database.types';
 
@@ -66,7 +75,10 @@ type WidgetKey =
   | 'atividades'
   | 'solicitacao'
   | 'regulacao'
-  | 'financeiro'
+  | 'passagens'
+  | 'ajudaCusto'
+  | 'acompanhamento'
+  | 'aprovacoes'
   | 'tendencia'
   | 'topRegioes'
   | 'topRegionais'
@@ -74,17 +86,23 @@ type WidgetKey =
 
 const TODOS_WIDGETS: WidgetKey[] = [
   'distribuicao', 'kpis', 'atividades', 'solicitacao', 'regulacao',
-  'financeiro', 'tendencia', 'topRegioes', 'topRegionais', 'topMunicipios',
+  'passagens', 'ajudaCusto', 'acompanhamento', 'aprovacoes',
+  'tendencia', 'topRegioes', 'topRegionais', 'topMunicipios',
 ];
 
+/** PBI — Painel por setor (12/08/2026). O antigo widget único "financeiro"
+ *  virou três blocos próprios (Passagens, Ajuda de Custo, Acompanhamento),
+ *  espelhando a divisão do setor no fluxo real (PBI 13237). Aprovações é
+ *  fluxo novo, sem perfil dedicado ainda no cadastro de usuários — por ora
+ *  visível só aos perfis de gestão ampla. */
 const WIDGETS_POR_PERFIL: Record<PerfilUsuario, WidgetKey[]> = {
   ADMINISTRADOR: TODOS_WIDGETS,
   COORDENACAO_ESTADUAL: TODOS_WIDGETS,
   CONTROLE_INTERNO: TODOS_WIDGETS,
   SETOR_REGULACAO: ['distribuicao', 'regulacao', 'tendencia'],
   MEDICO_AUDITOR: ['distribuicao', 'regulacao', 'tendencia'],
-  SETOR_PASSAGENS: ['distribuicao', 'financeiro', 'kpis', 'tendencia'],
-  FINANCEIRO: ['distribuicao', 'financeiro', 'kpis', 'tendencia'],
+  SETOR_PASSAGENS: ['distribuicao', 'passagens', 'kpis', 'tendencia'],
+  FINANCEIRO: ['distribuicao', 'passagens', 'ajudaCusto', 'acompanhamento', 'kpis', 'tendencia'],
   ATENDENTE_MUNICIPAL: ['distribuicao', 'solicitacao', 'kpis', 'atividades'],
   ATENDENTE_REGIONAL: ['distribuicao', 'solicitacao', 'kpis', 'atividades', 'topRegioes', 'topRegionais', 'topMunicipios'],
   ASSISTENTE_SOCIAL: ['distribuicao', 'solicitacao', 'kpis', 'atividades'],
@@ -113,6 +131,7 @@ const COLORS = {
   orange: '#F97316',
   cyan: '#0891B2',
   green: '#10B981',
+  rose: '#EC4899',
   slate: '#94A3B8',
   red: '#EF4444',
   border: '#E2E8F0',
@@ -159,28 +178,6 @@ function derivarRegional(municipio: string | undefined): string {
   return REGIONAL_POR_MUNICIPIO[key] ?? 'Regional indefinida';
 }
 
-/* ── Alertas ─────────────────────────────────────────── */
-
-function diasNoSetor(s: SolicitacaoMock): number {
-  const ultimoEvento =
-    s.observacoes.length > 0
-      ? s.observacoes[s.observacoes.length - 1].data
-      : s.dataCriacao;
-  const ms = Date.now() - new Date(ultimoEvento).getTime();
-  return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
-}
-
-function setorLabel(status: SolicitacaoMock['status']): string {
-  switch (status) {
-    case 'em_dados_basicos':  return 'Dados básicos';
-    case 'em_regulacao':      return 'Regulação';
-    case 'em_passagens':      return 'Passagens';
-    case 'em_ajuda_custo':    return 'Ajuda de custo';
-    case 'em_acompanhamento': return 'Acompanhamento';
-    case 'em_encerramento':   return 'Encerramento';
-  }
-}
-
 /* ── Componente principal ────────────────────────────── */
 
 function PainelContent() {
@@ -191,7 +188,10 @@ function PainelContent() {
     [user?.perfil, user?.is_admin],
   );
 
-  /* ── Distribuição por setor (donut) ── */
+  /* ── Distribuição pelos sete setores (donut) ──
+   * "Ativas" soma os seis estágios de trabalho em curso — Encerramento fica
+   * de fora do total porque é estado final, mas ainda aparece como fatia do
+   * donut para o painel refletir o ciclo completo (PBI 13237). */
   const distribuicao = useMemo(() => {
     const porStatus = contarPorStatus(solicitacoes);
     const ativas =
@@ -199,7 +199,8 @@ function PainelContent() {
       porStatus.em_regulacao +
       porStatus.em_passagens +
       porStatus.em_ajuda_custo +
-      porStatus.em_acompanhamento;
+      porStatus.em_acompanhamento +
+      porStatus.em_aprovacao;
     return {
       ativas,
       data: [
@@ -208,7 +209,9 @@ function PainelContent() {
         { name: 'Passagens',       value: porStatus.em_passagens,      fill: COLORS.amber },
         { name: 'Ajuda de custo',  value: porStatus.em_ajuda_custo,    fill: COLORS.orange },
         { name: 'Acompanhamento',  value: porStatus.em_acompanhamento, fill: COLORS.cyan },
-      ],
+        { name: 'Aprovação',       value: porStatus.em_aprovacao,      fill: COLORS.rose },
+        { name: 'Encerramento',    value: porStatus.em_encerramento,   fill: COLORS.green },
+      ].filter((d) => d.value > 0),
       encerradasMes: contarEncerradasNoMes(solicitacoes),
       aprovacao: taxaAprovacao(solicitacoes),
     };
@@ -233,7 +236,7 @@ function PainelContent() {
     return { data: days, total14d };
   }, [solicitacoes]);
 
-  /* ── Solicitação stats secundárias ── */
+  /* ── Solicitação — volume por status inicial (Dados Básicos) ── */
   const solicitacaoStats = useMemo(() => {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
@@ -242,14 +245,11 @@ function PainelContent() {
       d.setHours(0, 0, 0, 0);
       return d.getTime() === hoje.getTime();
     }).length;
-    const emAnalise = solicitacoes.filter(
-      (s) => s.status === 'em_dados_basicos' && s.pareceres.length === 0,
-    ).length;
-    const emExigencia = solicitacoes.filter((s) => {
-      if (s.status !== 'em_dados_basicos') return false;
-      return (s.devolucoes ?? []).some((d) => !d.resolvida);
-    }).length;
-    return { novasHoje, emAnalise, emExigencia };
+    return {
+      novasHoje,
+      aguardandoAnalise: contarAguardandoAnaliseInicial(solicitacoes),
+      emExigencia: contarEmExigencia(solicitacoes),
+    };
   }, [solicitacoes]);
 
   /* ── Regulação ── */
@@ -270,22 +270,70 @@ function PainelContent() {
     };
   }, [solicitacoes]);
 
-  /* ── Financeiro ── */
-  const financeiro = useMemo(() => {
-    const passagens = contarViagensAguardandoEmissao(solicitacoes);
-    const adicionais = contarAdicionaisPendentes(solicitacoes);
-    const ajudas = contarAjudasPendentes(solicitacoes);
+  /* ── Passagens ── */
+  const passagens = useMemo(() => {
+    const trechos = trechosPorTipo(solicitacoes);
     return {
-      passagens,
-      adicionais,
-      ajudas,
-      emitidoMes: totalEmitidoNoMes(solicitacoes),
+      aguardandoEmissao: contarSolicitacoesAguardandoEmissao(solicitacoes),
+      valorMes: totalPassagensNoMes(solicitacoes),
+      trechosData: [
+        { name: 'Ida',      value: trechos.ida,      fill: COLORS.blue },
+        { name: 'Volta',    value: trechos.volta,    fill: COLORS.indigo },
+        { name: 'Transfer', value: trechos.transfer, fill: COLORS.slate },
+      ].filter((d) => d.value > 0),
+    };
+  }, [solicitacoes]);
+
+  /* ── Ajuda de Custo ── */
+  const ajudaCusto = useMemo(() => {
+    const porStatusAjuda = contarAjudasPorStatus(solicitacoes);
+    const saldo = saldoAgregadoTodosPacientes();
+    return {
       diariasMes: totalDiariasNoMes(solicitacoes),
-      pendenciasData: [
-        { name: 'Passagens', value: passagens, fill: COLORS.blue },
-        { name: 'Adicionais', value: adicionais, fill: COLORS.amber },
-        { name: 'Ajudas', value: ajudas, fill: COLORS.indigo },
-      ],
+      saldoPositivo: saldo.positivo,
+      saldoNegativo: saldo.negativo,
+      statusData: [
+        { name: STATUS_AJUDA_LABEL.emitido,   value: porStatusAjuda.emitido,   fill: COLORS.amber },
+        { name: STATUS_AJUDA_LABEL.concluido, value: porStatusAjuda.concluido, fill: COLORS.green },
+        { name: STATUS_AJUDA_LABEL.glosada,   value: porStatusAjuda.glosada,   fill: COLORS.red },
+      ].filter((d) => d.value > 0),
+    };
+  }, [solicitacoes]);
+
+  /* ── Acompanhamento ── */
+  const acompanhamento = useMemo(() => {
+    const porStatus = contarPorStatus(solicitacoes);
+    const urgencia = urgenciaAcompanhamento(solicitacoes);
+    return {
+      total: porStatus.em_acompanhamento,
+      urgencia,
+      urgenciaData: [
+        { name: 'Atrasados',      value: urgencia.atrasados,     fill: COLORS.red },
+        { name: 'Até 7 dias',     value: urgencia.proximos7Dias, fill: COLORS.amber },
+        { name: 'Mais de 7 dias', value: urgencia.demais,        fill: COLORS.blue },
+        { name: 'Sem data',       value: urgencia.semData,       fill: COLORS.slate },
+      ].filter((d) => d.value > 0),
+    };
+  }, [solicitacoes]);
+
+  /* ── Aprovações ──
+   * Sem campo de decisão (deferido/indeferido) no modelo — a fila só
+   * registra setor de origem e é tramitada de volta quando resolvida, por
+   * isso o indicador de "resultado" vira distribuição por setor de origem +
+   * tramitadas no mês, em vez de um resultado de análise. */
+  const aprovacoes = useMemo(() => {
+    const porStatus = contarPorStatus(solicitacoes);
+    const origem = distribuicaoOrigemAprovacao(solicitacoes);
+    return {
+      total: porStatus.em_aprovacao,
+      tramitadasMes: contarTramitadasAprovacaoNoMes(solicitacoes),
+      origemData: (['dados_basicos', 'regulacao', 'passagens', 'ajuda_custo', 'acompanhamento'] as const)
+        .map((setor) => ({
+          name: SETOR_LABEL[setor],
+          value: origem[setor],
+          fill: SETOR_ORIGEM_DOT_COLOR[setor],
+        }))
+        .filter((d) => d.value > 0),
     };
   }, [solicitacoes]);
 
@@ -391,7 +439,9 @@ function PainelContent() {
   }
 
   const heroWidgets = (['distribuicao', 'kpis', 'atividades'] as const).filter((w) => visible.has(w));
-  const setorWidgets = (['solicitacao', 'regulacao', 'financeiro'] as const).filter((w) => visible.has(w));
+  const setorWidgets = (
+    ['solicitacao', 'regulacao', 'passagens', 'ajudaCusto', 'acompanhamento', 'aprovacoes'] as const
+  ).filter((w) => visible.has(w));
   const topWidgets = (['topRegioes', 'topRegionais', 'topMunicipios'] as const).filter((w) => visible.has(w));
 
   return (
@@ -499,7 +549,7 @@ function PainelContent() {
       </section>
       )}
 
-      {/* ─── Setores (Solicitação/Regulação/Financeiro) conforme perfil ─── */}
+      {/* ─── Blocos por setor, conforme perfil ─── */}
       {setorWidgets.length > 0 && (
       <div className={`grid ${gridColsClass(setorWidgets.length)} gap-4`}>
         {/* Solicitação — Tendência */}
@@ -552,7 +602,7 @@ function PainelContent() {
             stats={[
               { label: 'Hoje',        value: solicitacaoStats.novasHoje },
               { label: '14 dias',     value: tendenciaNovas.total14d },
-              { label: 'Em análise',  value: solicitacaoStats.emAnalise },
+              { label: 'Ag. análise', value: solicitacaoStats.aguardandoAnalise },
               { label: 'Exigência',   value: solicitacaoStats.emExigencia, tone: solicitacaoStats.emExigencia > 0 ? 'amber' : undefined },
             ]}
           />
@@ -642,76 +692,104 @@ function PainelContent() {
         </SetorCard>
         )}
 
-        {/* Financeiro — Barras pendências */}
-        {visible.has('financeiro') && (
+        {/* Passagens — Barras trechos por tipo */}
+        {visible.has('passagens') && (
         <SetorCard
-          titulo="Financeiro"
-          icone={<Wallet size={16} />}
-          href="/fluxo-v2/financeiro"
+          titulo="Passagens"
+          icone={<Plane size={16} />}
+          href="/fluxo-v2/passagens"
         >
           <p className="text-[11.5px]" style={{ color: COLORS.muted }}>
-            Pendências por tipo
+            Trechos por tipo
           </p>
-          <div style={{ width: '100%', height: 130 }}>
-            <ResponsiveContainer>
-              <BarChart
-                data={financeiro.pendenciasData}
-                layout="vertical"
-                margin={{ top: 4, right: 16, left: 0, bottom: 0 }}
-              >
-                <XAxis type="number" hide />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  tick={{ fontSize: 11, fill: COLORS.text }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={75}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: 'white',
-                    border: `1px solid ${COLORS.border}`,
-                    borderRadius: 8,
-                    fontSize: 12,
-                  }}
-                  cursor={{ fill: '#F8FAFC' }}
-                />
-                <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={18}>
-                  {financeiro.pendenciasData.map((entry, idx) => (
-                    <Cell key={idx} fill={entry.fill} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div
-            className="px-3 py-2.5 flex items-center justify-between"
-            style={{
-              background: '#F8FAFC',
-              border: `1px solid ${COLORS.border}`,
-              borderRadius: 8,
-            }}
-          >
-            <div>
-              <div
-                className="text-[10.5px] font-semibold uppercase"
-                style={{ color: COLORS.muted, letterSpacing: '0.06em' }}
-              >
-                Movimentação do mês
-              </div>
-              <div
-                className="font-mono mt-0.5"
-                style={{ color: COLORS.text, fontSize: 16, fontWeight: 600 }}
-              >
-                {formatBRL(financeiro.emitidoMes + financeiro.diariasMes)}
-              </div>
-            </div>
-            <div className="text-right text-[11px]" style={{ color: COLORS.muted }}>
-              <div>Passagens: {formatBRL(financeiro.emitidoMes)}</div>
-              <div>Diárias: {formatBRL(financeiro.diariasMes)}</div>
-            </div>
-          </div>
+          <SetorBarChart data={passagens.trechosData} />
+          <InlineStats
+            stats={[
+              {
+                label: 'Ag. emissão',
+                value: passagens.aguardandoEmissao,
+                tone: passagens.aguardandoEmissao > 0 ? 'amber' : undefined,
+              },
+              { label: 'Valor no mês', value: formatBRL(passagens.valorMes) },
+            ]}
+          />
+        </SetorCard>
+        )}
+
+        {/* Ajuda de Custo — Barras por status */}
+        {visible.has('ajudaCusto') && (
+        <SetorCard
+          titulo="Ajuda de Custo"
+          icone={<Wallet size={16} />}
+          href="/fluxo-v2/ajuda-custo"
+        >
+          <p className="text-[11.5px]" style={{ color: COLORS.muted }}>
+            Períodos por status
+          </p>
+          <SetorBarChart data={ajudaCusto.statusData} />
+          <InlineStats
+            stats={[
+              { label: 'Diárias no mês', value: formatBRL(ajudaCusto.diariasMes) },
+              {
+                label: 'Saldo a pagar',
+                value: formatBRL(ajudaCusto.saldoPositivo),
+                tone: ajudaCusto.saldoPositivo > 0 ? 'green' : undefined,
+              },
+              {
+                label: 'Saldo a descontar',
+                value: formatBRL(ajudaCusto.saldoNegativo),
+                tone: ajudaCusto.saldoNegativo < 0 ? 'red' : undefined,
+              },
+            ]}
+          />
+        </SetorCard>
+        )}
+
+        {/* Acompanhamento — Barras urgência de retorno/agendamento */}
+        {visible.has('acompanhamento') && (
+        <SetorCard
+          titulo="Acompanhamento"
+          icone={<Activity size={16} />}
+          href="/fluxo-v2/acompanhamento"
+        >
+          <p className="text-[11.5px]" style={{ color: COLORS.muted }}>
+            Proximidade do retorno ou agendamento
+          </p>
+          <SetorBarChart data={acompanhamento.urgenciaData} />
+          <InlineStats
+            stats={[
+              { label: 'Em acompanhamento', value: acompanhamento.total },
+              {
+                label: 'Atrasados',
+                value: acompanhamento.urgencia.atrasados,
+                tone: acompanhamento.urgencia.atrasados > 0 ? 'red' : undefined,
+              },
+            ]}
+          />
+        </SetorCard>
+        )}
+
+        {/* Aprovações — Barras por setor de origem */}
+        {visible.has('aprovacoes') && (
+        <SetorCard
+          titulo="Aprovações"
+          icone={<ShieldCheck size={16} />}
+          href="/fluxo-v2/aprovacoes"
+        >
+          <p className="text-[11.5px]" style={{ color: COLORS.muted }}>
+            Fila por setor de origem
+          </p>
+          <SetorBarChart data={aprovacoes.origemData} labelWidth={92} />
+          <InlineStats
+            stats={[
+              {
+                label: 'Ag. análise',
+                value: aprovacoes.total,
+                tone: aprovacoes.total > 0 ? 'blue' : undefined,
+              },
+              { label: 'Tramitadas no mês', value: aprovacoes.tramitadasMes },
+            ]}
+          />
         </SetorCard>
         )}
       </div>
@@ -962,6 +1040,63 @@ function EmptyChart({ children }: { children: React.ReactNode }) {
       style={{ color: COLORS.muted, height: 220 }}
     >
       {children}
+    </div>
+  );
+}
+
+/** Barra horizontal compacta usada pelos blocos por setor (Passagens,
+ *  Ajuda de Custo, Acompanhamento, Aprovações). Mostra estado vazio quando
+ *  não há dado no período em vez de renderizar um gráfico em branco. */
+function SetorBarChart({
+  data,
+  labelWidth = 75,
+}: {
+  data: { name: string; value: number; fill: string }[];
+  labelWidth?: number;
+}) {
+  if (data.length === 0) {
+    return (
+      <div
+        className="flex items-center justify-center text-[12px]"
+        style={{ color: COLORS.muted, height: 130 }}
+      >
+        Sem dados no período
+      </div>
+    );
+  }
+  return (
+    <div style={{ width: '100%', height: 130 }}>
+      <ResponsiveContainer>
+        <BarChart
+          data={data}
+          layout="vertical"
+          margin={{ top: 4, right: 16, left: 0, bottom: 0 }}
+        >
+          <XAxis type="number" hide />
+          <YAxis
+            type="category"
+            dataKey="name"
+            tick={{ fontSize: 11, fill: COLORS.text }}
+            axisLine={false}
+            tickLine={false}
+            width={labelWidth}
+          />
+          <Tooltip
+            contentStyle={{
+              background: 'white',
+              border: `1px solid ${COLORS.border}`,
+              borderRadius: 8,
+              fontSize: 12,
+            }}
+            cursor={{ fill: '#F8FAFC' }}
+          />
+          <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={18}>
+            {data.map((entry, idx) => (
+              <Cell key={idx} fill={entry.fill} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   );
 }

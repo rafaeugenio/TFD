@@ -78,6 +78,36 @@ export function extratoDoPaciente(pacienteCpf: string): MovimentacaoSaldoMock[] 
     .sort((a, b) => b.data.localeCompare(a.data));
 }
 
+/**
+ * Agregado de saldo de todos os pacientes — usado no painel geral, não no
+ * extrato de um paciente específico. Cada paciente tem um saldo líquido
+ * (créditos menos débitos); esta função soma separadamente os saldos
+ * líquidos positivos (total a pagar) e os negativos (total a descontar nos
+ * próximos ciclos), sem misturar os dois sinais num único número.
+ */
+export function saldoAgregadoTodosPacientes(): { positivo: number; negativo: number } {
+  const porPaciente = new Map<string, number>();
+  for (const m of movimentacoes) {
+    const cpf = normalizarCpf(m.pacienteCpf);
+    const delta = m.tipo === 'CREDITO' ? m.valor : -m.valor;
+    porPaciente.set(cpf, (porPaciente.get(cpf) ?? 0) + delta);
+  }
+  let positivo = 0;
+  let negativo = 0;
+  for (const saldo of porPaciente.values()) {
+    if (saldo > 0) positivo += saldo;
+    else if (saldo < 0) negativo += saldo;
+  }
+  return { positivo, negativo };
+}
+
+/** Hook reativo — agregado de saldo de todos os pacientes, atualiza quando
+ *  qualquer movimentação é criada em outra parte do app. */
+export function useSaldoAgregadoTodosPacientes(): { positivo: number; negativo: number } {
+  useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return saldoAgregadoTodosPacientes();
+}
+
 interface NovaMovimentacaoInput {
   /** Chave real de agrupamento do saldo — atravessa qualquer solicitação do
    *  mesmo paciente, inclusive entre o fluxo-v2 e a base real. */
