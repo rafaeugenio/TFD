@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
   ArrowLeft, Archive, ArchiveRestore, Send, Phone, Mail, ExternalLink, Paperclip, FileText, FileX,
-  Plus, Trash2, Users, Stamp, HeartHandshake,
+  Plus, Trash2, HeartHandshake,
 } from 'lucide-react';
 import StatusV2Badge from '../../_components/StatusV2Badge';
 import { idadeAnos } from '../../_utils/idade';
@@ -24,7 +24,6 @@ import { DetailPageSkeleton } from '@/shared/components/skeleton';
 import { Can } from '@/shared/auth/Can';
 import { useToast } from '@/shared/components/toast/Toast';
 import { resolverOrigem } from '@/shared/utils/solicitacaoOrigem';
-import { CARIMBO_REGULACAO_VISUAL } from '../../_utils/carimboRegulacao';
 import { tempoNoSetor } from '../../_utils/tempoSetor';
 
 type TabKey = 'timeline' | 'regulacao' | 'financeiro' | 'anexos' | 'observacoes';
@@ -134,14 +133,9 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
   }
 
   const acompCount = s.acompanhantes.length;
-  const acompResumo =
-    acompCount === 0 ? 'Sem acompanhantes' :
-    acompCount === 1 ? `1 acompanhante: ${s.acompanhantes[0].nome.split(' ')[0]}` :
-    `${acompCount} acompanhantes: ${s.acompanhantes.slice(0, 2).map((a) => a.nome.split(' ')[0]).join(', ')}${acompCount > 2 ? ` +${acompCount - 2}` : ''}`;
 
   // Último parecer — fonte do CID/diagnóstico exibido no cabeçalho.
   const ultimoParecer = s.pareceres[s.pareceres.length - 1];
-  const carimboVisual = s.carimboRegulacao ? CARIMBO_REGULACAO_VISUAL[s.carimboRegulacao] : null;
   // Proxy de "tempo no setor atual" — mesma métrica (dias desde a criação da
   // solicitação) usada nas filas de Passagens, Ajuda de Custo e Acompanhamento.
   // Não existe timestamp de entrada no setor atual persistido no modelo.
@@ -205,141 +199,161 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
           )}
         </div>
 
-        {/* Linha 2 — estado da solicitação: status + carimbo + número + datas */}
-        <div className="px-6 pb-3 text-[14px]" style={{ color: '#475569' }}>
-          <div className="flex items-center gap-x-4 gap-y-2 flex-wrap">
-            <StatusV2Badge status={s.status} />
-            {carimboVisual && (
-              <span
-                className="inline-flex items-center gap-1.5 px-2 py-[2px] text-[12px] font-medium"
-                style={{ background: '#EBF0FF', color: 'var(--tfd-blue)', border: '1px solid #C7D7FE', borderRadius: 999 }}
-                title="Carimbo definido pela Regulação, decide o encaminhamento do fluxo"
-              >
-                <Stamp size={11} strokeWidth={2.2} />
-                {carimboVisual.label}
-              </span>
-            )}
-            <span><span style={{ color: '#94A3B8' }}>Solicitação </span><span className="font-mono" style={{ color: '#1E293B', fontWeight: 500 }}>{s.numero}</span></span>
-            <Sep />
-            <span>
-              <span style={{ color: '#94A3B8' }}>Criada em </span>{new Date(s.dataCriacao).toLocaleDateString('pt-BR')}
-              {s.status !== 'em_encerramento' && (
-                <span style={{ color: '#94A3B8' }}> ({diasAguardando}d aguardando)</span>
-              )}
-            </span>
-            <Sep />
-            {s.numeroSEI ? (
-              s.seiUrl ? (
-                <a
-                  href={s.seiUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 transition-colors hover:underline"
-                  style={{ color: '#146BFA', textUnderlineOffset: 3 }}
-                  title={`SEI nº ${s.numeroSEI}`}
-                >
-                  <ExternalLink size={12} strokeWidth={2.2} />
-                  <span className="font-mono">SEI {s.numeroSEI}</span>
-                </a>
-              ) : (
-                <span className="inline-flex items-center gap-1.5" style={{ color: '#475569' }} title="SEI sem URL cadastrada">
-                  <FileText size={12} style={{ color: '#94A3B8' }} />
-                  <span className="font-mono">SEI {s.numeroSEI}</span>
-                </span>
-              )
-            ) : (
-              <span
-                className="inline-flex items-center gap-1.5 px-2 py-[2px] text-[12px]"
-                style={{
-                  background: '#F1F5F9',
-                  border: '1px solid #E2E8F0',
-                  borderRadius: 999,
-                  color: '#94A3B8',
-                }}
-                title="Nenhum vínculo SEI cadastrado nesta solicitação"
-              >
-                <FileX size={11} strokeWidth={2.2} />
-                Sem vínculo SEI
-              </span>
-            )}
-          </div>
-        </div>
+        <div style={{ borderTop: '1px solid #E2E8F0' }} />
 
-        {/* Linha 3 — Contato | Endereço operacional (2 grupos)
-            Em ≥1100px ficam lado a lado com divisor sutil entre eles.
-            Abaixo disso empilham em duas sub-linhas. */}
-        <div className="header-groups px-6 pb-5 text-[13px]" style={{ color: '#475569' }}>
-          {/* Grupo 1 — Contato (telefone · email) */}
-          <div className="flex items-center gap-x-3 gap-y-2 flex-wrap min-w-0">
-            <a
-              href={`tel:${s.paciente.telefone.replace(/\D/g, '')}`}
-              className="inline-flex items-center gap-1.5 transition-colors hover:text-[#146BFA]"
-              title="Ligar"
-            >
-              <Phone size={12} strokeWidth={2.2} style={{ color: '#94A3B8' }} />
-              <span className="font-mono">{s.paciente.telefone}</span>
-            </a>
-            {s.paciente.email && (
-              <>
-                <Sep />
-                <a
-                  href={`mailto:${s.paciente.email}`}
-                  className="inline-flex items-center gap-1.5 transition-colors hover:text-[#146BFA] truncate max-w-[240px]"
-                  title={s.paciente.email}
-                >
-                  <Mail size={12} strokeWidth={2.2} style={{ color: '#94A3B8' }} />
-                  <span className="truncate">{s.paciente.email}</span>
-                </a>
-              </>
-            )}
+        {/* Bloco de detalhes — reorganizado por sentido: situação da
+            solicitação, dados clínicos e operacionais, acompanhantes. Rótulo
+            pequeno em maiúsculas acima de cada valor pra dar hierarquia de
+            leitura (em vez das linhas de texto corridas de antes). */}
+        <div className="detail-groups px-6 py-5">
+          {/* Grupo 1 — Situação da solicitação */}
+          <div className="detail-group">
+            <GroupLabel>Situação da solicitação</GroupLabel>
+            <div className="flex flex-col gap-3">
+              <Field label="Status">
+                <StatusV2Badge status={s.status} />
+              </Field>
+              <Field label="Número">
+                <span className="font-mono" style={{ fontWeight: 500 }}>{s.numero}</span>
+              </Field>
+              <Field label="Criada em">
+                {new Date(s.dataCriacao).toLocaleDateString('pt-BR')}
+                {s.status !== 'em_encerramento' && (
+                  <span style={{ color: '#94A3B8' }}> · {diasAguardando}d aguardando</span>
+                )}
+              </Field>
+              <Field label="Processo SEI">
+                {s.numeroSEI ? (
+                  s.seiUrl ? (
+                    <a
+                      href={s.seiUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 transition-colors hover:underline"
+                      style={{ color: '#146BFA', textUnderlineOffset: 3 }}
+                      title={`SEI nº ${s.numeroSEI}`}
+                    >
+                      <ExternalLink size={12} strokeWidth={2.2} />
+                      <span className="font-mono">{s.numeroSEI}</span>
+                    </a>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5" title="SEI sem URL cadastrada">
+                      <FileText size={12} style={{ color: '#94A3B8' }} />
+                      <span className="font-mono">{s.numeroSEI}</span>
+                    </span>
+                  )
+                ) : (
+                  <span
+                    className="inline-flex items-center gap-1.5 px-2 py-[2px] text-[12px]"
+                    style={{
+                      background: '#F1F5F9',
+                      border: '1px solid #E2E8F0',
+                      borderRadius: 999,
+                      color: '#94A3B8',
+                    }}
+                    title="Nenhum vínculo SEI cadastrado nesta solicitação"
+                  >
+                    <FileX size={11} strokeWidth={2.2} />
+                    Sem vínculo SEI
+                  </span>
+                )}
+              </Field>
+            </div>
           </div>
 
-          {/* Divisor visual entre grupos (somente em viewport amplo) */}
-          <span aria-hidden className="header-groups-divider" />
-
-          {/* Grupo 2 — Endereço operacional: regional · SEI · anexos · acompanhante(s) */}
-          <div className="flex items-center gap-x-3 gap-y-2 flex-wrap min-w-0">
-            <span style={{ color: '#475569' }} title={`${s.paciente.regional} · Zona ${s.paciente.zonaRegional}`}>
-              <span style={{ color: '#94A3B8' }}>Reg. </span>
-              {s.paciente.regional.replace(/^Regional de /, '')} · {s.paciente.zonaRegional}
-            </span>
-            {ultimoParecer?.cidPrincipal && (
-              <>
-                <Sep />
-                <span title={ultimoParecer.cidPrincipalNome || undefined}>
-                  <span style={{ color: '#94A3B8' }}>CID-{ultimoParecer.versaoCID ?? '10'} </span>
-                  <span className="font-mono">{ultimoParecer.cidPrincipal}</span>
-                  {ultimoParecer.cidSecundario && (
-                    <span className="font-mono"> / {ultimoParecer.cidSecundario}</span>
-                  )}
-                </span>
-              </>
-            )}
-            {s.dataLaudo && (
-              <>
-                <Sep />
-                <span>
-                  <span style={{ color: '#94A3B8' }}>Laudo </span>
+          {/* Grupo 2 — Dados clínicos e operacionais */}
+          <div className="detail-group">
+            <GroupLabel>Dados clínicos e operacionais</GroupLabel>
+            <div className="flex flex-col gap-3">
+              <Field label="Contato">
+                <a
+                  href={`tel:${s.paciente.telefone.replace(/\D/g, '')}`}
+                  className="inline-flex items-center gap-1.5 transition-colors hover:text-[#146BFA]"
+                  title="Ligar"
+                >
+                  <Phone size={12} strokeWidth={2.2} style={{ color: '#94A3B8' }} />
+                  <span className="font-mono">{s.paciente.telefone}</span>
+                </a>
+                {s.paciente.email && (
+                  <a
+                    href={`mailto:${s.paciente.email}`}
+                    className="flex items-center gap-1.5 mt-1 transition-colors hover:text-[#146BFA] truncate max-w-[260px]"
+                    title={s.paciente.email}
+                  >
+                    <Mail size={12} strokeWidth={2.2} style={{ color: '#94A3B8' }} />
+                    <span className="truncate">{s.paciente.email}</span>
+                  </a>
+                )}
+              </Field>
+              <Field label="Regional e município">
+                <div>{s.paciente.municipio.split(' - ')[0]}</div>
+                <div className="mt-0.5" style={{ color: '#64748B', fontSize: 12 }}>
+                  {s.paciente.regionalCodigo ? `${s.paciente.regionalCodigo} · ` : ''}
+                  {s.paciente.regional} · Zona {s.paciente.zonaRegional}
+                </div>
+              </Field>
+              {s.dataLaudo && (
+                <Field label="Data e origem do laudo">
                   {new Date(s.dataLaudo).toLocaleDateString('pt-BR')}
                   {s.laudoOrigemUnidade ? ` · ${s.laudoOrigemUnidade}` : ''}
-                </span>
-              </>
+                </Field>
+              )}
+              {ultimoParecer?.cidPrincipal && (
+                <Field label="CID do último parecer">
+                  <span title={ultimoParecer.cidPrincipalNome || undefined}>
+                    <span className="font-mono">{ultimoParecer.cidPrincipal}</span>
+                    {ultimoParecer.cidSecundario && (
+                      <span className="font-mono"> / {ultimoParecer.cidSecundario}</span>
+                    )}
+                    <span style={{ color: '#94A3B8' }}> · CID-{ultimoParecer.versaoCID ?? '10'}</span>
+                  </span>
+                </Field>
+              )}
+              <Field label="Anexos">
+                <AnexosCounter total={agregarAnexos(s).length} onClick={() => setTab('anexos')} ativo={activeTab === 'anexos'} />
+              </Field>
+            </div>
+          </div>
+
+          {/* Grupo 3 — Acompanhantes */}
+          <div className="detail-group" id="acompanhantes">
+            <GroupLabel>Acompanhantes</GroupLabel>
+            {acompCount === 0 ? (
+              <p className="text-[13px]" style={{ color: '#6B7280' }}>
+                Sem acompanhante. O paciente segue sozinho nesta solicitação.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {s.acompanhantes.map((a) => (
+                  <li
+                    key={a.id}
+                    className="px-3 py-2"
+                    style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[13px] font-semibold" style={{ color: '#1A1D2B' }}>
+                        {a.nome}
+                      </span>
+                      {a.doador && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-[2px] text-[10.5px] font-semibold uppercase"
+                          style={{ background: '#FFE4E6', color: '#9F1239', borderRadius: 999, letterSpacing: '0.04em' }}
+                          title="Acompanhante doador nesta solicitação"
+                        >
+                          <HeartHandshake size={11} strokeWidth={2.2} />
+                          Doador
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[12px] mt-0.5" style={{ color: '#64748B' }}>
+                      {a.vinculo} · {idadeAnos(a.dataNascimento)} anos
+                    </div>
+                  </li>
+                ))}
+              </ul>
             )}
-            <Sep />
-            <AnexosCounter total={agregarAnexos(s).length} onClick={() => setTab('anexos')} ativo={activeTab === 'anexos'} />
-            <Sep />
-            <a
-              href="#acompanhantes"
-              className="inline-flex items-center gap-1 transition-colors hover:text-[#146BFA] hover:underline"
-              style={{ color: '#475569', textUnderlineOffset: 3 }}
-              title="Ir para a seção Acompanhantes"
-            >
-              <Users size={12} strokeWidth={2.2} style={{ color: '#94A3B8' }} />
-              {acompResumo}
-            </a>
           </div>
         </div>
-
       </div>
 
       {/* ============ Encerramento (visível em todas as abas) ============ */}
@@ -466,91 +480,6 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
           )}
         </div>
       )}
-
-      {/* ============ Acompanhantes (visível em todas as abas) ============ */}
-      <div
-        id="acompanhantes"
-        className="mb-6 p-6"
-        style={{
-          background: 'white',
-          border: '1px solid #E2E8F0',
-          borderRadius: 10,
-          boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
-          scrollMarginTop: 16,
-        }}
-      >
-        <div className="flex items-center gap-3 mb-4">
-          <div
-            style={{
-              width: 32, height: 32, borderRadius: 8,
-              background: '#F8FAFC', border: '1px solid #E2E8F0',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#475569',
-            }}
-          >
-            <Users size={16} strokeWidth={2} />
-          </div>
-          <div>
-            <h3 className="text-[16px] font-semibold" style={{ color: '#0F172A' }}>Acompanhantes</h3>
-            <p className="text-[13px] mt-0.5" style={{ color: '#64748B' }}>
-              {acompCount === 0
-                ? 'Nenhum acompanhante nesta solicitação.'
-                : `${acompCount} acompanhante${acompCount > 1 ? 's' : ''} cadastrado${acompCount > 1 ? 's' : ''}.`}
-            </p>
-          </div>
-        </div>
-
-        {acompCount === 0 ? (
-          <div
-            className="flex flex-col items-center text-center py-6 px-4"
-            style={{ background: '#FBFCFE', border: '1px dashed var(--tfd-surface-border)', borderRadius: 10 }}
-          >
-            <p className="text-[13px] font-semibold mb-1" style={{ color: '#1A1D2B' }}>
-              Sem acompanhantes registrados.
-            </p>
-            <p className="text-[12px] max-w-[380px]" style={{ color: '#6B7280' }}>
-              O paciente segue sozinho nesta solicitação.
-            </p>
-          </div>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {s.acompanhantes.map((a) => (
-              <li
-                key={a.id}
-                className="flex items-start gap-3 px-4 py-3"
-                style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[13.5px] font-semibold" style={{ color: '#1A1D2B' }}>
-                      {a.nome}
-                    </span>
-                    {a.doador && (
-                      <span
-                        className="inline-flex items-center gap-1 px-2 py-[2px] text-[10.5px] font-semibold uppercase"
-                        style={{ background: '#FFE4E6', color: '#9F1239', borderRadius: 999, letterSpacing: '0.04em' }}
-                        title="Acompanhante doador nesta solicitação"
-                      >
-                        <HeartHandshake size={11} strokeWidth={2.2} />
-                        Doador
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[12.5px] mt-0.5" style={{ color: '#64748B' }}>
-                    {a.vinculo} · {idadeAnos(a.dataNascimento)} anos
-                    {a.cpf && (
-                      <>
-                        {' · '}
-                        <span className="font-mono">{a.cpf}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
 
       {/* ============ Tabs ============ */}
       <div className="flex items-center gap-1 mb-6" style={{ borderBottom: '1px solid #E2E8F0' }}>
@@ -770,27 +699,27 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
         .animate-fade-in {
           animation: fadeIn 180ms ease-out;
         }
-        /* Linha 3 — em viewport ≥1100px exibe Contato | divisor | Endereço operacional
-           lado a lado. Abaixo disso empilha em duas sub-linhas e oculta o divisor. */
-        .header-groups {
+        /* Bloco de detalhes do cabeçalho — 3 grupos (situação, dados clínicos
+           e operacionais, acompanhantes) lado a lado a partir de 1024px, com
+           divisor vertical sutil entre eles; empilham em coluna abaixo disso. */
+        .detail-groups {
           display: flex;
           flex-direction: column;
-          gap: 6px;
+          gap: 20px;
         }
-        .header-groups-divider { display: none; }
-        @media (min-width: 1100px) {
-          .header-groups {
+        .detail-group {
+          flex: 1 1 0%;
+          min-width: 0;
+        }
+        @media (min-width: 1024px) {
+          .detail-groups {
             flex-direction: row;
-            align-items: center;
-            gap: 16px;
-            flex-wrap: wrap;
+            align-items: flex-start;
+            gap: 28px;
           }
-          .header-groups-divider {
-            display: inline-block;
-            width: 1px;
-            height: 16px;
-            background: #E2E8F0;
-            flex-shrink: 0;
+          .detail-group:not(:first-child) {
+            padding-left: 28px;
+            border-left: 1px solid #E2E8F0;
           }
         }
       `}</style>
@@ -800,6 +729,33 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
 
 function Sep() {
   return <span aria-hidden style={{ color: '#CBD5E1' }}>·</span>;
+}
+
+/** Título do grupo de detalhes no cabeçalho da solicitação. */
+function GroupLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <h4
+      className="text-[11px] font-semibold uppercase mb-3"
+      style={{ color: '#94A3B8', letterSpacing: '0.08em' }}
+    >
+      {children}
+    </h4>
+  );
+}
+
+/** Par rótulo/valor do bloco de detalhes — rótulo pequeno acima, valor em
+ *  destaque abaixo, dando hierarquia de leitura entre os campos do grupo. */
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-[10.5px] font-semibold uppercase mb-1" style={{ color: '#94A3B8', letterSpacing: '0.06em' }}>
+        {label}
+      </div>
+      <div className="text-[13px]" style={{ color: '#1E293B' }}>
+        {children}
+      </div>
+    </div>
+  );
 }
 
 /**

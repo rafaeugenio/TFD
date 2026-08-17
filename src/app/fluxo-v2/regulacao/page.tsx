@@ -60,14 +60,14 @@ const CARIMBO_OPTIONS: { value: CarimboFiltro; label: string }[] = [
 ];
 
 /** Ordem e rótulo dos indicadores "por carimbo" — mesma nomenclatura usada
- *  no drawer de carimbo e na coluna Carimbo da tabela. */
+ *  no drawer de carimbo e na coluna Carimbo da tabela. "Sem carimbo" fica de
+ *  fora da linha de indicadores (mas segue disponível no filtro em select). */
 const CARIMBO_STATS_ORDER: { key: keyof DistribuicaoCarimbo; label: string; filtro: CarimboFiltro }[] = [
   { key: 'APROVADO_DIRETO', label: 'Aprovado direto', filtro: 'APROVADO_DIRETO' },
   { key: 'CNRAC', label: 'CNRAC', filtro: 'CNRAC' },
   { key: 'CET', label: 'CET', filtro: 'CET' },
   { key: 'SAAS', label: 'SAAS', filtro: 'SAAS' },
   { key: 'AGENDAMENTO', label: 'Agendamento', filtro: 'AGENDAMENTO' },
-  { key: 'sem', label: 'Sem carimbo', filtro: 'sem_carimbo' },
 ];
 
 export default function RegulacaoListPage() {
@@ -189,15 +189,14 @@ export default function RegulacaoListPage() {
             value: stats.aguardandoAgendamento,
             title: 'Solicitações com carimbo CNRAC ou CET sem tentativa confirmada',
           },
+          ...CARIMBO_STATS_ORDER.map(({ key, label, filtro }) => ({
+            label,
+            value: statsPorCarimbo[key],
+            title: `Filtrar a fila por ${label.toLowerCase()}`,
+            active: carimboFiltro === filtro,
+            onClick: () => setCarimboFiltro((prev) => (prev === filtro ? 'all' : filtro)),
+          })),
         ]}
-        secondLineLabel="Por carimbo, na Regulação agora"
-        secondLine={CARIMBO_STATS_ORDER.map(({ key, label, filtro }) => ({
-          label,
-          value: statsPorCarimbo[key],
-          title: `Filtrar a fila por ${label.toLowerCase()}`,
-          active: carimboFiltro === filtro,
-          onClick: () => setCarimboFiltro((prev) => (prev === filtro ? 'all' : filtro)),
-        }))}
       />
 
       {/* Filters */}
