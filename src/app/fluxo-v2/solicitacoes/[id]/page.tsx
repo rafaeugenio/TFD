@@ -213,7 +213,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
               <span
                 className="inline-flex items-center gap-1.5 px-2 py-[2px] text-[12px] font-medium"
                 style={{ background: '#EBF0FF', color: 'var(--tfd-blue)', border: '1px solid #C7D7FE', borderRadius: 999 }}
-                title="Carimbo definido pela Regulação — decide o encaminhamento do fluxo"
+                title="Carimbo definido pela Regulação, decide o encaminhamento do fluxo"
               >
                 <Stamp size={11} strokeWidth={2.2} />
                 {carimboVisual.label}

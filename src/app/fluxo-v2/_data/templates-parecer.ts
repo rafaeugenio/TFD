@@ -144,13 +144,13 @@ function sexoExtenso(sexo?: 'M' | 'F'): string {
  */
 function textoAgendamentoData(s?: SolicitacaoMock): string {
   const ag = s ? agendamentoConfirmado(s) : undefined;
-  if (!ag) return '[SEM AGENDAMENTO REGISTRADO — INFORME A DATA]';
+  if (!ag) return '[SEM AGENDAMENTO REGISTRADO: INFORME A DATA]';
   return formatarDataBR(dataDoAgendamento(ag).slice(0, 10));
 }
 
 function textoAgendamentoUnidade(s?: SolicitacaoMock): string {
   const ag = s ? agendamentoConfirmado(s) : undefined;
-  if (!ag || !ag.unidade.trim()) return '[SEM AGENDAMENTO REGISTRADO — INFORME A UNIDADE DE SAÚDE DE DESTINO]';
+  if (!ag || !ag.unidade.trim()) return '[SEM AGENDAMENTO REGISTRADO: INFORME A UNIDADE DE SAÚDE DE DESTINO]';
   return ag.unidade;
 }
 
