@@ -13,8 +13,8 @@ import CarimboRegulacaoDrawer from './drawers/CarimboRegulacaoDrawer';
 import { useToast } from '@/shared/components/toast/Toast';
 import { isLocked, tooltipLocked } from '../_utils/lock';
 import { agendamentoConfirmado, dataDoAgendamento, tentativasHistoricas } from '../_utils/agendamento';
+import { CARIMBO_REGULACAO_VISUAL as CARIMBO_VISUAL } from '../_utils/carimboRegulacao';
 import type {
-  CarimboRegulacao,
   DecisaoParecer,
   DesfechoTentativa,
   ParecerMock,
@@ -24,14 +24,6 @@ import type {
 import { DESFECHO_TENTATIVA_LABEL, TIPO_PARECER_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
 import { useTiposProcedimento } from '@/shared/hooks/useTiposProcedimento';
 import { descricaoCID } from '../_data/cid-labels';
-
-const CARIMBO_VISUAL: Record<CarimboRegulacao, { label: string; sublabel: string }> = {
-  APROVADO_DIRETO: { label: 'Aprovado direto',                          sublabel: 'Encaminhamento padrão, sem exceção.' },
-  CNRAC:           { label: 'CNRAC — Central Nacional de Regulação',    sublabel: 'Alta complexidade fora do estado.' },
-  CET:             { label: 'CET — Central Estadual de Tratamento',     sublabel: 'Busca de vaga via central estadual.' },
-  SAAS:            { label: 'SAAS',                                     sublabel: 'Encaminhamento via SAAS — caso de exceção.' },
-  AGENDAMENTO:     { label: 'Agendamento manual',                       sublabel: 'Regulação agenda manualmente via tentativas até obter resposta.' },
-};
 
 interface Props {
   s: SolicitacaoMock;

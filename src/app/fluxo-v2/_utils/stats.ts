@@ -114,6 +114,8 @@ export interface DistribuicaoCarimbo {
 
 /**
  * Conta solicitações em regulação por carimbo. "sem" = sem carimbo definido.
+ * Foto do momento — só o que está no setor Regulação agora, não o histórico
+ * do que já passou por ele.
  */
 export function contarPorCarimbo(solicitacoes: SolicitacaoMock[]): DistribuicaoCarimbo {
   const acc: DistribuicaoCarimbo = {
@@ -121,6 +123,36 @@ export function contarPorCarimbo(solicitacoes: SolicitacaoMock[]): DistribuicaoC
   };
   for (const s of solicitacoes) {
     if (s.status !== 'em_regulacao') continue;
+    const c: CarimboRegulacao | undefined = s.carimboRegulacao;
+    if (!c) acc.sem += 1;
+    else acc[c] += 1;
+  }
+  return acc;
+}
+
+/**
+ * Conta por carimbo o volume histórico no período informado — usado pelo
+ * relatório de Regulação (visão gerencial "quanto foi carimbado no mês"),
+ * diferente de `contarPorCarimbo`, que é a foto do que está na Regulação
+ * agora. Considera TODAS as solicitações (não só as que ainda estão no
+ * setor), porque o carimbo permanece gravado depois que a solicitação segue
+ * para os próximos setores.
+ *
+ * Não existe no modelo mock uma data de "quando o carimbo foi aplicado" —
+ * usamos `dataCriacao` da solicitação como aproximação de período, já que é
+ * o único dado real disponível. Ver nota no relatório sobre essa limitação.
+ */
+export function contarPorCarimboNoPeriodo(
+  solicitacoes: SolicitacaoMock[],
+  inicioIso: string,
+  fimIso: string,
+): DistribuicaoCarimbo {
+  const acc: DistribuicaoCarimbo = {
+    APROVADO_DIRETO: 0, CNRAC: 0, CET: 0, SAAS: 0, AGENDAMENTO: 0, sem: 0,
+  };
+  for (const s of solicitacoes) {
+    const dataRef = s.dataCriacao.slice(0, 10);
+    if (dataRef < inicioIso || dataRef > fimIso) continue;
     const c: CarimboRegulacao | undefined = s.carimboRegulacao;
     if (!c) acc.sem += 1;
     else acc[c] += 1;

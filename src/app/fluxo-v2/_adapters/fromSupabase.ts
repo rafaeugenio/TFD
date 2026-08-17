@@ -449,6 +449,21 @@ function anexosFromRows(rows: Row[]): AnexoMock[] {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Origem do laudo                                                    */
+/* ------------------------------------------------------------------ */
+
+/** Unidade que emitiu o laudo — mesmo join usado em `pacientes.service.ts`
+ *  para a tela de detalhe do paciente (`origem_laudo_unidade_id`). */
+function laudoOrigemUnidadeFromRow(row: Row): string | undefined {
+  const u = obj(row.origem_laudo_unidade);
+  if (!u) return undefined;
+  const nome = str(u.nome);
+  if (!nome) return undefined;
+  const cnes = opt(u.cnes);
+  return cnes ? `${nome} (CNES ${cnes})` : nome;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Solicitação                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -482,6 +497,7 @@ export function solicitacaoFromSupabase(row: Row, despesasFunerariasRows: Row[] 
     tipoSolicitacao: 'normal',
     dataCriacao: str(row.created_at),
     dataLaudo: opt(row.data_laudo),
+    laudoOrigemUnidade: laudoOrigemUnidadeFromRow(row),
     paciente,
     acompanhantes,
     anexos,

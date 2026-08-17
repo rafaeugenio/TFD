@@ -2,15 +2,16 @@
 
 import { Suspense, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { BarChart3, Receipt, ClipboardList, FileSpreadsheet } from 'lucide-react';
+import { BarChart3, Receipt, ClipboardList, FileSpreadsheet, Stamp } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import RelatorioFinanceiro from './_RelatorioFinanceiro';
 import RelatorioFaturamento from './_RelatorioFaturamento';
 import RelatorioRPB from './_RelatorioRPB';
 import RelatorioGestao from './_RelatorioGestao';
+import RelatorioCarimbo from './_RelatorioCarimbo';
 
-type TabKey = 'financeiro' | 'faturamento' | 'rpb' | 'gestao';
+type TabKey = 'financeiro' | 'faturamento' | 'rpb' | 'gestao' | 'carimbo';
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode; desc: string }[] = [
   {
@@ -36,6 +37,12 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode; desc: string }[
     label: 'Gestão',
     icon: <FileSpreadsheet size={15} />,
     desc: 'Visão consolidada por paciente — paciente, diagnóstico, origem do laudo, destino e parecer',
+  },
+  {
+    key: 'carimbo',
+    label: 'Carimbo',
+    icon: <Stamp size={15} />,
+    desc: 'Volume de solicitações por tipo de carimbo da Regulação, por período',
   },
 ];
 
@@ -108,6 +115,7 @@ function RelatoriosInner() {
         {activeTab === 'faturamento' && <RelatorioFaturamento />}
         {activeTab === 'rpb' && <RelatorioRPB />}
         {activeTab === 'gestao' && <RelatorioGestao />}
+        {activeTab === 'carimbo' && <RelatorioCarimbo />}
       </div>
 
       <style jsx>{`

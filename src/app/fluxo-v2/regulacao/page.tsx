@@ -38,8 +38,8 @@ import { Can } from '@/shared/auth/Can';
 import {
   contarAguardandoParecer,
   contarAguardandoAgendamento,
-  contarPareceres,
   contarPorCarimbo,
+  type DistribuicaoCarimbo,
 } from '../_utils/stats';
 import type { CarimboRegulacao, SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
 
@@ -57,6 +57,17 @@ const CARIMBO_OPTIONS: { value: CarimboFiltro; label: string }[] = [
   { value: 'SAAS', label: 'SAAS' },
   { value: 'AGENDAMENTO', label: 'AGENDAMENTO' },
   { value: 'sem_carimbo', label: 'Sem carimbo' },
+];
+
+/** Ordem e rótulo dos indicadores "por carimbo" — mesma nomenclatura usada
+ *  no drawer de carimbo e na coluna Carimbo da tabela. */
+const CARIMBO_STATS_ORDER: { key: keyof DistribuicaoCarimbo; label: string; filtro: CarimboFiltro }[] = [
+  { key: 'APROVADO_DIRETO', label: 'Aprovado direto', filtro: 'APROVADO_DIRETO' },
+  { key: 'CNRAC', label: 'CNRAC', filtro: 'CNRAC' },
+  { key: 'CET', label: 'CET', filtro: 'CET' },
+  { key: 'SAAS', label: 'SAAS', filtro: 'SAAS' },
+  { key: 'AGENDAMENTO', label: 'Agendamento', filtro: 'AGENDAMENTO' },
+  { key: 'sem', label: 'Sem carimbo', filtro: 'sem_carimbo' },
 ];
 
 export default function RegulacaoListPage() {
@@ -77,9 +88,11 @@ export default function RegulacaoListPage() {
   const stats = useMemo(() => ({
     aguardandoParecer: contarAguardandoParecer(solicitacoes),
     aguardandoAgendamento: contarAguardandoAgendamento(solicitacoes),
-    deferidosMes: contarPareceres(solicitacoes, 'deferido', true),
-    indeferidosMes: contarPareceres(solicitacoes, 'indeferido', true),
   }), [solicitacoes]);
+
+  // Distribuição por carimbo — foto do que está na Regulação agora (não é
+  // histórico do que já passou pelo setor).
+  const statsPorCarimbo = useMemo(() => contarPorCarimbo(solicitacoes), [solicitacoes]);
 
   // Base da fila de Regulação, antes dos filtros interativos — usada para
   // derivar as opções do filtro Região > Regional > Município, que assim não
@@ -176,9 +189,15 @@ export default function RegulacaoListPage() {
             value: stats.aguardandoAgendamento,
             title: 'Solicitações com carimbo CNRAC ou CET sem tentativa confirmada',
           },
-          { label: 'Deferidos no mês', value: stats.deferidosMes, hint: 'no mês corrente' },
-          { label: 'Indeferidos no mês', value: stats.indeferidosMes, hint: 'no mês corrente' },
         ]}
+        secondLineLabel="Por carimbo, na Regulação agora"
+        secondLine={CARIMBO_STATS_ORDER.map(({ key, label, filtro }) => ({
+          label,
+          value: statsPorCarimbo[key],
+          title: `Filtrar a fila por ${label.toLowerCase()}`,
+          active: carimboFiltro === filtro,
+          onClick: () => setCarimboFiltro((prev) => (prev === filtro ? 'all' : filtro)),
+        }))}
       />
 
       {/* Filters */}

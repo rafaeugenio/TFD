@@ -590,6 +590,10 @@ export interface SolicitacaoMock {
   tipoSolicitacao?: TipoSolicitacao;
   dataCriacao: string; // ISO datetime
   dataLaudo?: string;
+  /** Unidade de saúde que emitiu o laudo (nome + CNES quando disponível).
+   *  Vem de `solicitacoes.origem_laudo_unidade_id` — mesmo dado exibido na
+   *  tela de detalhe do paciente. Ausente em registros antigos sem vínculo. */
+  laudoOrigemUnidade?: string;
   paciente: PacienteMock;
   acompanhantes: AcompanhanteMock[];
   anexos: AnexoMock[];

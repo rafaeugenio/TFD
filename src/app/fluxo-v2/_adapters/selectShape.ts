@@ -20,6 +20,7 @@ export const SOLICITACAO_V2_SELECT = `
     *,
     municipios:municipio_residencia_id (id, nome, uf)
   ),
+  origem_laudo_unidade:unidades_destino!solicitacoes_origem_laudo_unidade_id_fkey (id, nome, cnes),
   solicitacao_acompanhantes (
     *,
     acompanhantes (*)

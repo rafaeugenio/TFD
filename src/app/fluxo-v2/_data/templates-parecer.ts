@@ -16,6 +16,7 @@
 /* -------------------------------------------------------------------------- */
 
 import type { DecisaoParecer, TipoParecer, SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
+import { agendamentoConfirmado, dataDoAgendamento } from '../_utils/agendamento';
 
 export interface TemplateParecer {
   id: string;
@@ -82,13 +83,13 @@ export const templatesParecer: TemplateParecer[] = [
 
 Conforme Laudo Médico emitido em {{solicitacao.dataLaudo}}, por profissional especialista de unidade habilitada, o paciente apresenta diagnóstico de [DIAGNÓSTICO], com indicação de [PROCEDIMENTO/ACOMPANHAMENTO ESPECÍFICO].
 
-A presente solicitação destina-se à realização de acompanhamento ambulatorial no dia [DATA], no serviço [LOCAL DE TRATAMENTO], visando a adequada condução terapêutica do caso.
+A presente solicitação destina-se à realização de acompanhamento ambulatorial no dia {{agendamento.data}}, no serviço {{agendamento.unidade}}, visando a adequada condução terapêutica do caso.
 
 {{servico_ma}}
 
 Considerando a indicação por especialista, a necessidade clínica do paciente e a garantia da integralidade da assistência à saúde, o caso preenche os critérios para concessão de TFD.
 
-Diante do exposto, defere-se a solicitação de passagens e ajuda de custo, com autorização de 01 (um) acompanhante, encaminhando-se ao setor administrativo competente para adoção das providências cabíveis.`,
+Diante do exposto, defere-se a solicitação de passagens e ajuda de custo, {{solicitacao.acompanhantes}}, encaminhando-se ao setor administrativo competente para adoção das providências cabíveis.`,
   },
 
   {
@@ -135,6 +136,55 @@ function sexoExtenso(sexo?: 'M' | 'F'): string {
 }
 
 /**
+ * Data e unidade do agendamento — puxadas da tentativa confirmada da própria
+ * solicitação (`agendamentoConfirmado`). Quando ainda não há agendamento
+ * registrado, o template não pode sugerir um dado inexistente: entra um
+ * marcador em CAIXA ALTA entre colchetes, no mesmo padrão dos demais campos
+ * editáveis, para o médico completar manualmente.
+ */
+function textoAgendamentoData(s?: SolicitacaoMock): string {
+  const ag = s ? agendamentoConfirmado(s) : undefined;
+  if (!ag) return '[SEM AGENDAMENTO REGISTRADO — INFORME A DATA]';
+  return formatarDataBR(dataDoAgendamento(ag).slice(0, 10));
+}
+
+function textoAgendamentoUnidade(s?: SolicitacaoMock): string {
+  const ag = s ? agendamentoConfirmado(s) : undefined;
+  if (!ag || !ag.unidade.trim()) return '[SEM AGENDAMENTO REGISTRADO — INFORME A UNIDADE DE SAÚDE DE DESTINO]';
+  return ag.unidade;
+}
+
+const NUMERO_EXTENSO_ACOMPANHANTES = [
+  'zero', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez',
+];
+
+function formatarQuantidadeAcompanhantes(n: number): string {
+  const extenso = NUMERO_EXTENSO_ACOMPANHANTES[n] ?? String(n);
+  return `${String(n).padStart(2, '0')} (${extenso})`;
+}
+
+/** Une nomes em lista com "e" antes do último item, no padrão do português. */
+function listarNomes(nomes: string[]): string {
+  if (nomes.length <= 1) return nomes[0] ?? '';
+  return `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}`;
+}
+
+/**
+ * Texto sobre acompanhantes reflete o cadastro real da solicitação — trata
+ * os três casos (nenhum, um, mais de um) com a concordância de número
+ * correta e cita os nomes cadastrados.
+ */
+function textoAcompanhantes(s?: SolicitacaoMock): string {
+  const acompanhantes = s?.acompanhantes ?? [];
+  if (acompanhantes.length === 0) return 'sem acompanhante autorizado';
+  const nomes = listarNomes(acompanhantes.map((a) => a.nome));
+  if (acompanhantes.length === 1) {
+    return `com autorização de 01 (um) acompanhante (${nomes})`;
+  }
+  return `com autorização de ${formatarQuantidadeAcompanhantes(acompanhantes.length)} acompanhantes (${nomes})`;
+}
+
+/**
  * Substitui os placeholders `{{...}}` do texto pelo valor real da solicitação.
  * Os campos auto-preenchidos NÃO viram labels — entram como texto comum,
  * porque o médico não precisa editá-los. Os campos editáveis já vêm como
@@ -173,6 +223,9 @@ export function aplicarPlaceholders(
     '{{medico.nome}}': medico?.nome?.trim() ? medico.nome : '[NOME DO MÉDICO]',
     '{{medico.crm}}': crmLinha,
     '{{medico.especialidade}}': medico?.especialidade?.trim() ? medico.especialidade : '[ESPECIALIDADE]',
+    '{{agendamento.data}}': textoAgendamentoData(s),
+    '{{agendamento.unidade}}': textoAgendamentoUnidade(s),
+    '{{solicitacao.acompanhantes}}': textoAcompanhantes(s),
     '{{servico_ma}}':
       (tipo && varianteServicoMA && VARIANTES_SERVICO_MA[tipo]?.[varianteServicoMA]) ??
       '[SELECIONE A SITUAÇÃO DO SERVIÇO NO MA]',
