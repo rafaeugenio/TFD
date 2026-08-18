@@ -16,7 +16,9 @@
 export const SOLICITACAO_V2_SELECT = `
   *,
   setor_atual,
-  responsavel:responsavel_atual_id (id, nome_completo),
+  /* Responsável pela solicitação no setor. O join só pode entrar depois que a
+     migration 00077 for aplicada; enquanto a coluna não existir, incluir esta
+     linha faz a consulta inteira falhar e o fluxo carrega sem nenhum dado. */
   pacientes (
     *,
     municipios:municipio_residencia_id (id, nome, uf)
