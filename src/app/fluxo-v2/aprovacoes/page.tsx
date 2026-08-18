@@ -14,6 +14,9 @@ import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { SETOR_LABEL, SETOR_ORIGEM_DOT_COLOR } from '../_utils/lock';
 import { casaComFiltroRegiao, REGIAO_FILTRO_VAZIO, type RegiaoFiltroValue } from '../_utils/derivarRegional';
 import RegiaoRegionalMunicipioFilter from '../_components/RegiaoRegionalMunicipioFilter';
+import { casaComFiltroResponsavel, RESPONSAVEL_FILTRO_VAZIO, type ResponsavelFiltroValue } from '../_utils/derivarResponsavel';
+import ResponsavelFilter from '../_components/ResponsavelFilter';
+import ResponsavelAvatar from '../_components/ResponsavelAvatar';
 import Pagination from '@/shared/components/pagination/Pagination';
 import StatsRow from '@/shared/components/stats-row/StatsRow';
 import { contarEncerradasNoMes, dentroDoMesAtual } from '../_utils/stats';
@@ -75,6 +78,7 @@ export default function AprovacoesListPage() {
   const [busca, setBusca] = useState('');
   const [setorOrigemFiltro, setSetorOrigemFiltro] = useState<SetorOrigemAprovacao | ''>('');
   const [regiaoFiltro, setRegiaoFiltro] = useState<RegiaoFiltroValue>(REGIAO_FILTRO_VAZIO);
+  const [responsavelFiltro, setResponsavelFiltro] = useState<ResponsavelFiltroValue>(RESPONSAVEL_FILTRO_VAZIO);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'tempo', dir: 'desc' });
@@ -104,6 +108,7 @@ export default function AprovacoesListPage() {
     () => filaBase.filter((s) => {
       if (setorOrigemFiltro && s.setorOrigemAprovacao !== setorOrigemFiltro) return false;
       if (!casaComFiltroRegiao(s.paciente, regiaoFiltro)) return false;
+      if (!casaComFiltroResponsavel(s, responsavelFiltro)) return false;
       if (busca.trim()) {
         const q = busca.toLowerCase();
         if (
@@ -114,12 +119,12 @@ export default function AprovacoesListPage() {
       }
       return true;
     }),
-    [filaBase, busca, setorOrigemFiltro, regiaoFiltro],
+    [filaBase, busca, setorOrigemFiltro, regiaoFiltro, responsavelFiltro],
   );
 
   useEffect(() => {
     setPage(1);
-  }, [busca, setorOrigemFiltro, regiaoFiltro, sort]);
+  }, [busca, setorOrigemFiltro, regiaoFiltro, responsavelFiltro, sort]);
 
   const filaOrdenada = useMemo(() => {
     if (!sort.field || !sort.dir) return fila;
@@ -243,6 +248,12 @@ export default function AprovacoesListPage() {
           onChange={setRegiaoFiltro}
         />
 
+        <ResponsavelFilter
+          solicitacoes={filaBase}
+          value={responsavelFiltro}
+          onChange={setResponsavelFiltro}
+        />
+
         {temFiltroSetor && (
           <button
             type="button"
@@ -265,6 +276,7 @@ export default function AprovacoesListPage() {
               <SortTh label="Setor de origem" field="setorOrigem" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <Th>Observação para aprovação</Th>
               <Th>Status</Th>
+              <Th>Responsável</Th>
               <Th align="right">Ações</Th>
             </tr>
           </thead>
@@ -272,9 +284,9 @@ export default function AprovacoesListPage() {
             {isLoading && (
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={`sk-${i}`} style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
-                  {Array.from({ length: 7 }).map((__, c) => (
+                  {Array.from({ length: 8 }).map((__, c) => (
                     <td key={c} className="px-4 py-3.5">
-                      <Skeleton className={`h-4 ${c === 0 ? 'w-24' : c === 1 ? 'w-44' : c === 6 ? 'w-16 ml-auto' : 'w-28'}`} />
+                      <Skeleton className={`h-4 ${c === 0 ? 'w-24' : c === 1 ? 'w-44' : c === 7 ? 'w-16 ml-auto' : 'w-28'}`} />
                     </td>
                   ))}
                 </tr>
@@ -282,7 +294,7 @@ export default function AprovacoesListPage() {
             )}
             {!isLoading && fila.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
+                <td colSpan={8} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
                   Nenhuma solicitação em aprovação.
                 </td>
               </tr>
@@ -330,6 +342,9 @@ export default function AprovacoesListPage() {
                 </td>
                 <td className="px-4 py-3.5">
                   <StatusV2Badge status={s.status} />
+                </td>
+                <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+                  <ResponsavelAvatar responsavel={s.responsavelAtual} />
                 </td>
                 <td className="px-4 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
                   <div className="inline-flex items-center">

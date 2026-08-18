@@ -14,9 +14,11 @@ import {
 } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import SnapshotPaciente, { snapshotFromSolicitacao } from '../SnapshotPaciente';
+import ResponsavelSelect from '../ResponsavelSelect';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import { useToast } from '@/shared/components/toast/Toast';
 import { type SetorAcao } from '../../_utils/lock';
+import type { ResponsavelSolicitacao } from '@/core/mocks/fluxo-v2-v3-seed';
 
 export type DestinoEnvio = SetorAcao;
 export type TipoEnvio = 'enviar' | 'devolver';
@@ -97,6 +99,7 @@ export default function EnviarParaSetorDrawer({
 
   const [destino, setDestino] = useState<DestinoEnvio | null>(null);
   const [observacao, setObservacao] = useState('');
+  const [responsavel, setResponsavel] = useState<ResponsavelSolicitacao | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   // Tramitação em qualquer direção entre os cinco setores gerais do fluxo
@@ -110,6 +113,7 @@ export default function EnviarParaSetorDrawer({
     if (open) {
       setDestino(null);
       setObservacao('');
+      setResponsavel(null);
       setTimeout(() => ref.current?.focus(), 100);
     }
   }, [open]);
@@ -153,11 +157,16 @@ export default function EnviarParaSetorDrawer({
       toast.error('Campo obrigatório', 'Informe o motivo do pedido de aprovação.');
       return;
     }
+    if (!responsavel) {
+      toast.error('Campo obrigatório', 'Escolha a pessoa responsável no setor de destino.');
+      return;
+    }
     enviarParaSetor(
       solicitacaoId,
       destino,
       observacao.trim() || undefined,
       tipo,
+      responsavel,
     );
     toast.success(tipo === 'devolver' ? 'Solicitação devolvida' : 'Solicitação enviada', `Destino: ${LABEL_DESTINO[destino]}.`);
     onClose();
@@ -169,7 +178,7 @@ export default function EnviarParaSetorDrawer({
   // azul Citiesoft sólido. Cards selecionados ganham borda azul + bg muito sutil.
   const PRIMARY = '#146BFA';
   const Icon = !destino || !tipo ? Send : tipo === 'devolver' ? ArrowRight : Send;
-  const disabled = !destino || (observacaoObrigatoria && !observacao.trim());
+  const disabled = !destino || !responsavel || (observacaoObrigatoria && !observacao.trim());
 
   return (
     <Drawer
@@ -288,6 +297,17 @@ export default function EnviarParaSetorDrawer({
           );
         })}
       </div>
+
+      <label
+        className="block text-[12px] font-semibold uppercase tracking-wider mb-2"
+        style={{ color: '#6B7280' }}
+      >
+        Responsável no setor de destino <span style={{ color: 'var(--tfd-status-danger)' }}>*</span>
+      </label>
+      <ResponsavelSelect value={responsavel} onChange={setResponsavel} />
+      <p className="text-[11px] mt-1 mb-5" style={{ color: '#9CA3AF' }}>
+        Quem responde pela solicitação enquanto ela estiver em {destino ? LABEL_DESTINO[destino] : 'destino'}.
+      </p>
 
       <label
         className="block text-[12px] font-semibold uppercase tracking-wider mb-2"

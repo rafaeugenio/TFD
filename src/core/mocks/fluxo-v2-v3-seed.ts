@@ -582,6 +582,18 @@ export interface UltimaTramitacao {
   observacao?: string;
 }
 
+/**
+ * Pessoa responsável pela solicitação dentro do setor atual. Escolhida a
+ * cada tramitação (a partir da primeira, na saída de Dados Básicos) —
+ * diferente do setor, que é fixo por etapa, o responsável é quem responde
+ * pela solicitação enquanto ela estiver ali. Guarda o nome junto ao id para
+ * a tabela exibir o avatar sem precisar de uma consulta extra.
+ */
+export interface ResponsavelSolicitacao {
+  id: string;
+  nome: string;
+}
+
 export interface SolicitacaoMock {
   id: string;
   numero: string;
@@ -614,6 +626,9 @@ export interface SolicitacaoMock {
   devolucoes?: DevolucaoFinanceiroParaRegulacao[];
   /** Última tramitação entre Regulação e Financeiro (alimenta destaque de linha + popover). */
   ultimaTramitacao?: UltimaTramitacao;
+  /** Pessoa responsável pela solicitação no setor atual — ausente antes da
+   *  primeira tramitação (estado neutro, não erro). */
+  responsavelAtual?: ResponsavelSolicitacao;
   /** T2.AG — Número do processo SEI (formato XXXXX.XXXXXX/AAAA-DD). */
   numeroSEI?: string;
   /** T2.AG — URL completa para o processo no SEI. */
@@ -1055,6 +1070,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
     id: 's3',
     numero: '2025/000125',
     status: 'em_passagens',
+    responsavelAtual: { id: 'usr-joao-pereira', nome: 'João Pereira' },
     dataCriacao: isoAt('2025-05-20'),
     dataLaudo: '2025-05-18',
     paciente: pacientesPool[1],
@@ -1129,6 +1145,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
       id: 's4',
       numero: '2025/000126',
       status: 'em_ajuda_custo' as StatusGlobalV2,
+      responsavelAtual: { id: 'usr-carla-nogueira', nome: 'Carla Nogueira' },
       dataCriacao: isoAt('2025-01-05'),
       dataLaudo: '2025-01-04',
       paciente: pacientesPool[4],
@@ -1166,6 +1183,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
     id: 's5',
     numero: '2025/000127',
     status: 'em_acompanhamento',
+    responsavelAtual: { id: 'usr-patricia-gomes', nome: 'Patrícia Gomes' },
     dataCriacao: isoAt('2025-04-15'),
     dataLaudo: '2025-04-14',
     paciente: pacientesPool[3],
@@ -1260,6 +1278,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
     id: 's7',
     numero: '2025/000129',
     status: 'em_ajuda_custo',
+    responsavelAtual: { id: 'usr-carla-nogueira', nome: 'Carla Nogueira' },
     dataCriacao: isoAt('2025-05-22'),
     dataLaudo: '2025-05-21',
     paciente: pacientesPool[6],
@@ -1308,6 +1327,7 @@ export const seedFluxoV2: SolicitacaoMock[] = [
     id: 's8',
     numero: 'TFD-2025-0008',
     status: 'em_regulacao',
+    responsavelAtual: { id: 'usr-ana-carolina-mendes', nome: 'Ana Carolina Mendes' },
     dataCriacao: isoAt('2025-06-20'),
     dataLaudo: '2025-06-18',
     paciente: pacientesPool[1],

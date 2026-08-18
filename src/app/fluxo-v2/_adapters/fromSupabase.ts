@@ -19,6 +19,7 @@ import type {
   AnexoMock,
   ObservacaoChat,
   DevolucaoFinanceiroParaRegulacao,
+  ResponsavelSolicitacao,
   CarimboRegulacao,
   CarimboOutrosInfo,
   DecisaoParecer,
@@ -449,6 +450,20 @@ function anexosFromRows(rows: Row[]): AnexoMock[] {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Responsável atual                                                  */
+/* ------------------------------------------------------------------ */
+
+/** Pessoa responsável pela solicitação no setor atual — ausente antes da
+ *  primeira tramitação (estado neutro na UI, não erro). */
+function responsavelFromRow(row: Row): ResponsavelSolicitacao | undefined {
+  const r = obj(row.responsavel);
+  if (!r) return undefined;
+  const nome = str(r.nome_completo);
+  if (!nome) return undefined;
+  return { id: str(r.id), nome };
+}
+
+/* ------------------------------------------------------------------ */
 /*  Origem do laudo                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -515,6 +530,7 @@ export function solicitacaoFromSupabase(row: Row, despesasFunerariasRows: Row[] 
     seiUrl: opt(row.url_sei),
     setorOrigemAprovacao: opt(row.setor_origem_aprovacao) as SolicitacaoMock['setorOrigemAprovacao'],
     observacaoAprovacao: opt(row.observacao_aprovacao),
+    responsavelAtual: responsavelFromRow(row),
   };
 }
 

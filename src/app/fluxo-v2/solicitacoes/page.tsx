@@ -16,6 +16,9 @@ import { derivarEventos, tempoRelativo } from '../_utils/derivarLinhaDoTempo';
 import { isLocked, setorAtual, tooltipLocked } from '../_utils/lock';
 import { casaComFiltroRegiao, REGIAO_FILTRO_VAZIO, type RegiaoFiltroValue } from '../_utils/derivarRegional';
 import RegiaoRegionalMunicipioFilter from '../_components/RegiaoRegionalMunicipioFilter';
+import { casaComFiltroResponsavel, RESPONSAVEL_FILTRO_VAZIO, type ResponsavelFiltroValue } from '../_utils/derivarResponsavel';
+import ResponsavelFilter from '../_components/ResponsavelFilter';
+import ResponsavelAvatar from '../_components/ResponsavelAvatar';
 import {
   STATUS_LABEL,
   type SolicitacaoMock,
@@ -52,6 +55,7 @@ export default function SolicitacoesV2ListPage() {
   const { solicitacoes, encerrar, isLoading } = useFluxoV2State();
   const [statusFilter, setStatusFilter] = useState<StatusGlobalV2 | 'all'>('all');
   const [regiaoFiltro, setRegiaoFiltro] = useState<RegiaoFiltroValue>(REGIAO_FILTRO_VAZIO);
+  const [responsavelFiltro, setResponsavelFiltro] = useState<ResponsavelFiltroValue>(RESPONSAVEL_FILTRO_VAZIO);
   const [busca, setBusca] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -82,6 +86,7 @@ export default function SolicitacoesV2ListPage() {
     return solicitacoes.filter((s) => {
       if (statusFilter !== 'all' && s.status !== statusFilter) return false;
       if (!casaComFiltroRegiao(s.paciente, regiaoFiltro)) return false;
+      if (!casaComFiltroResponsavel(s, responsavelFiltro)) return false;
       if (busca.trim()) {
         const q = busca.toLowerCase();
         if (
@@ -92,13 +97,13 @@ export default function SolicitacoesV2ListPage() {
       }
       return true;
     });
-  }, [solicitacoes, statusFilter, regiaoFiltro, busca]);
+  }, [solicitacoes, statusFilter, regiaoFiltro, responsavelFiltro, busca]);
 
   // Reset paginação quando os filtros mudam — caso contrário o usuário
   // pode acabar olhando uma página vazia.
   useEffect(() => {
     setPage(1);
-  }, [busca, statusFilter, regiaoFiltro, sort]);
+  }, [busca, statusFilter, regiaoFiltro, responsavelFiltro, sort]);
 
   const ordenadas = useMemo(() => {
     if (!sort.field || !sort.dir) return filtradas;
@@ -250,6 +255,11 @@ export default function SolicitacoesV2ListPage() {
           value={regiaoFiltro}
           onChange={setRegiaoFiltro}
         />
+        <ResponsavelFilter
+          solicitacoes={solicitacoes}
+          value={responsavelFiltro}
+          onChange={setResponsavelFiltro}
+        />
       </div>
 
       {/* Tabela */}
@@ -267,6 +277,7 @@ export default function SolicitacoesV2ListPage() {
               <SortTh label="Município / Regional" field="municipio" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Status" field="status" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Última atualização" field="atualizacao" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <Th>Responsável</Th>
               <Th align="right">Ações</Th>
             </tr>
           </thead>
@@ -274,9 +285,9 @@ export default function SolicitacoesV2ListPage() {
             {isLoading && (
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={`sk-${i}`} style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
-                  {Array.from({ length: 6 }).map((__, c) => (
+                  {Array.from({ length: 7 }).map((__, c) => (
                     <td key={c} className="px-4 py-3.5">
-                      <Skeleton className={`h-4 ${c === 0 ? 'w-24' : c === 1 ? 'w-48' : c === 5 ? 'w-20 ml-auto' : 'w-32'}`} />
+                      <Skeleton className={`h-4 ${c === 0 ? 'w-24' : c === 1 ? 'w-48' : c === 6 ? 'w-20 ml-auto' : 'w-32'}`} />
                     </td>
                   ))}
                 </tr>
@@ -284,7 +295,7 @@ export default function SolicitacoesV2ListPage() {
             )}
             {!isLoading && filtradas.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
+                <td colSpan={7} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
                   Nenhuma solicitação encontrada.
                 </td>
               </tr>
@@ -324,6 +335,9 @@ export default function SolicitacoesV2ListPage() {
                     ) : (
                       <span style={{ color: '#9CA3AF' }}>—</span>
                     )}
+                  </td>
+                  <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+                    <ResponsavelAvatar responsavel={s.responsavelAtual} />
                   </td>
                   <td className="px-4 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="inline-flex items-center">

@@ -519,17 +519,23 @@ export function buildEnvioSetor(
     setorOrigem: 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento';
     observacao?: string;
   },
+  /** Pessoa escolhida como responsável pela solicitação no setor de
+   *  destino. `undefined` quando a tramitação não passou por essa escolha
+   *  (ex.: reabertura automática) — nesse caso a coluna não é tocada. */
+  responsavelId?: string,
 ): {
   status: StatusDb;
   setor_atual: SetorDb;
   setor_origem_aprovacao: string | null;
   observacao_aprovacao: string | null;
+  responsavel_atual_id?: string;
 } {
   return {
     status: entryStatusForSetor(setor),
     setor_atual: setor,
     setor_origem_aprovacao: setor === 'aprovacao' ? aprovacao?.setorOrigem ?? null : null,
     observacao_aprovacao: setor === 'aprovacao' ? aprovacao?.observacao?.trim() || null : null,
+    ...(responsavelId ? { responsavel_atual_id: responsavelId } : {}),
   };
 }
 

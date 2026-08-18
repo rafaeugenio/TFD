@@ -48,6 +48,29 @@ export async function atualizarUsuario(
     .single();
 }
 
+export interface UsuarioAtivoResumo {
+  id: string;
+  nome_completo: string;
+  perfil: string;
+}
+
+/**
+ * Lista usuários ativos para seletores de responsável (ex.: escolher quem
+ * responde pela solicitação ao tramitar entre setores). Sem paginação —
+ * usada em drawers, não em listagens.
+ */
+export async function listarUsuariosAtivos() {
+  const supabase = getSupabase();
+  return supabase
+    .from('usuarios')
+    .select('id, nome_completo, perfil')
+    .eq('ativo', true)
+    .order('nome_completo', { ascending: true }) as unknown as Promise<{
+      data: UsuarioAtivoResumo[] | null;
+      error: unknown;
+    }>;
+}
+
 export async function desativarUsuario(id: string) {
   const supabase = getSupabase();
   return supabase

@@ -16,6 +16,7 @@
 export const SOLICITACAO_V2_SELECT = `
   *,
   setor_atual,
+  responsavel:responsavel_atual_id (id, nome_completo),
   pacientes (
     *,
     municipios:municipio_residencia_id (id, nome, uf)

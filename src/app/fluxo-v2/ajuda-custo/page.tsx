@@ -17,6 +17,9 @@ import { TramitacaoInfoPopover } from '../_components/TramitacaoBadge';
 import { isLocked, tooltipLocked } from '../_utils/lock';
 import { casaComFiltroRegiao, REGIAO_FILTRO_VAZIO, type RegiaoFiltroValue } from '../_utils/derivarRegional';
 import RegiaoRegionalMunicipioFilter from '../_components/RegiaoRegionalMunicipioFilter';
+import { casaComFiltroResponsavel, RESPONSAVEL_FILTRO_VAZIO, type ResponsavelFiltroValue } from '../_utils/derivarResponsavel';
+import ResponsavelFilter from '../_components/ResponsavelFilter';
+import ResponsavelAvatar from '../_components/ResponsavelAvatar';
 import Pagination from '@/shared/components/pagination/Pagination';
 import StatsRow from '@/shared/components/stats-row/StatsRow';
 import { totalDiariasNoMes, formatBRL } from '../_utils/stats';
@@ -116,6 +119,7 @@ export default function AjudaCustoListPage() {
   const [busca, setBusca] = useState('');
   const [filtro, setFiltro] = useState<AjudaCustoFiltro>('all');
   const [regiaoFiltro, setRegiaoFiltro] = useState<RegiaoFiltroValue>(REGIAO_FILTRO_VAZIO);
+  const [responsavelFiltro, setResponsavelFiltro] = useState<ResponsavelFiltroValue>(RESPONSAVEL_FILTRO_VAZIO);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'tempo', dir: 'desc' });
@@ -148,6 +152,7 @@ export default function AjudaCustoListPage() {
       if (filtro === 'sem_ajuda' && !semAjuda) return false;
       if (filtro === 'adicional_pendente' && !adicionalPendente) return false;
       if (!casaComFiltroRegiao(s.paciente, regiaoFiltro)) return false;
+      if (!casaComFiltroResponsavel(s, responsavelFiltro)) return false;
 
       if (busca.trim()) {
         const q = busca.toLowerCase();
@@ -159,12 +164,12 @@ export default function AjudaCustoListPage() {
       }
       return true;
     }),
-    [filaBase, busca, filtro, regiaoFiltro],
+    [filaBase, busca, filtro, regiaoFiltro, responsavelFiltro],
   );
 
   useEffect(() => {
     setPage(1);
-  }, [busca, filtro, regiaoFiltro, sort]);
+  }, [busca, filtro, regiaoFiltro, responsavelFiltro, sort]);
 
   const filaOrdenada = useMemo(() => {
     if (!sort.field || !sort.dir) return fila;
@@ -265,6 +270,11 @@ export default function AjudaCustoListPage() {
           value={regiaoFiltro}
           onChange={setRegiaoFiltro}
         />
+        <ResponsavelFilter
+          solicitacoes={filaBase}
+          value={responsavelFiltro}
+          onChange={setResponsavelFiltro}
+        />
       </div>
 
       <div style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 'var(--tfd-radius-lg)', overflow: 'hidden' }}>
@@ -278,6 +288,7 @@ export default function AjudaCustoListPage() {
               <Th>Próximo período</Th>
               <SortTh label="Total previsto" field="total" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} align="right" />
               <SortTh label="Aguardando há" field="tempo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <Th>Responsável</Th>
               <Th align="right">Ações</Th>
             </tr>
           </thead>
@@ -285,9 +296,9 @@ export default function AjudaCustoListPage() {
             {isLoading && (
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={`sk-${i}`} style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
-                  {Array.from({ length: 8 }).map((__, c) => (
+                  {Array.from({ length: 9 }).map((__, c) => (
                     <td key={c} className="px-4 py-3.5">
-                      <Skeleton className={`h-4 ${c === 0 ? 'w-24' : c === 1 ? 'w-44' : c === 7 ? 'w-16 ml-auto' : 'w-28'}`} />
+                      <Skeleton className={`h-4 ${c === 0 ? 'w-24' : c === 1 ? 'w-44' : c === 8 ? 'w-16 ml-auto' : 'w-28'}`} />
                     </td>
                   ))}
                 </tr>
@@ -295,7 +306,7 @@ export default function AjudaCustoListPage() {
             )}
             {!isLoading && fila.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
+                <td colSpan={9} className="px-4 py-12 text-center" style={{ color: '#9CA3AF' }}>
                   Nenhuma solicitação aguardando ação em Ajuda de Custo.
                 </td>
               </tr>
@@ -388,6 +399,9 @@ export default function AjudaCustoListPage() {
                   </td>
                   <td className="px-4 py-3.5" style={{ color: '#64748B', fontSize: 13 }}>
                     {tempoNoSetor(s.dataCriacao)}d
+                  </td>
+                  <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+                    <ResponsavelAvatar responsavel={s.responsavelAtual} />
                   </td>
                   <td className="px-4 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="inline-flex items-center">

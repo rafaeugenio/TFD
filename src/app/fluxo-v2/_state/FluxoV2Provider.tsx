@@ -215,6 +215,10 @@ interface FluxoV2ContextValue {
     destino: 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento' | 'aprovacao',
     observacao?: string,
     tipo?: 'enviar' | 'devolver',
+    /** Pessoa escolhida como responsável pela solicitação no setor de
+     *  destino — a partir da primeira tramitação, quem envia escolhe quem
+     *  responde por ela lá. */
+    responsavel?: import('@/core/mocks/fluxo-v2-v3-seed').ResponsavelSolicitacao,
   ) => void;
   /** @deprecated use `enviarParaSetor(id, 'passagens', obs, 'enviar')` */
   encaminharParaFinanceiro: (id: string, observacao?: string) => void;
@@ -1248,7 +1252,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
    * devolução pendente como resolvida — fechando o ciclo.
    */
   const enviarParaSetor = useCallback<FluxoV2ContextValue['enviarParaSetor']>(
-    (id, destino, observacao, tipo = 'enviar') => {
+    (id, destino, observacao, tipo = 'enviar', responsavel) => {
       // Setor de onde a solicitação está saindo, capturado ANTES da mutação —
       // é o que a fila de Aprovações exibe como "setor de origem" quando o
       // destino é 'aprovacao'.
@@ -1304,6 +1308,10 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
 
         s.status = STATUS_POR_DESTINO[destino];
 
+        if (responsavel) {
+          s.responsavelAtual = responsavel;
+        }
+
         return s;
       });
 
@@ -1314,6 +1322,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         destino === 'aprovacao' && setorOrigem && setorOrigem !== 'aprovacao' && setorOrigem !== 'encerramento'
           ? { setorOrigem, observacao }
           : undefined,
+        responsavel?.id,
       );
       supabase
         .from('solicitacoes')
