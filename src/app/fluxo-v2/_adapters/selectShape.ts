@@ -13,12 +13,16 @@
  * já ter sido aplicada no ambiente para exibir dados existentes.
  */
 
+/**
+ * Responsável pela solicitação no setor: o join `responsavel:responsavel_atual_id`
+ * só pode voltar a este select depois que a migration 00077 for aplicada no banco.
+ * Enquanto a coluna não existir, incluir o join faz a consulta inteira falhar com
+ * 400 e o fluxo carrega sem nenhuma solicitação. Nada de comentário dentro da
+ * template string abaixo: o conteúdo dela vai inteiro no parâmetro select.
+ */
 export const SOLICITACAO_V2_SELECT = `
   *,
   setor_atual,
-  /* Responsável pela solicitação no setor. O join só pode entrar depois que a
-     migration 00077 for aplicada; enquanto a coluna não existir, incluir esta
-     linha faz a consulta inteira falhar e o fluxo carrega sem nenhum dado. */
   pacientes (
     *,
     municipios:municipio_residencia_id (id, nome, uf)
