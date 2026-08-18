@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ExternalLink, Phone, Target, MessageSquare } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { CheckCircle2, ExternalLink, Phone, Target, MessageSquare } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormSection from '@/shared/components/drawer/FormSection';
 import AnexosUploadField, { type AnexoLocal } from '@/shared/components/anexos-upload-field/AnexosUploadField';
@@ -13,7 +13,6 @@ import {
   type TentativaUnidadeMock,
   type TipoProcedimento,
 } from '@/core/mocks/fluxo-v2-v3-seed';
-import { agendamentoConfirmado } from '../../_utils/agendamento';
 import { listarUnidadesSaude } from '@/services/unidades-saude.service';
 import AuxSelectInline from '@/shared/components/aux-select-inline/AuxSelectInline';
 import { maskPhone } from '@/shared/pipes/formatters';
@@ -54,7 +53,7 @@ const DESFECHOS_ORDENADOS: DesfechoTentativa[] = [
 ];
 
 export default function NewTentativaDrawer({ open, onClose, solicitacaoId, editar }: Props) {
-  const { addTentativa, editarTentativa, getById, addAnexos } = useFluxoV2State();
+  const { addTentativa, editarTentativa, addAnexos } = useFluxoV2State();
   const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
   const toast = useToast();
   const firstInputRef = useRef<HTMLInputElement>(null);
@@ -68,7 +67,6 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
   const [telefoneContato, setTelefoneContato] = useState('');
   const [emailContato, setEmailContato] = useState('');
   const [obs, setObs] = useState('');
-  const [forcarSubstituicao, setForcarSubstituicao] = useState(false);
 
   const [unidades, setUnidades] = useState<UnidadeRow[]>([]);
   const [loadingUnidades, setLoadingUnidades] = useState(false);
@@ -87,14 +85,12 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
   }, [open]);
 
   const isEdicao = !!editar;
-  const solic = getById(solicitacaoId);
-  const confirmadaAtual = solic ? agendamentoConfirmado(solic) : undefined;
 
   useEffect(() => {
     if (!open) return;
     if (editar) {
       setUnidade(editar.unidade);
-      setUnidadeId('');
+      setUnidadeId(editar.unidadeId ?? '');
       // Date input usa só YYYY-MM-DD; aceita ISO datetime cortando.
       setData(editar.data?.slice(0, 10) ?? '');
       setDataAgendamento(editar.dataAgendamento?.slice(0, 10) ?? '');
@@ -119,18 +115,10 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
       setEmailContato('');
       setObs('');
     }
-    setForcarSubstituicao(false);
     setTimeout(() => firstInputRef.current?.focus(), 100);
   }, [open, editar]);
 
   const isConfirmacao = desfecho === 'agendamento_confirmado';
-
-  // Há uma OUTRA tentativa confirmada nessa solicitação? (ignora a própria, em edição)
-  const conflitoConfirmacao = useMemo(() => {
-    if (!isConfirmacao || !confirmadaAtual) return null;
-    if (editar && confirmadaAtual.id === editar.id) return null;
-    return confirmadaAtual;
-  }, [isConfirmacao, confirmadaAtual, editar]);
 
   // Telefone e email são opcionais, mas se preenchidos precisam estar válidos.
   const telTrim = telefoneContato.trim();
@@ -143,8 +131,7 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
     data.length > 0 &&
     telefoneValido &&
     emailValido &&
-    (!isConfirmacao || dataAgendamento.length > 0) &&
-    (!conflitoConfirmacao || forcarSubstituicao);
+    (!isConfirmacao || dataAgendamento.length > 0);
 
   function handleSalvar() {
     if (!valido) return;
@@ -157,6 +144,7 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
 
     const payload = {
       unidade: unidade.trim(),
+      unidadeId: unidadeId || undefined,
       data, // data de contato com a unidade
       desfecho,
       observacao: obs.trim() || undefined,
@@ -184,7 +172,7 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
   const titulo = isEdicao ? 'Editar tentativa' : 'Nova tentativa';
   const subtitulo = isEdicao
     ? 'Atualize unidade, desfecho ou detalhes do agendamento.'
-    : 'Registre o contato com a unidade — e quando ela aceitar, marque como agendamento confirmado.';
+    : 'Registre o contato com a unidade. Para cadastrar um agendamento confirmado, use "Adicionar agendamento".';
 
   return (
     <Drawer
@@ -204,11 +192,7 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
             onClick={handleSalvar}
             disabled={!valido}
           >
-            {isEdicao
-              ? 'Salvar alterações'
-              : isConfirmacao && conflitoConfirmacao && forcarSubstituicao
-                ? 'Confirmar e substituir'
-                : 'Salvar tentativa'}
+            {isEdicao ? 'Salvar alterações' : 'Salvar tentativa'}
           </button>
         </>
       }
@@ -378,39 +362,6 @@ export default function NewTentativaDrawer({ open, onClose, solicitacaoId, edita
             A <strong>data da tentativa</strong> acima é quando o contato foi feito;
             a <strong>data do agendamento</strong> é quando o paciente comparece à unidade.
           </p>
-        </div>
-      )}
-
-      {/* Aviso de substituição */}
-      {conflitoConfirmacao && (
-        <div
-          className="mb-4 px-3 py-3 flex items-start gap-2.5"
-          style={{
-            background: '#FFFBEB',
-            border: '1px solid #FCD34D',
-            borderRadius: 10,
-            color: '#78350F',
-          }}
-        >
-          <AlertTriangle size={15} style={{ color: '#B45309', flexShrink: 0, marginTop: 2 }} />
-          <div className="flex-1 text-[12.5px] leading-relaxed">
-            <strong style={{ color: '#92400E' }}>Já existe um agendamento confirmado</strong>
-            {' em '}
-            <strong>{conflitoConfirmacao.unidade}</strong>.
-            <br />
-            Salvar isso vai mover o agendamento confirmado para esta tentativa — a anterior volta para
-            o desfecho <em>Aceitou</em>.
-            <label className="flex items-center gap-2 mt-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={forcarSubstituicao}
-                onChange={(e) => setForcarSubstituicao(e.target.checked)}
-              />
-              <span className="text-[12px] font-medium" style={{ color: '#92400E' }}>
-                Sim, substituir o agendamento confirmado.
-              </span>
-            </label>
-          </div>
         </div>
       )}
 

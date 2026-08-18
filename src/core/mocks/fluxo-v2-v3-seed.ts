@@ -172,6 +172,11 @@ export type DesfechoTentativa =
 export interface TentativaUnidadeMock {
   id: string;
   unidade: string;
+  /** Id da unidade de saúde de destino (FK para `unidades_destino`) — usado
+   *  para resolver dados atualizados da unidade e para persistir o vínculo
+   *  no banco. Pode ficar ausente em registros legados que só guardaram o
+   *  nome em texto livre. */
+  unidadeId?: string;
   /** Data em que a regulação entrou em contato com a unidade (controle interno). */
   data: string;
   desfecho: DesfechoTentativa;
@@ -224,9 +229,11 @@ export const TIPO_PROCEDIMENTO_LABEL: Record<string, string> = {
 
 /**
  * T2.AM — Agendamento agora é apenas o "container" da lista de tentativas.
- * Os dados do agendamento (unidade/data/hora/tipo/contato/chegada) vivem na
- * tentativa cujo desfecho é `'agendamento_confirmado'`. Use o helper
- * `agendamentoConfirmado(s)` em `_utils/agendamento.ts` para acessá-la.
+ * Os dados do agendamento (unidade/data/hora/tipo/contato/chegada) vivem nas
+ * tentativas cujo desfecho é `'agendamento_confirmado'` — pode haver mais de
+ * uma (um paciente costuma ter vários procedimentos agendados, cada um na
+ * sua unidade de destino). Use o helper `agendamentosConfirmados(s)` em
+ * `_utils/agendamento.ts` para acessá-las.
  */
 export interface AgendamentoMock {
   id: string;

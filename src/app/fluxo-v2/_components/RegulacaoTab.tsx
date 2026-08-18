@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Stethoscope, ClipboardCheck, CheckCircle2, Printer, Plus, AlertTriangle, CalendarClock, Pencil, Stamp, Phone, Undo2, Lock } from 'lucide-react';
+import { Stethoscope, ClipboardCheck, CheckCircle2, Printer, Plus, AlertTriangle, CalendarClock, Pencil, Stamp, Phone, Undo2, Lock, MapPin } from 'lucide-react';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import StatusDot, { type StatusDotTone } from './StatusDot';
 import OrdinalBadge from './OrdinalBadge';
@@ -9,10 +9,11 @@ import ItemRowActions from './ItemRowActions';
 import ConfirmarExclusaoModal from './ConfirmarExclusaoModal';
 import NewParecerDrawer from './drawers/NewParecerDrawer';
 import NewTentativaDrawer from './drawers/NewTentativaDrawer';
+import NewAgendamentoDrawer from './drawers/NewAgendamentoDrawer';
 import CarimboRegulacaoDrawer from './drawers/CarimboRegulacaoDrawer';
 import { useToast } from '@/shared/components/toast/Toast';
 import { isLocked, tooltipLocked } from '../_utils/lock';
-import { agendamentoConfirmado, dataDoAgendamento, tentativasHistoricas } from '../_utils/agendamento';
+import { agendamentosConfirmados, dataDoAgendamento, tentativasHistoricas } from '../_utils/agendamento';
 import { CARIMBO_REGULACAO_VISUAL as CARIMBO_VISUAL } from '../_utils/carimboRegulacao';
 import type {
   DecisaoParecer,
@@ -38,6 +39,7 @@ export default function RegulacaoTab({ s }: Props) {
   const [parecerEditar, setParecerEditar] = useState<ParecerMock | undefined>(undefined);
   const [tentativaOpen, setTentativaOpen] = useState(false);
   const [tentativaEditar, setTentativaEditar] = useState<TentativaUnidadeMock | undefined>(undefined);
+  const [agendamentoOpen, setAgendamentoOpen] = useState(false);
   const [carimboOpen, setCarimboOpen] = useState(false);
   const [parecerExcluir, setParecerExcluir] = useState<ParecerMock | null>(null);
   const [tentativaExcluir, setTentativaExcluir] = useState<TentativaUnidadeMock | null>(null);
@@ -54,30 +56,33 @@ export default function RegulacaoTab({ s }: Props) {
     s.carimboRegulacao === 'AGENDAMENTO';
   const isExcecao = !!s.agendamento && s.agendamento.origem !== 'criacao';
 
-  // T2.AM — Agendamento confirmado vem da tentativa com desfecho 'agendamento_confirmado'.
-  const confirmada = agendamentoConfirmado(s);
+  // T2.AM — Agendamentos confirmados vêm das tentativas com desfecho
+  // 'agendamento_confirmado'. Uma solicitação pode ter mais de um (um por
+  // procedimento/unidade de destino).
+  const confirmados = agendamentosConfirmados(s);
+  const primeiraConfirmada = confirmados[0];
   const historicas = tentativasHistoricas(s);
 
   // Mostra a área de "registro" (lista + botão único) quando:
   //  - parecer está deferido,
   //  - carimbo exige agendamento (CNRAC/CET),
-  //  - ainda não há tentativa confirmada.
+  //  - ainda não há agendamento confirmado.
   const mostraVazioRegistro =
-    parecerDeferido && carimboExigeAgendamento && !confirmada;
+    parecerDeferido && carimboExigeAgendamento && confirmados.length === 0;
 
   // Banner segundo deferimento: agendamento de exceção confirmado sem parecer posterior.
   const agendamentoExcecao =
     s.agendamento &&
     (s.agendamento.origem === 'excecao_cnrac' || s.agendamento.origem === 'excecao_cet');
-  const dataAgendamento = confirmada
-    ? new Date(dataDoAgendamento(confirmada)).getTime()
+  const dataAgendamento = primeiraConfirmada
+    ? new Date(dataDoAgendamento(primeiraConfirmada)).getTime()
     : 0;
   const temParecerPosterior =
     !!agendamentoExcecao &&
-    !!confirmada &&
+    !!primeiraConfirmada &&
     s.pareceres.some((p) => new Date(p.data).getTime() > dataAgendamento);
   const mostraBannerSegundoDef =
-    !!agendamentoExcecao && !!confirmada && !temParecerPosterior;
+    !!agendamentoExcecao && !!primeiraConfirmada && !temParecerPosterior;
 
   function abrirNovaTentativa() {
     setTentativaEditar(undefined);
@@ -189,7 +194,7 @@ export default function RegulacaoTab({ s }: Props) {
           ) : undefined
         }
       >
-        {mostraBannerSegundoDef && confirmada && (
+        {mostraBannerSegundoDef && primeiraConfirmada && (
           <div
             className="flex items-start gap-2.5 mb-3 px-3 py-2.5"
             style={{
@@ -203,8 +208,8 @@ export default function RegulacaoTab({ s }: Props) {
             <AlertTriangle size={15} style={{ color: '#B45309', flexShrink: 0, marginTop: 1 }} />
             <div className="text-[12px] leading-relaxed">
               <strong style={{ color: '#92400E' }}>Agendamento de exceção registrado</strong>
-              {confirmada.unidade ? <> em <strong>{confirmada.unidade}</strong></> : null}
-              {confirmada ? <> em <strong>{new Date(dataDoAgendamento(confirmada)).toLocaleDateString('pt-BR')}</strong></> : null}.
+              {primeiraConfirmada.unidade ? <> em <strong>{primeiraConfirmada.unidade}</strong></> : null}
+              {' '}em <strong>{new Date(dataDoAgendamento(primeiraConfirmada)).toLocaleDateString('pt-BR')}</strong>.
               <br />
               Aguardando parecer de aprovação do agendamento (segundo deferimento — exigência da controladoria SES).
               <br />
@@ -389,117 +394,121 @@ export default function RegulacaoTab({ s }: Props) {
       })()}
 
       {/* T2.AM — Bloco Agendamento e Tentativas (unificado, sempre visível).
-          Tudo é tentativa; a confirmada vira o agendamento. */}
+          Cada procedimento agendado e confirmado aparece como um item próprio,
+          com sua unidade de destino. O histórico de tentativas de contato
+          fica separado, abaixo. */}
       <Section
           icon={CalendarClock}
           title="Agendamento e Tentativas"
           subtitle={
-            confirmada
+            confirmados.length > 0
               ? s.agendamento?.origem === 'criacao'
-                ? 'Agendamento confirmado na criação. Histórico de tentativas abaixo, se houver.'
+                ? 'Agendamento(s) confirmado(s) na criação. Histórico de tentativas abaixo, se houver.'
                 : 'Agendamento de exceção — fluxo da central reguladora.'
               : isExcecao || carimboExigeAgendamento
-                ? 'Registre tentativas conforme contata as unidades. Quando uma aceitar, marque o desfecho como Agendamento confirmado.'
+                ? 'Registre tentativas conforme contata as unidades. Quando uma aceitar, adicione o agendamento.'
                 : !s.agendamento
                   ? 'Sem agendamento informado. Registre tentativas conforme contata as unidades.'
                   : 'Tentativas com unidades.'
           }
           action={
             !locked ? (
-              <button
-                type="button"
-                className="tfd-btn tfd-btn-primary tfd-btn--sm"
-                onClick={abrirNovaTentativa}
-              >
-                <Plus size={14} /> Adicionar tentativa
-              </button>
+              <div className="inline-flex items-center gap-2">
+                <button
+                  type="button"
+                  className="tfd-btn tfd-btn-secondary tfd-btn--sm"
+                  onClick={abrirNovaTentativa}
+                >
+                  <Plus size={14} /> Adicionar tentativa
+                </button>
+                <button
+                  type="button"
+                  className="tfd-btn tfd-btn-primary tfd-btn--sm"
+                  onClick={() => setAgendamentoOpen(true)}
+                >
+                  <Plus size={14} /> Adicionar agendamento
+                </button>
+              </div>
             ) : undefined
           }
         >
-          {/* Card de agendamento confirmado — neutro com ícone verde discreto */}
-          {confirmada && (
-            <div
-              className="flex items-start gap-3 px-5 py-4 mb-3"
-              style={{
-                background: 'white',
-                border: '1px solid #E2E8F0',
-                borderRadius: 10,
-                boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
-              }}
-            >
-              <CheckCircle2 size={20} strokeWidth={2} style={{ color: '#16A34A', flexShrink: 0, marginTop: 2 }} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                  <span className="text-[13.5px] font-semibold" style={{ color: '#15803D' }}>
-                    Agendamento confirmado
-                  </span>
-                  {s.agendamento && <OrigemBadge origem={s.agendamento.origem} />}
-                  <span className="ml-auto inline-flex items-center">
-                    <ItemRowActions
-                      onEditar={() => abrirEditarTentativa(confirmada)}
-                      onExcluir={() => setTentativaExcluir(confirmada)}
-                      disabled={locked}
-                      tooltipDisabled={lockedTip}
-                    />
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-[16px] font-semibold truncate" style={{ color: '#0F172A' }}>
-                    {confirmada.unidade}
-                  </span>
-                  <span className="text-[14px]" style={{ color: '#475569', fontWeight: 500 }}>
-                    {new Date(dataDoAgendamento(confirmada)).toLocaleDateString('pt-BR')}
-                  </span>
-                </div>
-                {(confirmada.tipoProcedimento || confirmada.contatoUnidade || confirmada.observacoesChegada) && (
-                  <div className="flex flex-col gap-2 mt-3 pt-3" style={{ borderTop: '1px solid #E2E8F0' }}>
-                    {confirmada.tipoProcedimento && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-semibold uppercase" style={{ color: '#94A3B8', letterSpacing: '0.06em', minWidth: 80 }}>
-                          Tipo
-                        </span>
-                        <StatusDot tone="neutral">
-                          {getTipoProcedimentoLabel(confirmada.tipoProcedimento)}
-                        </StatusDot>
+          {/* Agendamentos confirmados — um item por procedimento, com a
+              unidade de destino, no formato de linha usado em produção. */}
+          {confirmados.length > 0 && (
+            <>
+              <h4 className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+                Agendamentos confirmados ({confirmados.length})
+              </h4>
+              <ul className="flex flex-col gap-1.5 mb-4">
+                {[...confirmados]
+                  .sort((a, b) => new Date(dataDoAgendamento(a)).getTime() - new Date(dataDoAgendamento(b)).getTime())
+                  .map((t, idx) => (
+                    <li
+                      key={t.id}
+                      className="flex items-start gap-3 px-4 py-3"
+                      style={{
+                        background: 'white',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: 10,
+                        boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
+                      }}
+                    >
+                      <CheckCircle2 size={18} strokeWidth={2} style={{ color: '#16A34A', flexShrink: 0, marginTop: 2 }} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          {confirmados.length > 1 && <OrdinalBadge n={idx + 1} />}
+                          <span className="text-[13.5px] font-semibold truncate" style={{ color: '#0F172A' }}>
+                            {t.tipoProcedimento ? getTipoProcedimentoLabel(t.tipoProcedimento) : 'Agendamento confirmado'}
+                          </span>
+                          <span className="text-[13px]" style={{ color: '#475569', fontWeight: 500 }}>
+                            {new Date(dataDoAgendamento(t)).toLocaleDateString('pt-BR')}
+                          </span>
+                          {s.agendamento && <OrigemBadge origem={s.agendamento.origem} />}
+                          <span className="ml-auto inline-flex items-center">
+                            <ItemRowActions
+                              onEditar={() => abrirEditarTentativa(t)}
+                              onExcluir={() => setTentativaExcluir(t)}
+                              disabled={locked}
+                              tooltipDisabled={lockedTip}
+                            />
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[12.5px]" style={{ color: '#64748B' }}>
+                          <MapPin size={12} style={{ flexShrink: 0 }} />
+                          <span className="truncate">{t.unidade}</span>
+                        </div>
+                        {(t.contatoUnidade || t.observacoesChegada) && (
+                          <div className="flex flex-col gap-1.5 mt-2 pt-2" style={{ borderTop: '1px solid #F1F5F9' }}>
+                            {t.contatoUnidade && (
+                              <a
+                                href={`tel:${t.contatoUnidade.replace(/\D/g, '')}`}
+                                className="inline-flex items-center gap-1.5 text-[12px] font-medium font-mono w-fit"
+                                style={{ color: '#146BFA' }}
+                              >
+                                <Phone size={11} strokeWidth={2.2} />
+                                {t.contatoUnidade}
+                              </a>
+                            )}
+                            {t.observacoesChegada && (
+                              <span className="text-[12px]" style={{ color: '#475569' }}>
+                                {t.observacoesChegada}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {confirmada.contatoUnidade && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-semibold uppercase" style={{ color: '#94A3B8', letterSpacing: '0.06em', minWidth: 80 }}>
-                          Contato
-                        </span>
-                        <a
-                          href={`tel:${confirmada.contatoUnidade.replace(/\D/g, '')}`}
-                          className="inline-flex items-center gap-1.5 text-[13px] font-medium font-mono"
-                          style={{ color: '#146BFA' }}
-                        >
-                          <Phone size={12} strokeWidth={2.2} />
-                          {confirmada.contatoUnidade}
-                        </a>
-                      </div>
-                    )}
-                    {confirmada.observacoesChegada && (
-                      <div className="flex items-start gap-2">
-                        <span className="text-[11px] font-semibold uppercase mt-[2px]" style={{ color: '#94A3B8', letterSpacing: '0.06em', minWidth: 80 }}>
-                          Chegada
-                        </span>
-                        <span className="text-[13px]" style={{ color: '#475569' }}>
-                          {confirmada.observacoesChegada}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+                    </li>
+                  ))}
+              </ul>
+            </>
           )}
 
-          {/* Lista de tentativas (não-confirmadas, se houver agendamento confirmado;
-              caso contrário, todas) */}
+          {/* Lista de tentativas (não-confirmadas, se houver algum agendamento
+              confirmado; caso contrário, todas) */}
           {(() => {
-            const lista = confirmada ? historicas : (s.agendamento?.tentativas ?? []);
+            const lista = confirmados.length > 0 ? historicas : (s.agendamento?.tentativas ?? []);
             if (lista.length === 0) {
-              if (confirmada) return null;
+              if (confirmados.length > 0) return null;
               return (
                 <div
                   className="flex flex-col items-center text-center py-6 px-4"
@@ -533,7 +542,7 @@ export default function RegulacaoTab({ s }: Props) {
             return (
               <>
                 <h4 className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-                  {confirmada ? `Outras tentativas (${lista.length})` : `Tentativas (${lista.length})`}
+                  {confirmados.length > 0 ? `Outras tentativas (${lista.length})` : `Tentativas (${lista.length})`}
                 </h4>
                 <ul className="flex flex-col gap-1.5">
                   {[...lista]
@@ -585,6 +594,11 @@ export default function RegulacaoTab({ s }: Props) {
         onClose={() => setTentativaOpen(false)}
         solicitacaoId={s.id}
         editar={tentativaEditar}
+      />
+      <NewAgendamentoDrawer
+        open={agendamentoOpen}
+        onClose={() => setAgendamentoOpen(false)}
+        solicitacaoId={s.id}
       />
       <CarimboRegulacaoDrawer
         open={carimboOpen}

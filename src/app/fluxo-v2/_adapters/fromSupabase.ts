@@ -227,6 +227,7 @@ function tentativasFromRows(rows: Row[]): TentativaUnidadeMock[] {
       return {
         id: str(r.id),
         unidade: str(r.unidade_nome) || str(obj(r.unidades_destino)?.nome),
+        unidadeId: opt(r.unidade_id),
         data: dataContato,
         desfecho,
         observacao: opt(r.observacao),

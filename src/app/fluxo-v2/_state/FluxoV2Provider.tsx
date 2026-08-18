@@ -94,21 +94,35 @@ interface FluxoV2ContextValue {
   /**
    * T2.AM — Adiciona uma tentativa. Aceita `data` opcional (default: agora) e
    * os campos de agendamento (hora/tipoProcedimento/contatoUnidade/observacoesChegada)
-   * para o caso de já entrar como `desfecho: 'agendamento_confirmado'`. Quando
-   * outra tentativa já estava confirmada, ela é rebaixada para `'aceitou'`.
+   * para o caso de já entrar como `desfecho: 'agendamento_confirmado'`. Uma
+   * solicitação pode ter várias tentativas confirmadas simultâneas (um
+   * agendamento por procedimento/unidade) — não há mais rebaixamento
+   * automático de agendamentos anteriores.
    */
   addTentativa: (id: string, t: Omit<TentativaUnidadeMock, 'id'>) => void;
-  /**
-   * T2.AL/AM — Edita uma tentativa. Quando o patch promove a tentativa para
-   * `desfecho: 'agendamento_confirmado'`, qualquer outra tentativa que estava
-   * confirmada na mesma solicitação é rebaixada para `'aceitou'`.
-   */
+  /** T2.AL/AM — Edita uma tentativa (unidade, desfecho, dados do agendamento etc.). */
   editarTentativa: (id: string, tentativaId: string, patch: Partial<Omit<TentativaUnidadeMock, 'id'>>) => void;
   /** T2.AL — Remove uma tentativa. */
   removerTentativa: (id: string, tentativaId: string) => void;
   /**
+   * Cadastro unificado de agendamento pela Regulação — mesmo formulário da
+   * criação da solicitação (unidade de destino + lista de procedimentos).
+   * Cada procedimento vira uma tentativa `agendamento_confirmado` própria,
+   * todas na mesma unidade, coexistindo com agendamentos já confirmados.
+   */
+  addAgendamentos: (
+    id: string,
+    input: {
+      unidadeId: string;
+      /** Nome de exibição da unidade (já com CNES, quando houver). */
+      unidade: string;
+      procedimentos: Array<{ tipoProcedimento: TentativaUnidadeMock['tipoProcedimento']; data: string }>;
+    },
+  ) => void;
+  /**
    * @deprecated T2.AM — agendamento agora é uma tentativa com
-   * `desfecho: 'agendamento_confirmado'`. Use `addTentativa`/`editarTentativa`.
+   * `desfecho: 'agendamento_confirmado'`. Use `addTentativa`/`editarTentativa`
+   * (ou `addAgendamentos` para cadastro em lote).
    */
   setAgendamento: (
     id: string,
@@ -285,6 +299,9 @@ export interface NewSolicitacaoInput {
    *  procedimento vira uma tentativa confirmada no AgendamentoMock. */
   agendamento?: {
     unidade: string;
+    /** Id da unidade de saúde de destino (FK) — usado para persistir o
+     *  vínculo real no banco, além do nome em texto livre. */
+    unidadeId?: string;
     procedimentos: Array<{
       tipoProcedimento: import('@/core/mocks/fluxo-v2-v3-seed').TipoProcedimento;
       data: string;
@@ -528,7 +545,9 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
             tentativas: input.agendamento.procedimentos.map((p) => ({
               id: uid('t'),
               unidade: input.agendamento!.unidade,
+              unidadeId: input.agendamento!.unidadeId,
               data: p.data,
+              dataAgendamento: p.data,
               desfecho: 'agendamento_confirmado',
               tipoProcedimento: p.tipoProcedimento,
             })),
@@ -557,8 +576,30 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     };
 
     setSolicitacoes((prev) => [novo, ...prev]);
+
+    // Persiste as tentativas confirmadas do agendamento de criação. Sem isso
+    // o agendamento some ao recarregar a página (só existia no estado local).
+    if (realId && ag) {
+      void currentUserId().then(async (userId) => {
+        for (const t of ag.tentativas) {
+          const tentativaRealId = await persistInsert(
+            'tentativas_agendamento',
+            buildTentativa(realId, t, t.unidadeId ?? null, userId),
+          );
+          if (!tentativaRealId) continue;
+          mutate(id, (s) => {
+            if (!s.agendamento) return s;
+            s.agendamento.tentativas = s.agendamento.tentativas.map((tt) =>
+              tt.id === t.id ? { ...tt, id: tentativaRealId } : tt,
+            );
+            return s;
+          });
+        }
+      });
+    }
+
     return id;
-  }, [solicitacoes.length]);
+  }, [solicitacoes.length, mutate]);
 
   /**
    * Anexa arquivos à solicitação carimbando origem + data atual. Usado pelos
@@ -655,6 +696,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       const tentativa: TentativaUnidadeMock = {
         id: tempId,
         unidade: t.unidade,
+        unidadeId: t.unidadeId,
         data: t.data || nowIso(),
         desfecho: t.desfecho,
         observacao: t.observacao,
@@ -663,14 +705,10 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         contatoUnidade: t.contatoUnidade,
         observacoesChegada: t.observacoesChegada,
       };
-      let tentativas: TentativaUnidadeMock[] = s.agendamento?.tentativas ?? [];
-      // T2.AM — só pode haver 1 tentativa com desfecho 'agendamento_confirmado'.
-      // Se a nova é confirmada, rebaixa a anterior pra 'aceitou'.
-      if (tentativa.desfecho === 'agendamento_confirmado') {
-        tentativas = tentativas.map((x) =>
-          x.desfecho === 'agendamento_confirmado' ? { ...x, desfecho: 'aceitou' as const } : x,
-        );
-      }
+      // T2.AM — uma solicitação pode ter várias tentativas confirmadas
+      // simultâneas (um agendamento por procedimento/unidade); não há mais
+      // rebaixamento automático de agendamentos anteriores.
+      const tentativas: TentativaUnidadeMock[] = s.agendamento?.tentativas ?? [];
       if (!s.agendamento) {
         s.agendamento = {
           id: uid('ag'),
@@ -685,7 +723,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     void currentUserId().then(async (userId) => {
       const realId = await persistInsert(
         'tentativas_agendamento',
-        buildTentativa(id, { ...t, data: t.data || nowIso() }, null, userId),
+        buildTentativa(id, { ...t, data: t.data || nowIso() }, t.unidadeId ?? null, userId),
       );
       if (!realId) return;
       mutate(id, (s) => {
@@ -702,18 +740,14 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     (id, tentativaId, patch) => {
       mutate(id, (s) => {
         if (!s.agendamento) return s;
-        const promovendo = patch.desfecho === 'agendamento_confirmado';
-        s.agendamento.tentativas = s.agendamento.tentativas.map((t) => {
-          if (t.id === tentativaId) return { ...t, ...patch };
-          if (promovendo && t.desfecho === 'agendamento_confirmado') {
-            return { ...t, desfecho: 'aceitou' as const };
-          }
-          return t;
-        });
+        s.agendamento.tentativas = s.agendamento.tentativas.map((t) =>
+          t.id === tentativaId ? { ...t, ...patch } : t,
+        );
         return s;
       });
       const dbPatch: Record<string, unknown> = {};
       if (patch.unidade !== undefined) dbPatch.unidade_nome = patch.unidade;
+      if (patch.unidadeId !== undefined) dbPatch.unidade_id = patch.unidadeId;
       if (patch.data !== undefined) dbPatch.data_contato = patch.data;
       if (patch.desfecho !== undefined) {
         const m: Record<string, string> = {
@@ -723,13 +757,63 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         dbPatch.resultado = m[patch.desfecho] ?? 'AGUARDANDO';
       }
       if (patch.observacao !== undefined) dbPatch.observacao = patch.observacao;
+      if (patch.dataAgendamento !== undefined) dbPatch.data_agendamento = patch.dataAgendamento;
       if (patch.hora !== undefined) dbPatch.hora_agendamento = patch.hora;
+      if (patch.tipoProcedimento !== undefined) dbPatch.tipo_procedimento = patch.tipoProcedimento;
       if (patch.contatoUnidade !== undefined) dbPatch.contato_unidade = patch.contatoUnidade;
       if (patch.observacoesChegada !== undefined) dbPatch.observacoes_chegada = patch.observacoesChegada;
       if (Object.keys(dbPatch).length) persistUpdate('tentativas_agendamento', tentativaId, dbPatch);
     },
     [mutate],
   );
+
+  /**
+   * Cadastro unificado de agendamento pela Regulação — mesmo formulário da
+   * criação (unidade de destino + N procedimentos). Cada procedimento vira
+   * uma tentativa `agendamento_confirmado` própria, todas na mesma unidade,
+   * coexistindo com agendamentos já confirmados anteriormente.
+   */
+  const addAgendamentos = useCallback<FluxoV2ContextValue['addAgendamentos']>((id, input) => {
+    if (input.procedimentos.length === 0) return;
+    const novas: TentativaUnidadeMock[] = input.procedimentos.map((p) => ({
+      id: uid('t'),
+      unidade: input.unidade,
+      unidadeId: input.unidadeId || undefined,
+      data: p.data,
+      dataAgendamento: p.data,
+      desfecho: 'agendamento_confirmado',
+      tipoProcedimento: p.tipoProcedimento,
+    }));
+    mutate(id, (s) => {
+      const tentativasAtuais = s.agendamento?.tentativas ?? [];
+      if (!s.agendamento) {
+        s.agendamento = {
+          id: uid('ag'),
+          origem: s.carimboRegulacao === 'CNRAC' ? 'excecao_cnrac' : s.carimboRegulacao === 'CET' ? 'excecao_cet' : 'criacao',
+          tentativas: [...tentativasAtuais, ...novas],
+        };
+      } else {
+        s.agendamento = { ...s.agendamento, tentativas: [...tentativasAtuais, ...novas] };
+      }
+      return s;
+    });
+    void currentUserId().then(async (userId) => {
+      for (const t of novas) {
+        const realId = await persistInsert(
+          'tentativas_agendamento',
+          buildTentativa(id, t, input.unidadeId || null, userId),
+        );
+        if (!realId) continue;
+        mutate(id, (s) => {
+          if (!s.agendamento) return s;
+          s.agendamento.tentativas = s.agendamento.tentativas.map((tt) =>
+            tt.id === t.id ? { ...tt, id: realId } : tt,
+          );
+          return s;
+        });
+      }
+    });
+  }, [mutate]);
 
   const removerTentativa = useCallback<FluxoV2ContextValue['removerTentativa']>(
     (id, tentativaId) => {
@@ -1430,6 +1514,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     addTentativa,
     editarTentativa,
     removerTentativa,
+    addAgendamentos,
     setAgendamento,
     registrarSegundoDeferimento,
     addViagem,
@@ -1469,7 +1554,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     addAnexos,
     addParecer, editarParecer, removerParecer,
     setCarimbo,
-    addTentativa, editarTentativa, removerTentativa, setAgendamento, registrarSegundoDeferimento,
+    addTentativa, editarTentativa, removerTentativa, addAgendamentos, setAgendamento, registrarSegundoDeferimento,
     addViagem, addViagensIdaEVolta, updateViagem, editarViagem, cancelarViagem, reembolsarViagem, removerViagem,
     addAjudaCusto, updateAjudaCusto, editarAjudaCusto, cancelarAjudaCusto, reembolsarAjudaCusto, removerAjudaCusto,
     addAdicional, editarAdicional, removerAdicional,
