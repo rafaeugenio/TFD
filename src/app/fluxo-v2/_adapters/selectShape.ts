@@ -14,11 +14,13 @@
  */
 
 /**
- * Responsável pela solicitação no setor: o join `responsavel:responsavel_atual_id`
- * só pode voltar a este select depois que a migration 00077 for aplicada no banco.
- * Enquanto a coluna não existir, incluir o join faz a consulta inteira falhar com
- * 400 e o fluxo carrega sem nenhuma solicitação. Nada de comentário dentro da
- * template string abaixo: o conteúdo dela vai inteiro no parâmetro select.
+ * Responsáveis pela solicitação no setor: o embed `solicitacao_responsaveis (
+ * *, usuarios:usuario_id (id, nome_completo))` só pode voltar a este select
+ * depois que a migration 00077 (tabela de junção N:N) for aplicada no banco.
+ * Enquanto a tabela não existir, incluir o embed faz a consulta inteira
+ * falhar com 400 e o fluxo carrega sem nenhuma solicitação. Nada de
+ * comentário dentro da template string abaixo: o conteúdo dela vai inteiro
+ * no parâmetro select.
  */
 export const SOLICITACAO_V2_SELECT = `
   *,

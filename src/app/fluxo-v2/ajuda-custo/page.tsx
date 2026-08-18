@@ -401,7 +401,7 @@ export default function AjudaCustoListPage() {
                     {tempoNoSetor(s.dataCriacao)}d
                   </td>
                   <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
-                    <ResponsavelAvatar responsavel={s.responsavelAtual} />
+                    <ResponsavelAvatar responsaveis={s.responsaveisAtuais} />
                   </td>
                   <td className="px-4 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="inline-flex items-center">

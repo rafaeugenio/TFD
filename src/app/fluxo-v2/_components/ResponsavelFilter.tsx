@@ -24,8 +24,11 @@ export default function ResponsavelFilter({ solicitacoes, value, onChange }: Pro
     const mapa = new Map<string, ResponsavelSolicitacao>();
     let semResponsavel = false;
     for (const s of solicitacoes) {
-      if (s.responsavelAtual) mapa.set(s.responsavelAtual.id, s.responsavelAtual);
-      else semResponsavel = true;
+      if (s.responsaveisAtuais?.length) {
+        for (const r of s.responsaveisAtuais) mapa.set(r.id, r);
+      } else {
+        semResponsavel = true;
+      }
     }
     return {
       responsaveis: Array.from(mapa.values()).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),

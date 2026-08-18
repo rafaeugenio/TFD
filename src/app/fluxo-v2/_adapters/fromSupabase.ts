@@ -150,6 +150,9 @@ function parecerFromRow(r: Row): ParecerMock {
     medicoCrm: opt(auditor?.crm),
     medicoCrmUf: opt(auditor?.crm_uf),
     medicoEspecialidade: opt(auditor?.especialidade_medica),
+    // Migration 00079 (observacao_ajuste), ainda não aplicada — `opt` some
+    // sozinho até lá, já que a coluna simplesmente não vem na row.
+    observacaoAjuste: opt(r.observacao_ajuste),
   };
 }
 
@@ -451,17 +454,26 @@ function anexosFromRows(rows: Row[]): AnexoMock[] {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Responsável atual                                                  */
+/*  Responsáveis atuais                                                */
 /* ------------------------------------------------------------------ */
 
-/** Pessoa responsável pela solicitação no setor atual — ausente antes da
- *  primeira tramitação (estado neutro na UI, não erro). */
-function responsavelFromRow(row: Row): ResponsavelSolicitacao | undefined {
-  const r = obj(row.responsavel);
-  if (!r) return undefined;
-  const nome = str(r.nome_completo);
-  if (!nome) return undefined;
-  return { id: str(r.id), nome };
+/**
+ * Pessoas responsáveis pela solicitação no setor atual — ausente/vazio antes
+ * da primeira tramitação (estado neutro na UI, não erro). Vem da tabela de
+ * junção `solicitacao_responsaveis` (migration 00077, N:N) — só pode voltar
+ * a este embed depois que a migration for aplicada no banco; enquanto isso,
+ * `row.solicitacao_responsaveis` nunca vem preenchido e a lista fica vazia.
+ */
+function responsaveisFromRows(rows: Row[]): ResponsavelSolicitacao[] {
+  return rows
+    .map((r) => {
+      const u = obj(r.usuarios);
+      if (!u) return null;
+      const nome = str(u.nome_completo);
+      if (!nome) return null;
+      return { id: str(u.id), nome };
+    })
+    .filter((r): r is ResponsavelSolicitacao => r !== null);
 }
 
 /* ------------------------------------------------------------------ */
@@ -531,7 +543,7 @@ export function solicitacaoFromSupabase(row: Row, despesasFunerariasRows: Row[] 
     seiUrl: opt(row.url_sei),
     setorOrigemAprovacao: opt(row.setor_origem_aprovacao) as SolicitacaoMock['setorOrigemAprovacao'],
     observacaoAprovacao: opt(row.observacao_aprovacao),
-    responsavelAtual: responsavelFromRow(row),
+    responsaveisAtuais: responsaveisFromRows(arr(row.solicitacao_responsaveis)),
   };
 }
 

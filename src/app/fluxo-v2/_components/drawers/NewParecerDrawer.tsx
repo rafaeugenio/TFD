@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, FileText, Paperclip, Sparkles, Stethoscope, UserCircle2, Users, X, Gavel, BookOpen } from 'lucide-react';
+import { AlertTriangle, FileText, Paperclip, Sparkles, Stethoscope, UserCircle2, Users, X, Gavel, BookOpen, MessageSquareWarning } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormSection from '@/shared/components/drawer/FormSection';
 import AnexosUploadField, { type AnexoLocal } from '@/shared/components/anexos-upload-field/AnexosUploadField';
@@ -77,6 +77,11 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
   /** Variante "serviço no MA" — só usada em templates deferidos que oferecem
    *  as duas opções (TFD completo, Ajuda de custo). Default sem_servico_ma. */
   const [varianteServicoMA, setVarianteServicoMA] = useState<VarianteServicoMA>('sem_servico_ma');
+  /** Quando o parecer editado tem um ajuste pendente da enfermeira, o médico
+   *  escolhe se a correção que está fazendo agora resolve o ajuste (remove
+   *  a observação) ou se ainda precisa de mais uma rodada. Marcado por
+   *  padrão — a expectativa normal é resolver ao salvar. */
+  const [resolverAjuste, setResolverAjuste] = useState(true);
 
   // Dados do médico — em modo CRIAÇÃO vêm do usuário logado (snapshot do perfil).
   // Em modo EDIÇÃO mantemos o que foi gravado no parecer original (não sobrescreve).
@@ -103,6 +108,7 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
         setCidSecundarioNome(editar.cidSecundarioNome ?? '');
         setVersaoCID(editar.versaoCID ?? '10');
         setObs(editar.observacao ?? '');
+        setResolverAjuste(true);
       } else {
         setDecisao('deferido');
         setCidPrincipal('');
@@ -171,6 +177,8 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
     </div>
   );
 
+  const temAjustePendente = isEdicao && !!editar?.observacaoAjuste;
+
   function handleSalvar() {
     const payload = {
       decisao,
@@ -185,10 +193,16 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
       medicoCrm: medicoCrm || undefined,
       medicoCrmUf: medicoCrmUf || undefined,
       medicoEspecialidade: medicoEspecialidade || undefined,
+      // Ajuste pendente some quando o médico marca "resolver ao salvar" —
+      // do contrário, a observação da enfermeira permanece no parecer.
+      observacaoAjuste: temAjustePendente && !resolverAjuste ? editar!.observacaoAjuste : undefined,
     };
     if (isEdicao && editar) {
       editarParecer(solicitacaoId, editar.id, payload);
-      toast.success('Parecer atualizado', `Decisão: ${decisao}.`);
+      toast.success(
+        temAjustePendente && resolverAjuste ? 'Ajuste resolvido' : 'Parecer atualizado',
+        `Decisão: ${decisao}.`,
+      );
     } else {
       addParecer(solicitacaoId, payload);
       toast.success('Parecer registrado', `Decisão: ${decisao}.`);
@@ -239,6 +253,32 @@ export default function NewParecerDrawer({ open, onClose, solicitacaoId, snapsho
       {/* Resumo da solicitação — paciente + acompanhantes + anexos.
           Dá ao médico tudo que precisa para emitir o parecer sem sair do drawer. */}
       {solicitacao && <ResumoSolicitacaoCard sol={solicitacao} />}
+
+      {/* Ajuste pedido pela enfermeira da Regulação — destacado para o médico
+          ler antes de mais nada. Some do parecer quando o médico marca a
+          correção como resolvida ao salvar. */}
+      {temAjustePendente && (
+        <div
+          className="flex items-start gap-2.5 mb-4 px-3 py-2.5"
+          style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, color: '#78350F' }}
+          role="alert"
+        >
+          <MessageSquareWarning size={15} style={{ color: '#B45309', flexShrink: 0, marginTop: 1 }} />
+          <div className="flex-1 text-[12.5px] leading-relaxed">
+            <strong style={{ color: '#92400E' }}>Ajuste pedido pela Regulação:</strong>{' '}
+            {editar?.observacaoAjuste}
+            <label className="flex items-center gap-2 mt-2 text-[12px] font-medium" style={{ color: '#92400E' }}>
+              <input
+                type="checkbox"
+                checked={resolverAjuste}
+                onChange={(e) => setResolverAjuste(e.target.checked)}
+                style={{ accentColor: '#B45309' }}
+              />
+              Resolver ajuste ao salvar
+            </label>
+          </div>
+        </div>
+      )}
 
       {/* T2.AH — Decisão (segmented control com 2 opções) */}
       <FormSection title="Decisão" icon={<Gavel size={12} />} tone="primary">

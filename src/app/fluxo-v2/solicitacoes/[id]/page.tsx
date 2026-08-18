@@ -134,8 +134,6 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
 
   const acompCount = s.acompanhantes.length;
 
-  // Último parecer — fonte do CID/diagnóstico exibido no cabeçalho.
-  const ultimoParecer = s.pareceres[s.pareceres.length - 1];
   // Proxy de "tempo no setor atual" — mesma métrica (dias desde a criação da
   // solicitação) usada nas filas de Passagens, Ajuda de Custo e Acompanhamento.
   // Não existe timestamp de entrada no setor atual persistido no modelo.
@@ -296,17 +294,6 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
                 <Field label="Data e origem do laudo">
                   {new Date(s.dataLaudo).toLocaleDateString('pt-BR')}
                   {s.laudoOrigemUnidade ? ` · ${s.laudoOrigemUnidade}` : ''}
-                </Field>
-              )}
-              {ultimoParecer?.cidPrincipal && (
-                <Field label="CID do último parecer">
-                  <span title={ultimoParecer.cidPrincipalNome || undefined}>
-                    <span className="font-mono">{ultimoParecer.cidPrincipal}</span>
-                    {ultimoParecer.cidSecundario && (
-                      <span className="font-mono"> / {ultimoParecer.cidSecundario}</span>
-                    )}
-                    <span style={{ color: '#94A3B8' }}> · CID-{ultimoParecer.versaoCID ?? '10'}</span>
-                  </span>
                 </Field>
               )}
               <Field label="Anexos">

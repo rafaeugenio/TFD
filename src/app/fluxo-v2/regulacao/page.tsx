@@ -22,6 +22,11 @@ import { casaComFiltroRegiao, REGIAO_FILTRO_VAZIO, type RegiaoFiltroValue } from
 import RegiaoRegionalMunicipioFilter from '../_components/RegiaoRegionalMunicipioFilter';
 import { casaComFiltroResponsavel, RESPONSAVEL_FILTRO_VAZIO, type ResponsavelFiltroValue } from '../_utils/derivarResponsavel';
 import ResponsavelFilter from '../_components/ResponsavelFilter';
+import {
+  casaComFiltroStatusParecer,
+  STATUS_PARECER_FILTRO_LABEL,
+  type StatusParecerFiltro,
+} from '../_utils/derivarStatusParecer';
 import ResponsavelAvatar from '../_components/ResponsavelAvatar';
 import HoverTooltip, { TooltipKV } from '../_components/HoverTooltip';
 import { TIPO_PROCEDIMENTO_LABEL } from '@/core/mocks/fluxo-v2-v3-seed';
@@ -83,6 +88,7 @@ export default function RegulacaoListPage() {
   const [enviar, setEnviar] = useState<SolicitacaoMock | null>(null);
   const [busca, setBusca] = useState('');
   const [carimboFiltro, setCarimboFiltro] = useState<CarimboFiltro>('all');
+  const [statusParecerFiltro, setStatusParecerFiltro] = useState<StatusParecerFiltro>('all');
   const [regiaoFiltro, setRegiaoFiltro] = useState<RegiaoFiltroValue>(REGIAO_FILTRO_VAZIO);
   const [responsavelFiltro, setResponsavelFiltro] = useState<ResponsavelFiltroValue>(RESPONSAVEL_FILTRO_VAZIO);
   const [page, setPage] = useState(1);
@@ -113,6 +119,7 @@ export default function RegulacaoListPage() {
       } else if (carimboFiltro !== 'all') {
         if (s.carimboRegulacao !== carimboFiltro) return false;
       }
+      if (!casaComFiltroStatusParecer(s, statusParecerFiltro)) return false;
       if (!casaComFiltroRegiao(s.paciente, regiaoFiltro)) return false;
       if (!casaComFiltroResponsavel(s, responsavelFiltro)) return false;
       if (busca.trim()) {
@@ -125,12 +132,12 @@ export default function RegulacaoListPage() {
       }
       return true;
     }),
-    [filaBase, busca, carimboFiltro, regiaoFiltro, responsavelFiltro],
+    [filaBase, busca, carimboFiltro, statusParecerFiltro, regiaoFiltro, responsavelFiltro],
   );
 
   useEffect(() => {
     setPage(1);
-  }, [busca, carimboFiltro, regiaoFiltro, responsavelFiltro, sort]);
+  }, [busca, carimboFiltro, statusParecerFiltro, regiaoFiltro, responsavelFiltro, sort]);
 
   const filaOrdenada = useMemo(() => {
     if (!sort.field || !sort.dir) return fila;
@@ -232,6 +239,20 @@ export default function RegulacaoListPage() {
         >
           {CARIMBO_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+        <select
+          value={statusParecerFiltro}
+          onChange={(e) => setStatusParecerFiltro(e.target.value as StatusParecerFiltro)}
+          style={{
+            height: 36, padding: '0 12px',
+            background: 'white', border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8, fontSize: 13, color: '#1A1D2B',
+          }}
+          aria-label="Filtrar por status do parecer"
+        >
+          {(Object.keys(STATUS_PARECER_FILTRO_LABEL) as StatusParecerFiltro[]).map((v) => (
+            <option key={v} value={v}>{STATUS_PARECER_FILTRO_LABEL[v]}</option>
           ))}
         </select>
         <RegiaoRegionalMunicipioFilter
@@ -346,7 +367,7 @@ export default function RegulacaoListPage() {
                     {tempoNoSetor(s.dataCriacao)}d
                   </td>
                   <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
-                    <ResponsavelAvatar responsavel={s.responsavelAtual} />
+                    <ResponsavelAvatar responsaveis={s.responsaveisAtuais} />
                   </td>
                   <td className="px-4 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="inline-flex items-center">

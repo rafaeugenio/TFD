@@ -13,12 +13,13 @@ export type ResponsavelFiltroValue = string; // '' | SEM_RESPONSAVEL | id do usu
 
 export const RESPONSAVEL_FILTRO_VAZIO: ResponsavelFiltroValue = '';
 
-/** Testa se a solicitação casa com o filtro por responsável selecionado. */
+/** Testa se a solicitação casa com o filtro por responsável selecionado —
+ *  encontra a solicitação por qualquer uma das pessoas responsáveis. */
 export function casaComFiltroResponsavel(
-  s: Pick<SolicitacaoMock, 'responsavelAtual'>,
+  s: Pick<SolicitacaoMock, 'responsaveisAtuais'>,
   filtro: ResponsavelFiltroValue,
 ): boolean {
   if (!filtro) return true;
-  if (filtro === SEM_RESPONSAVEL) return !s.responsavelAtual;
-  return s.responsavelAtual?.id === filtro;
+  if (filtro === SEM_RESPONSAVEL) return !s.responsaveisAtuais?.length;
+  return !!s.responsaveisAtuais?.some((r) => r.id === filtro);
 }

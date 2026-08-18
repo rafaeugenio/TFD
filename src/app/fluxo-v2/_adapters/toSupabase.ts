@@ -82,6 +82,10 @@ export interface ParecerDb {
   cid_secundario_nome?: string;
   versao_cid?: '10' | '11';
   justificativa?: string;
+  /** Observação de ajuste pendente pedida pela enfermeira da Regulação —
+   *  migration 00079, ainda não aplicada. `null` quando não há ajuste
+   *  pendente (parecer no fluxo normal). */
+  observacao_ajuste?: string | null;
 }
 
 export function buildParecer(
@@ -513,29 +517,30 @@ export function buildObservacao(
  * persistência própria. Ao sair da Aprovação para qualquer outro setor, os
  * dois campos são limpos.
  */
+/**
+ * Pessoa(s) responsável(is) pela solicitação no setor de destino não entram
+ * mais aqui — moraram numa coluna única (`responsavel_atual_id`) enquanto
+ * só era possível escolher uma pessoa; agora são N:N e vivem na tabela de
+ * junção `solicitacao_responsaveis` (migration 00077), gravada à parte pelo
+ * provider a cada tramitação.
+ */
 export function buildEnvioSetor(
   setor: 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento' | 'aprovacao',
   aprovacao?: {
     setorOrigem: 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento';
     observacao?: string;
   },
-  /** Pessoa escolhida como responsável pela solicitação no setor de
-   *  destino. `undefined` quando a tramitação não passou por essa escolha
-   *  (ex.: reabertura automática) — nesse caso a coluna não é tocada. */
-  responsavelId?: string,
 ): {
   status: StatusDb;
   setor_atual: SetorDb;
   setor_origem_aprovacao: string | null;
   observacao_aprovacao: string | null;
-  responsavel_atual_id?: string;
 } {
   return {
     status: entryStatusForSetor(setor),
     setor_atual: setor,
     setor_origem_aprovacao: setor === 'aprovacao' ? aprovacao?.setorOrigem ?? null : null,
     observacao_aprovacao: setor === 'aprovacao' ? aprovacao?.observacao?.trim() || null : null,
-    ...(responsavelId ? { responsavel_atual_id: responsavelId } : {}),
   };
 }
 

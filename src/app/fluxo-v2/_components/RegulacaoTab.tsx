@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Stethoscope, ClipboardCheck, CheckCircle2, Printer, Plus, AlertTriangle, CalendarClock, Pencil, Stamp, Phone, Undo2, Lock, MapPin } from 'lucide-react';
+import { Stethoscope, ClipboardCheck, CheckCircle2, Printer, Plus, AlertTriangle, CalendarClock, Pencil, Stamp, Phone, Undo2, Lock, MapPin, MessageSquareWarning } from 'lucide-react';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import StatusDot, { type StatusDotTone } from './StatusDot';
 import OrdinalBadge from './OrdinalBadge';
@@ -11,6 +11,7 @@ import NewParecerDrawer from './drawers/NewParecerDrawer';
 import NewTentativaDrawer from './drawers/NewTentativaDrawer';
 import NewAgendamentoDrawer from './drawers/NewAgendamentoDrawer';
 import CarimboRegulacaoDrawer from './drawers/CarimboRegulacaoDrawer';
+import PedirAjusteParecerDrawer from './drawers/PedirAjusteParecerDrawer';
 import { useToast } from '@/shared/components/toast/Toast';
 import { isLocked, tooltipLocked } from '../_utils/lock';
 import { agendamentosConfirmados, dataDoAgendamento, tentativasHistoricas } from '../_utils/agendamento';
@@ -37,6 +38,7 @@ export default function RegulacaoTab({ s }: Props) {
 
   const [parecerOpen, setParecerOpen] = useState(false);
   const [parecerEditar, setParecerEditar] = useState<ParecerMock | undefined>(undefined);
+  const [ajusteParecer, setAjusteParecer] = useState<ParecerMock | null>(null);
   const [tentativaOpen, setTentativaOpen] = useState(false);
   const [tentativaEditar, setTentativaEditar] = useState<TentativaUnidadeMock | undefined>(undefined);
   const [agendamentoOpen, setAgendamentoOpen] = useState(false);
@@ -224,6 +226,7 @@ export default function RegulacaoTab({ s }: Props) {
                 <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                   <OrdinalBadge n={idx + 1} />
                   <DecisaoBadge decisao={p.decisao} />
+                  {p.observacaoAjuste && <StatusDot tone="warning" strong>Em ajuste</StatusDot>}
                   <span style={{ color: '#6B7280' }}>{new Date(p.data).toLocaleString('pt-BR')}</span>
                   <span style={{ color: '#1A1D2B', fontWeight: 500 }}>{p.medico}</span>
                   <span className="ml-auto inline-flex items-center gap-1.5">
@@ -235,6 +238,16 @@ export default function RegulacaoTab({ s }: Props) {
                     >
                       <Printer size={11} /> Exportar
                     </button>
+                    {!p.observacaoAjuste && !locked && (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 transition-colors hover:bg-white"
+                        style={{ color: '#B45309', borderRadius: 6, border: '1px solid var(--tfd-surface-border)' }}
+                        onClick={() => setAjusteParecer(p)}
+                      >
+                        <MessageSquareWarning size={11} /> Pedir ajuste
+                      </button>
+                    )}
                     <ItemRowActions
                       onEditar={() => abrirEditarParecer(p)}
                       onExcluir={() => setParecerExcluir(p)}
@@ -243,6 +256,19 @@ export default function RegulacaoTab({ s }: Props) {
                     />
                   </span>
                 </div>
+                {p.observacaoAjuste && (
+                  <div
+                    className="flex items-start gap-2 mb-2 px-3 py-2"
+                    style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, color: '#78350F' }}
+                    role="alert"
+                  >
+                    <MessageSquareWarning size={14} style={{ color: '#B45309', flexShrink: 0, marginTop: 1 }} />
+                    <div className="text-[12px] leading-relaxed">
+                      <strong style={{ color: '#92400E' }}>Ajuste pedido pela Regulação:</strong>{' '}
+                      {p.observacaoAjuste}
+                    </div>
+                  </div>
+                )}
                 {p.tipo && (
                   <div className="mb-1 inline-flex items-center gap-1.5">
                     <span
@@ -611,6 +637,12 @@ export default function RegulacaoTab({ s }: Props) {
           setCarimbo(s.id, c, obs, info);
           toast.success('Carimbo aplicado', CARIMBO_VISUAL[c]?.label ?? c);
         }}
+      />
+      <PedirAjusteParecerDrawer
+        open={!!ajusteParecer}
+        onClose={() => setAjusteParecer(null)}
+        solicitacaoId={s.id}
+        parecer={ajusteParecer}
       />
 
       {/* Modais de confirmação de exclusão */}

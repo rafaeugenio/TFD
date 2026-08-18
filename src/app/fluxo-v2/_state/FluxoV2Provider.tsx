@@ -229,10 +229,10 @@ interface FluxoV2ContextValue {
     destino: 'dados_basicos' | 'regulacao' | 'passagens' | 'ajuda_custo' | 'acompanhamento' | 'aprovacao',
     observacao?: string,
     tipo?: 'enviar' | 'devolver',
-    /** Pessoa escolhida como responsável pela solicitação no setor de
-     *  destino — a partir da primeira tramitação, quem envia escolhe quem
-     *  responde por ela lá. */
-    responsavel?: import('@/core/mocks/fluxo-v2-v3-seed').ResponsavelSolicitacao,
+    /** Pessoa(s) escolhida(s) como responsável(is) pela solicitação no setor
+     *  de destino — a partir da primeira tramitação, quem envia escolhe quem
+     *  responde por ela lá. Pode ser mais de uma pessoa. */
+    responsaveis?: import('@/core/mocks/fluxo-v2-v3-seed').ResponsavelSolicitacao[],
   ) => void;
   /** @deprecated use `enviarParaSetor(id, 'passagens', obs, 'enviar')` */
   encaminharParaFinanceiro: (id: string, observacao?: string) => void;
@@ -659,6 +659,10 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       if (patch.cidSecundarioNome !== undefined) dbPatch.cid_secundario_nome = patch.cidSecundarioNome || null;
       if (patch.versaoCID !== undefined) dbPatch.versao_cid = patch.versaoCID;
       if (patch.observacao !== undefined) dbPatch.justificativa = patch.observacao;
+      // 'observacaoAjuste' in patch (em vez de !== undefined) — precisa
+      // distinguir "não mexeu no campo" de "mandou limpar" quando o médico
+      // resolve o ajuste (o payload manda a chave presente com undefined).
+      if ('observacaoAjuste' in patch) dbPatch.observacao_ajuste = patch.observacaoAjuste || null;
       if (Object.keys(dbPatch).length) persistUpdate('pareceres', parecerId, dbPatch);
     },
     [mutate],
@@ -1336,7 +1340,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
    * devolução pendente como resolvida — fechando o ciclo.
    */
   const enviarParaSetor = useCallback<FluxoV2ContextValue['enviarParaSetor']>(
-    (id, destino, observacao, tipo = 'enviar', responsavel) => {
+    (id, destino, observacao, tipo = 'enviar', responsaveis) => {
       // Setor de onde a solicitação está saindo, capturado ANTES da mutação —
       // é o que a fila de Aprovações exibe como "setor de origem" quando o
       // destino é 'aprovacao'.
@@ -1392,8 +1396,8 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
 
         s.status = STATUS_POR_DESTINO[destino];
 
-        if (responsavel) {
-          s.responsavelAtual = responsavel;
+        if (responsaveis && responsaveis.length > 0) {
+          s.responsaveisAtuais = responsaveis;
         }
 
         return s;
@@ -1406,7 +1410,6 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         destino === 'aprovacao' && setorOrigem && setorOrigem !== 'aprovacao' && setorOrigem !== 'encerramento'
           ? { setorOrigem, observacao }
           : undefined,
-        responsavel?.id,
       );
       supabase
         .from('solicitacoes')
@@ -1416,6 +1419,31 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         .then(({ error }) => {
           if (error) console.warn('[FluxoV2] enviarParaSetor persistência falhou:', error.message);
         });
+
+      // Responsáveis vivem numa tabela de junção (N:N) — substitui o conjunto
+      // atual pelo escolhido nesta tramitação. Best-effort, igual ao restante
+      // da persistência: falha aqui não bloqueia a UI otimista.
+      if (responsaveis && responsaveis.length > 0) {
+        supabase
+          .from('solicitacao_responsaveis')
+          .delete()
+          .eq('solicitacao_id', id)
+          .then(({ error }) => {
+            if (error) {
+              console.warn('[FluxoV2] limpar solicitacao_responsaveis falhou:', error.message);
+              return;
+            }
+            supabase
+              .from('solicitacao_responsaveis')
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              .insert(responsaveis.map((r) => ({ solicitacao_id: id, usuario_id: r.id })) as any)
+              .then(({ error: insertError }) => {
+                if (insertError) {
+                  console.warn('[FluxoV2] gravar solicitacao_responsaveis falhou:', insertError.message);
+                }
+              });
+          });
+      }
     },
     [mutate, getById],
   );
