@@ -24,6 +24,7 @@ import { casaComFiltroResponsavel, RESPONSAVEL_FILTRO_VAZIO, type ResponsavelFil
 import ResponsavelFilter from '../_components/ResponsavelFilter';
 import {
   casaComFiltroStatusParecer,
+  statusDoParecer,
   STATUS_PARECER_FILTRO_LABEL,
   type StatusParecerFiltro,
 } from '../_utils/derivarStatusParecer';
@@ -508,6 +509,7 @@ function ResumoRegulacao({ s }: { s: SolicitacaoMock }) {
   const totalPareceres = s.pareceres.length;
   const ultimoParecer = totalPareceres > 0 ? s.pareceres[totalPareceres - 1] : null;
   const ultimaDecisao = ultimoParecer?.decisao === 'deferido' ? 'Deferido' : ultimoParecer?.decisao === 'indeferido' ? 'Indeferido' : null;
+  const parecerEmAjuste = ultimoParecer ? statusDoParecer(ultimoParecer) === 'ajuste' : false;
 
   // Tooltip do agendamento — lista TODOS os agendamentos confirmados, cada um
   // com tipo de procedimento + data (formato compacto, ordenado por data asc).
@@ -646,8 +648,8 @@ function ResumoRegulacao({ s }: { s: SolicitacaoMock }) {
                 : `${totalPareceres} pareceres`
           }
           info={ultimaDecisao ? `Último: ${ultimaDecisao}` : null}
-          statusInline={totalPareceres === 0 ? 'Sem parecer' : null}
-          statusTone="violet"
+          statusInline={totalPareceres === 0 ? 'Sem parecer' : parecerEmAjuste ? 'Em ajuste' : null}
+          statusTone={totalPareceres === 0 ? 'violet' : 'amber'}
         />
       </HoverTooltip>
     </div>
@@ -833,7 +835,7 @@ function ResumoLinha({
   info?: string | null;
   statusInline?: string | null;
   /** Tom do chip de status quando exibido. */
-  statusTone?: 'green' | 'violet';
+  statusTone?: 'green' | 'violet' | 'amber';
 }) {
   const tones: Record<
     'green' | 'violet' | 'muted',
@@ -843,9 +845,10 @@ function ResumoLinha({
     violet: { fg: '#6D28D9', iconBg: '#F5F3FF' },
     muted:  { fg: '#94A3B8', iconBg: '#F1F5F9' },
   };
-  const chipTones: Record<'green' | 'violet', { bg: string; fg: string; dot: string }> = {
+  const chipTones: Record<'green' | 'violet' | 'amber', { bg: string; fg: string; dot: string }> = {
     green:  { bg: '#ECFDF5', fg: '#047857', dot: '#10B981' },
     violet: { bg: '#F5F3FF', fg: '#6D28D9', dot: '#8B5CF6' },
+    amber:  { bg: '#FFFBEB', fg: '#92400E', dot: '#D97706' },
   };
   const t = tones[tone];
   const chip = statusInline && statusTone ? chipTones[statusTone] : null;

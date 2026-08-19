@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Stethoscope, ClipboardCheck, CheckCircle2, Printer, Plus, AlertTriangle, CalendarClock, Pencil, Stamp, Phone, Undo2, Lock, MapPin, MessageSquareWarning } from 'lucide-react';
+import { Stethoscope, ClipboardCheck, CheckCircle2, Printer, Plus, AlertTriangle, CalendarClock, Pencil, Stamp, Phone, Undo2, Lock, MapPin, MessageSquareWarning, X } from 'lucide-react';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import StatusDot, { type StatusDotTone } from './StatusDot';
 import OrdinalBadge from './OrdinalBadge';
@@ -32,7 +32,7 @@ interface Props {
 }
 
 export default function RegulacaoTab({ s }: Props) {
-  const { setCarimbo, removerParecer, removerTentativa } = useFluxoV2State();
+  const { setCarimbo, removerParecer, removerTentativa, editarParecer } = useFluxoV2State();
   const toast = useToast();
   const { getLabel: getTipoProcedimentoLabel } = useTiposProcedimento();
 
@@ -263,10 +263,32 @@ export default function RegulacaoTab({ s }: Props) {
                     role="alert"
                   >
                     <MessageSquareWarning size={14} style={{ color: '#B45309', flexShrink: 0, marginTop: 1 }} />
-                    <div className="text-[12px] leading-relaxed">
+                    <div className="flex-1 min-w-0 text-[12px] leading-relaxed">
                       <strong style={{ color: '#92400E' }}>Ajuste pedido pela Regulação:</strong>{' '}
                       {p.observacaoAjuste}
                     </div>
+                    {!locked && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              'Fechar o ajuste deste parecer? A observação será removida e o parecer volta ao fluxo normal.',
+                            )
+                          ) {
+                            return;
+                          }
+                          editarParecer(s.id, p.id, { observacaoAjuste: undefined });
+                          toast.success('Ajuste resolvido', p.medico);
+                        }}
+                        className="inline-flex items-center justify-center shrink-0 transition-colors hover:bg-white"
+                        style={{ width: 20, height: 20, borderRadius: 6, color: '#92400E', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                        aria-label="Fechar ajuste"
+                        title="Fechar ajuste"
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
                   </div>
                 )}
                 {p.tipo && (
