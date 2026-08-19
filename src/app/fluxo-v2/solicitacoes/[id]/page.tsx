@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
   ArrowLeft, Archive, ArchiveRestore, Send, Phone, Mail, ExternalLink, Paperclip, FileText, FileX,
-  Plus, Trash2, HeartHandshake,
+  Plus, Trash2, HeartHandshake, Clock, CalendarDays, MapPin,
 } from 'lucide-react';
 import StatusV2Badge from '../../_components/StatusV2Badge';
 import { idadeAnos } from '../../_utils/idade';
@@ -156,7 +156,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
         }}
       >
         {/* Linha 1 — proeminente: Nome (link) + idade + CPF + Encerrar */}
-        <div className="flex items-start justify-between gap-4 px-6 pt-6 pb-3">
+        <div className="flex items-start justify-between gap-x-4 gap-y-3 flex-wrap px-6 pt-6 pb-3">
           <div className="min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
               <Link
@@ -175,7 +175,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
             </div>
           </div>
           {s.status !== 'em_encerramento' && (
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 flex-wrap">
               <Can action="tramitacao.tramitar">
                 <button
                   type="button"
@@ -199,111 +199,129 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
 
         <div style={{ borderTop: '1px solid #E2E8F0' }} />
 
-        {/* Bloco de detalhes — reorganizado por sentido: situação da
-            solicitação, dados clínicos e operacionais, acompanhantes. Rótulo
-            pequeno em maiúsculas acima de cada valor pra dar hierarquia de
-            leitura (em vez das linhas de texto corridas de antes). */}
-        <div className="detail-groups px-6 py-5">
-          {/* Grupo 1 — Situação da solicitação */}
-          <div className="detail-group">
-            <GroupLabel>Situação da solicitação</GroupLabel>
-            <div className="flex flex-col gap-3">
-              <Field label="Status">
-                <StatusV2Badge status={s.status} />
-              </Field>
-              <Field label="Número">
-                <span className="font-mono" style={{ fontWeight: 500 }}>{s.numero}</span>
-              </Field>
-              <Field label="Criada em">
-                {new Date(s.dataCriacao).toLocaleDateString('pt-BR')}
-                {s.status !== 'em_encerramento' && (
-                  <span style={{ color: '#94A3B8' }}> · {diasAguardando}d aguardando</span>
-                )}
-              </Field>
-              <Field label="Processo SEI">
-                {s.numeroSEI ? (
-                  s.seiUrl ? (
-                    <a
-                      href={s.seiUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 transition-colors hover:underline"
-                      style={{ color: '#146BFA', textUnderlineOffset: 3 }}
-                      title={`SEI nº ${s.numeroSEI}`}
-                    >
-                      <ExternalLink size={12} strokeWidth={2.2} />
-                      <span className="font-mono">{s.numeroSEI}</span>
-                    </a>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5" title="SEI sem URL cadastrada">
-                      <FileText size={12} style={{ color: '#94A3B8' }} />
+        {/* Bloco de detalhes — duas linhas em ordem de importância. A primeira
+            carrega o que orienta a decisão (status, tempo de espera, número e
+            SEI); a segunda é apoio, com cada dado se explicando pelo ícone e
+            pelo próprio valor. Dados da mesma natureza se juntam num item só,
+            com ponto médio (município · regional · zona; laudo · unidade).
+            Acompanhantes ficam num card à direita. */}
+        <div className="detail-groups px-6 py-4">
+          <div className="detail-main">
+            {/* Linha 1 — situação: peso visual no status e no tempo de espera */}
+            <div className="flex items-center gap-x-3 gap-y-2 flex-wrap">
+              <StatusV2Badge status={s.status} />
+              {s.status !== 'em_encerramento' && (
+                <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: '#1E293B' }}>
+                  <Clock size={13} strokeWidth={2.2} style={{ color: '#94A3B8' }} aria-hidden />
+                  {diasAguardando === 0
+                    ? 'Aguardando desde hoje'
+                    : `Aguardando há ${diasAguardando} ${diasAguardando === 1 ? 'dia' : 'dias'}`}
+                </span>
+              )}
+              <span
+                className="text-[13px] font-mono"
+                style={{ color: '#475569', fontWeight: 500 }}
+                title="Número da solicitação"
+              >
+                {s.numero}
+              </span>
+              {s.numeroSEI ? (
+                s.seiUrl ? (
+                  <a
+                    href={s.seiUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-[13px] transition-colors hover:underline"
+                    style={{ color: '#146BFA', textUnderlineOffset: 3 }}
+                    title={`Abrir processo SEI nº ${s.numeroSEI}`}
+                  >
+                    <ExternalLink size={12} strokeWidth={2.2} />
+                    <span>
+                      {/^sei/i.test(s.numeroSEI) ? '' : 'SEI '}
                       <span className="font-mono">{s.numeroSEI}</span>
                     </span>
-                  )
+                  </a>
                 ) : (
                   <span
-                    className="inline-flex items-center gap-1.5 px-2 py-[2px] text-[12px]"
-                    style={{
-                      background: '#F1F5F9',
-                      border: '1px solid #E2E8F0',
-                      borderRadius: 999,
-                      color: '#94A3B8',
-                    }}
-                    title="Nenhum vínculo SEI cadastrado nesta solicitação"
+                    className="inline-flex items-center gap-1.5 text-[13px]"
+                    style={{ color: '#475569' }}
+                    title="Processo SEI sem URL cadastrada"
                   >
-                    <FileX size={11} strokeWidth={2.2} />
-                    Sem vínculo SEI
+                    <FileText size={12} style={{ color: '#94A3B8' }} />
+                    <span>
+                      {/^sei/i.test(s.numeroSEI) ? '' : 'SEI '}
+                      <span className="font-mono">{s.numeroSEI}</span>
+                    </span>
                   </span>
-                )}
-              </Field>
-            </div>
-          </div>
-
-          {/* Grupo 2 — Dados clínicos e operacionais */}
-          <div className="detail-group">
-            <GroupLabel>Dados clínicos e operacionais</GroupLabel>
-            <div className="flex flex-col gap-3">
-              <Field label="Contato">
-                <a
-                  href={`tel:${s.paciente.telefone.replace(/\D/g, '')}`}
-                  className="inline-flex items-center gap-1.5 transition-colors hover:text-[#146BFA]"
-                  title="Ligar"
+                )
+              ) : (
+                <span
+                  className="inline-flex items-center gap-1.5 px-2 py-[2px] text-[12px]"
+                  style={{
+                    background: '#F1F5F9',
+                    border: '1px solid #E2E8F0',
+                    borderRadius: 999,
+                    color: '#94A3B8',
+                  }}
+                  title="Nenhum vínculo SEI cadastrado nesta solicitação"
                 >
-                  <Phone size={12} strokeWidth={2.2} style={{ color: '#94A3B8' }} />
-                  <span className="font-mono">{s.paciente.telefone}</span>
-                </a>
-                {s.paciente.email && (
-                  <a
-                    href={`mailto:${s.paciente.email}`}
-                    className="flex items-center gap-1.5 mt-1 transition-colors hover:text-[#146BFA] truncate max-w-[260px]"
-                    title={s.paciente.email}
-                  >
-                    <Mail size={12} strokeWidth={2.2} style={{ color: '#94A3B8' }} />
-                    <span className="truncate">{s.paciente.email}</span>
-                  </a>
-                )}
-              </Field>
-              <Field label="Regional e município">
-                <div>{s.paciente.municipio.split(' - ')[0]}</div>
-                <div className="mt-0.5" style={{ color: '#64748B', fontSize: 12 }}>
-                  {s.paciente.regionalCodigo ? `${s.paciente.regionalCodigo} · ` : ''}
-                  {s.paciente.regional} · Zona {s.paciente.zonaRegional}
-                </div>
-              </Field>
-              {s.dataLaudo && (
-                <Field label="Data e origem do laudo">
-                  {new Date(s.dataLaudo).toLocaleDateString('pt-BR')}
-                  {s.laudoOrigemUnidade ? ` · ${s.laudoOrigemUnidade}` : ''}
-                </Field>
+                  <FileX size={11} strokeWidth={2.2} />
+                  Sem vínculo SEI
+                </span>
               )}
-              <Field label="Anexos">
-                <AnexosCounter total={agregarAnexos(s).length} onClick={() => setTab('anexos')} ativo={activeTab === 'anexos'} />
-              </Field>
+            </div>
+
+            {/* Linha 2 — apoio: criação, contato, local, laudo e anexos */}
+            <div
+              className="flex items-start gap-x-4 gap-y-1.5 flex-wrap mt-2.5 text-[12.5px]"
+              style={{ color: '#64748B' }}
+            >
+              <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                <CalendarDays size={12} strokeWidth={2.2} style={{ color: '#94A3B8' }} aria-hidden />
+                Criada em {new Date(s.dataCriacao).toLocaleDateString('pt-BR')}
+              </span>
+              <a
+                href={`tel:${s.paciente.telefone.replace(/\D/g, '')}`}
+                className="inline-flex items-center gap-1.5 whitespace-nowrap transition-colors hover:text-[#146BFA]"
+                title="Ligar para o paciente"
+              >
+                <Phone size={12} strokeWidth={2.2} style={{ color: '#94A3B8' }} aria-hidden />
+                <span className="font-mono">{s.paciente.telefone}</span>
+              </a>
+              {s.paciente.email && (
+                <a
+                  href={`mailto:${s.paciente.email}`}
+                  className="inline-flex items-center gap-1.5 transition-colors hover:text-[#146BFA]"
+                  title={`Escrever para ${s.paciente.email}`}
+                >
+                  <Mail size={12} strokeWidth={2.2} className="shrink-0" style={{ color: '#94A3B8' }} aria-hidden />
+                  <span className="truncate max-w-[220px]">{s.paciente.email}</span>
+                </a>
+              )}
+              <span className="inline-flex items-center gap-1.5" title="Município, regional e zona do paciente">
+                <MapPin size={12} strokeWidth={2.2} className="shrink-0" style={{ color: '#94A3B8' }} aria-hidden />
+                <span>
+                  {s.paciente.municipio.split(' - ')[0]}
+                  {' · '}
+                  {s.paciente.regionalCodigo ? `${s.paciente.regionalCodigo} ` : ''}
+                  {s.paciente.regional} · Zona {s.paciente.zonaRegional}
+                </span>
+              </span>
+              {s.dataLaudo && (
+                <span className="inline-flex items-center gap-1.5" title="Data e unidade de origem do laudo médico">
+                  <FileText size={12} strokeWidth={2.2} className="shrink-0" style={{ color: '#94A3B8' }} aria-hidden />
+                  <span>
+                    Laudo de {new Date(s.dataLaudo).toLocaleDateString('pt-BR')}
+                    {s.laudoOrigemUnidade ? ` · ${s.laudoOrigemUnidade}` : ''}
+                  </span>
+                </span>
+              )}
+              <AnexosCounter total={agregarAnexos(s).length} onClick={() => setTab('anexos')} ativo={activeTab === 'anexos'} />
             </div>
           </div>
 
-          {/* Grupo 3 — Acompanhantes */}
-          <div className="detail-group" id="acompanhantes">
+          {/* Acompanhantes — card lateral, tratamento mantido */}
+          <div className="detail-aside" id="acompanhantes">
             <GroupLabel>Acompanhantes</GroupLabel>
             {acompCount === 0 ? (
               <p className="text-[13px]" style={{ color: '#6B7280' }}>
@@ -686,16 +704,19 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
         .animate-fade-in {
           animation: fadeIn 180ms ease-out;
         }
-        /* Bloco de detalhes do cabeçalho — 3 grupos (situação, dados clínicos
-           e operacionais, acompanhantes) lado a lado a partir de 1024px, com
+        /* Bloco de detalhes do cabeçalho — resumo denso em duas linhas à
+           esquerda e card de acompanhantes à direita a partir de 1024px, com
            divisor vertical sutil entre eles; empilham em coluna abaixo disso. */
         .detail-groups {
           display: flex;
           flex-direction: column;
-          gap: 20px;
+          gap: 16px;
         }
-        .detail-group {
-          flex: 1 1 0%;
+        .detail-main {
+          flex: 1 1 auto;
+          min-width: 0;
+        }
+        .detail-aside {
           min-width: 0;
         }
         @media (min-width: 1024px) {
@@ -704,7 +725,8 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
             align-items: flex-start;
             gap: 28px;
           }
-          .detail-group:not(:first-child) {
+          .detail-aside {
+            flex: 0 0 300px;
             padding-left: 28px;
             border-left: 1px solid #E2E8F0;
           }
@@ -712,10 +734,6 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
       `}</style>
     </div>
   );
-}
-
-function Sep() {
-  return <span aria-hidden style={{ color: '#CBD5E1' }}>·</span>;
 }
 
 /** Título do grupo de detalhes no cabeçalho da solicitação. */
@@ -727,21 +745,6 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
     >
       {children}
     </h4>
-  );
-}
-
-/** Par rótulo/valor do bloco de detalhes — rótulo pequeno acima, valor em
- *  destaque abaixo, dando hierarquia de leitura entre os campos do grupo. */
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="text-[10.5px] font-semibold uppercase mb-1" style={{ color: '#94A3B8', letterSpacing: '0.06em' }}>
-        {label}
-      </div>
-      <div className="text-[13px]" style={{ color: '#1E293B' }}>
-        {children}
-      </div>
-    </div>
   );
 }
 
