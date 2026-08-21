@@ -9,9 +9,9 @@ import RelatorioFinanceiro from './_RelatorioFinanceiro';
 import RelatorioFaturamento from './_RelatorioFaturamento';
 import RelatorioRPB from './_RelatorioRPB';
 import RelatorioGestao from './_RelatorioGestao';
-import RelatorioCarimbo from './_RelatorioCarimbo';
+import RelatorioRegulacao from './_RelatorioRegulacao';
 
-type TabKey = 'financeiro' | 'faturamento' | 'rpb' | 'gestao' | 'carimbo';
+type TabKey = 'financeiro' | 'faturamento' | 'rpb' | 'gestao' | 'regulacao';
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode; desc: string }[] = [
   {
@@ -39,10 +39,10 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode; desc: string }[
     desc: 'Visão consolidada por paciente — paciente, diagnóstico, origem do laudo, destino e parecer',
   },
   {
-    key: 'carimbo',
-    label: 'Carimbo',
+    key: 'regulacao',
+    label: 'Regulação',
     icon: <Stamp size={15} />,
-    desc: 'Volume de solicitações por tipo de carimbo da Regulação, por período',
+    desc: 'Agendamentos por tipo de carimbo da Regulação, por data de agendamento',
   },
 ];
 
@@ -115,7 +115,7 @@ function RelatoriosInner() {
         {activeTab === 'faturamento' && <RelatorioFaturamento />}
         {activeTab === 'rpb' && <RelatorioRPB />}
         {activeTab === 'gestao' && <RelatorioGestao />}
-        {activeTab === 'carimbo' && <RelatorioCarimbo />}
+        {activeTab === 'regulacao' && <RelatorioRegulacao />}
       </div>
 
       <style jsx>{`

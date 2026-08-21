@@ -55,3 +55,54 @@ export function tentativasHistoricas(
     (t) => t.desfecho !== 'agendamento_confirmado',
   );
 }
+
+/** Estado de urgência do próximo agendamento, usado para orientar a leitura
+ *  visual no cabeçalho da solicitação: quanto mais perto ou mais vencido,
+ *  mais chama atenção. */
+export type UrgenciaAgendamento = 'sem_agendamento' | 'futuro' | 'vencido';
+
+export interface ProximoAgendamentoInfo {
+  estado: UrgenciaAgendamento;
+  /** Dias até o agendamento ('futuro') ou dias desde que passou ('vencido').
+   *  Ausente quando 'sem_agendamento'. */
+  dias?: number;
+  /** Data ISO (AAAA-MM-DD) do agendamento de referência. */
+  data?: string;
+}
+
+/**
+ * Regra de negócio do TFD: quanto mais perto o agendamento, mais prioritário
+ * o caso. Retorna o próximo agendamento confirmado (o mais próximo entre
+ * todos), ou, se todos já passaram, o mais recente deles marcado como
+ * vencido — em vez de simplesmente sumir com a informação.
+ */
+export function proximoAgendamento(s: SolicitacaoMock): ProximoAgendamentoInfo {
+  const confirmados = agendamentosConfirmados(s);
+  if (confirmados.length === 0) return { estado: 'sem_agendamento' };
+
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  const datas = confirmados
+    .map((t) => dataDoAgendamento(t))
+    .filter((d): d is string => Boolean(d))
+    .map((d) => new Date(`${d.slice(0, 10)}T00:00:00`))
+    .filter((d) => !Number.isNaN(d.getTime()));
+
+  if (datas.length === 0) return { estado: 'sem_agendamento' };
+
+  const futuras = datas
+    .filter((d) => d.getTime() >= hoje.getTime())
+    .sort((a, b) => a.getTime() - b.getTime());
+
+  if (futuras.length > 0) {
+    const proxima = futuras[0];
+    const dias = Math.round((proxima.getTime() - hoje.getTime()) / 86_400_000);
+    return { estado: 'futuro', dias, data: proxima.toISOString().slice(0, 10) };
+  }
+
+  // Todos os agendamentos já passaram — sinaliza o mais recente como vencido.
+  const ultima = [...datas].sort((a, b) => b.getTime() - a.getTime())[0];
+  const dias = Math.round((hoje.getTime() - ultima.getTime()) / 86_400_000);
+  return { estado: 'vencido', dias, data: ultima.toISOString().slice(0, 10) };
+}

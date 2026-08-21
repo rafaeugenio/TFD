@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
   ArrowLeft, Archive, ArchiveRestore, Send, Phone, Mail, ExternalLink, Paperclip, FileText, FileX,
-  Plus, Trash2, HeartHandshake, Clock, CalendarDays, MapPin,
+  Plus, Trash2, HeartHandshake, Clock, CalendarDays, MapPin, AlertTriangle,
 } from 'lucide-react';
 import StatusV2Badge from '../../_components/StatusV2Badge';
 import { idadeAnos } from '../../_utils/idade';
@@ -24,7 +24,7 @@ import { DetailPageSkeleton } from '@/shared/components/skeleton';
 import { Can } from '@/shared/auth/Can';
 import { useToast } from '@/shared/components/toast/Toast';
 import { resolverOrigem } from '@/shared/utils/solicitacaoOrigem';
-import { tempoNoSetor } from '../../_utils/tempoSetor';
+import { proximoAgendamento, type ProximoAgendamentoInfo } from '../../_utils/agendamento';
 
 type TabKey = 'timeline' | 'regulacao' | 'financeiro' | 'anexos' | 'observacoes';
 
@@ -134,10 +134,9 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
 
   const acompCount = s.acompanhantes.length;
 
-  // Proxy de "tempo no setor atual" — mesma métrica (dias desde a criação da
-  // solicitação) usada nas filas de Passagens, Ajuda de Custo e Acompanhamento.
-  // Não existe timestamp de entrada no setor atual persistido no modelo.
-  const diasAguardando = tempoNoSetor(s.dataCriacao);
+  // Contagem regressiva até o próximo agendamento confirmado — é essa
+  // distância que diz se o caso é prioridade, não o tempo desde a criação.
+  const agenda = proximoAgendamento(s);
 
   return (
     <div>
@@ -210,14 +209,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
             {/* Linha 1 — situação: peso visual no status e no tempo de espera */}
             <div className="flex items-center gap-x-3 gap-y-2 flex-wrap">
               <StatusV2Badge status={s.status} />
-              {s.status !== 'em_encerramento' && (
-                <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: '#1E293B' }}>
-                  <Clock size={13} strokeWidth={2.2} style={{ color: '#94A3B8' }} aria-hidden />
-                  {diasAguardando === 0
-                    ? 'Aguardando desde hoje'
-                    : `Aguardando há ${diasAguardando} ${diasAguardando === 1 ? 'dia' : 'dias'}`}
-                </span>
-              )}
+              {s.status !== 'em_encerramento' && <ProximoAgendamentoBadge agenda={agenda} />}
               <span
                 className="text-[13px] font-mono"
                 style={{ color: '#475569', fontWeight: 500 }}
@@ -784,6 +776,49 @@ function AnexosCounter({ total, onClick, ativo }: { total: number; onClick: () =
         {total === 1 ? 'anexo' : 'anexos'}
       </span>
     </button>
+  );
+}
+
+/**
+ * Contagem regressiva até o próximo agendamento confirmado — substitui o
+ * antigo "Aguardando há N dias" porque é a distância até o agendamento que
+ * diz se o caso é prioridade, regra de negócio do TFD inteiro. Quanto mais
+ * perto ou mais vencido o agendamento, mais forte a cor; quanto mais
+ * distante, mais neutra — sempre com os tokens de severidade do design
+ * system, nunca cor solta.
+ */
+function ProximoAgendamentoBadge({ agenda }: { agenda: ProximoAgendamentoInfo }) {
+  if (agenda.estado === 'sem_agendamento') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[13px] font-medium" style={{ color: '#64748B' }}>
+        <CalendarDays size={13} strokeWidth={2.2} style={{ color: '#94A3B8' }} aria-hidden />
+        Sem agendamento registrado
+      </span>
+    );
+  }
+
+  if (agenda.estado === 'vencido') {
+    const dias = agenda.dias ?? 0;
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: 'var(--tfd-danger)' }}>
+        <AlertTriangle size={13} strokeWidth={2.2} aria-hidden />
+        Agendamento vencido há {dias} {dias === 1 ? 'dia' : 'dias'}
+      </span>
+    );
+  }
+
+  const dias = agenda.dias ?? 0;
+  const cor = dias <= 3 ? 'var(--tfd-danger)' : dias <= 7 ? 'var(--tfd-warning)' : '#1E293B';
+  const Icone = dias <= 7 ? Clock : CalendarDays;
+  const label = dias === 0
+    ? 'Agendamento é hoje'
+    : `Faltam ${dias} ${dias === 1 ? 'dia' : 'dias'} para o agendamento`;
+
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: cor }}>
+      <Icone size={13} strokeWidth={2.2} style={{ color: dias <= 7 ? cor : '#94A3B8' }} aria-hidden />
+      {label}
+    </span>
   );
 }
 
