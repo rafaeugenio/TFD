@@ -216,6 +216,7 @@ const MODAL_TO_DB: Record<string, string> = {
   aereo: 'AEREO',
   terrestre: 'TERRESTRE',
   fluvial: 'FLUVIAL',
+  transfer: 'TRANSFER',
 };
 
 const TIPO_VIAGEM_TO_DB: Record<string, string> = {
@@ -255,6 +256,10 @@ export interface ViagemDb {
   ativa?: boolean;
   data_cancelamento?: string | null;
   motivo_cancelamento_texto?: string | null;
+  /** Vínculo do transfer com a passagem que o originou (migration 00080,
+   *  ainda não aplicada). Opcional para não quebrar o insert dos demais
+   *  modais enquanto a coluna não existe no banco. */
+  viagem_vinculada_id?: string | null;
 }
 
 function splitCidadeUf(s: string): { cidade: string; uf: string } {
@@ -296,6 +301,10 @@ export function buildViagem(
     ativa: v.ativa ?? true,
     data_cancelamento: v.dataCancelamento ?? null,
     motivo_cancelamento_texto: v.motivoCancelamentoTexto ?? null,
+    // Só entra no payload quando preenchido (transfer), pra não referenciar
+    // a coluna nova em inserts de aéreo/terrestre/fluvial antes da migration
+    // 00080 rodar.
+    ...(v.viagemVinculadaId ? { viagem_vinculada_id: v.viagemVinculadaId } : {}),
   };
 }
 

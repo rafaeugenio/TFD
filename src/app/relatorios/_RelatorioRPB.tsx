@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Calendar, ClipboardList, Loader2, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Calendar, ClipboardList, Loader2, RefreshCw, CheckCircle2, AlertCircle, Eye } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import RowActions from '../fluxo-v2/_components/RowActions';
 import {
   ReportToolbar,
   FilterField,
@@ -45,6 +47,7 @@ type RPBTipo = 'ajuda_custo' | 'passagem';
 interface RPBRow {
   id: string;
   origem_id: string;
+  solicitacao_id: string;
   trecho: 'ida' | 'volta' | null;
   dt_atendimento: string;
   cpf_cns: string;
@@ -80,6 +83,7 @@ interface RPBRow {
 }
 
 export default function RelatorioRPB() {
+  const router = useRouter();
   const hoje = new Date();
   const [tipo, setTipo] = useState<RPBTipo>('ajuda_custo');
   const [ano, setAno] = useState<number>(hoje.getFullYear());
@@ -200,6 +204,7 @@ export default function RelatorioRPB() {
           return {
             id: String(r.id),
             origem_id: String(r.id),
+            solicitacao_id: String(r.solicitacao_id),
             trecho: null,
             dt_atendimento: String(r.data_inicio),
             cpf_cns: documento,
@@ -320,6 +325,7 @@ export default function RelatorioRPB() {
           return {
             id: String(v.id),
             origem_id: String(v.id),
+            solicitacao_id: String(v.solicitacao_id),
             trecho,
             dt_atendimento: String(v.data_embarque_prevista),
             cpf_cns: documento,
@@ -683,9 +689,31 @@ export default function RelatorioRPB() {
     { key: 'valor', header: 'Valor SIGTAP', width: '110px', align: 'right', render: valorCell },
   ];
 
+  const columnsAcoes: ReportColumn<RPBRow>[] = [
+    {
+      key: 'acoes',
+      header: 'Ações',
+      width: '52px',
+      align: 'right',
+      printHide: true,
+      render: (r) => (
+        <RowActions
+          actions={[
+            {
+              key: 'ver',
+              icon: Eye,
+              label: 'Ver solicitação',
+              onClick: () => router.push(`/fluxo-v2/solicitacoes/${r.solicitacao_id}`),
+            },
+          ]}
+        />
+      ),
+    },
+  ];
+
   const columns = tipo === 'ajuda_custo'
-    ? [...columnsCommon, ...columnsAjuda]
-    : [...columnsCommon, ...columnsPassagem];
+    ? [...columnsCommon, ...columnsAjuda, ...columnsAcoes]
+    : [...columnsCommon, ...columnsPassagem, ...columnsAcoes];
 
   const totalLancados = rows.filter(isLancado).length;
   const totalPendentes = rows.length - totalLancados;
@@ -705,7 +733,7 @@ export default function RelatorioRPB() {
       <ReportToolbar
         filters={
           <>
-            <FilterField label="Tipo" icon={<ClipboardList size={11} />}>
+            <FilterField label="Procedimentos" icon={<ClipboardList size={11} />}>
               <select
                 className="tfd-input"
                 style={{ minWidth: 160 }}

@@ -253,7 +253,15 @@ export interface AgendamentoMock {
   segundoDeferimento?: { data: string; medico: string };
 }
 
-export type ModalViagem = 'aereo' | 'terrestre' | 'fluvial';
+/**
+ * `'transfer'` (migration 00036) é o deslocamento porta-a-porta (van, carro,
+ * ambulância) comprado junto com uma passagem já existente — por isso exige
+ * `viagemVinculadaId` em `ViagemMock`. No BPA conta igual à passagem
+ * terrestre, sem código SIGTAP próprio. Um relatório financeiro futuro vai
+ * diferenciar os dois (transfer não entra como bilhete; terrestre entra),
+ * mas esse relatório ainda não existe.
+ */
+export type ModalViagem = 'aereo' | 'terrestre' | 'fluvial' | 'transfer';
 /** Status operacional da passagem. `cancelada` e `reembolso` saíram do fluxo
  *  oficial em mai/2026 — viraram, respectivamente, `ativa=false` e o par
  *  (`valorReembolso`, `dataReembolso`). Os 2 valores foram mantidos no enum
@@ -313,6 +321,10 @@ export interface ViagemMock {
    */
   beneficiarioTipo: 'paciente' | 'acompanhante';
   beneficiarioId?: string;
+  /** Obrigatório quando `modal === 'transfer'` — id da passagem (outra
+   *  ViagemMock da mesma solicitação) à qual o transfer está vinculado, já
+   *  que ele é comprado junto com ela. Migration 00080, ainda não aplicada. */
+  viagemVinculadaId?: string;
   /** Distância em linha reta calculada via coordenadas IBGE. */
   distanciaValor?: number;
   distanciaUnidade?: 'km' | 'milhas' | 'milhas_nauticas';

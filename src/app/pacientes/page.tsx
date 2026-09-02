@@ -342,7 +342,7 @@ function PacientesPage() {
         tone="delete"
         title="Excluir paciente?"
         subject={deleteConfirmName}
-        description="Esta ação não pode ser desfeita."
+        description="O paciente sai da listagem. Para reativar, cadastre novamente com o mesmo CPF."
         onClose={() => { setDeleteConfirmId(null); setDeleteConfirmName(''); }}
         onConfirm={handleConfirmDelete}
       />

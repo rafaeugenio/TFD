@@ -105,6 +105,9 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
   const [companhias, setCompanhias] = useState<CompanhiaRow[]>([]);
   const [companhiaId, setCompanhiaId] = useState('');
 
+  // Transfer — vínculo com a passagem já cadastrada que o originou.
+  const [viagemVinculadaId, setViagemVinculadaId] = useState('');
+
   // Distância e ajuda de custo (calculados)
   const [distanciaValor, setDistanciaValor] = useState<number | null>(null);
   const [calculandoDist, setCalculandoDist] = useState(false);
@@ -146,6 +149,14 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
   const origemAeroporto = aeroportos.find((a) => a.id === origemAeroportoId);
   const destinoAeroporto = aeroportos.find((a) => a.id === destinoAeroportoId);
   const isAereo = modal === 'aereo';
+  const isTransfer = modal === 'transfer';
+
+  // Passagens já cadastradas na solicitação às quais um transfer pode se
+  // vincular — ele é comprado junto com uma passagem, então não pode
+  // apontar pra outro transfer nem pra uma passagem inativada.
+  const candidatosTransfer = (solicitacao?.viagens ?? []).filter(
+    (v) => v.modal !== 'transfer' && v.ativa !== false && v.status !== 'cancelada',
+  );
 
   // Auto-cálculo de distância e ajuda de custo sempre que origem/destino/modal mudam.
   // Quando o modal é aéreo, usa coordenadas reais dos aeroportos; caso contrário,
@@ -260,6 +271,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       setCompanhiaId('');
       setValorReembolso(editar.valorReembolso != null ? String(editar.valorReembolso) : '');
       setDataReembolso(editar.dataReembolso ?? '');
+      setViagemVinculadaId(editar.viagemVinculadaId ?? '');
     } else {
       setOrigemCidade(''); setOrigemUf('MA');
       setDestinoCidade(''); setDestinoUf('');
@@ -269,6 +281,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       setValor(''); setStatus('agendada');
       setBeneficiario('p'); setCompanhiaId('');
       setValorReembolso(''); setDataReembolso('');
+      setViagemVinculadaId('');
     }
     setTimeout(() => firstInputRef.current?.focus(), 100);
   }, [open, editar]);
@@ -313,6 +326,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
     const dCidade = isAereo ? (destinoAeroporto?.cidade ?? '') : destinoCidade;
     const dUf = isAereo ? (destinoAeroporto?.uf ?? '') : destinoUf;
     if (!oCidade || !oUf || !dCidade || !dUf || !data || !valor) return;
+    if (isTransfer && !viagemVinculadaId) return;
 
     const companhiaNome = companhias.find((c) => c.id === companhiaId)?.nome;
     const origemStr = isAereo && origemAeroporto
@@ -341,6 +355,10 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         }
       : { valorReembolso: undefined, dataReembolso: undefined };
 
+    // Vínculo obrigatório só existe para transfer — a passagem à qual ele
+    // foi comprado junto.
+    const vinculoExtras = isTransfer ? { viagemVinculadaId } : { viagemVinculadaId: undefined };
+
     if (isEdicao && editar) {
       editarViagem(solicitacaoId, editar.id, {
         origem: origemStr,
@@ -356,6 +374,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         ...beneficiarioPayload,
         ...distExtras,
         ...reembolsoExtras,
+        ...vinculoExtras,
       });
       toast.success('Passagem atualizada', `${origemStr} → ${destinoStr}`);
       onClose();
@@ -375,6 +394,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         ...beneficiarioPayload,
         ...distExtras,
         ...reembolsoExtras,
+        ...vinculoExtras,
       });
       toast.success('Passagens criadas', `Ida e volta — ${origemStr} ⇄ ${destinoStr}`);
     } else {
@@ -392,6 +412,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         ...beneficiarioPayload,
         ...distExtras,
         ...reembolsoExtras,
+        ...vinculoExtras,
       });
       toast.success('Passagem registrada', `${origemStr} → ${destinoStr}`);
     }
@@ -402,9 +423,11 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
     onClose();
   }
 
-  const valid = isAereo
-    ? !!origemAeroporto && !!destinoAeroporto && !!data && !!valor && (!isIdaEVolta || !!dataVolta)
-    : !!origemCidade && !!origemUf && !!destinoCidade && !!destinoUf && !!data && !!valor && (!isIdaEVolta || !!dataVolta);
+  const valid = (
+    isAereo
+      ? !!origemAeroporto && !!destinoAeroporto && !!data && !!valor && (!isIdaEVolta || !!dataVolta)
+      : !!origemCidade && !!origemUf && !!destinoCidade && !!destinoUf && !!data && !!valor && (!isIdaEVolta || !!dataVolta)
+  ) && (!isTransfer || !!viagemVinculadaId);
 
   const unidade = UNIDADE_LABEL[unidadeDoModal(modal)];
 
@@ -497,6 +520,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
             <option value="aereo">Aéreo</option>
             <option value="terrestre">Terrestre</option>
             <option value="fluvial">Fluvial</option>
+            <option value="transfer">Transfer</option>
           </select>
         </div>
         <div>
@@ -533,6 +557,45 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
           </select>
         </div>
       </div>
+
+      {/* Transfer — vínculo obrigatório com a passagem já cadastrada, já que
+          ele é comprado junto com ela. */}
+      {isTransfer && (
+        <fieldset disabled={somenteStatus} style={{ display: 'contents' }}>
+        <div className="mb-4">
+          <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
+            Passagem vinculada <span style={{ color: '#DC2626' }}>*</span>
+          </label>
+          {candidatosTransfer.length === 0 ? (
+            <div
+              className="px-3 py-2.5 text-[12px]"
+              style={{ background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 8, color: '#78350F' }}
+            >
+              Nenhuma passagem cadastrada nesta solicitação ainda. Cadastre a passagem antes do transfer, já que ele é comprado junto com ela.
+            </div>
+          ) : (
+            <>
+              <select
+                value={viagemVinculadaId}
+                onChange={(e) => setViagemVinculadaId(e.target.value)}
+                className="w-full px-3 py-2 text-[13px]"
+                style={inputStyle}
+              >
+                <option value="">Selecione a passagem...</option>
+                {candidatosTransfer.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.origem} → {v.destino} · {v.data ? v.data.split('-').reverse().join('/') : 'sem data'}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] mt-1.5" style={{ color: '#94A3B8' }}>
+                O transfer conta igual à passagem terrestre no BPA. Ficam separados só pra deixar claro, no relatório financeiro, que só a passagem entra como bilhete.
+              </p>
+            </>
+          )}
+        </div>
+        </fieldset>
+      )}
 
       <fieldset disabled={somenteStatus} style={{ display: 'contents' }}>
       {status === 'reembolso' && (
@@ -705,7 +768,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         {distErro ??
           (isAereo
             ? 'Calculado em linha reta entre as coordenadas dos aeroportos.'
-            : modal === 'terrestre'
+            : modal === 'terrestre' || isTransfer
               ? 'Rota rodoviária real via OpenStreetMap (OpenRouteService).'
               : 'Calculado em linha reta a partir das coordenadas IBGE da cidade.')}
       </p>

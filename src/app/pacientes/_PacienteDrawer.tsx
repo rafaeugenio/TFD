@@ -27,7 +27,7 @@ import CepAutofill from '@/shared/components/cep-autofill/CepAutofill';
 import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import IdadeBadge from '@/shared/components/idade-badge';
 
-import { buscarPaciente, criarPaciente, atualizarPaciente } from '@/services/pacientes.service';
+import { buscarPaciente, buscarPorCpf, criarPaciente, atualizarPaciente } from '@/services/pacientes.service';
 import { buscarRegionalPorMunicipio, listarRegionaisSaude } from '@/services/regionais-saude.service';
 import { listarPorPaciente, criarAcompanhante, atualizarAcompanhante, excluirAcompanhante } from '@/services/acompanhantes.service';
 import { uploadDocumento, listarDocumentosPaciente, excluirDocumento } from '@/services/documentos.service';
@@ -431,6 +431,7 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
       };
 
       let pacienteId: string;
+      let reativado = false;
 
       if (editandoId) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -441,13 +442,31 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
         }
         pacienteId = editandoId;
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const result = await criarPaciente(pacData as any);
-        if (result.error || !result.data) {
-          toast.error('Erro ao criar paciente', (result.error as { message?: string })?.message ?? 'Erro desconhecido');
-          return;
+        // Antes de cadastrar, confere se o CPF já pertence a um paciente
+        // inativado (excluído). Nesse caso o cadastro reativa o registro
+        // existente em vez de bloquear por CPF duplicado. CPF de paciente
+        // ativo continua bloqueando normalmente, como hoje.
+        const { data: existente } = await buscarPorCpf(cleanCpf);
+        const pacienteExistente = existente as { id: string; ativo: boolean } | null;
+
+        if (pacienteExistente && pacienteExistente.ativo === false) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const result = await atualizarPaciente(pacienteExistente.id, { ...pacData, ativo: true } as any);
+          if (result.error) {
+            toast.error('Erro ao reativar paciente', (result.error as { message?: string }).message ?? 'Erro desconhecido');
+            return;
+          }
+          pacienteId = pacienteExistente.id;
+          reativado = true;
+        } else {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const result = await criarPaciente(pacData as any);
+          if (result.error || !result.data) {
+            toast.error('Erro ao criar paciente', (result.error as { message?: string })?.message ?? 'Erro desconhecido');
+            return;
+          }
+          pacienteId = (result.data as { id: string }).id;
         }
-        pacienteId = (result.data as { id: string }).id;
 
         if (pendingAcomps.length > 0) {
           for (const pending of pendingAcomps) {
@@ -489,10 +508,17 @@ export default function PacienteDrawer({ open, editandoId, editandoData, onClose
         }
       }
 
-      toast.success(
-        editandoId ? 'Paciente atualizado!' : 'Paciente cadastrado!',
-        editandoId ? 'Os dados foram atualizados com sucesso.' : 'O paciente foi cadastrado com sucesso.',
-      );
+      if (reativado) {
+        toast.success(
+          'Paciente reativado!',
+          'Já existia um cadastro inativo com este CPF. O registro foi reativado com os dados informados agora.',
+        );
+      } else {
+        toast.success(
+          editandoId ? 'Paciente atualizado!' : 'Paciente cadastrado!',
+          editandoId ? 'Os dados foram atualizados com sucesso.' : 'O paciente foi cadastrado com sucesso.',
+        );
+      }
       if (onSaved) onSaved(pacienteId);
       handleClose();
     } catch (err: unknown) {

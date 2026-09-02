@@ -1,14 +1,18 @@
 import { listarSigtap } from '@/services/sigtap.service';
 
-export type ModalTransporte = 'aereo' | 'terrestre' | 'fluvial';
+export type ModalTransporte = 'aereo' | 'terrestre' | 'fluvial' | 'transfer';
 export type DistanciaUnidade = 'km' | 'milhas' | 'milhas_nauticas';
 
 /** Cada modal usa sua própria unidade. Divisor = quantos da unidade equivalem
- *  a 1 procedimento SIGTAP de deslocamento/ajuda de custo. */
+ *  a 1 procedimento SIGTAP de deslocamento/ajuda de custo. Transfer usa a
+ *  mesma unidade da passagem terrestre (é deslocamento porta-a-porta) e não
+ *  tem procedimento SIGTAP próprio — o `listarSigtap` correspondente
+ *  simplesmente não encontra nada e a caixa de ajuda de custo some. */
 const DIVISOR_POR_MODAL: Record<ModalTransporte, { divisor: number; unidade: DistanciaUnidade }> = {
   aereo: { divisor: 200, unidade: 'milhas' },
   terrestre: { divisor: 50, unidade: 'km' },
   fluvial: { divisor: 27, unidade: 'milhas_nauticas' },
+  transfer: { divisor: 50, unidade: 'km' },
 };
 
 export function unidadeDoModal(modal: ModalTransporte): DistanciaUnidade {
@@ -37,6 +41,10 @@ export async function calcularAjudaCusto(
   modal: ModalTransporte,
   beneficiario: 'paciente' | 'acompanhante',
 ): Promise<AjudaCustoCalculada | null> {
+  // Transfer não tem procedimento SIGTAP de ajuda de custo próprio — conta
+  // igual à passagem terrestre no BPA, mas não entra nessa busca.
+  if (modal === 'transfer') return null;
+
   const quantidade = quantidadeProcedimentos(distancia, modal);
   if (quantidade === 0) return null;
 

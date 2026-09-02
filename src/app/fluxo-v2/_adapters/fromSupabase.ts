@@ -267,6 +267,7 @@ const MODAL_FROM_DB: Record<string, ModalViagem> = {
   AEREO: 'aereo',
   TERRESTRE: 'terrestre',
   FLUVIAL: 'fluvial',
+  TRANSFER: 'transfer',
 };
 
 const TIPO_VIAGEM_FROM_DB: Record<string, TipoViagem> = {
@@ -300,6 +301,9 @@ function viagensFromRows(rows: Row[]): ViagemMock[] {
     dataCriacao: str(r.created_at),
     bilheteUrl: opt(r.numero_bilhete),
     beneficiarioTipo: 'paciente',
+    // Só volta preenchido depois que a migration 00080 rodar (a coluna ainda
+    // não existe no banco); até lá `r.viagem_vinculada_id` vem undefined.
+    viagemVinculadaId: opt(r.viagem_vinculada_id),
   }));
 }
 

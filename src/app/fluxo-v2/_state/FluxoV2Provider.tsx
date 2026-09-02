@@ -173,6 +173,9 @@ interface FluxoV2ContextValue {
       distanciaUnidade?: 'km' | 'milhas' | 'milhas_nauticas';
       valorAjudaCustoPaciente?: number;
       valorAjudaCustoAcompanhante?: number;
+      /** Só preenchido quando `modal === 'transfer'` — aplica-se às duas
+       *  passagens geradas (ida e volta do mesmo transfer). */
+      viagemVinculadaId?: string;
     },
   ) => void;
   updateViagem: (id: string, viagemId: string, patch: Partial<ViagemMock>) => void;
@@ -912,6 +915,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         distanciaUnidade: input.distanciaUnidade,
         valorAjudaCustoPaciente: input.valorAjudaCustoPaciente,
         valorAjudaCustoAcompanhante: input.valorAjudaCustoAcompanhante,
+        viagemVinculadaId: input.viagemVinculadaId,
       };
       const ida: ViagemMock = {
         id: tempIdIda,
@@ -960,6 +964,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         distanciaUnidade: input.distanciaUnidade,
         valorAjudaCustoPaciente: input.valorAjudaCustoPaciente,
         valorAjudaCustoAcompanhante: input.valorAjudaCustoAcompanhante,
+        viagemVinculadaId: input.viagemVinculadaId,
       };
       const idaPayload = buildViagem(id, {
         origem: input.origem, destino: input.destino,
@@ -1015,6 +1020,9 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     if (patch.valor !== undefined) dbPatch.valor = patch.valor;
     if (patch.bilheteUrl !== undefined) dbPatch.numero_bilhete = patch.bilheteUrl;
     if (patch.companhia !== undefined) dbPatch.companhia = patch.companhia;
+    // Coluna nova (migration 00080, ainda não aplicada) — só entra no
+    // patch quando o transfer tem vínculo definido.
+    if (patch.viagemVinculadaId !== undefined) dbPatch.viagem_vinculada_id = patch.viagemVinculadaId;
     if (Object.keys(dbPatch).length) persistUpdate('viagens', viagemId, dbPatch);
   }, [mutate]);
 
