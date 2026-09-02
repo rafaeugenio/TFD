@@ -3,7 +3,7 @@
 import {
   FilePlus2, FileHeart, Stethoscope, ClipboardCheck, PhoneCall,
   CalendarCheck, ShieldCheck, Plane, Wallet, Receipt, Archive,
-  CheckCircle2, XCircle, ArrowRight, Undo2,
+  CheckCircle2, XCircle, ArrowRight, Undo2, Paperclip, Trash2,
 } from 'lucide-react';
 import { useState } from 'react';
 import { fmtDataHora, tempoRelativo, type TipoEvento } from '../_utils/derivarLinhaDoTempo';
@@ -62,6 +62,8 @@ const VISUAL: Record<TipoEvento, VisualConfig> = {
   devolucao_regulacao:       { categoria: 'tramitacao',  Icon: Undo2,        rotulo: 'Devolvida do Financeiro' },
   devolucao_dados_basicos:   { categoria: 'tramitacao',  Icon: Undo2,        rotulo: 'Devolvida aos Dados Básicos' },
   encerramento:              { categoria: 'decisao_neg', Icon: Archive,       rotulo: 'Encerramento' },
+  anexo_enviado:             { categoria: 'estado',      Icon: Paperclip,    rotulo: 'Anexo' },
+  anexo_excluido:            { categoria: 'decisao_neg', Icon: Trash2,       rotulo: 'Anexo removido' },
 };
 
 export default function EventoLinhaTempo({

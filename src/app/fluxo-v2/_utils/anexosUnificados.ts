@@ -17,7 +17,9 @@ export type OrigemAnexo =
   | 'agendamento'
   | 'tentativa'
   | 'ajuda_custo'
-  | 'carimbo';
+  | 'carimbo'
+  /** Enviado pelo botão dedicado da aba Anexos. */
+  | 'avulso';
 
 export const ORIGEM_ANEXO_LABEL: Record<OrigemAnexo, string> = {
   abertura: 'Abertura',
@@ -30,6 +32,7 @@ export const ORIGEM_ANEXO_LABEL: Record<OrigemAnexo, string> = {
   tentativa: 'Tentativa de contato',
   ajuda_custo: 'Ajuda de custo',
   carimbo: 'Carimbo de regulação',
+  avulso: 'Envio avulso',
 };
 
 /**
@@ -53,6 +56,12 @@ export interface AnexoUnificado {
   tamanhoKB?: number;
   /** Link interno (rota) para abrir o documento no app (ex.: despacho). */
   rotaInterna?: string;
+  /** True para os anexos que vivem em `s.anexos` (abertura/edição/avulso) —
+   *  únicos que podem ser excluídos pela aba Anexos. Comprovantes de
+   *  adicional/passagem e documentos gerados pelo sistema (parecer,
+   *  despacho) pertencem a outro registro do fluxo e não têm exclusão
+   *  própria aqui. */
+  removivel: boolean;
 }
 
 /**
@@ -105,6 +114,7 @@ export function agregarAnexos(
       geradoPeloSistema: false,
       href: `mock://${a.nome}`,
       tamanhoKB: a.tamanhoKB,
+      removivel: true,
     });
   }
 
@@ -121,6 +131,7 @@ export function agregarAnexos(
       data: ad.data,
       geradoPeloSistema: false,
       href: ad.documentoUrl,
+      removivel: false,
     });
   }
 
@@ -136,6 +147,7 @@ export function agregarAnexos(
       data: v.data,
       geradoPeloSistema: false,
       href: v.bilheteUrl,
+      removivel: false,
     });
   }
 
@@ -149,6 +161,7 @@ export function agregarAnexos(
       origem: 'parecer',
       data: p.data,
       geradoPeloSistema: true,
+      removivel: false,
     });
   }
 
@@ -161,6 +174,7 @@ export function agregarAnexos(
       origem: 'despacho',
       data: d.createdAt,
       geradoPeloSistema: true,
+      removivel: false,
       rotaInterna: `/despacho/${d.id}`,
     });
   }

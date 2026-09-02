@@ -37,7 +37,9 @@ export type TipoEvento =
   | 'envio_financeiro'
   | 'devolucao_regulacao'
   | 'devolucao_dados_basicos'
-  | 'encerramento';
+  | 'encerramento'
+  | 'anexo_enviado'
+  | 'anexo_excluido';
 
 export interface EventoTimeline {
   id: string;
@@ -274,6 +276,36 @@ export function derivarEventos(
       autor: autorDe('encerramentos'),
     });
   }
+
+  // 12. Anexos enviados avulsos — só os enviados pelo botão dedicado da aba
+  //     Anexos geram evento. Os que entram junto com o cadastro ou por
+  //     outros pontos do fluxo (origem 'abertura'/'edicao'/etc.) não
+  //     duplicam a leitura de "criou a solicitação e enviou o arquivo".
+  s.anexos
+    .filter((a) => a.origem === 'avulso')
+    .forEach((a) => {
+      eventos.push({
+        id: `${s.id}-anexo-${a.id}`,
+        tipo: 'anexo_enviado',
+        data: a.data ?? s.dataCriacao,
+        titulo: `Anexo enviado: ${a.nome}`,
+        descricao: a.tipoDocumento,
+        autor: autorDe('documentos', a.id),
+      });
+    });
+
+  // 13. Anexos excluídos pela aba Anexos (o anexo em si já saiu de `anexos`,
+  //     este log guarda só o necessário para a linha do tempo).
+  s.anexosExcluidos?.forEach((a) => {
+    eventos.push({
+      id: `${s.id}-anexo-excluido-${a.id}`,
+      tipo: 'anexo_excluido',
+      data: a.data,
+      titulo: `Anexo excluído: ${a.nome}`,
+      descricao: a.tipoDocumento,
+      autor: autorDe('documentos', a.id),
+    });
+  });
 
   // Ordena por data descendente (mais recente no topo)
   eventos.sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());

@@ -2,10 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowDownUp, FileText, Paperclip, Sparkles, ExternalLink } from 'lucide-react';
+import { ArrowDownUp, FileText, Paperclip, Plus, Sparkles, ExternalLink, Trash2 } from 'lucide-react';
 import { useLookup } from '@/shared/hooks/useLookup';
+import { useToast } from '@/shared/components/toast/Toast';
 import { buscarPorSolicitacao } from '@/services/despachos-financeiros.service';
 import type { SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
+import { useFluxoV2State } from '../_state/FluxoV2Provider';
+import EnviarAnexoDrawer from './drawers/EnviarAnexoDrawer';
 import {
   agregarAnexos,
   ordenarAnexos,
@@ -18,13 +21,17 @@ import {
  * Aba "Anexos" — agregação unificada de todos os documentos vinculados
  * à solicitação, anexados manualmente ou gerados pelo sistema.
  *
- * Adição de novos anexos continua nos drawers de origem (abertura, adicional,
- * passagem). Esta aba é puramente de visualização/consulta.
+ * Envio e exclusão avulsos acontecem direto nesta aba, a qualquer momento
+ * do fluxo (botão "Enviar anexo" + lixeira em cada linha removível).
+ * Anexos de outros pontos do fluxo (abertura, adicional, passagem, parecer,
+ * despacho) continuam só listados aqui.
  */
 export default function AnexosTab({ s }: { s: SolicitacaoMock }) {
   const { options: tiposDocOptions } = useLookup('tipo_documento');
+  const { addAnexos, removerAnexo } = useFluxoV2State();
+  const toast = useToast();
   const [ordemDesc, setOrdemDesc] = useState(true);
-  const [filtroOrigem, setFiltroOrigem] = useState<OrigemAnexo | 'todas'>('todas');
+  const [enviarOpen, setEnviarOpen] = useState(false);
   const [despachos, setDespachos] = useState<Array<{ id: string; numero?: string | null; createdAt: string }>>([]);
 
   // Mapa código → label dos tipos de documento (lookup `tipo_documento`)
@@ -54,32 +61,25 @@ export default function AnexosTab({ s }: { s: SolicitacaoMock }) {
     [s, catalogo, despachos],
   );
 
-  const filtrados = useMemo(() => {
-    const base = filtroOrigem === 'todas' ? todos : todos.filter((a) => a.origem === filtroOrigem);
-    return ordenarAnexos(base, ordemDesc);
-  }, [todos, filtroOrigem, ordemDesc]);
+  const ordenados = useMemo(() => ordenarAnexos(todos, ordemDesc), [todos, ordemDesc]);
 
-  const contagemPorOrigem = useMemo(() => {
-    const c: Record<OrigemAnexo | 'todas', number> = {
-      todas: todos.length,
-      abertura: 0, edicao: 0, adicional: 0, passagem: 0, parecer: 0, despacho: 0,
-    };
-    for (const a of todos) c[a.origem]++;
-    return c;
-  }, [todos]);
-
-  if (todos.length === 0) {
-    return <EmptyState />;
+  function handleEnviar(itens: { nome: string; tipo: string; tipoDocumento?: string }[]) {
+    addAnexos(s.id, itens, 'avulso');
+    toast.success(
+      itens.length > 1 ? 'Anexos enviados' : 'Anexo enviado',
+      itens.length > 1 ? `${itens.length} arquivos adicionados` : itens[0]?.nome,
+    );
   }
 
-  const origensDisponiveis: Array<OrigemAnexo | 'todas'> = [
-    'todas',
-    ...(Object.keys(ORIGEM_ANEXO_LABEL) as OrigemAnexo[]).filter((o) => contagemPorOrigem[o] > 0),
-  ];
+  function handleExcluir(a: AnexoUnificado) {
+    if (typeof window !== 'undefined' && !window.confirm(`Excluir o anexo "${a.nome}"?`)) return;
+    removerAnexo(s.id, a.id);
+    toast.success('Anexo excluído', a.nome);
+  }
 
   return (
     <div>
-      {/* Toolbar — filtros + ordenação */}
+      {/* Toolbar — envio + ordenação (sem filtros: a lista é curta) */}
       <div
         className="flex items-center justify-between gap-3 flex-wrap mb-4 px-4 py-3"
         style={{
@@ -88,151 +88,162 @@ export default function AnexosTab({ s }: { s: SolicitacaoMock }) {
           borderRadius: 10,
         }}
       >
-        <div className="flex items-center gap-1 flex-wrap">
-          {origensDisponiveis.map((o) => {
-            const ativo = filtroOrigem === o;
-            const label = o === 'todas' ? 'Todos' : ORIGEM_ANEXO_LABEL[o];
-            const count = contagemPorOrigem[o];
-            return (
-              <button
-                key={o}
-                type="button"
-                onClick={() => setFiltroOrigem(o)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] font-medium transition-colors"
-                style={{
-                  background: ativo ? '#146BFA' : 'transparent',
-                  color: ativo ? 'white' : '#475569',
-                  border: ativo ? '1px solid #146BFA' : '1px solid #E2E8F0',
-                  borderRadius: 8,
-                }}
-              >
-                {label}
-                <span
-                  className="font-mono text-[11px]"
-                  style={{ color: ativo ? 'rgba(255,255,255,0.85)' : '#94A3B8' }}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
         <button
           type="button"
-          onClick={() => setOrdemDesc((v) => !v)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] font-medium transition-colors hover:bg-[#F8FAFC]"
-          style={{
-            background: 'transparent',
-            color: '#475569',
-            border: '1px solid #E2E8F0',
-            borderRadius: 8,
-          }}
-          title={ordemDesc ? 'Ordenando do mais recente ao mais antigo' : 'Ordenando do mais antigo ao mais recente'}
+          onClick={() => setEnviarOpen(true)}
+          className="tfd-btn tfd-btn-primary tfd-btn--sm"
         >
-          <ArrowDownUp size={13} strokeWidth={2.2} />
-          {ordemDesc ? 'Mais recente primeiro' : 'Mais antigo primeiro'}
+          <Plus size={13} /> Enviar anexo
         </button>
+
+        {todos.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setOrdemDesc((v) => !v)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] font-medium transition-colors hover:bg-[#F8FAFC]"
+            style={{
+              background: 'transparent',
+              color: '#475569',
+              border: '1px solid #E2E8F0',
+              borderRadius: 8,
+            }}
+            title={ordemDesc ? 'Ordenando do mais recente ao mais antigo' : 'Ordenando do mais antigo ao mais recente'}
+          >
+            <ArrowDownUp size={13} strokeWidth={2.2} />
+            {ordemDesc ? 'Mais recente primeiro' : 'Mais antigo primeiro'}
+          </button>
+        )}
       </div>
 
-      {/* Tabela de anexos */}
-      <div
-        style={{
-          background: 'white',
-          border: '1px solid #E2E8F0',
-          borderRadius: 10,
-          overflow: 'hidden',
-        }}
-      >
+      {todos.length === 0 ? (
+        <EmptyState />
+      ) : (
         <div
-          className="grid items-center px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider"
           style={{
-            gridTemplateColumns: 'minmax(0,2fr) minmax(0,1.4fr) 130px 130px 40px',
-            gap: 12,
-            color: '#9CA3AF',
-            background: '#F8FAFC',
-            borderBottom: '1px solid #E2E8F0',
+            background: 'white',
+            border: '1px solid #E2E8F0',
+            borderRadius: 10,
+            overflow: 'hidden',
           }}
         >
-          <span>Documento</span>
-          <span>Tipo</span>
-          <span>Origem</span>
-          <span>Data</span>
-          <span aria-hidden />
+          <div
+            className="grid items-center px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider"
+            style={{
+              gridTemplateColumns: 'minmax(0,2fr) minmax(0,1.4fr) 130px 130px 64px',
+              gap: 12,
+              color: '#9CA3AF',
+              background: '#F8FAFC',
+              borderBottom: '1px solid #E2E8F0',
+            }}
+          >
+            <span>Documento</span>
+            <span>Tipo</span>
+            <span>Origem</span>
+            <span>Data</span>
+            <span aria-hidden />
+          </div>
+          <ul>
+            {ordenados.map((a) => (
+              <li key={a.id}>
+                <AnexoRow a={a} onExcluir={() => handleExcluir(a)} />
+              </li>
+            ))}
+          </ul>
         </div>
-        <ul>
-          {filtrados.map((a) => (
-            <li key={a.id}>
-              <AnexoRow a={a} />
-            </li>
-          ))}
-        </ul>
-      </div>
+      )}
+
+      <EnviarAnexoDrawer open={enviarOpen} onClose={() => setEnviarOpen(false)} onEnviar={handleEnviar} />
     </div>
   );
 }
 
-function AnexoRow({ a }: { a: AnexoUnificado }) {
-  const conteudo = (
+function AnexoRow({ a, onExcluir }: { a: AnexoUnificado; onExcluir: () => void }) {
+  function abrir() {
+    if (typeof window === 'undefined') return;
+    if (a.rotaInterna) {
+      window.open(a.rotaInterna, '_blank', 'noopener,noreferrer');
+    } else {
+      window.alert(`Abrir/baixar anexo: ${a.nome}`);
+    }
+  }
+
+  const icone = a.geradoPeloSistema ? (
+    <Sparkles size={14} style={{ color: '#146BFA', flexShrink: 0 }} aria-label="Gerado pelo sistema" />
+  ) : (
+    <Paperclip size={13} style={{ color: '#94A3B8', flexShrink: 0 }} />
+  );
+
+  return (
     <div
       className="grid items-center px-4 py-3 text-[13px] transition-colors hover:bg-[#F8FAFC]"
       style={{
-        gridTemplateColumns: 'minmax(0,2fr) minmax(0,1.4fr) 130px 130px 40px',
+        gridTemplateColumns: 'minmax(0,2fr) minmax(0,1.4fr) 130px 130px 68px',
         gap: 12,
         borderBottom: '1px solid #F1F5F9',
-        cursor: 'pointer',
       }}
     >
-      <div className="min-w-0 flex items-center gap-2">
-        {a.geradoPeloSistema ? (
-          <Sparkles size={14} style={{ color: '#146BFA', flexShrink: 0 }} aria-label="Gerado pelo sistema" />
-        ) : (
-          <Paperclip size={13} style={{ color: '#94A3B8', flexShrink: 0 }} />
-        )}
-        <span className="truncate" style={{ color: '#1A1D2B', fontWeight: 500 }}>{a.nome}</span>
-      </div>
+      {a.rotaInterna ? (
+        <Link
+          href={a.rotaInterna}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="min-w-0 flex items-center gap-2"
+        >
+          {icone}
+          <span className="truncate" style={{ color: '#1A1D2B', fontWeight: 500 }}>{a.nome}</span>
+        </Link>
+      ) : (
+        <button type="button" onClick={abrir} className="min-w-0 flex items-center gap-2 text-left">
+          {icone}
+          <span className="truncate" style={{ color: '#1A1D2B', fontWeight: 500 }}>{a.nome}</span>
+        </button>
+      )}
       <span className="truncate" style={{ color: '#475569' }}>{a.tipoDocumento}</span>
       <OrigemBadge origem={a.origem} />
       <span className="font-mono text-[12px]" style={{ color: '#64748B' }}>
         {new Date(a.data).toLocaleDateString('pt-BR')}
       </span>
-      <span aria-hidden style={{ color: '#94A3B8', justifySelf: 'end' }}>
-        {a.rotaInterna ? <ExternalLink size={13} /> : <FileText size={13} />}
+      <span className="flex items-center gap-1 justify-self-end">
+        <button
+          type="button"
+          onClick={abrir}
+          title="Abrir/baixar anexo"
+          aria-label="Abrir ou baixar anexo"
+          className="tfd-btn tfd-btn--text tfd-btn--sm tfd-btn--icon-only"
+          style={{ color: '#94A3B8' }}
+        >
+          {a.rotaInterna ? <ExternalLink size={13} /> : <FileText size={13} />}
+        </button>
+        {a.removivel && (
+          <button
+            type="button"
+            onClick={onExcluir}
+            title="Excluir anexo"
+            aria-label="Excluir anexo"
+            className="tfd-btn tfd-btn--text tfd-btn--sm tfd-btn--icon-only"
+            style={{ color: '#DC2626' }}
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
       </span>
     </div>
-  );
-
-  if (a.rotaInterna) {
-    return (
-      <Link href={a.rotaInterna} target="_blank" rel="noopener noreferrer">
-        {conteudo}
-      </Link>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        if (typeof window !== 'undefined') {
-          window.alert(`Abrir/baixar anexo: ${a.nome}`);
-        }
-      }}
-      className="w-full text-left"
-    >
-      {conteudo}
-    </button>
   );
 }
 
 function OrigemBadge({ origem }: { origem: OrigemAnexo }) {
   const styles: Record<OrigemAnexo, { bg: string; fg: string; bd: string }> = {
-    abertura:  { bg: '#EFF6FF', fg: '#1D4ED8', bd: '#BFDBFE' },
-    edicao:    { bg: '#F1F5F9', fg: '#475569', bd: '#E2E8F0' },
-    adicional: { bg: '#FFFBEB', fg: '#92400E', bd: '#FDE68A' },
-    passagem:  { bg: '#ECFDF5', fg: '#047857', bd: '#A7F3D0' },
-    parecer:   { bg: '#F5F3FF', fg: '#6D28D9', bd: '#DDD6FE' },
-    despacho:  { bg: '#FEF2F2', fg: '#B91C1C', bd: '#FECACA' },
+    abertura:    { bg: '#EFF6FF', fg: '#1D4ED8', bd: '#BFDBFE' },
+    edicao:      { bg: '#F1F5F9', fg: '#475569', bd: '#E2E8F0' },
+    adicional:   { bg: '#FFFBEB', fg: '#92400E', bd: '#FDE68A' },
+    passagem:    { bg: '#ECFDF5', fg: '#047857', bd: '#A7F3D0' },
+    parecer:     { bg: '#F5F3FF', fg: '#6D28D9', bd: '#DDD6FE' },
+    despacho:    { bg: '#FEF2F2', fg: '#B91C1C', bd: '#FECACA' },
+    agendamento: { bg: '#ECFEFF', fg: '#0E7490', bd: '#A5F3FC' },
+    tentativa:   { bg: '#F1F5F9', fg: '#475569', bd: '#E2E8F0' },
+    ajuda_custo: { bg: '#ECFDF5', fg: '#047857', bd: '#A7F3D0' },
+    carimbo:     { bg: '#EEF2FF', fg: '#4338CA', bd: '#C7D2FE' },
+    avulso:      { bg: '#F1F5F9', fg: '#334155', bd: '#E2E8F0' },
   };
   const st = styles[origem];
   return (

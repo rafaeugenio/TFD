@@ -247,6 +247,14 @@ interface FluxoV2ContextValue {
   editarSolicitacao: (id: string, patch: EditarSolicitacaoPatch) => void;
 
   /**
+   * Exclusão de anexo pela aba Anexos — vale para qualquer anexo real
+   * (`s.anexos`), não só os enviados avulsos (`addAnexos(..., 'avulso')`).
+   * Registra o evento de exclusão na linha do tempo; anexos removidos por
+   * outros pontos do fluxo (ex.: edição da solicitação) não passam por aqui.
+   */
+  removerAnexo: (solicitacaoId: string, anexoId: string) => void;
+
+  /**
    * T2.T — Troca o paciente de uma solicitação. Substitui paciente,
    * acompanhantes e anexos. NÃO altera status, pareceres, agendamento,
    * viagens, ajudas, adicionais ou observações. Como o paciente muda,
@@ -285,11 +293,14 @@ export interface EditarSolicitacaoPatch {
   acompanhanteIds?: string[];
   dataLaudo?: string | undefined;
   origemLaudoUnidadeId?: string | undefined;
+  /** Preserva `origem`/`data` dos itens existentes — só os novos (sem `id`)
+   *  ganham `origem: 'edicao'`. Ver `editarSolicitacao` no provider. */
   anexos?: { id?: string; nome: string; tipo: string; tipoDocumento?: string }[];
-  /** T2.AG — Número do processo SEI (formato XXXXX.XXXXXX/AAAA-DD). */
-  numeroSEI?: string | undefined;
-  /** T2.AG — URL completa do processo no SEI. */
-  seiUrl?: string | undefined;
+  /** Pedido do Rafael (26/08/2026) — histórico completo de processos SEI da
+   *  solicitação; o último item é o vigente. Substitui o par legado
+   *  `numeroSEI`/`seiUrl`, que o provider continua sincronizando por baixo
+   *  dos panos para compatibilidade com o restante do sistema. */
+  processosSei?: import('@/core/mocks/fluxo-v2-v3-seed').ProcessoSeiMock[];
   /** Snapshot dos acompanhantes quando vêm do banco (não estão em acompanhantesPool). */
   acompanhantesSnapshot?: import('@/core/mocks/fluxo-v2-v3-seed').AcompanhanteMock[];
 }
@@ -315,10 +326,10 @@ export interface NewSolicitacaoInput {
    *  Usado para relatórios regionais. */
   origemLaudoUnidadeId?: string;
   anexos: { nome: string; tipo: string }[];
-  /** PBI 13218 — Número do processo SEI e link passam a ser obrigatórios
-   *  na criação da solicitação. */
-  numeroSEI: string;
-  seiUrl: string;
+  /** PBI 13218 — pelo menos um processo SEI é obrigatório na criação da
+   *  solicitação. Pedido do Rafael (26/08/2026) — pode vir com mais de um já
+   *  na criação; o último da lista é o vigente. */
+  processosSei: { numero: string; url: string }[];
   /** Snapshot do paciente quando vem do banco (não está no pacientesPool mock). */
   pacienteSnapshot?: import('@/core/mocks/fluxo-v2-v3-seed').PacienteMock;
   /** Snapshot dos acompanhantes quando vêm do banco. */
@@ -510,11 +521,14 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
 
     // 1) Persiste no Supabase para receber o id real ANTES de inserir no estado.
     //    Filhos (parecer, viagem, etc.) precisam de FK válida.
+    const processosSeiValidos = input.processosSei
+      .filter((p) => p.numero.trim().length > 0)
+      .map((p) => ({ numero: p.numero.trim(), url: p.url.trim() || undefined }));
+
     const novaSolicitacaoPayload = buildNewSolicitacao({
       pacienteId: paciente.id,
       numeroProcesso: proximoNumero,
-      numeroSEI: input.numeroSEI.trim(),
-      seiUrl: input.seiUrl.trim(),
+      processosSei: processosSeiValidos,
       dataLaudo: input.dataLaudo,
       origemLaudoUnidadeId: input.origemLaudoUnidadeId,
     });
@@ -564,8 +578,9 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       tipoSolicitacao: 'normal',
       dataCriacao: nowIso(),
       dataLaudo: input.dataLaudo,
-      numeroSEI: input.numeroSEI.trim(),
-      seiUrl: input.seiUrl.trim(),
+      processosSei: processosSeiValidos.map((p) => ({ id: uid('sei'), numero: p.numero, url: p.url, data: nowIso() })),
+      numeroSEI: processosSeiValidos[processosSeiValidos.length - 1]?.numero,
+      seiUrl: processosSeiValidos[processosSeiValidos.length - 1]?.url,
       paciente,
       acompanhantes,
       anexos: input.anexos.map((a) => ({ id: uid('an'), ...a })),
@@ -623,6 +638,24 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         data: agora,
       }));
       s.anexos = [...(s.anexos ?? []), ...novos];
+      return s;
+    });
+  }, [mutate]);
+
+  /**
+   * Pedido do Rafael (26/08/2026) — exclusão de anexo pela aba Anexos.
+   * O anexo em si sai de `s.anexos`; um registro mínimo fica em
+   * `s.anexosExcluidos` só para a linha do tempo poder mostrar o evento.
+   */
+  const removerAnexo = useCallback<FluxoV2ContextValue['removerAnexo']>((id, anexoId) => {
+    mutate(id, (s) => {
+      const alvo = s.anexos.find((a) => a.id === anexoId);
+      if (!alvo) return s;
+      s.anexos = s.anexos.filter((a) => a.id !== anexoId);
+      s.anexosExcluidos = [
+        ...(s.anexosExcluidos ?? []),
+        { id: alvo.id, nome: alvo.nome, tipoDocumento: alvo.tipoDocumento, data: nowIso() },
+      ];
       return s;
     });
   }, [mutate]);
@@ -1476,6 +1509,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
   }, [mutate]);
 
   const editarSolicitacao = useCallback<FluxoV2ContextValue['editarSolicitacao']>((id, patch) => {
+    const dbPatch: Record<string, unknown> = {};
     mutate(id, (s) => {
       if (patch.acompanhanteIds !== undefined) {
         const fonte = patch.acompanhantesSnapshot ?? acompanhantesPool;
@@ -1485,25 +1519,47 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
         s.dataLaudo = patch.dataLaudo || undefined;
       }
       if (patch.anexos !== undefined) {
-        s.anexos = patch.anexos.map((a) => ({
-          id: a.id ?? uid('an'),
-          nome: a.nome,
-          tipo: a.tipo,
-          tipoDocumento: a.tipoDocumento,
-        }));
+        // Preserva origem/data dos itens já existentes (por id) — só os
+        // novos (sem id, recém adicionados no formulário de edição) ganham
+        // origem 'edicao'. Sem isso, salvar a edição apagava a origem de
+        // TODOS os anexos, inclusive os avulsos da aba Anexos.
+        const existentesPorId = new Map(s.anexos.map((a) => [a.id, a]));
+        s.anexos = patch.anexos.map((a) => {
+          const existente = a.id ? existentesPorId.get(a.id) : undefined;
+          return {
+            id: a.id ?? uid('an'),
+            nome: a.nome,
+            tipo: a.tipo,
+            tipoDocumento: a.tipoDocumento,
+            origem: existente?.origem ?? 'edicao',
+            data: existente?.data ?? nowIso(),
+          };
+        });
       }
-      if (patch.numeroSEI !== undefined) {
-        s.numeroSEI = patch.numeroSEI?.trim() || undefined;
-      }
-      if (patch.seiUrl !== undefined) {
-        s.seiUrl = patch.seiUrl?.trim() || undefined;
+      if (patch.processosSei !== undefined) {
+        s.processosSei = patch.processosSei;
+        const vigente = patch.processosSei[patch.processosSei.length - 1];
+        s.numeroSEI = vigente?.numero;
+        s.seiUrl = vigente?.url;
+        // Coluna legada — sempre espelha o vigente, pra quem ainda lê direto
+        // do banco sem passar pelos helpers de `_utils/processoSei.ts`.
+        dbPatch.numero_protocolo = vigente?.numero ?? null;
+        dbPatch.url_sei = vigente?.url ?? null;
+        // `processos_sei` (migration 00081, ainda não aplicada) só entra no
+        // patch quando o histórico tem mais de um processo — com só um, o
+        // par legado acima já basta e o update não depende da migration.
+        if (patch.processosSei.length > 1) {
+          dbPatch.processos_sei = patch.processosSei.map((p) => ({
+            id: p.id,
+            numero: p.numero,
+            url: p.url ?? null,
+            data: p.data,
+          }));
+        }
       }
       return s;
     });
-    const dbPatch: Record<string, unknown> = {};
     if (patch.dataLaudo !== undefined) dbPatch.data_laudo = patch.dataLaudo || null;
-    if (patch.numeroSEI !== undefined) dbPatch.numero_protocolo = patch.numeroSEI?.trim() || null;
-    if (patch.seiUrl !== undefined) dbPatch.url_sei = patch.seiUrl?.trim() || null;
     if (Object.keys(dbPatch).length) persistUpdate('solicitacoes', id, dbPatch);
   }, [mutate]);
 
@@ -1580,6 +1636,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     devolverParaRegulacao,
     marcarDevolucaoResolvida,
     editarSolicitacao,
+    removerAnexo,
     trocarPaciente,
     criarCreditoSaldo: criarCreditoSaldoStore,
     aplicarDebitoSaldo: aplicarDebitoSaldoStore,
@@ -1598,6 +1655,7 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
     encerrar, reabrirParaParecer, reabrirSolicitacao,
     addObservacao,
     enviarParaSetor, encaminharParaFinanceiro, devolverParaRegulacao, marcarDevolucaoResolvida, editarSolicitacao,
+    removerAnexo,
     trocarPaciente,
   ]);
 

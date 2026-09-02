@@ -3,6 +3,7 @@
 import type { SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
 import HoverTooltip, { TooltipKV } from './HoverTooltip';
 import { ExternalLink } from 'lucide-react';
+import { historicoProcessosSei, processoSeiVigente } from '../_utils/processoSei';
 
 function fmtDataBR(iso?: string) {
   if (!iso) return '—';
@@ -28,13 +29,16 @@ interface Props {
  * - Sem `seiUrl`, exibe sem affordance de link.
  */
 export default function SolicitacaoNumeroCell({ s, trailing, size = 13 }: Props) {
-  const hasSei = Boolean(s.seiUrl);
+  const vigente = processoSeiVigente(s);
+  const historico = historicoProcessosSei(s);
+  const hasSei = Boolean(vigente?.url);
 
   const tooltipContent = (
     <TooltipKV
       rows={[
         { k: 'Número', v: s.numero, mono: true },
-        ...(s.numeroSEI ? [{ k: 'SEI', v: s.numeroSEI, mono: true }] : []),
+        ...(vigente ? [{ k: 'SEI', v: vigente.numero, mono: true }] : []),
+        ...(historico.length > 1 ? [{ k: 'Histórico SEI', v: `${historico.length} processos` }] : []),
         { k: 'Status', v: s.status },
         { k: 'Criada em', v: fmtDataBR(s.dataCriacao) },
         ...(s.dataLaudo ? [{ k: 'Laudo', v: fmtDataBR(s.dataLaudo) }] : []),
@@ -51,7 +55,7 @@ export default function SolicitacaoNumeroCell({ s, trailing, size = 13 }: Props)
       <HoverTooltip content={tooltipContent} maxWidth={300}>
         {hasSei ? (
           <a
-            href={s.seiUrl}
+            href={vigente!.url}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}

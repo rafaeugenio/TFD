@@ -10,6 +10,7 @@ import ReciboAjudaCustoDrawer, {
 } from '@/shared/components/despacho/ReciboAjudaCustoDrawer';
 import { REPRESENTANTES_PADRAO } from '@/core/despacho/representantes';
 import { montarCorpoDespacho } from '../_utils/corpoDespacho';
+import { processoSeiVigente } from '../_utils/processoSei';
 import { calcularValorAjuda, type SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
 import { fmtDataBR } from '@/shared/utils/fmtData';
 
@@ -262,7 +263,7 @@ export default function FechamentoSolicitacaoCard({ s, locked, lockedTip }: Prop
         despachoId={despachoId ?? undefined}
         criar={despachoId ? undefined : {
           solicitacaoId: s.id,
-          numeroSEI: s.numeroSEI ?? '',
+          numeroSEI: processoSeiVigente(s)?.numero ?? '',
           texto: drawerAberto ? montarCorpoDespacho(s) : '',
           representantes: REPRESENTANTES_PADRAO,
         }}

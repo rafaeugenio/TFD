@@ -36,6 +36,11 @@ import { calcularIdade } from '@/shared/utils/idade';
 import { maskCPF, maskCNS, maskPhone } from '@/shared/pipes/formatters';
 import LookupSelect from '@/shared/components/lookup-select/LookupSelect';
 import { agendamentoConfirmado } from '../../_utils/agendamento';
+import { historicoProcessosSei } from '../../_utils/processoSei';
+import ProcessosSeiField, {
+  novaLinhaProcessoSei,
+  type ProcessoSeiLinha,
+} from '../ProcessosSeiField';
 
 const inputStyle: React.CSSProperties = {
   background: 'white',
@@ -108,8 +113,14 @@ export default function NewEditarSolicitacaoDrawer({
   const [pacienteId, setPacienteId] = useState(originalPacienteId);
   const [acompanhanteIds, setAcompanhanteIds] = useState<string[]>(originalAcompanhanteIds);
   const [dataLaudo, setDataLaudo] = useState(solicitacao.dataLaudo ?? '');
-  const [numeroSEI, setNumeroSEI] = useState(solicitacao.numeroSEI ?? '');
-  const [seiUrl, setSeiUrl] = useState(solicitacao.seiUrl ?? '');
+  /** Pedido do Rafael (26/08/2026) — histórico de processos SEI; o último
+   *  item da lista é o vigente. */
+  const [linhasSei, setLinhasSei] = useState<ProcessoSeiLinha[]>(() => {
+    const historico = historicoProcessosSei(solicitacao);
+    return historico.length > 0
+      ? historico.map((p) => ({ id: p.id, numero: p.numero, url: p.url ?? '' }))
+      : [novaLinhaProcessoSei()];
+  });
   const [anexos, setAnexos] = useState<AnexoEdit[]>(
     solicitacao.anexos.map((a) => ({
       id: a.id,
@@ -147,8 +158,12 @@ export default function NewEditarSolicitacaoDrawer({
     setPacienteId(originalPacienteId);
     setAcompanhanteIds(originalAcompanhanteIds);
     setDataLaudo(solicitacao.dataLaudo ?? '');
-    setNumeroSEI(solicitacao.numeroSEI ?? '');
-    setSeiUrl(solicitacao.seiUrl ?? '');
+    const historico = historicoProcessosSei(solicitacao);
+    setLinhasSei(
+      historico.length > 0
+        ? historico.map((p) => ({ id: p.id, numero: p.numero, url: p.url ?? '' }))
+        : [novaLinhaProcessoSei()],
+    );
     setAnexos(
       solicitacao.anexos.map((a) => ({
         id: a.id,
@@ -245,7 +260,9 @@ export default function NewEditarSolicitacaoDrawer({
     [acompanhanteIds, acompanhantes],
   );
   const validacaoMenor = isMenor && acompanhantesAdultos.length === 0;
-  const seiUrlInvalido = seiUrl.trim().length > 0 && !/^https?:\/\//i.test(seiUrl.trim());
+  const seiUrlInvalido = linhasSei.some(
+    (l) => l.url.trim().length > 0 && !/^https?:\/\//i.test(l.url.trim()),
+  );
   const trocouPaciente = pacienteId !== originalPacienteId;
 
   const podeSalvar = !!pacienteId && !validacaoMenor && !seiUrlInvalido;
@@ -350,6 +367,19 @@ export default function NewEditarSolicitacaoDrawer({
       tipoDocumento: a.tipoDocumento,
     }));
 
+    // Preserva a data de cadastro dos processos já existentes; novos ganham
+    // a data de agora. A ordem da lista é a ordem de cadastro — o último é
+    // sempre o vigente.
+    const historicoAtual = historicoProcessosSei(solicitacao);
+    const processosSeiPayload = linhasSei
+      .filter((l) => l.numero.trim())
+      .map((l) => ({
+        id: l.id,
+        numero: l.numero.trim(),
+        url: l.url.trim() || undefined,
+        data: historicoAtual.find((p) => p.id === l.id)?.data ?? new Date().toISOString(),
+      }));
+
     if (trocouPaciente) {
       // Troca de paciente — provider reseta acompanhantes/anexos via trocarPaciente
       trocarPaciente(
@@ -365,8 +395,7 @@ export default function NewEditarSolicitacaoDrawer({
       // Aplica também laudo/SEI no patch normal (não cobertos pelo trocarPaciente)
       editarSolicitacao(solicitacao.id, {
         dataLaudo: dataLaudo || undefined,
-        numeroSEI: numeroSEI.trim() || undefined,
-        seiUrl: seiUrl.trim() || undefined,
+        processosSei: processosSeiPayload,
       });
     } else {
       editarSolicitacao(solicitacao.id, {
@@ -374,8 +403,7 @@ export default function NewEditarSolicitacaoDrawer({
         acompanhantesSnapshot,
         dataLaudo: dataLaudo || undefined,
         anexos: anexosPayload,
-        numeroSEI: numeroSEI.trim() || undefined,
-        seiUrl: seiUrl.trim() || undefined,
+        processosSei: processosSeiPayload,
       });
     }
     toast.success(trocouPaciente ? 'Paciente atualizado' : 'Solicitação atualizada', solicitacao.numero);
@@ -792,32 +820,13 @@ export default function NewEditarSolicitacaoDrawer({
           </FormSection>
 
           {/* ─── Processo SEI ─────────────────────────────────────────── */}
-          <FormSection title="Processo SEI" icon={<Hash size={12} />} tone="default" hint="Opcional — informe se o processo já tem número SEI.">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <input
-                value={numeroSEI}
-                onChange={(e) => setNumeroSEI(e.target.value)}
-                placeholder="Número SEI (ex.: 00100.000456/2026-12)"
-                className="px-3 py-2 text-[13px] font-mono"
-                style={inputStyle}
-              />
-              <input
-                value={seiUrl}
-                onChange={(e) => setSeiUrl(e.target.value)}
-                placeholder="URL do processo (https://...)"
-                className="px-3 py-2 text-[13px]"
-                style={{
-                  background: 'white',
-                  border: `1px solid ${seiUrlInvalido ? '#FCA5A5' : 'var(--tfd-surface-border)'}`,
-                  borderRadius: 8,
-                }}
-              />
-            </div>
-            {seiUrlInvalido && (
-              <p className="text-[11px] mt-1" style={{ color: '#B91C1C' }}>
-                URL inválida — comece com http:// ou https://
-              </p>
-            )}
+          <FormSection
+            title="Processo SEI"
+            icon={<Hash size={12} />}
+            tone="default"
+            hint="A solicitação acumula um processo novo por vez; o último da lista é o vigente."
+          >
+            <ProcessosSeiField linhas={linhasSei} onLinhasChange={setLinhasSei} />
           </FormSection>
 
           {/* ─── Anexos ──────────────────────────────────────────────── */}

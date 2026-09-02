@@ -36,6 +36,23 @@ interface SolicitacaoRow {
   snapshot_conta: string | null;
   snapshot_nome_titular: string | null;
   snapshot_cpf_titular: string | null;
+  /** Par legado — processo SEI único, de antes do histórico de processos. */
+  numero_protocolo: string | null;
+  /** Migration 00081 (ainda não aplicada) — histórico completo de processos
+   *  SEI; o último item é o vigente. Enquanto a migration não roda, vem
+   *  `undefined` e o recibo cai para `numero_protocolo`. */
+  processos_sei: Array<{ numero?: string }> | null;
+}
+
+/** Pedido do Rafael (26/08/2026) — no corpo do recibo, o número do processo
+ *  SEI mais recente da solicitação substitui o número do TFD (que continua
+ *  no cabeçalho). Sem processo SEI registrado, devolve `null` e o recibo
+ *  mostra um estado claro em vez de deixar o campo vazio. */
+function processoSeiVigenteRow(sol: SolicitacaoRow): string | null {
+  const historico = Array.isArray(sol.processos_sei) ? sol.processos_sei : [];
+  const ultimo = historico[historico.length - 1];
+  if (ultimo?.numero) return ultimo.numero;
+  return sol.numero_protocolo || null;
 }
 
 interface PacienteRow {
@@ -137,13 +154,27 @@ export default async function ReciboAjudaCustoPage({
   const { data: solData } = await supabase
     .from('solicitacoes')
     .select(
-      'id, numero_processo, paciente_id, snapshot_banco, snapshot_agencia, snapshot_conta, snapshot_nome_titular, snapshot_cpf_titular',
+      'id, numero_processo, paciente_id, snapshot_banco, snapshot_agencia, snapshot_conta, snapshot_nome_titular, snapshot_cpf_titular, numero_protocolo',
     )
     .eq('id', solicitacaoId)
     .maybeSingle();
 
   if (!solData) notFound();
   const sol = solData as unknown as SolicitacaoRow;
+
+  // `processos_sei` (migration 00081) buscado à parte, best-effort: pedir a
+  // coluna no select principal faria a query inteira falhar enquanto a
+  // migration não for aplicada (mesmo cuidado do `selectShape.ts` do fluxo-v2).
+  const { data: seiData, error: seiError } = await supabase
+    .from('solicitacoes')
+    .select('processos_sei')
+    .eq('id', solicitacaoId)
+    .maybeSingle();
+  if (seiError) {
+    console.warn('[recibo-ajuda-custo] processos_sei indisponível (migration 00081 pendente?):', seiError.message);
+  }
+  sol.processos_sei = (seiData as { processos_sei?: Array<{ numero?: string }> } | null)?.processos_sei ?? null;
+  const processoSei = processoSeiVigenteRow(sol);
 
   const [{ data: pacienteData }, { data: solAcompData }, { data: tentativaData }] = await Promise.all([
     supabase
@@ -266,8 +297,8 @@ export default async function ReciboAjudaCustoPage({
               <span className="recibo-grid-valor">{endereco}</span>
             </div>
             <div className="recibo-grid-cel">
-              <span className="recibo-grid-label">Documento da solicitação</span>
-              <span className="recibo-grid-valor">{sol.numero_processo}</span>
+              <span className="recibo-grid-label">Processo SEI</span>
+              <span className="recibo-grid-valor">{processoSei ?? 'Sem processo SEI registrado'}</span>
             </div>
           </div>
           <div className="recibo-grid recibo-grid-2">

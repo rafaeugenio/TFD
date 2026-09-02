@@ -573,9 +573,25 @@ export interface AnexoMock {
     | 'agendamento'
     | 'tentativa'
     | 'ajuda_custo'
-    | 'carimbo';
+    | 'carimbo'
+    /** Enviado pelo botão dedicado da aba Anexos, a qualquer momento do
+     *  fluxo — único que gera evento próprio na linha do tempo. */
+    | 'avulso';
   /** ISO datetime — quando o anexo foi adicionado (para ordenação por data). */
   data?: string;
+}
+
+/** Pedido do Rafael (26/08/2026) — um processo SEI da solicitação. A
+ *  solicitação acumula processos novos ao longo do tratamento (um por mês,
+ *  tipicamente); o último item do array em `SolicitacaoMock.processosSei`
+ *  é sempre o vigente. */
+export interface ProcessoSeiMock {
+  id: string;
+  /** Formato XXXXX.XXXXXX/AAAA-DD. */
+  numero: string;
+  url?: string;
+  /** ISO datetime — quando o processo foi cadastrado (ordena o histórico). */
+  data: string;
 }
 
 export interface ObservacaoChat {
@@ -660,10 +676,27 @@ export interface SolicitacaoMock {
    *  antes da primeira tramitação (estado neutro, não erro). Mais de uma
    *  pessoa pode responder pela solicitação ao mesmo tempo no mesmo setor. */
   responsaveisAtuais?: ResponsavelSolicitacao[];
-  /** T2.AG — Número do processo SEI (formato XXXXX.XXXXXX/AAAA-DD). */
+  /** T2.AG — Número do processo SEI (formato XXXXX.XXXXXX/AAAA-DD) do
+   *  primeiro/único processo cadastrado. Mantido para compatibilidade com
+   *  registros antigos e com as colunas `numero_protocolo`/`url_sei` do
+   *  banco; leitura de exibição deve preferir `processosSei` via os
+   *  helpers de `_utils/processoSei.ts`, que caem para este campo quando a
+   *  lista estiver vazia. */
   numeroSEI?: string;
-  /** T2.AG — URL completa para o processo no SEI. */
+  /** T2.AG — URL completa para o processo no SEI (par de `numeroSEI`). */
   seiUrl?: string;
+  /** Pedido do Rafael (26/08/2026) — histórico de processos SEI da
+   *  solicitação. Um paciente em tratamento longo gera processo novo a
+   *  cada mês; o último item da lista é sempre o vigente. Populado a
+   *  partir da migration 00081 (`solicitacoes.processos_sei`); até ela ser
+   *  aplicada, o front continua funcionando com o par legado
+   *  `numeroSEI`/`seiUrl` como único item do histórico. */
+  processosSei?: ProcessoSeiMock[];
+  /** Registro dos anexos excluídos pela aba Anexos — só para alimentar a
+   *  linha do tempo (o anexo em si já saiu de `anexos`). Anexos removidos
+   *  por outros pontos do fluxo (ex.: edição da solicitação) não entram
+   *  aqui, para não duplicar evento. */
+  anexosExcluidos?: { id: string; nome: string; tipoDocumento?: string; data: string }[];
   /** Setor em que a solicitação estava no momento em que foi enviada para
    *  Aprovação — preenchido junto com `observacaoAprovacao` e limpo quando a
    *  solicitação sai do setor Aprovação. */

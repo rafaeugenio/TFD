@@ -42,6 +42,10 @@ import AgendamentoProcedimentosField, {
   novaLinhaAgendamento,
   type AgendamentoLinha,
 } from '../_components/AgendamentoProcedimentosField';
+import ProcessosSeiField, {
+  novaLinhaProcessoSei,
+  type ProcessoSeiLinha,
+} from '../_components/ProcessosSeiField';
 
 interface Props { open: boolean; onClose: () => void }
 
@@ -104,14 +108,14 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
   const [agendamentos, setAgendamentos] = useState<AgendamentoLinha[]>([novaLinhaAgendamento()]);
   const [dataLaudo, setDataLaudo] = useState('');
   const [origemLaudoUnidadeId, setOrigemLaudoUnidadeId] = useState('');
-  const [numeroSEI, setNumeroSEI] = useState('');
-  const [seiUrl, setSeiUrl] = useState('');
+  /** Pedido do Rafael (26/08/2026) — a solicitação pode nascer com mais de um
+   *  processo SEI; o último da lista é o vigente. */
+  const [linhasSei, setLinhasSei] = useState<ProcessoSeiLinha[]>([novaLinhaProcessoSei()]);
   const [anexos, setAnexos] = useState<{ nome: string; tipo: string; tipoDocumento?: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Tipos de documento (tabela auxiliar)
   const [tiposDocumento, setTiposDocumento] = useState<TipoDocRow[]>([]);
-  const seiUrlInvalido = seiUrl.trim().length > 0 && !/^https?:\/\//i.test(seiUrl.trim());
 
   // Pacientes do banco (carregados quando o drawer abre)
   const [pacientes, setPacientes] = useState<PacienteRow[]>([]);
@@ -242,9 +246,13 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
 
   const unidadeSelecionada = unidadesAgendamento.find((u) => u.id === unidadeId);
   const agendamentosValidos = agendamentos.filter((a) => a.tipoProcedimento && a.data);
-  // PBI 13218 — Número do processo SEI e link passam a ser obrigatórios na
+  // PBI 13218 — pelo menos um processo SEI (número + link) é obrigatório na
   // criação da solicitação.
-  const seiPreenchido = numeroSEI.trim().length > 0 && seiUrl.trim().length > 0;
+  const linhasSeiValidas = linhasSei.filter((l) => l.numero.trim() && l.url.trim());
+  const seiPreenchido = linhasSeiValidas.length > 0;
+  const seiUrlInvalido = linhasSei.some(
+    (l) => l.url.trim().length > 0 && !/^https?:\/\//i.test(l.url.trim()),
+  );
   const podeSalvar =
     !!paciente &&
     !validacaoMenor &&
@@ -260,7 +268,7 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
     setUnidade(''); setUnidadeId('');
     setAgendamentos([novaLinhaAgendamento()]);
     setDataLaudo('');
-    setNumeroSEI(''); setSeiUrl('');
+    setLinhasSei([novaLinhaProcessoSei()]);
     setAnexos([]);
     resetNovoAcompForm();
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -363,8 +371,7 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
           : undefined,
       dataLaudo: dataLaudo || undefined,
       origemLaudoUnidadeId: origemLaudoUnidadeId || undefined,
-      numeroSEI: numeroSEI.trim(),
-      seiUrl: seiUrl.trim(),
+      processosSei: linhasSeiValidas.map((l) => ({ numero: l.numero.trim(), url: l.url.trim() })),
       anexos,
       pacienteSnapshot,
       acompanhantesSnapshot,
@@ -739,48 +746,16 @@ export default function NewSolicitacaoDrawer({ open, onClose }: Props) {
           </div>
         </FormSection>
 
-        {/* Processo SEI — obrigatório (PBI 13218) */}
+        {/* Processo SEI — pelo menos um é obrigatório (PBI 13218); a
+            solicitação pode nascer com mais de um quando o setor já sabe
+            que vai abrir processo novo em seguida. */}
         <FormSection
           title="Processo SEI"
           icon={<Hash size={12} />}
           tone="default"
-          hint="Número e link do processo são obrigatórios."
+          hint="Pelo menos um número e link são obrigatórios."
         >
-          <div className="grid grid-cols-2 gap-2 min-w-0">
-            <div>
-              <label className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8', letterSpacing: '0.04em' }}>
-                Número SEI <span style={{ color: 'var(--tfd-status-danger)' }}>*</span>
-              </label>
-              <input
-                value={numeroSEI}
-                onChange={(e) => setNumeroSEI(e.target.value)}
-                placeholder="ex.: 00100.000456/2026-12"
-                className="w-full px-3 py-2 text-[13px] font-mono mt-1"
-                style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8 }}
-              />
-            </div>
-            <div>
-              <label className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8', letterSpacing: '0.04em' }}>
-                Link do processo <span style={{ color: 'var(--tfd-status-danger)' }}>*</span>
-              </label>
-              <input
-                value={seiUrl}
-                onChange={(e) => setSeiUrl(e.target.value)}
-                placeholder="https://..."
-                className="w-full px-3 py-2 text-[13px] mt-1"
-                style={{
-                  background: 'white',
-                  border: `1px solid ${seiUrlInvalido ? '#FCA5A5' : 'var(--tfd-surface-border)'}`,
-                  borderRadius: 8,
-                }}
-              />
-            </div>
-          </div>
-          {seiUrlInvalido && (
-            <p className="text-[11px] mt-1" style={{ color: '#B91C1C' }}>
-              URL inválida — comece com http:// ou https://
-            </p>
-          )}
+          <ProcessosSeiField linhas={linhasSei} onLinhasChange={setLinhasSei} />
         </FormSection>
 
         {/* Anexos */}

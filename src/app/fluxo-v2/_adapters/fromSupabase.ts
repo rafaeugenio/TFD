@@ -17,6 +17,7 @@ import type {
   DespesaFunerariaMock,
   EncerramentoMock,
   AnexoMock,
+  ProcessoSeiMock,
   ObservacaoChat,
   DevolucaoFinanceiroParaRegulacao,
   ResponsavelSolicitacao,
@@ -458,6 +459,27 @@ function anexosFromRows(rows: Row[]): AnexoMock[] {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Processos SEI                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Lê `solicitacoes.processos_sei` (migration 00081, ainda não aplicada).
+ * Enquanto a coluna não existir no banco, `row.processos_sei` chega como
+ * `undefined` e `arr()` devolve lista vazia — o front cai de volta para o
+ * par legado `numero_protocolo`/`url_sei` via `_utils/processoSei.ts`.
+ */
+function processosSeiFromRow(row: Row): ProcessoSeiMock[] {
+  return arr(row.processos_sei)
+    .map((p) => ({
+      id: str(p.id),
+      numero: str(p.numero),
+      url: opt(p.url),
+      data: str(p.data),
+    }))
+    .filter((p) => p.numero.length > 0);
+}
+
+/* ------------------------------------------------------------------ */
 /*  Responsáveis atuais                                                */
 /* ------------------------------------------------------------------ */
 
@@ -545,6 +567,10 @@ export function solicitacaoFromSupabase(row: Row, despesasFunerariasRows: Row[] 
     devolucoes,
     numeroSEI: opt(row.numero_protocolo),
     seiUrl: opt(row.url_sei),
+    processosSei: (() => {
+      const lista = processosSeiFromRow(row);
+      return lista.length > 0 ? lista : undefined;
+    })(),
     setorOrigemAprovacao: opt(row.setor_origem_aprovacao) as SolicitacaoMock['setorOrigemAprovacao'],
     observacaoAprovacao: opt(row.observacao_aprovacao),
     responsaveisAtuais: responsaveisFromRows(arr(row.solicitacao_responsaveis)),

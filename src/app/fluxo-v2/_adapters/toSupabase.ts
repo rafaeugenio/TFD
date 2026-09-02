@@ -37,6 +37,11 @@ export interface NewSolicitacaoSupabase {
   numero_processo: string;
   numero_protocolo?: string;
   url_sei?: string;
+  /** Migration 00081 (ainda não aplicada) — histórico completo de processos
+   *  SEI. Só entra no payload quando há mais de um processo; com um único
+   *  processo, `numero_protocolo`/`url_sei` já bastam e a criação não
+   *  depende da migration ter sido aplicada. */
+  processos_sei?: Array<{ id: string; numero: string; url: string | null; data: string }>;
   data_laudo?: string;
   origem_laudo_unidade_id?: string;
   status: StatusDb;
@@ -49,16 +54,28 @@ export interface NewSolicitacaoSupabase {
 export function buildNewSolicitacao(input: {
   pacienteId: string;
   numeroProcesso: string;
-  numeroSEI: string;
-  seiUrl: string;
+  /** Pedido do Rafael (26/08/2026) — pelo menos um processo é obrigatório;
+   *  o último da lista é o vigente (espelhado em `numero_protocolo`/`url_sei`). */
+  processosSei: Array<{ numero: string; url?: string }>;
   dataLaudo?: string;
   origemLaudoUnidadeId?: string;
 }): NewSolicitacaoSupabase {
+  const vigente = input.processosSei[input.processosSei.length - 1];
   return {
     paciente_id: input.pacienteId,
     numero_processo: input.numeroProcesso,
-    numero_protocolo: input.numeroSEI,
-    url_sei: input.seiUrl,
+    numero_protocolo: vigente?.numero,
+    url_sei: vigente?.url,
+    ...(input.processosSei.length > 1
+      ? {
+          processos_sei: input.processosSei.map((p, i) => ({
+            id: `sei-${i}`,
+            numero: p.numero,
+            url: p.url ?? null,
+            data: new Date().toISOString(),
+          })),
+        }
+      : {}),
     data_laudo: input.dataLaudo,
     origem_laudo_unidade_id: input.origemLaudoUnidadeId,
     status: 'NOVO',

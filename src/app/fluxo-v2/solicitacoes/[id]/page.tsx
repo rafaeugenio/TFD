@@ -25,6 +25,7 @@ import { Can } from '@/shared/auth/Can';
 import { useToast } from '@/shared/components/toast/Toast';
 import { resolverOrigem } from '@/shared/utils/solicitacaoOrigem';
 import { proximoAgendamento, type ProximoAgendamentoInfo } from '../../_utils/agendamento';
+import { historicoProcessosSei, processoSeiVigente } from '../../_utils/processoSei';
 
 type TabKey = 'timeline' | 'regulacao' | 'financeiro' | 'anexos' | 'observacoes';
 
@@ -138,6 +139,11 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
   // distância que diz se o caso é prioridade, não o tempo desde a criação.
   const agenda = proximoAgendamento(s);
 
+  // Processo SEI vigente (o mais recente da lista) + histórico completo,
+  // pra deixar claro qual é o vigente quando há mais de um.
+  const seiVigente = processoSeiVigente(s);
+  const seiHistorico = historicoProcessosSei(s);
+
   return (
     <div>
       <Link href={voltar.href} className="inline-flex items-center gap-1 text-[12px] mb-3 transition-colors hover:text-[#1A1D2B]" style={{ color: '#6B7280' }}>
@@ -217,20 +223,20 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
               >
                 {s.numero}
               </span>
-              {s.numeroSEI ? (
-                s.seiUrl ? (
+              {seiVigente ? (
+                seiVigente.url ? (
                   <a
-                    href={s.seiUrl}
+                    href={seiVigente.url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 text-[13px] transition-colors hover:underline"
                     style={{ color: '#146BFA', textUnderlineOffset: 3 }}
-                    title={`Abrir processo SEI nº ${s.numeroSEI}`}
+                    title={`Abrir processo SEI nº ${seiVigente.numero}${seiHistorico.length > 1 ? ' (vigente)' : ''}`}
                   >
                     <ExternalLink size={12} strokeWidth={2.2} />
                     <span>
-                      {/^sei/i.test(s.numeroSEI) ? '' : 'SEI '}
-                      <span className="font-mono">{s.numeroSEI}</span>
+                      {/^sei/i.test(seiVigente.numero) ? '' : 'SEI '}
+                      <span className="font-mono">{seiVigente.numero}</span>
                     </span>
                   </a>
                 ) : (
@@ -241,8 +247,8 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
                   >
                     <FileText size={12} style={{ color: '#94A3B8' }} />
                     <span>
-                      {/^sei/i.test(s.numeroSEI) ? '' : 'SEI '}
-                      <span className="font-mono">{s.numeroSEI}</span>
+                      {/^sei/i.test(seiVigente.numero) ? '' : 'SEI '}
+                      <span className="font-mono">{seiVigente.numero}</span>
                     </span>
                   </span>
                 )
@@ -260,6 +266,35 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
                   <FileX size={11} strokeWidth={2.2} />
                   Sem vínculo SEI
                 </span>
+              )}
+              {seiHistorico.length > 1 && (
+                <details className="inline-block text-[11.5px]" style={{ color: '#6B7280' }}>
+                  <summary
+                    className="inline-flex items-center gap-1 cursor-pointer select-none hover:underline"
+                    style={{ color: '#6B7280', textUnderlineOffset: 2 }}
+                    title="Ver histórico de processos SEI desta solicitação"
+                  >
+                    +{seiHistorico.length - 1} {seiHistorico.length - 1 === 1 ? 'processo anterior' : 'processos anteriores'}
+                  </summary>
+                  <ul
+                    className="mt-1.5 flex flex-col gap-1 px-3 py-2"
+                    style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}
+                  >
+                    {[...seiHistorico].reverse().map((p, i) => (
+                      <li key={p.id} className="flex items-center gap-1.5 font-mono">
+                        <span>{p.numero}</span>
+                        {i === 0 && (
+                          <span
+                            className="font-sans text-[10px] font-semibold px-1.5 py-[1px]"
+                            style={{ background: '#EFF6FF', color: '#1D4ED8', borderRadius: 999 }}
+                          >
+                            vigente
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               )}
             </div>
 

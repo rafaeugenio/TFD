@@ -13,6 +13,7 @@
  */
 
 import { totaisFinanceiros } from './totaisFinanceiros';
+import { processoSeiVigente } from './processoSei';
 import { montarCorpoDespachoTemplate } from '@/core/despacho/corpoTemplate';
 import type { SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
 
@@ -25,7 +26,7 @@ function formatarBRL(valor: number): string {
 
 export function montarCorpoDespacho(s: SolicitacaoMock): string {
   const nome = (s.paciente?.nome ?? '[NOME DO PACIENTE]').toUpperCase();
-  const processo = s.numeroSEI?.trim() || s.numero || '____';
+  const processo = processoSeiVigente(s)?.numero || s.numero || '____';
   const total = totaisFinanceiros(s).totalGeral;
   const valor = total > 0 ? formatarBRL(total) : 'R$ ______';
 
