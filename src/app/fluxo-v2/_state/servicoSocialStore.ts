@@ -19,7 +19,6 @@ import {
   demandaEstaAberta,
   type CasaApoioMock,
   type DemandaSocialMock,
-  type EtapaImpactada,
   type InstrumentoSocialMock,
   type SetorOrigemDemanda,
   type SituacaoDemandaSocial,
@@ -77,17 +76,6 @@ export function temDemandaAberta(solicitacaoId: string): boolean {
   return state.demandas.some((d) => d.solicitacaoId === solicitacaoId && demandaEstaAberta(d));
 }
 
-/** Etapas marcadas como impactadas pelas demandas AINDA abertas. Vazio quando
- *  não há nenhuma aberta — o histórico continua consultável na aba. */
-export function etapasImpactadasAbertas(solicitacaoId: string): EtapaImpactada[] {
-  const set = new Set<EtapaImpactada>();
-  for (const d of state.demandas) {
-    if (d.solicitacaoId !== solicitacaoId || !demandaEstaAberta(d)) continue;
-    d.etapasImpactadas.forEach((e) => set.add(e));
-  }
-  return [...set];
-}
-
 export function instrumentosDaDemanda(demandaId: string): InstrumentoSocialMock[] {
   return state.instrumentos
     .filter((i) => i.demandaId === demandaId)
@@ -138,7 +126,6 @@ export interface NovaDemandaInput {
   pacienteNome: string;
   pacienteCpf: string;
   motivo: string;
-  etapasImpactadas: EtapaImpactada[];
   setorOrigem: SetorOrigemDemanda;
   encaminhadoPor: string;
 }
@@ -155,7 +142,6 @@ export function abrirDemanda(input: NovaDemandaInput): DemandaSocialMock {
     encaminhadoPor: input.encaminhadoPor,
     setorOrigem: input.setorOrigem,
     motivo: input.motivo.trim(),
-    etapasImpactadas: [...input.etapasImpactadas],
     situacao: 'pendente',
   };
   state = { ...state, demandas: [...state.demandas, nova] };
@@ -336,7 +322,6 @@ export function semearDemandasDemo(solicitacoes: SolicitacaoParaSeed[]): void {
 
   const modelos: Array<{
     motivo: string;
-    etapas: EtapaImpactada[];
     setor: SetorOrigemDemanda;
     encaminhadoPor: string;
     situacao: SituacaoDemandaSocial;
@@ -347,7 +332,6 @@ export function semearDemandasDemo(solicitacoes: SolicitacaoParaSeed[]): void {
     {
       motivo:
         'Paciente relata não ter onde ficar durante o tratamento em São Paulo e não tem familiar na cidade. Avaliar encaminhamento para casa de apoio antes da emissão das passagens.',
-      etapas: ['passagens', 'acompanhamento'],
       setor: 'passagens',
       encaminhadoPor: 'Luiz Cutrim',
       situacao: 'pendente',
@@ -356,7 +340,6 @@ export function semearDemandasDemo(solicitacoes: SolicitacaoParaSeed[]): void {
     {
       motivo:
         'Acompanhante indicada é a filha, que declarou não ter condições de arcar com alimentação no período. Avaliar a situação socioeconômica da família para o cálculo da ajuda de custo.',
-      etapas: ['ajuda_custo'],
       setor: 'ajuda_custo',
       encaminhadoPor: 'Thiago Mendes',
       situacao: 'em_atendimento',
@@ -366,7 +349,6 @@ export function semearDemandasDemo(solicitacoes: SolicitacaoParaSeed[]): void {
     {
       motivo:
         'Paciente idoso sem rede de apoio no município de origem. Regulação solicita parecer social antes de decidir sobre acompanhante adicional.',
-      etapas: ['regulacao'],
       setor: 'regulacao',
       encaminhadoPor: 'Dr. Carlos Aguiar',
       situacao: 'em_atendimento',
@@ -376,7 +358,6 @@ export function semearDemandasDemo(solicitacoes: SolicitacaoParaSeed[]): void {
     {
       motivo:
         'Família solicitou orientação sobre documentação e direitos durante o período de permanência fora do domicílio.',
-      etapas: [],
       setor: 'acompanhamento',
       encaminhadoPor: 'Manuela Freitas',
       situacao: 'concluida',
@@ -402,7 +383,6 @@ export function semearDemandasDemo(solicitacoes: SolicitacaoParaSeed[]): void {
       encaminhadoPor: m.encaminhadoPor,
       setorOrigem: m.setor,
       motivo: m.motivo,
-      etapasImpactadas: m.etapas,
       situacao: m.situacao,
       profissionalResponsavel: m.profissional,
       orientacaoFinal: m.orientacao,
@@ -430,17 +410,15 @@ export function useDemandasDaSolicitacao(solicitacaoId: string): DemandaSocialMo
   return demandasDaSolicitacao(solicitacaoId);
 }
 
-/** Flag de demanda aberta + etapas impactadas, reativo. Usado na listagem de
- *  solicitações e no cabeçalho do detalhe. */
+/** Flag de demanda aberta, reativo. Usado na listagem de solicitações e no
+ *  cabeçalho do detalhe. */
 export function useFlagServicoSocial(solicitacaoId: string): {
   aberta: boolean;
-  etapas: EtapaImpactada[];
   total: number;
 } {
   useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   return {
     aberta: temDemandaAberta(solicitacaoId),
-    etapas: etapasImpactadasAbertas(solicitacaoId),
     total: state.demandas.filter((d) => d.solicitacaoId === solicitacaoId).length,
   };
 }

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import {
-  HeartHandshake, Plus, FileText, Lock, Eye, Download, AlertTriangle,
+  HeartHandshake, Plus, FileText, Lock, Eye, Download,
   CheckCircle2, XCircle, PlayCircle, RotateCcw, Home, Info,
 } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
@@ -10,6 +10,7 @@ import StatusDot, { type StatusDotTone } from './StatusDot';
 import OrdinalBadge from './OrdinalBadge';
 import EnviarParaSetorDrawer from './drawers/EnviarParaSetorDrawer';
 import NewInstrumentoDrawer from './drawers/NewInstrumentoDrawer';
+import AssumirDemandaDrawer from './drawers/AssumirDemandaDrawer';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
 import { setorAtual, type SetorAcao } from '../_utils/lock';
 import {
@@ -18,13 +19,11 @@ import {
   instrumentosDaSolicitacao,
   contarInstrumentos,
   casaPorId,
-  assumirDemanda,
   concluirDemanda,
   cancelarDemanda,
   reabrirDemanda,
 } from '../_state/servicoSocialStore';
 import {
-  ETAPA_IMPACTADA_LABEL,
   SETOR_ORIGEM_LABEL,
   SITUACAO_DEMANDA_LABEL,
   TIPO_INSTRUMENTO_LABEL,
@@ -350,6 +349,7 @@ function DemandaCard({
   usuario: string;
 }) {
   const [acao, setAcao] = useState<'concluir' | 'cancelar' | null>(null);
+  const [assumir, setAssumir] = useState(false);
   const [texto, setTexto] = useState('');
   const qtdInstrumentos = contarInstrumentos(d.id);
   const aberta = demandaEstaAberta(d);
@@ -405,7 +405,7 @@ function DemandaCard({
 
         <div className="flex items-center gap-1 shrink-0">
           {d.situacao === 'pendente' && (
-            <button type="button" className="tfd-btn tfd-btn-ghost tfd-btn--sm" onClick={() => assumirDemanda(d.id, usuario)}>
+            <button type="button" className="tfd-btn tfd-btn-ghost tfd-btn--sm" onClick={() => setAssumir(true)}>
               <PlayCircle size={13} /> Assumir
             </button>
           )}
@@ -428,35 +428,6 @@ function DemandaCard({
 
       <div className="px-3 py-3 flex flex-col gap-3">
         <Campo rotulo="Motivo do encaminhamento">{d.motivo}</Campo>
-
-        {d.etapasImpactadas.length > 0 && (
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.06em] mb-1.5" style={{ color: '#94A3B8' }}>
-              Etapas potencialmente impactadas
-            </p>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {d.etapasImpactadas.map((e) => (
-                <span
-                  key={e}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 text-[12px]"
-                  style={{
-                    background: aberta ? '#FFF7ED' : '#F8FAFC',
-                    border: `1px solid ${aberta ? '#FDBA74' : '#E2E8F0'}`,
-                    borderRadius: 999,
-                    color: aberta ? '#9A3412' : '#94A3B8',
-                  }}
-                >
-                  <AlertTriangle size={11} /> {ETAPA_IMPACTADA_LABEL[e]}
-                </span>
-              ))}
-            </div>
-            {aberta && (
-              <p className="text-[12px] mt-1.5" style={{ color: '#92400E' }}>
-                Alerta apenas. O setor responsável decide se aguarda a análise social.
-              </p>
-            )}
-          </div>
-        )}
 
         {d.situacao === 'concluida' && (
           <Campo rotulo={`Orientação final · ${dataHoraBR(d.dataConclusao)} · ${d.concluidaPor ?? ''}`}>
@@ -502,6 +473,8 @@ function DemandaCard({
           </div>
         )}
       </div>
+
+      <AssumirDemandaDrawer open={assumir} onClose={() => setAssumir(false)} demanda={d} />
     </div>
   );
 }

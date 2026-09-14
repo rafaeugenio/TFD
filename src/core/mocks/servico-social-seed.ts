@@ -2,10 +2,9 @@
 /*  Serviço Social — tipos e dados do protótipo (spec de 14/09/2026)          */
 /*                                                                            */
 /*  Demanda paralela: o encaminhamento ao Serviço Social NÃO muda o setor    */
-/*  nem a etapa da solicitação de TFD. Uma solicitação pode ter várias       */
-/*  demandas sociais, inclusive em momentos distintos, e as etapas marcadas  */
-/*  como impactadas são apenas alerta visual para o setor responsável        */
-/*  decidir se aguarda a análise social. Nada bloqueia automaticamente.      */
+/*  nem a etapa da solicitação de TFD, e nada é bloqueado automaticamente.   */
+/*  Uma solicitação pode ter várias demandas sociais, inclusive em momentos  */
+/*  distintos. O status exibido na fila é o setor em que a solicitação está. */
 /*                                                                            */
 /*  Sem tabela no Supabase — igual ao saldo de ajuda de custo, vive em store */
 /*  de memória enquanto a regra é validada presencialmente com a equipe.     */
@@ -33,27 +32,6 @@ export const SITUACOES_ABERTAS: SituacaoDemandaSocial[] = ['pendente', 'em_atend
 export function demandaEstaAberta(d: DemandaSocialMock): boolean {
   return SITUACOES_ABERTAS.includes(d.situacao);
 }
-
-/** Etapas do fluxo principal que uma demanda social pode afetar. */
-export type EtapaImpactada =
-  | 'regulacao'
-  | 'passagens'
-  | 'ajuda_custo'
-  | 'acompanhamento';
-
-export const ETAPA_IMPACTADA_LABEL: Record<EtapaImpactada, string> = {
-  regulacao: 'Regulação',
-  passagens: 'Passagens',
-  ajuda_custo: 'Ajuda de Custo',
-  acompanhamento: 'Acompanhamento',
-};
-
-export const ETAPAS_IMPACTADAS: EtapaImpactada[] = [
-  'regulacao',
-  'passagens',
-  'ajuda_custo',
-  'acompanhamento',
-];
 
 /** Setor de onde partiu o encaminhamento. Qualquer pessoa com acesso à
  *  solicitação pode abrir uma demanda, então a lista cobre todos os setores. */
@@ -87,10 +65,9 @@ export interface DemandaSocialMock {
   setorOrigem: SetorOrigemDemanda;
   /** Motivo do encaminhamento — obrigatório no cadastro. */
   motivo: string;
-  /** Alerta visual apenas. Não bloqueia nenhuma etapa. */
-  etapasImpactadas: EtapaImpactada[];
   situacao: SituacaoDemandaSocial;
-  /** Profissional do Serviço Social que assumiu a demanda. */
+  /** Profissional do Serviço Social que assumiu a demanda. Definida no
+   *  momento de assumir: quem pega a demanda escolhe quem responde por ela. */
   profissionalResponsavel?: string;
   /** Preenchidos na conclusão. */
   dataConclusao?: string;

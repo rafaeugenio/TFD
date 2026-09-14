@@ -16,7 +16,6 @@ import FinanceiroTab from '../../_components/FinanceiroTab';
 import AnexosTab from '../../_components/AnexosTab';
 import ServicoSocialTab from '../../_components/ServicoSocialTab';
 import { useFlagServicoSocial } from '../../_state/servicoSocialStore';
-import { ETAPA_IMPACTADA_LABEL } from '@/core/mocks/servico-social-seed';
 import { agregarAnexos } from '../../_utils/anexosUnificados';
 import EnviarParaSetorDrawer from '../../_components/drawers/EnviarParaSetorDrawer';
 import NewDespesaFunerariaDrawer from '../../_components/drawers/NewDespesaFunerariaDrawer';
@@ -827,17 +826,14 @@ function AnexosCounter({ total, onClick, ativo }: { total: number; onClick: () =
 /**
  * Flag "Serviço Social: demanda aberta". Aparece enquanto houver ao menos uma
  * demanda social Pendente ou Em atendimento nesta solicitação e some quando
- * não houver nenhuma aberta; o histórico continua consultável na aba. Quando
- * a demanda marcou etapas potencialmente impactadas, elas entram no título
- * como alerta ao setor responsável. Nada aqui bloqueia o fluxo.
+ * não houver nenhuma aberta; o histórico continua consultável na aba. Nada
+ * aqui bloqueia o fluxo: a solicitação segue no setor em que está.
  */
 function ServicoSocialFlag({ solicitacaoId, onClick }: { solicitacaoId: string; onClick: () => void }) {
-  const { aberta, etapas } = useFlagServicoSocial(solicitacaoId);
+  const { aberta } = useFlagServicoSocial(solicitacaoId);
   if (!aberta) return null;
 
-  const titulo = etapas.length > 0
-    ? `Demanda social em aberto. Etapas sinalizadas: ${etapas.map((e) => ETAPA_IMPACTADA_LABEL[e]).join(', ')}. Alerta apenas, nada foi bloqueado.`
-    : 'Demanda social em aberto nesta solicitação. Alerta apenas, nada foi bloqueado.';
+  const titulo = 'Demanda social em aberto nesta solicitação. Alerta apenas, o fluxo não é bloqueado.';
 
   return (
     <button
@@ -856,12 +852,6 @@ function ServicoSocialFlag({ solicitacaoId, onClick }: { solicitacaoId: string; 
     >
       <HeartHandshake size={12} strokeWidth={2.2} aria-hidden />
       <span>Serviço Social: demanda aberta</span>
-      {etapas.length > 0 && (
-        <span className="inline-flex items-center gap-1" style={{ color: '#B45309' }}>
-          <AlertTriangle size={11} aria-hidden />
-          {etapas.length}
-        </span>
-      )}
     </button>
   );
 }

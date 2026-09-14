@@ -20,12 +20,7 @@ import { useToast } from '@/shared/components/toast/Toast';
 import { type SetorAcao } from '../../_utils/lock';
 import { abrirDemanda } from '../../_state/servicoSocialStore';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
-import {
-  ETAPAS_IMPACTADAS,
-  ETAPA_IMPACTADA_LABEL,
-  type EtapaImpactada,
-  type SetorOrigemDemanda,
-} from '@/core/mocks/servico-social-seed';
+import { type SetorOrigemDemanda } from '@/core/mocks/servico-social-seed';
 import type { ResponsavelSolicitacao } from '@/core/mocks/fluxo-v2-v3-seed';
 
 /**
@@ -134,7 +129,6 @@ export default function EnviarParaSetorDrawer({
   const [destino, setDestino] = useState<DestinoEnvio | null>(destinoInicial ?? null);
   const [observacao, setObservacao] = useState('');
   const [responsaveis, setResponsaveis] = useState<ResponsavelSolicitacao[]>([]);
-  const [etapas, setEtapas] = useState<EtapaImpactada[]>([]);
   const ref = useRef<HTMLTextAreaElement>(null);
   const { user } = usePermissions();
 
@@ -153,7 +147,6 @@ export default function EnviarParaSetorDrawer({
       setDestino(destinoInicial ?? null);
       setObservacao('');
       setResponsaveis([]);
-      setEtapas([]);
       setTimeout(() => ref.current?.focus(), 100);
     }
   }, [open, destinoInicial]);
@@ -223,7 +216,6 @@ export default function EnviarParaSetorDrawer({
         pacienteNome: s?.paciente.nome ?? '',
         pacienteCpf: s?.paciente.cpf ?? '',
         motivo: observacao.trim(),
-        etapasImpactadas: etapas,
         setorOrigem: SETOR_ORIGEM[setorAtual] ?? 'dados_basicos',
         encaminhadoPor: user?.nome_completo ?? 'Você',
       });
@@ -382,54 +374,7 @@ export default function EnviarParaSetorDrawer({
         })}
       </div>
 
-      {ehServicoSocial ? (
-        <>
-          <label
-            className="block text-[12px] font-semibold uppercase tracking-wider mb-2"
-            style={{ color: '#6B7280' }}
-          >
-            Etapas potencialmente impactadas{' '}
-            <span
-              style={{ color: '#9CA3AF', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}
-            >
-              (opcional)
-            </span>
-          </label>
-          <div className="grid gap-2 mb-2" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
-            {ETAPAS_IMPACTADAS.map((e) => {
-              const marcada = etapas.includes(e);
-              return (
-                <label
-                  key={e}
-                  className="flex items-center gap-2.5 px-3 py-2 cursor-pointer text-[13px] transition-colors"
-                  style={{
-                    background: marcada ? '#FFF7ED' : 'white',
-                    border: `1px solid ${marcada ? '#FDBA74' : '#E2E8F0'}`,
-                    borderRadius: 8,
-                    color: '#1A1D2B',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={marcada}
-                    onChange={() =>
-                      setEtapas((prev) =>
-                        prev.includes(e) ? prev.filter((x) => x !== e) : [...prev, e],
-                      )
-                    }
-                    className="shrink-0"
-                  />
-                  <span>{ETAPA_IMPACTADA_LABEL[e]}</span>
-                </label>
-              );
-            })}
-          </div>
-          <p className="text-[11px] mt-1 mb-5" style={{ color: '#9CA3AF' }}>
-            Marcar uma etapa só exibe um alerta para o setor responsável. Nada é
-            bloqueado: o setor decide se aguarda a análise social.
-          </p>
-        </>
-      ) : (
+      {!ehServicoSocial && (
         <>
           <label
             className="block text-[12px] font-semibold uppercase tracking-wider mb-2"
@@ -442,6 +387,13 @@ export default function EnviarParaSetorDrawer({
             Quem responde pela solicitação enquanto ela estiver em {destino ? LABEL_DESTINO[destino] : 'destino'}. Pode escolher mais de uma pessoa.
           </p>
         </>
+      )}
+
+      {ehServicoSocial && (
+        <p className="text-[12px] mb-5 px-3 py-2.5" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, color: '#475569' }}>
+          A demanda entra na fila do Serviço Social sem responsável. Quem for
+          assumi-la escolhe a profissional naquele momento.
+        </p>
       )}
 
       <label

@@ -2,41 +2,35 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Send, FilePlus, PlayCircle, AlertTriangle, FileText } from 'lucide-react';
+import { Search, Send, FilePlus, PlayCircle, FileText } from 'lucide-react';
 import RowActions from '../_components/RowActions';
 import BotaoEnvio from '../_components/BotaoEnvio';
 import SolicitacaoNumeroCell from '../_components/SolicitacaoNumeroCell';
 import PacienteHoverCell from '../_components/PacienteHoverCell';
-import ResponsavelAvatar from '../_components/ResponsavelAvatar';
-import ResponsavelFilter from '../_components/ResponsavelFilter';
 import RegiaoRegionalMunicipioFilter from '../_components/RegiaoRegionalMunicipioFilter';
 import StatusDot, { type StatusDotTone } from '../_components/StatusDot';
+import StatusV2Badge from '../_components/StatusV2Badge';
 import EnviarParaSetorDrawer from '../_components/drawers/EnviarParaSetorDrawer';
+import AssumirDemandaDrawer from '../_components/drawers/AssumirDemandaDrawer';
 import NewInstrumentoDrawer from '../_components/drawers/NewInstrumentoDrawer';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import {
   useServicoSocial,
-  assumirDemanda,
   contarInstrumentos,
 } from '../_state/servicoSocialStore';
 import { tempoNoSetor } from '../_utils/tempoSetor';
 import { setorAtual, type SetorAcao } from '../_utils/lock';
 import { casaComFiltroRegiao, REGIAO_FILTRO_VAZIO, type RegiaoFiltroValue } from '../_utils/derivarRegional';
-import { casaComFiltroResponsavel, RESPONSAVEL_FILTRO_VAZIO, type ResponsavelFiltroValue } from '../_utils/derivarResponsavel';
 import Pagination from '@/shared/components/pagination/Pagination';
 import StatsRow from '@/shared/components/stats-row/StatsRow';
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import SortTh, { compareValues, nextSort, type SortDir } from '@/shared/components/sort-th/SortTh';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Can } from '@/shared/auth/Can';
-import { usePermissions } from '@/shared/auth/PermissionsProvider';
 import {
-  ETAPAS_IMPACTADAS,
-  ETAPA_IMPACTADA_LABEL,
   SITUACAO_DEMANDA_LABEL,
   demandaEstaAberta,
   type DemandaSocialMock,
-  type EtapaImpactada,
   type SituacaoDemandaSocial,
 } from '@/core/mocks/servico-social-seed';
 import type { SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
@@ -70,7 +64,7 @@ const SITUACAO_OPTIONS: { value: SituacaoFiltro; label: string }[] = [
   { value: 'cancelada', label: 'Cancelada' },
 ];
 
-type DrawerKind = 'instrumento' | null;
+type DrawerKind = 'instrumento' | 'assumir' | null;
 
 /**
  * Fila do setor de Serviço Social. Mesma estrutura das demais filas do fluxo
@@ -83,7 +77,6 @@ export default function ServicoSocialListPage() {
   const router = useRouter();
   const { solicitacoes, isLoading } = useFluxoV2State();
   const { demandas } = useServicoSocial();
-  const { user } = usePermissions();
 
   const [drawer, setDrawer] = useState<{ kind: DrawerKind; sol: SolicitacaoMock | null; demanda: DemandaSocialMock | null }>({
     kind: null, sol: null, demanda: null,
@@ -91,9 +84,8 @@ export default function ServicoSocialListPage() {
   const [enviar, setEnviar] = useState<SolicitacaoMock | null>(null);
   const [busca, setBusca] = useState('');
   const [situacaoFiltro, setSituacaoFiltro] = useState<SituacaoFiltro>('abertas');
-  const [etapaFiltro, setEtapaFiltro] = useState<EtapaImpactada | ''>('');
+  const [profissionalFiltro, setProfissionalFiltro] = useState('');
   const [regiaoFiltro, setRegiaoFiltro] = useState<RegiaoFiltroValue>(REGIAO_FILTRO_VAZIO);
-  const [responsavelFiltro, setResponsavelFiltro] = useState<ResponsavelFiltroValue>(RESPONSAVEL_FILTRO_VAZIO);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'tempo', dir: 'desc' });
@@ -128,17 +120,12 @@ export default function ServicoSocialListPage() {
     return m;
   }, [porSolicitacao]);
 
-  const etapasAbertas = useMemo(() => {
-    const m = new Map<string, EtapaImpactada[]>();
-    for (const [id, lista] of porSolicitacao) {
-      const set = new Set<EtapaImpactada>();
-      for (const d of lista) {
-        if (demandaEstaAberta(d)) d.etapasImpactadas.forEach((e) => set.add(e));
-      }
-      m.set(id, [...set]);
-    }
-    return m;
-  }, [porSolicitacao]);
+  /** Profissionais que já assumiram alguma demanda — alimenta o filtro. */
+  const profissionais = useMemo(() => {
+    const set = new Set<string>();
+    demandas.forEach((d) => { if (d.profissionalResponsavel) set.add(d.profissionalResponsavel); });
+    return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [demandas]);
 
   const totaisInstrumentos = useMemo(() => {
     const m = new Map<string, number>();
@@ -151,10 +138,10 @@ export default function ServicoSocialListPage() {
   const stats = useMemo(() => {
     const pendentes = demandas.filter((d) => d.situacao === 'pendente').length;
     const emAtendimento = demandas.filter((d) => d.situacao === 'em_atendimento').length;
-    const comEtapa = demandas.filter(
-      (d) => demandaEstaAberta(d) && d.etapasImpactadas.length > 0,
+    const semResponsavel = demandas.filter(
+      (d) => demandaEstaAberta(d) && !d.profissionalResponsavel,
     ).length;
-    return { pendentes, emAtendimento, comEtapa };
+    return { pendentes, emAtendimento, semResponsavel };
   }, [demandas]);
 
   const fila = useMemo(
@@ -164,9 +151,8 @@ export default function ServicoSocialListPage() {
       if (situacaoFiltro === 'abertas' && !lista.some(demandaEstaAberta)) return false;
       if (situacaoFiltro !== 'abertas' && situacaoFiltro !== 'all'
         && !lista.some((d) => d.situacao === situacaoFiltro)) return false;
-      if (etapaFiltro && !lista.some((d) => demandaEstaAberta(d) && d.etapasImpactadas.includes(etapaFiltro))) return false;
+      if (profissionalFiltro && !lista.some((d) => d.profissionalResponsavel === profissionalFiltro)) return false;
       if (!casaComFiltroRegiao(s.paciente, regiaoFiltro)) return false;
-      if (!casaComFiltroResponsavel(s, responsavelFiltro)) return false;
 
       if (busca.trim()) {
         const q = busca.toLowerCase();
@@ -178,12 +164,12 @@ export default function ServicoSocialListPage() {
       }
       return true;
     }),
-    [filaBase, porSolicitacao, situacaoFiltro, etapaFiltro, regiaoFiltro, responsavelFiltro, busca],
+    [filaBase, porSolicitacao, situacaoFiltro, profissionalFiltro, regiaoFiltro, busca],
   );
 
   useEffect(() => {
     setPage(1);
-  }, [busca, situacaoFiltro, etapaFiltro, regiaoFiltro, responsavelFiltro, sort]);
+  }, [busca, situacaoFiltro, profissionalFiltro, regiaoFiltro, sort]);
 
   const filaOrdenada = useMemo(() => {
     if (!sort.field || !sort.dir) return fila;
@@ -193,7 +179,9 @@ export default function ServicoSocialListPage() {
         case 'numero': return s.numero;
         case 'paciente': return s.paciente.nome;
         case 'municipio': return s.paciente.municipio;
+        case 'status': return s.status;
         case 'situacao': return d ? SITUACAO_DEMANDA_LABEL[d.situacao] : '';
+        case 'responsavel': return d?.profissionalResponsavel ?? '';
         case 'instrumentos': return totaisInstrumentos.get(s.id) ?? 0;
         case 'tempo': return d?.dataEncaminhamento ?? '';
         default: return '';
@@ -249,10 +237,10 @@ export default function ServicoSocialListPage() {
             onClick: () => setSituacaoFiltro((prev) => (prev === 'em_atendimento' ? 'abertas' : 'em_atendimento')),
           },
           {
-            label: 'Com etapa impactada',
-            value: stats.comEtapa,
+            label: 'Sem responsável',
+            value: stats.semResponsavel,
             hint: 'entre as abertas',
-            title: 'Demandas abertas que sinalizaram impacto em alguma etapa do fluxo',
+            title: 'Demandas abertas que ainda não foram assumidas por uma profissional',
           },
         ]}
       />
@@ -289,29 +277,24 @@ export default function ServicoSocialListPage() {
           ))}
         </select>
         <select
-          value={etapaFiltro}
-          onChange={(e) => setEtapaFiltro(e.target.value as EtapaImpactada | '')}
+          value={profissionalFiltro}
+          onChange={(e) => setProfissionalFiltro(e.target.value)}
           style={{
             height: 36, padding: '0 12px',
             background: 'white', border: '1px solid var(--tfd-surface-border)',
             borderRadius: 8, fontSize: 13, color: '#1A1D2B',
           }}
-          aria-label="Filtrar por etapa impactada"
+          aria-label="Filtrar por profissional responsável"
         >
-          <option value="">Todas as etapas impactadas</option>
-          {ETAPAS_IMPACTADAS.map((e) => (
-            <option key={e} value={e}>{ETAPA_IMPACTADA_LABEL[e]}</option>
+          <option value="">Todas as profissionais</option>
+          {profissionais.map((nome) => (
+            <option key={nome} value={nome}>{nome}</option>
           ))}
         </select>
         <RegiaoRegionalMunicipioFilter
           solicitacoes={filaBase}
           value={regiaoFiltro}
           onChange={setRegiaoFiltro}
-        />
-        <ResponsavelFilter
-          solicitacoes={filaBase}
-          value={responsavelFiltro}
-          onChange={setResponsavelFiltro}
         />
       </div>
 
@@ -327,11 +310,11 @@ export default function ServicoSocialListPage() {
               <SortTh label="Número" field="numero" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Paciente" field="paciente" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Origem" field="municipio" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
+              <SortTh label="Status" field="status" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <SortTh label="Situação" field="situacao" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
-              <Th>Etapas impactadas</Th>
               <SortTh label="Instrumentos" field="instrumentos" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} align="right" />
               <SortTh label="Aguardando há" field="tempo" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
-              <Th>Responsável</Th>
+              <SortTh label="Responsável" field="responsavel" currentField={sort.field} currentDir={sort.dir} onToggle={toggleSort} />
               <Th align="right">Ações</Th>
             </tr>
           </thead>
@@ -356,7 +339,6 @@ export default function ServicoSocialListPage() {
             )}
             {!isLoading && paginadas.map((s) => {
               const d = demandaDaLinha.get(s.id);
-              const etapas = etapasAbertas.get(s.id) ?? [];
               const qtdInstrumentos = totaisInstrumentos.get(s.id) ?? 0;
               const lista = porSolicitacao.get(s.id) ?? [];
               const temPendente = lista.some((x) => x.situacao === 'pendente');
@@ -392,39 +374,21 @@ export default function ServicoSocialListPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3.5">
+                    <StatusV2Badge status={s.status} />
+                  </td>
+                  <td className="px-4 py-3.5">
                     {d ? (
                       <div className="leading-tight">
                         <StatusDot tone={SITUACAO_TONE[d.situacao]}>
                           {SITUACAO_DEMANDA_LABEL[d.situacao]}
                         </StatusDot>
                         <div style={{ color: '#94A3B8', fontSize: 12 }}>
-                          {d.profissionalResponsavel ?? `Origem: ${d.encaminhadoPor}`}
+                          Origem: {d.encaminhadoPor}
                           {lista.length > 1 ? ` · ${lista.length} demandas` : ''}
                         </div>
                       </div>
                     ) : (
                       <span style={{ color: '#CBD5E1', fontSize: 12 }}>Sem demanda</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    {etapas.length === 0 ? (
-                      <span style={{ color: '#CBD5E1', fontSize: 12 }}>Nenhuma</span>
-                    ) : (
-                      <div className="flex items-center gap-1 flex-wrap">
-                        {etapas.map((e) => (
-                          <span
-                            key={e}
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11.5px]"
-                            style={{
-                              background: '#FFF7ED', border: '1px solid #FDBA74',
-                              borderRadius: 999, color: '#9A3412',
-                            }}
-                            title="Alerta apenas. O setor responsável decide se aguarda a análise social."
-                          >
-                            <AlertTriangle size={10} /> {ETAPA_IMPACTADA_LABEL[e]}
-                          </span>
-                        ))}
-                      </div>
                     )}
                   </td>
                   <td className="px-4 py-3.5 text-right">
@@ -438,8 +402,12 @@ export default function ServicoSocialListPage() {
                   <td className="px-4 py-3.5" style={{ color: '#64748B', fontSize: 13 }}>
                     {d ? `${tempoNoSetor(d.dataEncaminhamento)}d` : '—'}
                   </td>
-                  <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
-                    <ResponsavelAvatar responsaveis={s.responsaveisAtuais} />
+                  <td className="px-4 py-3.5">
+                    {d?.profissionalResponsavel ? (
+                      <span style={{ color: '#1E293B', fontSize: 13 }}>{d.profissionalResponsavel}</span>
+                    ) : (
+                      <span style={{ color: '#CBD5E1', fontSize: 12 }}>Não assumida</span>
+                    )}
                   </td>
                   <td className="px-4 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="inline-flex items-center">
@@ -451,7 +419,7 @@ export default function ServicoSocialListPage() {
                             label: 'Assumir demanda',
                             onClick: () => {
                               const alvo = lista.find((x) => x.situacao === 'pendente');
-                              if (alvo) assumirDemanda(alvo.id, user?.nome_completo ?? 'Você');
+                              if (alvo) setDrawer({ kind: 'assumir', sol: s, demanda: alvo });
                             },
                             visivel: temPendente,
                           },
@@ -499,7 +467,15 @@ export default function ServicoSocialListPage() {
         />
       )}
 
-      {drawer.sol && drawer.demanda && (
+      {drawer.demanda && drawer.kind === 'assumir' && (
+        <AssumirDemandaDrawer
+          open
+          onClose={fechar}
+          demanda={drawer.demanda}
+        />
+      )}
+
+      {drawer.sol && drawer.demanda && drawer.kind === 'instrumento' && (
         <NewInstrumentoDrawer
           open={drawer.kind === 'instrumento'}
           onClose={fechar}
