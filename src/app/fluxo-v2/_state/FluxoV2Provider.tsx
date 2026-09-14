@@ -47,6 +47,7 @@ import {
 } from '../_adapters/toSupabase';
 import { statusGlobalToSetor } from '../_adapters/statusMapping';
 import { persistInsert, persistUpdate, persistDelete, currentUserId } from './persist';
+import { semearDemandasDemo } from './servicoSocialStore';
 import {
   criarCreditoSaldo as criarCreditoSaldoStore,
   aplicarDebitoSaldo as aplicarDebitoSaldoStore,
@@ -454,6 +455,11 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
           }
         }
         setSolicitacoes(real);
+        // Demandas de demonstração do Serviço Social são semeadas a partir das
+        // solicitações reais (os ids são UUIDs do banco). Fica aqui, e não na
+        // fila do módulo, para a flag aparecer na listagem de solicitações sem
+        // depender de abrir a tela de Serviço Social antes. Roda uma vez só.
+        semearDemandasDemo(real);
       } catch (err) {
         console.warn('[FluxoV2] erro ao carregar Supabase:', err);
       } finally {

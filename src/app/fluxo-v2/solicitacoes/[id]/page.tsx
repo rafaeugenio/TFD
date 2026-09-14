@@ -14,6 +14,9 @@ import ObservacoesTab from '../../_components/ObservacoesTab';
 import RegulacaoTab from '../../_components/RegulacaoTab';
 import FinanceiroTab from '../../_components/FinanceiroTab';
 import AnexosTab from '../../_components/AnexosTab';
+import ServicoSocialTab from '../../_components/ServicoSocialTab';
+import { useFlagServicoSocial } from '../../_state/servicoSocialStore';
+import { ETAPA_IMPACTADA_LABEL } from '@/core/mocks/servico-social-seed';
 import { agregarAnexos } from '../../_utils/anexosUnificados';
 import EnviarParaSetorDrawer from '../../_components/drawers/EnviarParaSetorDrawer';
 import NewDespesaFunerariaDrawer from '../../_components/drawers/NewDespesaFunerariaDrawer';
@@ -27,7 +30,7 @@ import { resolverOrigem } from '@/shared/utils/solicitacaoOrigem';
 import { proximoAgendamento, type ProximoAgendamentoInfo } from '../../_utils/agendamento';
 import { historicoProcessosSei, processoSeiVigente } from '../../_utils/processoSei';
 
-type TabKey = 'timeline' | 'regulacao' | 'financeiro' | 'anexos' | 'observacoes';
+type TabKey = 'timeline' | 'regulacao' | 'financeiro' | 'anexos' | 'observacoes' | 'servico-social';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'timeline',    label: 'Linha do tempo' },
@@ -35,6 +38,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'financeiro',  label: 'Financeiro' },
   { key: 'anexos',      label: 'Anexos' },
   { key: 'observacoes', label: 'Observações' },
+  { key: 'servico-social', label: 'Serviço Social' },
 ];
 
 // `?tab=dados` is the only legacy redirect now — strip it so the URL
@@ -344,6 +348,7 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
                 </span>
               )}
               <AnexosCounter total={agregarAnexos(s).length} onClick={() => setTab('anexos')} ativo={activeTab === 'anexos'} />
+              <ServicoSocialFlag solicitacaoId={s.id} onClick={() => setTab('servico-social')} />
             </div>
           </div>
 
@@ -550,6 +555,11 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
         {activeTab === 'regulacao'   && <RegulacaoTab s={s} />}
         {activeTab === 'financeiro'  && <FinanceiroTab s={s} />}
         {activeTab === 'anexos'      && <AnexosTab s={s} />}
+        {activeTab === 'servico-social' && (
+          <div id="servico-social" className="min-w-0">
+            <ServicoSocialTab s={s} />
+          </div>
+        )}
         {activeTab === 'observacoes' && (
           <div id="observacoes" className="min-w-0">
             <ObservacoesTab s={s} />
@@ -810,6 +820,48 @@ function AnexosCounter({ total, onClick, ativo }: { total: number; onClick: () =
         <strong style={{ color: dim ? '#94A3B8' : '#1E293B', fontWeight: 600 }}>{total}</strong>{' '}
         {total === 1 ? 'anexo' : 'anexos'}
       </span>
+    </button>
+  );
+}
+
+/**
+ * Flag "Serviço Social: demanda aberta". Aparece enquanto houver ao menos uma
+ * demanda social Pendente ou Em atendimento nesta solicitação e some quando
+ * não houver nenhuma aberta; o histórico continua consultável na aba. Quando
+ * a demanda marcou etapas potencialmente impactadas, elas entram no título
+ * como alerta ao setor responsável. Nada aqui bloqueia o fluxo.
+ */
+function ServicoSocialFlag({ solicitacaoId, onClick }: { solicitacaoId: string; onClick: () => void }) {
+  const { aberta, etapas } = useFlagServicoSocial(solicitacaoId);
+  if (!aberta) return null;
+
+  const titulo = etapas.length > 0
+    ? `Demanda social em aberto. Etapas sinalizadas: ${etapas.map((e) => ETAPA_IMPACTADA_LABEL[e]).join(', ')}. Alerta apenas, nada foi bloqueado.`
+    : 'Demanda social em aberto nesta solicitação. Alerta apenas, nada foi bloqueado.';
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={titulo}
+      className="inline-flex items-center gap-1.5 px-2 py-0.5 transition-colors"
+      style={{
+        background: '#FFF7ED',
+        border: '1px solid #FDBA74',
+        borderRadius: 999,
+        color: '#9A3412',
+        fontSize: 12,
+        fontWeight: 500,
+      }}
+    >
+      <HeartHandshake size={12} strokeWidth={2.2} aria-hidden />
+      <span>Serviço Social: demanda aberta</span>
+      {etapas.length > 0 && (
+        <span className="inline-flex items-center gap-1" style={{ color: '#B45309' }}>
+          <AlertTriangle size={11} aria-hidden />
+          {etapas.length}
+        </span>
+      )}
     </button>
   );
 }

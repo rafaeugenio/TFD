@@ -24,6 +24,8 @@ const RULES: RouteRule[] = [
   { prefix: '/fluxo-v2/passagens',     tela: 'passagens' },
   { prefix: '/fluxo-v2/ajuda-custo',   tela: 'ajuda_custo' },
   { prefix: '/fluxo-v2/acompanhamento', tela: 'acompanhamento' },
+  { prefix: '/fluxo-v2/servico-social', tela: 'servico_social' },
+  { prefix: '/casas-apoio',            tela: 'casas_apoio' },
   { prefix: '/pacientes',              tela: 'pacientes' },
   { prefix: '/unidades-saude',         tela: 'unidades_saude' },
   { prefix: '/regionais-saude',        tela: 'regionais_saude' },

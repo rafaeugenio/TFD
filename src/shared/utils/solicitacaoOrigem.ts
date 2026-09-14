@@ -12,7 +12,8 @@ export type OrigemSolicitacao =
   | 'pacientes'
   | 'unidades-saude'
   | 'regionais-saude'
-  | 'relatorios';
+  | 'relatorios'
+  | 'servico-social';
 
 export const ORIGEM_SOLICITACAO: Record<
   OrigemSolicitacao,
@@ -26,6 +27,7 @@ export const ORIGEM_SOLICITACAO: Record<
   'unidades-saude': { href: '/unidades-saude',          label: 'Unidades de Saúde' },
   'regionais-saude':{ href: '/regionais-saude',         label: 'Regionais' },
   relatorios:       { href: '/relatorios',              label: 'Relatórios' },
+  'servico-social': { href: '/fluxo-v2/servico-social', label: 'Serviço Social' },
 };
 
 export function resolverOrigem(from: string | null | undefined) {

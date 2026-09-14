@@ -11,6 +11,7 @@ import EnviarParaSetorDrawer from '../_components/drawers/EnviarParaSetorDrawer'
 import { snapshotFromSolicitacao } from '../_components/SnapshotPaciente';
 import SolicitacaoNumeroCell from '../_components/SolicitacaoNumeroCell';
 import PacienteHoverCell from '../_components/PacienteHoverCell';
+import ServicoSocialBadge from '../_components/ServicoSocialBadge';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { derivarEventos, tempoRelativo } from '../_utils/derivarLinhaDoTempo';
 import { isLocked, setorAtual, tooltipLocked } from '../_utils/lock';
@@ -314,7 +315,10 @@ export default function SolicitacoesV2ListPage() {
                     <SolicitacaoNumeroCell s={s} size={12} />
                   </td>
                   <td className="px-4 py-3.5">
-                    <PacienteHoverCell paciente={s.paciente} />
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <PacienteHoverCell paciente={s.paciente} />
+                      <ServicoSocialBadge solicitacaoId={s.id} />
+                    </div>
                   </td>
                   <td className="px-4 py-3.5">
                     <div className="leading-tight">

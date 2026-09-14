@@ -22,6 +22,8 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Building2,
+  HeartHandshake,
+  Home,
   type LucideIcon,
 } from 'lucide-react';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
@@ -59,6 +61,7 @@ const navSections: NavSection[] = [
       { icon: Wallet,       label: 'Ajuda de Custo', href: '/fluxo-v2/ajuda-custo',    tela: 'ajuda_custo' },
       { icon: CalendarCheck, label: 'Acompanhamento', href: '/fluxo-v2/acompanhamento', tela: 'acompanhamento' },
       { icon: ClipboardCheck, label: 'Aprovações',    href: '/fluxo-v2/aprovacoes',     tela: 'aprovacoes' },
+      { icon: HeartHandshake, label: 'Serviço Social', href: '/fluxo-v2/servico-social', tela: 'servico_social' },
     ],
   },
   {
@@ -67,6 +70,7 @@ const navSections: NavSection[] = [
       { icon: Contact,   label: 'Pacientes',          href: '/pacientes',        tela: 'pacientes' },
       { icon: Building2, label: 'Unidades de Saúde', href: '/unidades-saude',   tela: 'unidades_saude' },
       { icon: MapPin,    label: 'Regionais',         href: '/regionais-saude', tela: 'regionais_saude' },
+      { icon: Home,      label: 'Casas de Apoio',    href: '/casas-apoio',     tela: 'casas_apoio' },
     ],
   },
   {
