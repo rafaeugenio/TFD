@@ -27,7 +27,8 @@ interface Props {
   /** Demandas sociais da solicitação. Quando há mais de uma, o drawer pede a
    *  qual delas o instrumento pertence. */
   demandas: DemandaSocialMock[];
-  /** Demanda já selecionada ao abrir (normalmente a aberta mais recente). */
+  /** Demanda já selecionada ao abrir (normalmente a aberta mais recente).
+   *  Vazio abre como instrumento avulso. */
   demandaInicialId: string;
 }
 
@@ -36,6 +37,9 @@ interface Props {
  * já existentes da solicitação, do paciente e do acompanhante; o conteúdo
  * continua editável para a profissional registrar a análise. Autora e data e
  * hora são automáticas e não aparecem como campo editável.
+ *
+ * O instrumento pode responder a uma demanda social ou ser avulso, quando a
+ * profissional produz um documento sem que exista um pedido por trás.
  */
 export default function NewInstrumentoDrawer({ open, onClose, s, demandas, demandaInicialId }: Props) {
   const { user } = usePermissions();
@@ -90,7 +94,7 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demandas, deman
   function salvar() {
     if (!tipo || !conteudo.trim()) return;
     criarInstrumento({
-      demandaId,
+      demandaId: demandaId || undefined,
       solicitacaoId: s.id,
       tipo,
       conteudo,
@@ -126,36 +130,35 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demandas, deman
         </>
       }
     >
-      {demandas.length > 1 && (
-        <FormSection
-          title="Demanda social"
-          icon={<HeartHandshake size={12} />}
-          hint="A qual demanda este instrumento pertence."
+      <FormSection
+        title="Demanda social"
+        icon={<HeartHandshake size={12} />}
+        hint="A qual demanda este instrumento responde. Pode ficar avulso, sem demanda."
+      >
+        <select
+          value={demandaId}
+          onChange={(e) => setDemandaId(e.target.value)}
+          className="w-full text-[13px] px-3 outline-none"
+          style={{
+            height: 38,
+            background: 'white',
+            border: '1px solid var(--tfd-surface-border)',
+            borderRadius: 8,
+            color: '#1A1D2B',
+          }}
         >
-          <select
-            value={demandaId}
-            onChange={(e) => setDemandaId(e.target.value)}
-            className="w-full text-[13px] px-3 outline-none"
-            style={{
-              height: 38,
-              background: 'white',
-              border: '1px solid var(--tfd-surface-border)',
-              borderRadius: 8,
-              color: '#1A1D2B',
-            }}
-          >
-            {demandas.map((d) => (
-              <option key={d.id} value={d.id}>
-                {new Date(d.dataEncaminhamento).toLocaleDateString('pt-BR')}
-                {' · '}
-                {SETOR_ORIGEM_LABEL[d.setorOrigem]}
-                {' · '}
-                {SITUACAO_DEMANDA_LABEL[d.situacao]}
-              </option>
-            ))}
-          </select>
-        </FormSection>
-      )}
+          <option value="">Avulso, sem demanda vinculada</option>
+          {demandas.map((d) => (
+            <option key={d.id} value={d.id}>
+              {new Date(d.dataEncaminhamento).toLocaleDateString('pt-BR')}
+              {' · '}
+              {SETOR_ORIGEM_LABEL[d.setorOrigem]}
+              {' · '}
+              {SITUACAO_DEMANDA_LABEL[d.situacao]}
+            </option>
+          ))}
+        </select>
+      </FormSection>
 
       <FormSection
         title="Tipo de instrumento"

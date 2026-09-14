@@ -76,6 +76,14 @@ export function temDemandaAberta(solicitacaoId: string): boolean {
   return state.demandas.some((d) => d.solicitacaoId === solicitacaoId && demandaEstaAberta(d));
 }
 
+/** Demandas ainda abertas de uma solicitação, da mais recente para a mais
+ *  antiga. Alimenta o alerta exibido ao lado do número nas filas. */
+export function demandasAbertasDaSolicitacao(solicitacaoId: string): DemandaSocialMock[] {
+  return state.demandas
+    .filter((d) => d.solicitacaoId === solicitacaoId && demandaEstaAberta(d))
+    .sort((a, b) => b.dataEncaminhamento.localeCompare(a.dataEncaminhamento));
+}
+
 export function instrumentosDaDemanda(demandaId: string): InstrumentoSocialMock[] {
   return state.instrumentos
     .filter((i) => i.demandaId === demandaId)
@@ -233,7 +241,8 @@ export function reabrirDemanda(demandaId: string, profissional: string): void {
 /* -------------------------------------------------------------------------- */
 
 export interface NovoInstrumentoInput {
-  demandaId: string;
+  /** Ausente quando o instrumento é avulso, produzido sem demanda. */
+  demandaId?: string;
   solicitacaoId: string;
   tipo: TipoInstrumento;
   conteudo: string;
@@ -421,6 +430,12 @@ export function useFlagServicoSocial(solicitacaoId: string): {
     aberta: temDemandaAberta(solicitacaoId),
     total: state.demandas.filter((d) => d.solicitacaoId === solicitacaoId).length,
   };
+}
+
+/** Alerta de demanda em aberto ao lado do número da solicitação, reativo. */
+export function useDemandasAbertasDaSolicitacao(solicitacaoId: string): DemandaSocialMock[] {
+  useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return demandasAbertasDaSolicitacao(solicitacaoId);
 }
 
 export function useCasasApoio(): CasaApoioMock[] {

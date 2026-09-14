@@ -23,7 +23,7 @@ interface Props {
  * Assumir uma demanda social. É aqui que o responsável pela demanda é
  * definido: quem pega escolhe a profissional que vai responder por ela, e a
  * escolha fica salva na demanda e passa a aparecer na fila. Não existe
- * responsável antes disso, porque o encaminhamento não move a solicitação de
+ * responsável antes disso, porque abrir a demanda não move a solicitação de
  * setor nem transfere responsabilidade do fluxo.
  */
 export default function AssumirDemandaDrawer({ open, onClose, demanda }: Props) {
@@ -78,7 +78,7 @@ export default function AssumirDemandaDrawer({ open, onClose, demanda }: Props) 
         className="px-3 py-2.5 mb-4 text-[12.5px] leading-relaxed"
         style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, color: '#475569' }}
       >
-        Encaminhada por <strong style={{ color: '#1E293B' }}>{demanda.encaminhadoPor}</strong>
+        Aberta por <strong style={{ color: '#1E293B' }}>{demanda.encaminhadoPor}</strong>
         {' · '}
         {SETOR_ORIGEM_LABEL[demanda.setorOrigem]}
         {' · '}

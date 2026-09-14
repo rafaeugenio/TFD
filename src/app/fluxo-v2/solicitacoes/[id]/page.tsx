@@ -36,8 +36,8 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'regulacao',   label: 'Regulação' },
   { key: 'financeiro',  label: 'Financeiro' },
   { key: 'anexos',      label: 'Anexos' },
-  { key: 'observacoes', label: 'Observações' },
   { key: 'servico-social', label: 'Serviço Social' },
+  { key: 'observacoes', label: 'Observações' },
 ];
 
 // `?tab=dados` is the only legacy redirect now — strip it so the URL

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CalendarCheck, Send, Search, LogOut, Eye } from 'lucide-react';
+import { CalendarCheck, Send, Search, LogOut, Eye , HeartHandshake} from 'lucide-react';
 import RowActions from '../_components/RowActions';
 import BotaoEnvio from '../_components/BotaoEnvio';
 import SolicitacaoNumeroCell from '../_components/SolicitacaoNumeroCell';
@@ -10,6 +10,7 @@ import PacienteHoverCell from '../_components/PacienteHoverCell';
 import StatusV2Badge from '../_components/StatusV2Badge';
 import EnviarParaSetorDrawer from '../_components/drawers/EnviarParaSetorDrawer';
 import StatusDot from '../_components/StatusDot';
+import NovaDemandaSocialDrawer from '../_components/drawers/NovaDemandaSocialDrawer';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { SETOR_LABEL, SETOR_ORIGEM_DOT_COLOR } from '../_utils/lock';
 import { casaComFiltroRegiao, REGIAO_FILTRO_VAZIO, type RegiaoFiltroValue } from '../_utils/derivarRegional';
@@ -79,6 +80,7 @@ export default function AprovacoesListPage() {
   const [setorOrigemFiltro, setSetorOrigemFiltro] = useState<SetorOrigemAprovacao | ''>('');
   const [regiaoFiltro, setRegiaoFiltro] = useState<RegiaoFiltroValue>(REGIAO_FILTRO_VAZIO);
   const [responsavelFiltro, setResponsavelFiltro] = useState<ResponsavelFiltroValue>(RESPONSAVEL_FILTRO_VAZIO);
+  const [demandaSocial, setDemandaSocial] = useState<SolicitacaoMock | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'tempo', dir: 'desc' });
@@ -351,6 +353,12 @@ export default function AprovacoesListPage() {
                     <RowActions
                       actions={[
                         {
+                          key: 'demanda-social' as const,
+                          icon: HeartHandshake,
+                          label: 'Nova demanda social',
+                          onClick: () => setDemandaSocial(s),
+                        },
+                        {
                           key: 'ver',
                           icon: Eye,
                           label: 'Ver solicitação',
@@ -385,6 +393,14 @@ export default function AprovacoesListPage() {
           recordLabel="solicitações"
         />
       </div>
+
+      {demandaSocial && (
+        <NovaDemandaSocialDrawer
+          open={!!demandaSocial}
+          onClose={() => setDemandaSocial(null)}
+          s={demandaSocial}
+        />
+      )}
 
       {enviar && (
         <EnviarParaSetorDrawer

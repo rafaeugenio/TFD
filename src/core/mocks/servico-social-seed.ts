@@ -1,7 +1,7 @@
 /* -------------------------------------------------------------------------- */
 /*  Serviço Social — tipos e dados do protótipo (spec de 14/09/2026)          */
 /*                                                                            */
-/*  Demanda paralela: o encaminhamento ao Serviço Social NÃO muda o setor    */
+/*  Demanda paralela: abrir um pedido ao Serviço Social NÃO muda o setor     */
 /*  nem a etapa da solicitação de TFD, e nada é bloqueado automaticamente.   */
 /*  Uma solicitação pode ter várias demandas sociais, inclusive em momentos  */
 /*  distintos. O status exibido na fila é o setor em que a solicitação está. */
@@ -33,8 +33,8 @@ export function demandaEstaAberta(d: DemandaSocialMock): boolean {
   return SITUACOES_ABERTAS.includes(d.situacao);
 }
 
-/** Setor de onde partiu o encaminhamento. Qualquer pessoa com acesso à
- *  solicitação pode abrir uma demanda, então a lista cobre todos os setores. */
+/** Setor de onde partiu o pedido. Qualquer pessoa com acesso à solicitação
+ *  pode abrir uma demanda, então a lista cobre todos os setores. */
 export type SetorOrigemDemanda =
   | 'dados_basicos'
   | 'regulacao'
@@ -63,7 +63,7 @@ export interface DemandaSocialMock {
   dataEncaminhamento: string; // ISO datetime
   encaminhadoPor: string;
   setorOrigem: SetorOrigemDemanda;
-  /** Motivo do encaminhamento — obrigatório no cadastro. */
+  /** O que precisa ser avaliado — obrigatório na abertura. */
   motivo: string;
   situacao: SituacaoDemandaSocial;
   /** Profissional do Serviço Social que assumiu a demanda. Definida no
@@ -98,7 +98,9 @@ export const TIPOS_INSTRUMENTO: TipoInstrumento[] = [
 
 export interface InstrumentoSocialMock {
   id: string;
-  demandaId: string;
+  /** Ausente quando o instrumento é avulso: a profissional pode produzir um
+   *  documento sem que exista uma demanda por trás. */
+  demandaId?: string;
   solicitacaoId: string;
   tipo: TipoInstrumento;
   /** Texto final do documento, já com os dados da solicitação aplicados e

@@ -4,6 +4,7 @@ import type { SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
 import HoverTooltip, { TooltipKV } from './HoverTooltip';
 import { ExternalLink } from 'lucide-react';
 import { historicoProcessosSei, processoSeiVigente } from '../_utils/processoSei';
+import ServicoSocialAlerta from './ServicoSocialAlerta';
 
 function fmtDataBR(iso?: string) {
   if (!iso) return '—';
@@ -27,6 +28,8 @@ interface Props {
  * - Hover mostra resumo (tipo, modalidade, data criação, status atual).
  * - Click no número abre o SEI em nova aba quando `seiUrl` existir.
  * - Sem `seiUrl`, exibe sem affordance de link.
+ * - Exibe o alerta de demanda do Serviço Social em aberto, que por viver
+ *   aqui aparece em todas as filas de uma vez.
  */
 export default function SolicitacaoNumeroCell({ s, trailing, size = 13 }: Props) {
   const vigente = processoSeiVigente(s);
@@ -51,7 +54,7 @@ export default function SolicitacaoNumeroCell({ s, trailing, size = 13 }: Props)
   );
 
   return (
-    <span className="inline-flex items-center gap-1.5 flex-wrap">
+    <span className="inline-flex items-center gap-1.5">
       <HoverTooltip content={tooltipContent} maxWidth={300}>
         {hasSei ? (
           <a
@@ -82,7 +85,8 @@ export default function SolicitacaoNumeroCell({ s, trailing, size = 13 }: Props)
           </span>
         )}
       </HoverTooltip>
-      {trailing}
+      <ServicoSocialAlerta solicitacaoId={s.id} />
+      {trailing && <span className="inline-flex items-center gap-1.5 flex-wrap">{trailing}</span>}
     </span>
   );
 }

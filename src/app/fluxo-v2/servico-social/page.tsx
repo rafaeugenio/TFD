@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Send, FilePlus, PlayCircle, FileText } from 'lucide-react';
+import { Search, Send, FilePlus, PlayCircle, FileText, HeartHandshake } from 'lucide-react';
 import RowActions from '../_components/RowActions';
 import BotaoEnvio from '../_components/BotaoEnvio';
 import SolicitacaoNumeroCell from '../_components/SolicitacaoNumeroCell';
@@ -12,6 +12,7 @@ import StatusDot, { type StatusDotTone } from '../_components/StatusDot';
 import StatusV2Badge from '../_components/StatusV2Badge';
 import EnviarParaSetorDrawer from '../_components/drawers/EnviarParaSetorDrawer';
 import AssumirDemandaDrawer from '../_components/drawers/AssumirDemandaDrawer';
+import NovaDemandaSocialDrawer from '../_components/drawers/NovaDemandaSocialDrawer';
 import NewInstrumentoDrawer from '../_components/drawers/NewInstrumentoDrawer';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import {
@@ -38,8 +39,8 @@ import type { SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
 const DEFAULT_PAGE_SIZE = 25;
 
 /** O drawer de tramitação só aceita os setores de ação. Uma solicitação
- *  encerrada cai em Acompanhamento como origem, já que o encaminhamento ao
- *  Serviço Social é paralelo e não depende do setor. */
+ *  encerrada cai em Acompanhamento como origem, já que a demanda social é
+ *  paralela e não depende do setor. */
 function setorDeOrigem(s: SolicitacaoMock): SetorAcao {
   const atual = setorAtual(s);
   return atual === 'encerramento' ? 'acompanhamento' : atual;
@@ -82,6 +83,7 @@ export default function ServicoSocialListPage() {
     kind: null, sol: null, demanda: null,
   });
   const [enviar, setEnviar] = useState<SolicitacaoMock | null>(null);
+  const [demandaSocial, setDemandaSocial] = useState<SolicitacaoMock | null>(null);
   const [busca, setBusca] = useState('');
   const [situacaoFiltro, setSituacaoFiltro] = useState<SituacaoFiltro>('abertas');
   const [profissionalFiltro, setProfissionalFiltro] = useState('');
@@ -347,13 +349,7 @@ export default function ServicoSocialListPage() {
               return (
                 <tr
                   key={s.id}
-                  style={{
-                    borderBottom: '1px solid #E2E8F0',
-                    // Demanda aberta sinaliza na lateral, no mesmo lugar em que as
-                    // outras filas destacam uma tramitação recente.
-                    boxShadow: aberta ? 'inset 3px 0 0 0 #FDBA74' : undefined,
-                    cursor: 'pointer',
-                  }}
+                  style={{ borderBottom: '1px solid #E2E8F0', cursor: 'pointer' }}
                   className="hover:bg-[#F8FAFC] transition-colors"
                   onClick={() => router.push(`/fluxo-v2/solicitacoes/${s.id}?tab=servico-social&from=servico-social`)}
                 >
@@ -414,6 +410,12 @@ export default function ServicoSocialListPage() {
                       <RowActions
                         actions={[
                           {
+                            key: 'demanda-social' as const,
+                            icon: HeartHandshake,
+                            label: 'Nova demanda social',
+                            onClick: () => setDemandaSocial(s),
+                          },
+                          {
                             key: 'assumir' as const,
                             icon: PlayCircle,
                             label: 'Assumir demanda',
@@ -457,7 +459,15 @@ export default function ServicoSocialListPage() {
         />
       </div>
 
-      {/* Drawer único de tramitação — inclui Serviço Social como destino paralelo */}
+      {demandaSocial && (
+        <NovaDemandaSocialDrawer
+          open={!!demandaSocial}
+          onClose={() => setDemandaSocial(null)}
+          s={demandaSocial}
+        />
+      )}
+
+      {/* Drawer único de tramitação entre setores */}
       {enviar && (
         <EnviarParaSetorDrawer
           open={!!enviar}

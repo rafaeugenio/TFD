@@ -8,11 +8,10 @@ import {
 import Drawer from '@/shared/components/drawer/Drawer';
 import StatusDot, { type StatusDotTone } from './StatusDot';
 import OrdinalBadge from './OrdinalBadge';
-import EnviarParaSetorDrawer from './drawers/EnviarParaSetorDrawer';
+import NovaDemandaSocialDrawer from './drawers/NovaDemandaSocialDrawer';
 import NewInstrumentoDrawer from './drawers/NewInstrumentoDrawer';
 import AssumirDemandaDrawer from './drawers/AssumirDemandaDrawer';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
-import { setorAtual, type SetorAcao } from '../_utils/lock';
 import {
   useDemandasDaSolicitacao,
   useServicoSocial,
@@ -34,14 +33,6 @@ import {
   type SituacaoDemandaSocial,
 } from '@/core/mocks/servico-social-seed';
 import type { SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
-
-/** O drawer de tramitação só aceita os setores de ação. Uma solicitação
- *  encerrada cai em Acompanhamento como origem, já que o encaminhamento ao
- *  Serviço Social é paralelo e não depende do setor. */
-function setorDeOrigem(s: SolicitacaoMock): SetorAcao {
-  const atual = setorAtual(s);
-  return atual === 'encerramento' ? 'acompanhamento' : atual;
-}
 
 const SITUACAO_TONE: Record<SituacaoDemandaSocial, StatusDotTone> = {
   pendente: 'warning',
@@ -75,6 +66,8 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
 
   const [encaminharOpen, setEncaminharOpen] = useState(false);
   const [instrumentoOpen, setInstrumentoOpen] = useState(false);
+  /** Demanda pré-selecionada ao abrir o drawer de instrumento. Vazio = avulso. */
+  const [demandaParaInstrumento, setDemandaParaInstrumento] = useState<string | null>(null);
   const [visualizando, setVisualizando] = useState<InstrumentoSocialMock | null>(null);
 
   /**
@@ -110,9 +103,10 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
       >
         <Info size={15} style={{ color: '#64748B', flexShrink: 0, marginTop: 1 }} />
         <div className="text-[12.5px] leading-relaxed" style={{ color: '#475569' }}>
-          A demanda social corre em paralelo ao fluxo. Encaminhar ao Serviço Social não
-          muda o setor nem a etapa da solicitação, e esta aba continua liberada
-          independentemente de onde a solicitação estiver.
+          A demanda social corre em paralelo ao fluxo. Abrir um pedido não muda o setor
+          nem a etapa da solicitação, e esta aba continua liberada independentemente de
+          onde a solicitação estiver. Enquanto houver demanda em aberto, um alerta
+          aparece ao lado do número da solicitação em todas as telas.
         </div>
       </div>
 
@@ -170,13 +164,13 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
             className="tfd-btn tfd-btn-primary tfd-btn--sm"
             onClick={() => setEncaminharOpen(true)}
           >
-            <Plus size={14} /> Encaminhar ao Serviço Social
+            <Plus size={14} /> Nova demanda social
           </button>
         }
       >
         {demandas.length === 0 ? (
           <p className="text-[13px] py-2" style={{ color: '#94A3B8' }}>
-            Esta solicitação ainda não foi encaminhada ao Serviço Social.
+            Nenhum pedido de análise foi aberto para o Serviço Social nesta solicitação.
           </p>
         ) : (
           <div className="flex flex-col gap-3">
@@ -186,6 +180,7 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
                 d={d}
                 ordinal={demandas.length - idx}
                 usuario={usuario}
+                onGerarInstrumento={(id) => { setDemandaParaInstrumento(id); setInstrumentoOpen(true); }}
               />
             ))}
           </div>
@@ -202,8 +197,7 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
             type="button"
             className="tfd-btn tfd-btn-primary tfd-btn--sm"
             onClick={() => setInstrumentoOpen(true)}
-            disabled={!demandaAlvo}
-            title={demandaAlvo ? undefined : 'Abra uma demanda social antes de criar um instrumento.'}
+            title="O instrumento pode ficar vinculado a uma demanda ou ser avulso."
           >
             <Plus size={14} /> Criar instrumento
           </button>
@@ -242,9 +236,11 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
                         </div>
                       </td>
                       <td className="px-3 py-2" style={{ color: '#64748B' }}>
-                        {dem
-                          ? `${SETOR_ORIGEM_LABEL[dem.setorOrigem]} · ${dataHoraBR(dem.dataEncaminhamento).slice(0, 10)}`
-                          : 'Demanda removida'}
+                        {dem ? (
+                          `${SETOR_ORIGEM_LABEL[dem.setorOrigem]} · ${dataHoraBR(dem.dataEncaminhamento).slice(0, 10)}`
+                        ) : (
+                          <span style={{ color: '#94A3B8' }}>Avulso</span>
+                        )}
                       </td>
                       <td className="px-3 py-2" style={{ color: '#1A1D2B' }}>{i.autora}</td>
                       <td className="px-3 py-2" style={{ color: '#64748B' }}>{dataHoraBR(i.dataCriacao)}</td>
@@ -284,31 +280,25 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
           </div>
         ) : (
           <p className="text-[13px] py-2" style={{ color: '#94A3B8' }}>
-            {demandaAlvo
-              ? 'Nenhum instrumento criado nesta solicitação.'
-              : 'Abra uma demanda social para poder criar instrumentos.'}
+            Nenhum instrumento criado nesta solicitação.
           </p>
         )}
       </Section>
 
       {/* ── Drawers ────────────────────────────────────────── */}
-      <EnviarParaSetorDrawer
+      <NovaDemandaSocialDrawer
         open={encaminharOpen}
         onClose={() => setEncaminharOpen(false)}
-        solicitacaoId={s.id}
-        setorAtual={setorDeOrigem(s)}
-        destinoInicial="servico_social"
+        s={s}
       />
 
-      {demandaAlvo && (
-        <NewInstrumentoDrawer
-          open={instrumentoOpen}
-          onClose={() => setInstrumentoOpen(false)}
-          s={s}
-          demandas={demandas}
-          demandaInicialId={demandaAlvo.id}
-        />
-      )}
+      <NewInstrumentoDrawer
+        open={instrumentoOpen}
+        onClose={() => { setInstrumentoOpen(false); setDemandaParaInstrumento(null); }}
+        s={s}
+        demandas={demandas}
+        demandaInicialId={demandaParaInstrumento ?? demandaAlvo?.id ?? ''}
+      />
 
       {visualizando && (
         <Drawer
@@ -343,10 +333,13 @@ function DemandaCard({
   d,
   ordinal,
   usuario,
+  onGerarInstrumento,
 }: {
   d: DemandaSocialMock;
   ordinal: number;
   usuario: string;
+  /** Abre o drawer de instrumento já vinculado a esta demanda. */
+  onGerarInstrumento: (demandaId: string) => void;
 }) {
   const [acao, setAcao] = useState<'concluir' | 'cancelar' | null>(null);
   const [assumir, setAssumir] = useState(false);
@@ -359,10 +352,12 @@ function DemandaCard({
     setTexto('');
   }
 
-  function confirmar() {
+  function confirmar(comInstrumento = false) {
     if (acao === 'concluir') concluirDemanda(d.id, texto, usuario);
     if (acao === 'cancelar') cancelarDemanda(d.id, texto, usuario);
+    const id = d.id;
     fecharAcao();
+    if (comInstrumento) onGerarInstrumento(id);
   }
 
   return (
@@ -395,7 +390,7 @@ function DemandaCard({
               )}
             </div>
             <p className="text-[12px] mt-0.5" style={{ color: '#64748B' }}>
-              Encaminhada por <span style={{ color: '#1E293B', fontWeight: 500 }}>{d.encaminhadoPor}</span>
+              Aberta por <span style={{ color: '#1E293B', fontWeight: 500 }}>{d.encaminhadoPor}</span>
               {' · '}
               {SETOR_ORIGEM_LABEL[d.setorOrigem]}
               {d.profissionalResponsavel ? ` · Atendida por ${d.profissionalResponsavel}` : ''}
@@ -427,7 +422,7 @@ function DemandaCard({
       </div>
 
       <div className="px-3 py-3 flex flex-col gap-3">
-        <Campo rotulo="Motivo do encaminhamento">{d.motivo}</Campo>
+        <Campo rotulo="O que precisa ser avaliado">{d.motivo}</Campo>
 
         {d.situacao === 'concluida' && (
           <Campo rotulo={`Orientação final · ${dataHoraBR(d.dataConclusao)} · ${d.concluidaPor ?? ''}`}>
@@ -458,17 +453,26 @@ function DemandaCard({
               className="w-full text-[13px] px-3 py-2 outline-none resize-y"
               style={{ background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 6, color: '#1A1D2B' }}
             />
-            <div className="flex items-center justify-end gap-2 mt-2">
+            <div className="flex items-center justify-end gap-2 mt-2 flex-wrap">
               <button type="button" className="tfd-btn tfd-btn-ghost tfd-btn--sm" onClick={fecharAcao}>
-                Cancelar
+                Voltar
               </button>
-              <button type="button" className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={confirmar}>
+              <button
+                type="button"
+                className="tfd-btn tfd-btn-secondary tfd-btn--sm"
+                onClick={() => confirmar(true)}
+                title="Fecha a demanda e já abre o instrumento vinculado a ela."
+              >
+                <FileText size={13} />
+                {acao === 'concluir' ? 'Concluir e gerar instrumento' : 'Cancelar e gerar instrumento'}
+              </button>
+              <button type="button" className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={() => confirmar(false)}>
                 {acao === 'concluir' ? 'Concluir demanda' : 'Cancelar demanda'}
               </button>
             </div>
             <p className="text-[11.5px] mt-2" style={{ color: '#94A3B8' }}>
               A data e hora e a pessoa são registradas automaticamente. Os instrumentos
-              já criados continuam disponíveis.
+              já criados continuam disponíveis, e a demanda pode ter mais de um.
             </p>
           </div>
         )}
