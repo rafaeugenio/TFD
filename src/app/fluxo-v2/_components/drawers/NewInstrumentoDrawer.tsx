@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { FileText, Home, Lock } from 'lucide-react';
+import { FileText, Home, Lock, HeartHandshake } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormSection from '@/shared/components/drawer/FormSection';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
@@ -13,6 +13,8 @@ import {
 import {
   TIPOS_INSTRUMENTO,
   TIPO_INSTRUMENTO_LABEL,
+  SETOR_ORIGEM_LABEL,
+  SITUACAO_DEMANDA_LABEL,
   type DemandaSocialMock,
   type TipoInstrumento,
 } from '@/core/mocks/servico-social-seed';
@@ -22,7 +24,11 @@ interface Props {
   open: boolean;
   onClose: () => void;
   s: SolicitacaoMock;
-  demanda: DemandaSocialMock;
+  /** Demandas sociais da solicitação. Quando há mais de uma, o drawer pede a
+   *  qual delas o instrumento pertence. */
+  demandas: DemandaSocialMock[];
+  /** Demanda já selecionada ao abrir (normalmente a aberta mais recente). */
+  demandaInicialId: string;
 }
 
 /**
@@ -31,11 +37,12 @@ interface Props {
  * continua editável para a profissional registrar a análise. Autora e data e
  * hora são automáticas e não aparecem como campo editável.
  */
-export default function NewInstrumentoDrawer({ open, onClose, s, demanda }: Props) {
+export default function NewInstrumentoDrawer({ open, onClose, s, demandas, demandaInicialId }: Props) {
   const { user } = usePermissions();
   const casas = useCasasApoio();
   const casasAtivas = useMemo(() => casas.filter((c) => c.ativa), [casas]);
 
+  const [demandaId, setDemandaId] = useState(demandaInicialId);
   const [tipo, setTipo] = useState<TipoInstrumento | ''>('');
   const [casaId, setCasaId] = useState('');
   const [conteudo, setConteudo] = useState('');
@@ -43,6 +50,10 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demanda }: Prop
   const [tocado, setTocado] = useState(false);
 
   const profissional = user?.nome_completo ?? 'Assistente Social';
+
+  useEffect(() => {
+    if (open) setDemandaId(demandaInicialId);
+  }, [open, demandaInicialId]);
 
   // Escolher o tipo carrega o template correspondente. Trocar a casa de apoio
   // recarrega também, mas nunca por cima de um texto que já foi editado.
@@ -63,6 +74,7 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demanda }: Prop
   }, [tipo, casaId, casas, s, profissional, tocado]);
 
   function reset() {
+    setDemandaId(demandaInicialId);
     setTipo('');
     setCasaId('');
     setConteudo('');
@@ -78,7 +90,7 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demanda }: Prop
   function salvar() {
     if (!tipo || !conteudo.trim()) return;
     criarInstrumento({
-      demandaId: demanda.id,
+      demandaId,
       solicitacaoId: s.id,
       tipo,
       conteudo,
@@ -114,6 +126,37 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demanda }: Prop
         </>
       }
     >
+      {demandas.length > 1 && (
+        <FormSection
+          title="Demanda social"
+          icon={<HeartHandshake size={12} />}
+          hint="A qual demanda este instrumento pertence."
+        >
+          <select
+            value={demandaId}
+            onChange={(e) => setDemandaId(e.target.value)}
+            className="w-full text-[13px] px-3 outline-none"
+            style={{
+              height: 38,
+              background: 'white',
+              border: '1px solid var(--tfd-surface-border)',
+              borderRadius: 8,
+              color: '#1A1D2B',
+            }}
+          >
+            {demandas.map((d) => (
+              <option key={d.id} value={d.id}>
+                {new Date(d.dataEncaminhamento).toLocaleDateString('pt-BR')}
+                {' · '}
+                {SETOR_ORIGEM_LABEL[d.setorOrigem]}
+                {' · '}
+                {SITUACAO_DEMANDA_LABEL[d.situacao]}
+              </option>
+            ))}
+          </select>
+        </FormSection>
+      )}
+
       <FormSection
         title="Tipo de instrumento"
         icon={<FileText size={12} />}
