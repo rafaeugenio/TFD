@@ -1,130 +1,73 @@
 'use client';
 
-import { Suspense, useState } from 'react';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { BarChart3, Receipt, ClipboardList, FileSpreadsheet, Stamp } from 'lucide-react';
+import { Suspense, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { FluxoV2Provider, useFluxoV2State } from '@/app/fluxo-v2/_state/FluxoV2Provider';
+import Landing from './_construtor/ui/Landing';
+import Construtor from './_construtor/ui/Construtor';
+import { montarBase } from './_construtor/dataset';
+import { MODELOS } from './_construtor/modelos';
+import { configInicial } from './_construtor/motor';
+import { assuntoPorId, ASSUNTOS } from './_construtor/assuntos';
+import { useRelatoriosSalvos } from './_construtor/salvos';
+import type { AssuntoId } from './_construtor/tipos';
 
-import PageHeader from '@/shared/components/page-header/PageHeader';
-import RelatorioFinanceiro from './_RelatorioFinanceiro';
-import RelatorioFaturamento from './_RelatorioFaturamento';
-import RelatorioRPB from './_RelatorioRPB';
-import RelatorioGestao from './_RelatorioGestao';
-import RelatorioRegulacao from './_RelatorioRegulacao';
-
-type TabKey = 'financeiro' | 'faturamento' | 'rpb' | 'gestao' | 'regulacao';
-
-const TABS: { key: TabKey; label: string; icon: React.ReactNode; desc: string }[] = [
-  {
-    key: 'financeiro',
-    label: 'Financeiro',
-    icon: <BarChart3 size={15} />,
-    desc: 'Acompanhamento quadrimestral consolidado',
-  },
-  {
-    key: 'faturamento',
-    label: 'Faturamento',
-    icon: <Receipt size={15} />,
-    desc: 'Relatório mensal de passagens',
-  },
-  {
-    key: 'rpb',
-    label: 'BPA',
-    icon: <ClipboardList size={15} />,
-    desc: 'Dados para lançamento no BPA',
-  },
-  {
-    key: 'gestao',
-    label: 'Gestão',
-    icon: <FileSpreadsheet size={15} />,
-    desc: 'Visão consolidada por paciente — paciente, diagnóstico, origem do laudo, destino e parecer',
-  },
-  {
-    key: 'regulacao',
-    label: 'Regulação',
-    icon: <Stamp size={15} />,
-    desc: 'Agendamentos por tipo de carimbo da Regulação, por data de agendamento',
-  },
-];
-
-const DEFAULT_TAB: TabKey = 'financeiro';
-
+/**
+ * Relatórios: construtor de relatórios personalizáveis.
+ * - sem parâmetro: entrada com perguntas prontas, salvos e "do zero";
+ * - `?modelo=<id>`: abre um modelo pronto já configurado;
+ * - `?salvo=<id>`: reabre um relatório salvo;
+ * - `?novo=<assunto>`: começa do zero com o assunto escolhido.
+ * Os relatórios fixos antigos continuam em /relatorios/anteriores.
+ */
 export default function RelatoriosPage() {
   return (
     <Suspense fallback={null}>
-      <RelatoriosInner />
+      <FluxoV2Provider>
+        <RelatoriosApp />
+      </FluxoV2Provider>
     </Suspense>
   );
 }
 
-function RelatoriosInner() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const tabParam = searchParams.get('aba');
-  const initial: TabKey = (TABS.some((t) => t.key === tabParam) ? tabParam : DEFAULT_TAB) as TabKey;
-  const [activeTab, setActiveTab] = useState<TabKey>(initial);
+function RelatoriosApp() {
+  const params = useSearchParams();
+  const { solicitacoes, isLoading } = useFluxoV2State();
+  // Lido pelo hook (e não direto do localStorage) para o servidor e o
+  // navegador renderizarem a mesma coisa na primeira pintura.
+  const salvos = useRelatoriosSalvos();
+  const base = useMemo(() => montarBase(solicitacoes), [solicitacoes]);
 
-  const setTab = (next: TabKey) => {
-    setActiveTab(next);
-    const params = new URLSearchParams(searchParams.toString());
-    if (next === DEFAULT_TAB) params.delete('aba');
-    else params.set('aba', next);
-    const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  };
+  const modeloId = params.get('modelo');
+  const salvoId = params.get('salvo');
+  const novo = params.get('novo') as AssuntoId | null;
 
-  const active = TABS.find((t) => t.key === activeTab) ?? TABS[0];
+  const abertura = useMemo(() => {
+    if (modeloId) {
+      const m = MODELOS.find((x) => x.id === modeloId);
+      if (m) return { chave: `m:${m.id}`, config: m.config, titulo: m.nome, origem: 'Modelo pronto', salvoId: undefined };
+    }
+    if (salvoId) {
+      const s = salvos.find((x) => x.id === salvoId);
+      if (s) return { chave: `s:${s.id}`, config: s.config, titulo: s.nome, origem: 'Relatório salvo', salvoId: s.id };
+    }
+    if (novo && ASSUNTOS.some((a) => a.id === novo)) {
+      return { chave: `n:${novo}`, config: configInicial(novo), titulo: `Relatório de ${assuntoPorId(novo).label.toLowerCase()}`, origem: 'Relatório personalizado', salvoId: undefined };
+    }
+    return null;
+  }, [modeloId, salvoId, novo, salvos]);
+
+  if (!abertura) return <Landing />;
 
   return (
-    <>
-      <PageHeader title="Relatórios" subtitle={active.desc} />
-
-      {/* Tabs — mesmo padrão visual usado nas demais áreas */}
-      <div
-        className="flex items-stretch gap-1 mb-6 no-print"
-        style={{ borderBottom: '1px solid #E2E8F0' }}
-      >
-        {TABS.map((t) => {
-          const isActive = activeTab === t.key;
-          return (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className="relative px-4 py-3 text-[13.5px] font-medium inline-flex items-center gap-2 transition-colors"
-              style={{
-                color: isActive ? 'var(--tfd-primary-500)' : '#64748B',
-                background: 'transparent',
-              }}
-            >
-              <span style={{ color: isActive ? 'var(--tfd-primary-500)' : '#94A3B8' }}>{t.icon}</span>
-              {t.label}
-              {isActive && (
-                <span
-                  className="absolute left-2 right-2 -bottom-px h-[2px]"
-                  style={{ background: 'var(--tfd-primary-500)' }}
-                />
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="animate-fade-in">
-        {activeTab === 'financeiro' && <RelatorioFinanceiro />}
-        {activeTab === 'faturamento' && <RelatorioFaturamento />}
-        {activeTab === 'rpb' && <RelatorioRPB />}
-        {activeTab === 'gestao' && <RelatorioGestao />}
-        {activeTab === 'regulacao' && <RelatorioRegulacao />}
-      </div>
-
-      <style jsx>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(2px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in { animation: fadeIn 180ms ease-out; }
-      `}</style>
-    </>
+    <Construtor
+      key={abertura.chave}
+      configInicial={abertura.config}
+      titulo={abertura.titulo}
+      origem={abertura.origem}
+      salvoId={abertura.salvoId}
+      base={base}
+      carregando={isLoading}
+    />
   );
 }
