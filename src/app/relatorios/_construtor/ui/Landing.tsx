@@ -1,131 +1,85 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowRight, Bookmark, Trash2, History } from 'lucide-react';
+import { Plus, Trash2, ChevronRight } from 'lucide-react';
 import PageHeader from '@/shared/components/page-header/PageHeader';
-import { ASSUNTOS, ASSUNTOS_ORDEM, assuntoPorId } from '../assuntos';
+import { assuntoPorId } from '../assuntos';
 import { MODELOS } from '../modelos';
 import { excluirRelatorio, useRelatoriosSalvos } from '../salvos';
+import { C } from './Etapas';
 
-const COR = { ink: '#0F172A', texto: '#334155', apoio: '#475569', borda: '#E2E8F0', azul: '#146BFA', azulSuave: '#EFF6FF' };
+const secaoTitulo: React.CSSProperties = { fontSize: 15, fontWeight: 700, color: C.ink, marginBottom: 10 };
 
-/**
- * Entrada de Relatórios. Três caminhos, do mais guiado ao mais livre:
- * começar por uma pergunta pronta, reabrir um relatório salvo ou montar do
- * zero escolhendo o assunto.
- */
+/** Entrada de Relatórios: criar, começar de um modelo ou reabrir um salvo. */
 export default function Landing() {
   const salvos = useRelatoriosSalvos();
 
   return (
-    <div className="pb-12">
+    <div className="pb-12" style={{ maxWidth: 1080 }}>
       <PageHeader
         title="Relatórios"
-        subtitle="Escolha o que você quer saber e o sistema monta o relatório para você."
+        subtitle="Monte, salve e exporte relatórios do TFD."
+        actions={
+          <Link href="/relatorios?novo=1" className="tfd-btn tfd-btn-primary" style={{ minHeight: 40 }}>
+            <Plus size={16} /> Criar relatório
+          </Link>
+        }
       />
 
-      {/* 1. Perguntas prontas */}
-      <section aria-labelledby="titulo-modelos" className="mb-10">
-        <h2 id="titulo-modelos" style={{ fontSize: 20, fontWeight: 700, color: COR.ink }}>Comece por uma pergunta</h2>
-        <p style={{ fontSize: 15, color: COR.apoio, marginTop: 4 }}>
-          Modelos prontos. Depois de abrir, você pode mudar período, informações e filtros.
-        </p>
-        <div className="grid gap-3 mt-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
-          {MODELOS.map((m) => {
-            const a = assuntoPorId(m.config.assunto);
-            const Icone = a.icone;
-            return (
-              <Link
-                key={m.id}
-                href={`/relatorios?modelo=${m.id}`}
-                className="group flex flex-col focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-                style={{ background: 'white', border: `1px solid ${COR.borda}`, borderRadius: 12, padding: 18, minHeight: 170, outlineColor: COR.azul }}
-              >
-                <span className="flex items-center gap-2" style={{ fontSize: 13, fontWeight: 700, color: COR.azul, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  <Icone size={16} /> {m.setor}
-                </span>
-                <span style={{ fontSize: 17.5, fontWeight: 700, color: COR.ink, marginTop: 8, lineHeight: 1.3 }}>{m.pergunta}</span>
-                <span style={{ fontSize: 14.5, color: COR.apoio, marginTop: 6, lineHeight: 1.45 }}>{m.descricao}</span>
-                <span className="mt-auto pt-3 inline-flex items-center gap-1.5" style={{ fontSize: 15, fontWeight: 600, color: '#1D4ED8' }}>
-                  Abrir este relatório <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* 2. Salvos */}
-      <section aria-labelledby="titulo-salvos" className="mb-10">
-        <h2 id="titulo-salvos" className="flex items-center gap-2" style={{ fontSize: 20, fontWeight: 700, color: COR.ink }}>
-          <Bookmark size={19} /> Meus relatórios salvos
-        </h2>
-        {salvos.length === 0 ? (
-          <p className="mt-3" style={{ fontSize: 15, color: COR.apoio, background: 'white', border: `1px dashed #CBD5E1`, borderRadius: 12, padding: 18 }}>
-            Você ainda não salvou nenhum relatório. Ao montar um relatório que usa sempre, clique em <strong>Salvar relatório</strong>: da próxima vez é só abrir e trocar o período.
-          </p>
-        ) : (
-          <ul className="mt-3 flex flex-col gap-2">
-            {salvos.map((r) => {
-              const a = assuntoPorId(r.config.assunto);
+      {salvos.length > 0 && (
+        <section aria-labelledby="t-salvos" className="mb-8">
+          <h2 id="t-salvos" style={secaoTitulo}>Meus relatórios</h2>
+          <ul style={{ background: 'white', border: `1px solid ${C.borda}`, borderRadius: 12 }}>
+            {salvos.map((r, i) => {
+              const Icone = assuntoPorId(r.config.assunto).icone;
               return (
-                <li key={r.id} className="flex flex-wrap items-center gap-3" style={{ background: 'white', border: `1px solid ${COR.borda}`, borderRadius: 12, padding: '12px 14px' }}>
-                  <div className="flex-1 min-w-[200px]">
-                    <p style={{ fontSize: 16, fontWeight: 700, color: COR.ink }}>{r.nome}</p>
-                    <p style={{ fontSize: 14, color: COR.apoio }}>
-                      {a.label} · atualizado em {new Date(r.atualizadoEm).toLocaleDateString('pt-BR')}
-                    </p>
-                  </div>
-                  <Link href={`/relatorios?salvo=${r.id}`} className="tfd-btn tfd-btn-primary" style={{ minHeight: 44, fontSize: 15 }}>
-                    Abrir
+                <li key={r.id} className="flex items-center" style={{ borderTop: i ? `1px solid ${C.borda}` : undefined }}>
+                  <Link href={`/relatorios?salvo=${r.id}`} className="flex-1 min-w-0 flex items-center gap-3 hover:bg-[#F5F9FF]" style={{ minHeight: 52, padding: '0 16px' }}>
+                    <Icone size={17} style={{ color: C.azul, flexShrink: 0 }} />
+                    <span className="truncate" style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>{r.nome}</span>
+                    <span className="hidden sm:inline" style={{ fontSize: 13, color: C.apoio }}>
+                      {new Date(r.atualizadoEm).toLocaleDateString('pt-BR')}
+                    </span>
                   </Link>
                   <button
-                    type="button"
-                    className="tfd-btn tfd-btn-ghost"
-                    style={{ minHeight: 44, fontSize: 15, color: '#B91C1C' }}
-                    onClick={() => {
-                      if (window.confirm(`Excluir o relatório "${r.nome}"? Os dados do sistema não são apagados.`)) excluirRelatorio(r.id);
-                    }}
+                    type="button" aria-label={`Excluir ${r.nome}`} title="Excluir"
+                    onClick={() => window.confirm(`Excluir "${r.nome}"?`) && excluirRelatorio(r.id)}
+                    className="inline-flex items-center justify-center shrink-0"
+                    style={{ width: 44, height: 44, color: C.apoio, marginRight: 4 }}
                   >
-                    <Trash2 size={16} /> Excluir
+                    <Trash2 size={16} />
                   </button>
                 </li>
               );
             })}
           </ul>
-        )}
-      </section>
+        </section>
+      )}
 
-      {/* 3. Do zero */}
-      <section aria-labelledby="titulo-zero" className="mb-10">
-        <h2 id="titulo-zero" style={{ fontSize: 20, fontWeight: 700, color: COR.ink }}>Montar um relatório do zero</h2>
-        <p style={{ fontSize: 15, color: COR.apoio, marginTop: 4 }}>Escolha sobre o que você quer informações.</p>
-        <div className="grid gap-3 mt-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
-          {ASSUNTOS_ORDEM.map((id) => {
-            const a = ASSUNTOS.find((x) => x.id === id)!;
-            const Icone = a.icone;
+      <section aria-labelledby="t-modelos" className="mb-8">
+        <h2 id="t-modelos" style={secaoTitulo}>Começar de um modelo</h2>
+        <ul className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
+          {MODELOS.map((m) => {
+            const Icone = assuntoPorId(m.config.assunto).icone;
             return (
-              <Link
-                key={a.id}
-                href={`/relatorios?novo=${a.id}`}
-                className="flex items-start gap-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-                style={{ background: 'white', border: `1px solid ${COR.borda}`, borderRadius: 12, padding: 16, minHeight: 88, outlineColor: COR.azul }}
-              >
-                <span className="inline-flex items-center justify-center shrink-0" style={{ width: 40, height: 40, borderRadius: 10, background: COR.azulSuave, color: COR.azul }}>
-                  <Icone size={20} />
-                </span>
-                <span className="min-w-0">
-                  <span className="block" style={{ fontSize: 16, fontWeight: 700, color: COR.ink }}>{a.label}</span>
-                  <span className="block" style={{ fontSize: 14, color: COR.apoio, marginTop: 2, lineHeight: 1.4 }}>{a.pergunta}</span>
-                </span>
-              </Link>
+              <li key={m.id}>
+                <Link
+                  href={`/relatorios?modelo=${m.id}`}
+                  className="flex items-center gap-3 hover:bg-[#F5F9FF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                  style={{ minHeight: 56, padding: '0 14px', background: 'white', border: `1px solid ${C.borda}`, borderRadius: 10, outlineColor: C.azul }}
+                >
+                  <Icone size={17} style={{ color: C.azul, flexShrink: 0 }} />
+                  <span className="flex-1" style={{ fontSize: 14, fontWeight: 500, color: C.ink, lineHeight: 1.35 }}>{m.pergunta}</span>
+                  <ChevronRight size={16} style={{ color: '#94A3B8', flexShrink: 0 }} />
+                </Link>
+              </li>
             );
           })}
-        </div>
+        </ul>
       </section>
 
-      <Link href="/relatorios/anteriores" className="inline-flex items-center gap-2" style={{ fontSize: 15, color: COR.apoio, minHeight: 44 }}>
-        <History size={16} /> Ver os relatórios anteriores (Financeiro, Faturamento, BPA, Gestão e Regulação)
+      <Link href="/relatorios/anteriores" style={{ fontSize: 13.5, color: C.apoio, textDecoration: 'underline', textUnderlineOffset: 3 }}>
+        Relatórios anteriores
       </Link>
     </div>
   );

@@ -8,7 +8,7 @@ import Construtor from './_construtor/ui/Construtor';
 import { montarBase } from './_construtor/dataset';
 import { MODELOS } from './_construtor/modelos';
 import { configInicial } from './_construtor/motor';
-import { assuntoPorId, ASSUNTOS } from './_construtor/assuntos';
+import { ASSUNTOS } from './_construtor/assuntos';
 import { useRelatoriosSalvos } from './_construtor/salvos';
 import type { AssuntoId } from './_construtor/tipos';
 
@@ -45,14 +45,16 @@ function RelatoriosApp() {
   const abertura = useMemo(() => {
     if (modeloId) {
       const m = MODELOS.find((x) => x.id === modeloId);
-      if (m) return { chave: `m:${m.id}`, config: m.config, titulo: m.nome, origem: 'Modelo pronto', salvoId: undefined };
+      if (m) return { chave: `m:${m.id}`, config: m.config, titulo: m.nome, origem: 'Modelo pronto', salvoId: undefined, etapa: 'periodo' as const };
     }
     if (salvoId) {
       const s = salvos.find((x) => x.id === salvoId);
-      if (s) return { chave: `s:${s.id}`, config: s.config, titulo: s.nome, origem: 'Relatório salvo', salvoId: s.id };
+      if (s) return { chave: `s:${s.id}`, config: s.config, titulo: s.nome, origem: 'Relatório salvo', salvoId: s.id, etapa: 'periodo' as const };
     }
-    if (novo && ASSUNTOS.some((a) => a.id === novo)) {
-      return { chave: `n:${novo}`, config: configInicial(novo), titulo: `Relatório de ${assuntoPorId(novo).label.toLowerCase()}`, origem: 'Relatório personalizado', salvoId: undefined };
+    if (novo) {
+      // `?novo=1` começa na escolha do assunto; `?novo=<assunto>` já vem escolhido.
+      const id = ASSUNTOS.some((a) => a.id === novo) ? novo : 'passagens';
+      return { chave: `n:${novo}`, config: configInicial(id), titulo: 'Novo relatório', origem: 'Personalizado', salvoId: undefined, etapa: 'assunto' as const };
     }
     return null;
   }, [modeloId, salvoId, novo, salvos]);
@@ -66,6 +68,7 @@ function RelatoriosApp() {
       titulo={abertura.titulo}
       origem={abertura.origem}
       salvoId={abertura.salvoId}
+      etapaInicial={abertura.etapa}
       base={base}
       carregando={isLoading}
     />
