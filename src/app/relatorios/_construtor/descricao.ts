@@ -34,7 +34,7 @@ export interface LinhaResumo {
 
 /** `compacto` encurta listas longas na faixa da tela; exportação e tela de
  *  salvar usam sempre a versão completa. */
-export function descreverRelatorio(cfg: ConfigRelatorio, res: ResultadoRelatorio, compacto = false): LinhaResumo[] {
+export function descreverRelatorio(cfg: ConfigRelatorio, res: ResultadoRelatorio, compacto = false, busca = ''): LinhaResumo[] {
   const filtros = cfg.filtros.map((f) => descreverFiltro(res, f)).filter(Boolean);
   const todos = camposDoAssunto(res.assunto);
   const colunas = cfg.colunas.map((id) => todos.find((c) => c.id === id)?.label).filter(Boolean);
@@ -45,6 +45,7 @@ export function descreverRelatorio(cfg: ConfigRelatorio, res: ResultadoRelatorio
     { rotulo: 'Período', valor: `${res.periodo.rotulo} (${dataBR(res.periodo.inicio)} a ${dataBR(res.periodo.fim)})` },
     { rotulo: 'Data usada no período', valor: res.referencia.label },
     { rotulo: 'Filtros', valor: filtros.length ? filtros.join(' · ') : 'Nenhum filtro. Todos os registros do período entram.' },
+    ...(busca.trim() ? [{ rotulo: 'Busca', valor: `Só linhas com "${busca.trim()}" em alguma coluna` }] : []),
     {
       rotulo: 'Informações da tabela',
       valor: colunas.length === 0

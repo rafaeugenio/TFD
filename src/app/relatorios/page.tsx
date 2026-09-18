@@ -1,23 +1,23 @@
 'use client';
 
-import { Suspense, useMemo } from 'react';
+import { Suspense, useMemo, useSyncExternalStore } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { FluxoV2Provider, useFluxoV2State } from '@/app/fluxo-v2/_state/FluxoV2Provider';
+import { Skeleton } from '@/components/ui/skeleton';
 import Landing from './_construtor/ui/Landing';
 import Construtor from './_construtor/ui/Construtor';
+import Detalhe from './_construtor/ui/Detalhe';
 import { montarBase } from './_construtor/dataset';
-import { MODELOS } from './_construtor/modelos';
 import { configInicial } from './_construtor/motor';
-import { ASSUNTOS } from './_construtor/assuntos';
 import { useRelatoriosSalvos } from './_construtor/salvos';
-import type { AssuntoId } from './_construtor/tipos';
 
 /**
  * Relatórios: construtor de relatórios personalizáveis.
- * - sem parâmetro: entrada com perguntas prontas, salvos e "do zero";
- * - `?modelo=<id>`: abre um modelo pronto já configurado;
- * - `?salvo=<id>`: reabre um relatório salvo;
- * - `?novo=<assunto>`: começa do zero com o assunto escolhido.
+ * - sem parâmetro: lista dos relatórios criados pelo usuário;
+ * - `?novo=1`: cadastro em etapas de um relatório novo;
+ * - `?salvo=<id>`: consulta do relatório salvo (filtrar, pesquisar, exportar);
+ * - `?editar=<id>`: cadastro em etapas com o relatório salvo preenchido.
  * Os relatórios fixos antigos continuam em /relatorios/anteriores.
  */
 export default function RelatoriosPage() {
@@ -34,43 +34,54 @@ function RelatoriosApp() {
   const params = useSearchParams();
   const { solicitacoes, isLoading } = useFluxoV2State();
   // Lido pelo hook (e não direto do localStorage) para o servidor e o
-  // navegador renderizarem a mesma coisa na primeira pintura.
+  // navegador renderizarem a mesma coisa na primeira pintura. Até montar no
+  // navegador a lista ainda está vazia, então nada decide antes disso.
   const salvos = useRelatoriosSalvos();
+  const montado = useSyncExternalStore(semAssinatura, () => true, () => false);
   const base = useMemo(() => montarBase(solicitacoes), [solicitacoes]);
 
-  const modeloId = params.get('modelo');
   const salvoId = params.get('salvo');
-  const novo = params.get('novo') as AssuntoId | null;
+  const editarId = params.get('editar');
+  const novo = params.get('novo');
 
-  const abertura = useMemo(() => {
-    if (modeloId) {
-      const m = MODELOS.find((x) => x.id === modeloId);
-      if (m) return { chave: `m:${m.id}`, config: m.config, titulo: m.nome, origem: 'Modelo pronto', salvoId: undefined, etapa: 'periodo' as const };
-    }
-    if (salvoId) {
-      const s = salvos.find((x) => x.id === salvoId);
-      if (s) return { chave: `s:${s.id}`, config: s.config, titulo: s.nome, origem: 'Relatório salvo', salvoId: s.id, etapa: 'periodo' as const };
-    }
-    if (novo) {
-      // `?novo=1` começa na escolha do assunto; `?novo=<assunto>` já vem escolhido.
-      const id = ASSUNTOS.some((a) => a.id === novo) ? novo : 'passagens';
-      return { chave: `n:${novo}`, config: configInicial(id), titulo: 'Novo relatório', origem: 'Personalizado', salvoId: undefined, etapa: 'assunto' as const };
-    }
-    return null;
-  }, [modeloId, salvoId, novo, salvos]);
+  if (novo) {
+    return <Construtor key="novo" secoesIniciais={[configInicial('passagens')]} titulo="" base={base} carregando={isLoading} />;
+  }
 
-  if (!abertura) return <Landing />;
+  if (!montado) return <CarregandoTela />;
 
+  const id = salvoId ?? editarId;
+  if (id) {
+    const salvo = salvos.find((x) => x.id === id);
+    if (!salvo) return <NaoEncontrado />;
+    return editarId ? (
+      <Construtor key={`e:${salvo.id}`} secoesIniciais={salvo.secoes} titulo={salvo.nome} salvoId={salvo.id} base={base} carregando={isLoading} />
+    ) : (
+      <Detalhe key={`d:${salvo.id}`} relatorio={salvo} base={base} carregando={isLoading} />
+    );
+  }
+
+  return <Landing salvos={salvos} carregando={false} />;
+}
+
+const semAssinatura = () => () => {};
+
+function CarregandoTela() {
   return (
-    <Construtor
-      key={abertura.chave}
-      configInicial={abertura.config}
-      titulo={abertura.titulo}
-      origem={abertura.origem}
-      salvoId={abertura.salvoId}
-      etapaInicial={abertura.etapa}
-      base={base}
-      carregando={isLoading}
-    />
+    <div className="flex flex-col gap-3 pt-2" aria-busy="true">
+      <Skeleton className="h-8 w-64" />
+      <Skeleton className="h-12 w-full" />
+      <Skeleton className="h-72 w-full" />
+    </div>
+  );
+}
+
+function NaoEncontrado() {
+  return (
+    <div className="text-center" style={{ padding: '64px 16px' }}>
+      <p style={{ fontSize: 16, fontWeight: 600, color: '#0F172A' }}>Relatório não encontrado</p>
+      <p style={{ fontSize: 14, color: '#64748B', marginTop: 4 }}>Ele pode ter sido excluído, ou foi salvo em outro navegador.</p>
+      <Link href="/relatorios" className="tfd-btn tfd-btn-primary mt-5" style={{ minHeight: 40, display: 'inline-flex' }}>Ver meus relatórios</Link>
+    </div>
   );
 }

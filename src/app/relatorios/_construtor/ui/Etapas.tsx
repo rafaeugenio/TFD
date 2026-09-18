@@ -4,10 +4,10 @@ import { useMemo, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, ChevronDown, Plus, X } from 'lucide-react';
 import { ASSUNTOS, ASSUNTOS_ORDEM, assuntoPorId, camposDoAssunto, filtrosDoAssunto } from '../assuntos';
 import type { BaseRelatorios } from '../dataset';
-import { configInicial, opcoesDoFiltro, type ResultadoRelatorio } from '../motor';
+import { configInicial, opcoesDoFiltro, ordenarSecoes, type ResultadoRelatorio } from '../motor';
 import { ATALHOS_PERIODO, FORMAS_PERIODO, MESES, dataBR, quadrimestreDoMes, resolverPeriodo } from '../periodo';
 import { descreverFiltro } from '../descricao';
-import type { Campo, ConfigRelatorio, FiltroAplicado, GrupoCampos, PeriodoTipo } from '../tipos';
+import type { AssuntoId, Campo, ConfigRelatorio, FiltroAplicado, GrupoCampos, PeriodoTipo } from '../tipos';
 
 export const C = {
   ink: '#0F172A',
@@ -38,7 +38,7 @@ export function Titulo({ children, apoio }: { children: React.ReactNode; apoio?:
 }
 
 /** Pílula selecionável. Mesmo componente para período, colunas e opções. */
-function Pilula({
+export function Pilula({
   ativo, onClick, children, role = 'checkbox', title,
 }: { ativo: boolean; onClick: () => void; children: React.ReactNode; role?: 'checkbox' | 'radio'; title?: string }) {
   return (
@@ -71,26 +71,37 @@ const rotuloStyle: React.CSSProperties = { fontSize: 13, fontWeight: 600, color:
 
 /* ── Assunto ─────────────────────────────────────────────────────────────── */
 
-export function EtapaAssunto({ config, onChange }: EtapaProps) {
-  const atual = assuntoPorId(config.assunto);
+/** Vários assuntos por relatório. Cada assunto marcado vira uma tabela
+ *  própria; o período escolhido depois vale para todos. */
+export function EtapaAssunto({ secoes, onChange }: { secoes: ConfigRelatorio[]; onChange: (s: ConfigRelatorio[]) => void }) {
+  const marcados = secoes.map((s) => s.assunto);
+  const periodo = secoes[0]?.periodo;
+  const alternar = (id: AssuntoId) => {
+    if (marcados.includes(id)) {
+      if (marcados.length > 1) onChange(secoes.filter((s) => s.assunto !== id));
+      return;
+    }
+    onChange(ordenarSecoes([...secoes, { ...configInicial(id), periodo: periodo ?? configInicial(id).periodo }], ASSUNTOS_ORDEM));
+  };
+  const todos = marcados.length === ASSUNTOS_ORDEM.length;
+
   return (
     <div>
-      <Titulo apoio="Define o que cada linha da tabela representa.">O que você quer analisar?</Titulo>
-      <div role="radiogroup" aria-label="Assunto" className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))' }}>
+      <Titulo apoio="Marque um ou mais. Cada assunto vira uma tabela própria no relatório.">O que você quer analisar?</Titulo>
+      <div role="group" aria-label="Assuntos" className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))' }}>
         {ASSUNTOS_ORDEM.map((id) => {
           const a = ASSUNTOS.find((x) => x.id === id)!;
           const Icone = a.icone;
-          const ativo = a.id === config.assunto;
+          const ativo = marcados.includes(a.id);
+          const unico = ativo && marcados.length === 1;
           return (
             <button
               key={a.id}
               type="button"
-              role="radio"
+              role="checkbox"
               aria-checked={ativo}
-              title={a.pergunta}
-              onClick={() => {
-                if (!ativo) onChange({ ...configInicial(a.id), periodo: config.periodo });
-              }}
+              title={unico ? 'O relatório precisa de pelo menos um assunto' : a.pergunta}
+              onClick={() => alternar(a.id)}
               className="flex items-center gap-2.5 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
               style={{
                 minHeight: 48, padding: '0 12px', borderRadius: 10,
@@ -99,21 +110,41 @@ export function EtapaAssunto({ config, onChange }: EtapaProps) {
               }}
             >
               <Icone size={18} style={{ color: ativo ? C.azul : C.apoio, flexShrink: 0 }} />
-              <span style={{ fontSize: 14, fontWeight: 600, color: ativo ? C.azulTexto : C.ink }}>{a.label}</span>
+              <span className="flex-1" style={{ fontSize: 14, fontWeight: 600, color: ativo ? C.azulTexto : C.ink }}>{a.label}</span>
+              {ativo && <Check size={15} strokeWidth={2.5} style={{ color: C.azul, flexShrink: 0 }} />}
             </button>
           );
         })}
       </div>
-      <p className="mt-4" style={{ fontSize: 14, color: C.texto }}>
-        Cada linha será <strong>{atual.cadaLinha}</strong>
-      </p>
+      <button
+        type="button"
+        onClick={() => onChange(todos ? secoes.slice(0, 1) : ordenarSecoes(
+          ASSUNTOS_ORDEM.map((id) => secoes.find((s) => s.assunto === id) ?? { ...configInicial(id), periodo: periodo ?? configInicial(id).periodo }),
+          ASSUNTOS_ORDEM,
+        ))}
+        className="mt-2"
+        style={{ minHeight: 40, fontSize: 14, fontWeight: 600, color: C.azulTexto }}
+      >
+        {todos ? 'Deixar só o primeiro' : 'Marcar todos'}
+      </button>
+
+      <ul className="mt-3 flex flex-col gap-1" style={{ fontSize: 14, color: C.texto }}>
+        {secoes.map((s) => {
+          const a = assuntoPorId(s.assunto);
+          return (
+            <li key={s.assunto}>
+              {secoes.length > 1 ? <>Em <strong>{a.label}</strong>, cada linha será {a.cadaLinha}</> : <>Cada linha será <strong>{a.cadaLinha}</strong></>}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
 
 /* ── Período ─────────────────────────────────────────────────────────────── */
 
-export function EtapaPeriodo({ config, onChange }: EtapaProps) {
+export function EtapaPeriodo({ config, onChange, semTitulo }: EtapaProps & { semTitulo?: boolean }) {
   const a = assuntoPorId(config.assunto);
   const p = config.periodo;
   const resolvido = resolverPeriodo(p);
@@ -140,7 +171,7 @@ export function EtapaPeriodo({ config, onChange }: EtapaProps) {
 
   return (
     <div>
-      <Titulo>Qual período?</Titulo>
+      {!semTitulo && <Titulo apoio="Vale para todos os assuntos do relatório.">Qual período?</Titulo>}
 
       <div role="radiogroup" aria-label="Atalhos de período" className="flex flex-wrap gap-2">
         {ATALHOS_PERIODO.map((x) => (
@@ -334,7 +365,7 @@ function BotaoIcone({ children, rotulo, onClick, desativado }: { children: React
 
 /* ── Filtros ─────────────────────────────────────────────────────────────── */
 
-export function EtapaFiltros({ config, onChange, base, resultado }: EtapaProps & { base: BaseRelatorios; resultado: ResultadoRelatorio }) {
+export function EtapaFiltros({ config, onChange, base, resultado, semTitulo }: EtapaProps & { base: BaseRelatorios; resultado: ResultadoRelatorio; semTitulo?: boolean }) {
   const a = assuntoPorId(config.assunto);
   const disponiveis = filtrosDoAssunto(a).filter((c) => c.id !== 'origemDado');
   const aplicados = config.filtros.filter((f) => f.valores.some((v) => v !== ''));
@@ -348,7 +379,7 @@ export function EtapaFiltros({ config, onChange, base, resultado }: EtapaProps &
 
   return (
     <div>
-      <Titulo apoio="Opcional. Deixa só os registros que interessam.">Quer filtrar?</Titulo>
+      {!semTitulo && <Titulo apoio="Opcional. Deixa só os registros que interessam.">Quer filtrar?</Titulo>}
 
       {aplicados.length > 0 && (
         <ul className="flex flex-wrap gap-2 mb-4" aria-label="Filtros aplicados">

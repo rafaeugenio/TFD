@@ -130,3 +130,10 @@ export function mesAno(data: string | null | undefined): string {
   const [a, m] = data.slice(0, 10).split('-');
   return a && m ? `${MESES[Number(m) - 1]} de ${a}` : '';
 }
+
+/** Nome curto do período como foi escolhido. Atalhos continuam relativos
+ *  ("Mês passado" muda a cada mês), por isso aparecem pelo nome do atalho. */
+export function nomePeriodo(p: Periodo): string {
+  const atalho = ATALHOS_PERIODO.find((x) => x.tipo === p.tipo);
+  return atalho ? atalho.label : resolverPeriodo(p).rotulo.replace(/ \(.*\)$/, '');
+}

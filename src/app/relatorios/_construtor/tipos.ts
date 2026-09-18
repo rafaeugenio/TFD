@@ -146,19 +146,16 @@ export interface ConfigRelatorio {
   metaAnualSigtap?: number;
 }
 
+/**
+ * Um relatório pode juntar vários assuntos (ex.: passagens e ajudas de custo).
+ * Cada assunto é uma SEÇÃO com a própria tabela, porque "cada linha é..."
+ * muda de um assunto para outro e misturar as linhas quebraria os totais.
+ * O período é o mesmo em todas as seções.
+ */
 export interface RelatorioSalvo {
   id: string;
   nome: string;
-  config: ConfigRelatorio;
+  secoes: ConfigRelatorio[];
   criadoEm: string;
   atualizadoEm: string;
-}
-
-export interface Modelo {
-  id: string;
-  pergunta: string;
-  nome: string;
-  descricao: string;
-  setor: string;
-  config: ConfigRelatorio;
 }

@@ -234,9 +234,23 @@ function agrupar(linhas: Linha[], campo: Campo, colunas: Campo[]): { colunas: Ca
   return { colunas: [grupoCampo, qtdCampo, pacCampo, ...somaveis], linhas: saida };
 }
 
+/* ── Busca ───────────────────────────────────────────────────────────────── */
+
+const normalizar = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/** Busca livre: mantém a linha se o termo aparece em qualquer coluna escolhida,
+ *  do jeito que o usuário lê (datas em dd/mm/aaaa, valores formatados), sem
+ *  diferenciar acento nem maiúscula. Roda antes do agrupamento e dos totais,
+ *  para os números sempre baterem com o que está na tabela. */
+function aplicarBusca(linhas: Linha[], campos: Campo[], termo: string): Linha[] {
+  const t = normalizar(termo.trim());
+  if (!t) return linhas;
+  return linhas.filter((l) => campos.some((c) => normalizar(formatarValor(c, l[c.id])).includes(t)));
+}
+
 /* ── Execução ────────────────────────────────────────────────────────────── */
 
-export function executarRelatorio(cfg: ConfigRelatorio, base: BaseRelatorios): ResultadoRelatorio {
+export function executarRelatorio(cfg: ConfigRelatorio, base: BaseRelatorios, busca = ''): ResultadoRelatorio {
   const a = assuntoPorId(cfg.assunto);
   const periodo = resolverPeriodo(cfg.periodo);
   const referencia = a.datas.find((d) => d.id === cfg.referenciaData) ?? a.datas[0];
@@ -252,6 +266,9 @@ export function executarRelatorio(cfg: ConfigRelatorio, base: BaseRelatorios): R
     const origem = base[a.id as keyof Omit<BaseRelatorios, 'totalDemonstracao' | 'totalProtocolo'>] as Linha[];
     linhas = aplicarFiltros(origem.filter((l) => noPeriodo(l, referencia, periodo)), a, cfg.filtros);
   }
+
+  const campoGrupo = cfg.agruparPor && a.id !== 'financeiro' ? campoPorId(a, cfg.agruparPor) : undefined;
+  if (busca.trim()) linhas = aplicarBusca(linhas, campoGrupo ? [...colunas, campoGrupo] : colunas, busca);
 
   if (cfg.ordenarPor) {
     const campo = campoPorId(a, cfg.ordenarPor.campoId);
@@ -272,13 +289,17 @@ export function executarRelatorio(cfg: ConfigRelatorio, base: BaseRelatorios): R
     .filter((t) => !t.exigeCampo || cfg.colunas.includes(t.exigeCampo))
     .map((t) => ({ id: t.id, label: t.label, ajuda: t.ajuda, formato: t.formato, valor: t.calcular(linhas) }));
 
-  const campoGrupo = cfg.agruparPor && a.id !== 'financeiro' ? campoPorId(a, cfg.agruparPor) : undefined;
   if (campoGrupo) {
     const g = agrupar(linhas, campoGrupo, colunas);
     return { assunto: a, periodo, referencia, colunas: g.colunas, linhas: g.linhas, totalRegistros: linhas.length, totais, agrupado: true };
   }
 
   return { assunto: a, periodo, referencia, colunas, linhas, totalRegistros: linhas.length, totais, agrupado: false };
+}
+
+/** Seções na ordem fixa dos assuntos, com o mesmo período em todas. */
+export function ordenarSecoes(secoes: ConfigRelatorio[], ordem: readonly string[]): ConfigRelatorio[] {
+  return [...secoes].sort((x, y) => ordem.indexOf(x.assunto) - ordem.indexOf(y.assunto));
 }
 
 /** Configuração inicial de um assunto recém-escolhido. */

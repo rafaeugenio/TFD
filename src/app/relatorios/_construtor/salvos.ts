@@ -16,7 +16,9 @@ function ler(): RelatorioSalvo[] {
   if (cache) return cache;
   try {
     const bruto = typeof window !== 'undefined' ? window.localStorage.getItem(CHAVE) : null;
-    cache = bruto ? (JSON.parse(bruto) as RelatorioSalvo[]) : [];
+    // Relatórios salvos antes dos vários assuntos guardavam `config` único.
+    const lista = bruto ? (JSON.parse(bruto) as Array<RelatorioSalvo & { config?: ConfigRelatorio }>) : [];
+    cache = lista.map(({ config, ...r }) => ({ ...r, secoes: r.secoes ?? (config ? [config] : []) })).filter((r) => r.secoes.length > 0);
   } catch {
     cache = [];
   }
@@ -46,18 +48,18 @@ export function useRelatoriosSalvos(): RelatorioSalvo[] {
   );
 }
 
-export function salvarRelatorio(nome: string, config: ConfigRelatorio, idExistente?: string): RelatorioSalvo {
+export function salvarRelatorio(nome: string, secoes: ConfigRelatorio[], idExistente?: string): RelatorioSalvo {
   const agora = new Date().toISOString();
   const lista = ler();
   if (idExistente) {
-    const atualizado = lista.map((r) => (r.id === idExistente ? { ...r, nome, config, atualizadoEm: agora } : r));
+    const atualizado = lista.map((r) => (r.id === idExistente ? { ...r, nome: nome.trim(), secoes, atualizadoEm: agora } : r));
     gravar(atualizado);
     return atualizado.find((r) => r.id === idExistente)!;
   }
   const novo: RelatorioSalvo = {
     id: `rel-${Date.now().toString(36)}`,
     nome: nome.trim(),
-    config,
+    secoes,
     criadoEm: agora,
     atualizadoEm: agora,
   };

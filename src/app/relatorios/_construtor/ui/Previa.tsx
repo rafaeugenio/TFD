@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, Info } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DIVERGENCIAS } from '../dataset';
@@ -15,6 +15,8 @@ interface Props {
   config: ConfigRelatorio;
   onChange: (c: ConfigRelatorio) => void;
   carregando: boolean;
+  /** Nome do bloco acima da contagem. */
+  rotulo?: string;
 }
 
 /**
@@ -22,9 +24,14 @@ interface Props {
  * tabela. Tabela com a primeira coluna fixa no tablet e desktop; cartões no
  * celular.
  */
-export default function Previa({ resultado, config, onChange, carregando }: Props) {
+export default function Previa({ resultado, config, onChange, carregando, rotulo = 'Prévia' }: Props) {
+  // Qualquer mudança no resultado (período, filtro, busca) volta à página 1.
   const [pagina, setPagina] = useState(1);
-  useEffect(() => setPagina(1), [config]);
+  const [ultimo, setUltimo] = useState(resultado);
+  if (ultimo !== resultado) {
+    setUltimo(resultado);
+    setPagina(1);
+  }
 
   const { colunas, linhas, assunto, agrupado, totalRegistros } = resultado;
   const paginas = Math.max(1, Math.ceil(linhas.length / POR_PAGINA));
@@ -39,10 +46,10 @@ export default function Previa({ resultado, config, onChange, carregando }: Prop
   };
 
   return (
-    <section aria-label="Prévia do relatório" style={{ background: 'white', border: `1px solid ${C.borda}`, borderRadius: 12, overflow: 'hidden' }}>
+    <section aria-label={`${rotulo}: ${resultado.assunto.label}`} style={{ background: 'white', border: `1px solid ${C.borda}`, borderRadius: 12, overflow: 'hidden' }}>
       <header className="flex flex-wrap items-end gap-x-8 gap-y-3" style={{ padding: '16px 20px', borderBottom: `1px solid ${C.borda}` }}>
         <div>
-          <p style={{ fontSize: 12.5, fontWeight: 600, color: C.apoio }}>Prévia</p>
+          <p style={{ fontSize: 12.5, fontWeight: 600, color: C.apoio }}>{rotulo}</p>
           {carregando ? (
             <Skeleton className="h-7 w-40 mt-1" />
           ) : (
