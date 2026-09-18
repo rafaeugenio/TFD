@@ -9,16 +9,26 @@ import { ATALHOS_PERIODO, FORMAS_PERIODO, MESES, dataBR, quadrimestreDoMes, reso
 import { descreverFiltro } from '../descricao';
 import type { AssuntoId, Campo, ConfigRelatorio, FiltroAplicado, GrupoCampos, PeriodoTipo } from '../tipos';
 
+/** Tokens oficiais do TFD (os mesmos `--tfd-*` do sistema em dev). */
 export const C = {
-  ink: '#0F172A',
-  texto: '#334155',
-  apoio: '#64748B',
-  borda: '#E2E8F0',
-  azul: '#146BFA',
-  azulTexto: '#1D4ED8',
-  azulSuave: '#EFF6FF',
-  azulBorda: '#BFDBFE',
-  fundo: '#F8FAFC',
+  ink: 'var(--tfd-text-primary)',
+  texto: 'var(--tfd-text-secondary)',
+  apoio: 'var(--tfd-text-muted)',
+  claro: 'var(--tfd-400)',
+  borda: 'var(--tfd-surface-border)',
+  campo: 'var(--tfd-300)',
+  azul: 'var(--tfd-blue-500)',
+  azulTexto: 'var(--tfd-blue-700)',
+  azulSuave: 'var(--tfd-blue-50)',
+  azulBorda: 'var(--tfd-blue-200)',
+  fundo: 'var(--tfd-50)',
+  sombra: 'var(--tfd-shadow-sm)',
+};
+
+/** Rótulo de campo no padrão dos filtros do sistema: caixa alta, 11px. */
+export const rotuloCampo: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, letterSpacing: '0.06em',
+  textTransform: 'uppercase', color: 'var(--tfd-text-muted)', marginBottom: 6, lineHeight: 1.2,
 };
 
 interface EtapaProps {
@@ -31,8 +41,8 @@ interface EtapaProps {
 export function Titulo({ children, apoio }: { children: React.ReactNode; apoio?: string }) {
   return (
     <div className="mb-4">
-      <h2 style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{children}</h2>
-      {apoio && <p style={{ fontSize: 13.5, color: C.apoio, marginTop: 2 }}>{apoio}</p>}
+      <h2 style={{ fontSize: 16, fontWeight: 600, color: C.ink }}>{children}</h2>
+      {apoio && <p style={{ fontSize: 13, color: C.claro, marginTop: 2 }}>{apoio}</p>}
     </div>
   );
 }
@@ -50,8 +60,8 @@ export function Pilula({
       title={title}
       className="inline-flex items-center gap-1.5 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
       style={{
-        minHeight: 40, padding: '0 14px', borderRadius: 999, fontSize: 14, fontWeight: 500,
-        border: `1px solid ${ativo ? C.azul : C.borda}`,
+        minHeight: 36, padding: '0 12px', borderRadius: 'var(--tfd-radius-md)', fontSize: 14, fontWeight: 500,
+        border: `1px solid ${ativo ? C.azul : C.campo}`,
         background: ativo ? C.azulSuave : 'white', color: ativo ? C.azulTexto : C.texto,
         outlineColor: C.azul,
       }}
@@ -63,11 +73,11 @@ export function Pilula({
 }
 
 const campoStyle: React.CSSProperties = {
-  minHeight: 40, padding: '0 12px', border: `1px solid ${C.borda}`, borderRadius: 8,
+  minHeight: 36, padding: '0 10px', border: `1px solid ${C.campo}`, borderRadius: 'var(--tfd-radius-md)',
   background: 'white', fontSize: 14, color: C.ink, width: '100%',
 };
 
-const rotuloStyle: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: C.texto, marginBottom: 8 };
+const rotuloStyle = rotuloCampo;
 
 /* ── Assunto ─────────────────────────────────────────────────────────────── */
 
@@ -104,8 +114,8 @@ export function EtapaAssunto({ secoes, onChange }: { secoes: ConfigRelatorio[]; 
               onClick={() => alternar(a.id)}
               className="flex items-center gap-2.5 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
               style={{
-                minHeight: 48, padding: '0 12px', borderRadius: 10,
-                border: `1px solid ${ativo ? C.azul : C.borda}`,
+                minHeight: 44, padding: '0 12px', borderRadius: 'var(--tfd-radius-md)',
+                border: `1px solid ${ativo ? C.azul : C.campo}`,
                 background: ativo ? C.azulSuave : 'white', outlineColor: C.azul,
               }}
             >
@@ -123,7 +133,7 @@ export function EtapaAssunto({ secoes, onChange }: { secoes: ConfigRelatorio[]; 
           ASSUNTOS_ORDEM,
         ))}
         className="mt-2"
-        style={{ minHeight: 40, fontSize: 14, fontWeight: 600, color: C.azulTexto }}
+        style={{ minHeight: 36, fontSize: 14, fontWeight: 600, color: C.azul }}
       >
         {todos ? 'Deixar só o primeiro' : 'Marcar todos'}
       </button>
@@ -234,13 +244,13 @@ export function EtapaPeriodo({ config, onChange, semTitulo }: EtapaProps & { sem
       </div>
 
       {a.id === 'financeiro' && (
-        <label className="block mt-6" style={rotuloStyle}>
-          Meta anual de procedimentos SIGTAP (informada)
+        <label className="block mt-6">
+          <span style={rotuloStyle}>Meta anual de procedimentos SIGTAP (informada)</span>
           <input
             type="number" min={0} inputMode="numeric"
             value={config.metaAnualSigtap ?? ''}
             onChange={(e) => onChange({ ...config, metaAnualSigtap: e.target.value ? Number(e.target.value) : undefined })}
-            style={{ ...campoStyle, marginTop: 8, maxWidth: 220, fontWeight: 400 }}
+            style={{ ...campoStyle, maxWidth: 220 }}
           />
         </label>
       )}
@@ -290,7 +300,7 @@ export function EtapaColunas({ config, onChange }: EtapaProps) {
             aria-expanded={maisAberto}
             onClick={() => setMaisAberto((v) => !v)}
             className="inline-flex items-center gap-1.5"
-            style={{ minHeight: 40, fontSize: 14, fontWeight: 600, color: C.azulTexto }}
+            style={{ minHeight: 36, fontSize: 14, fontWeight: 600, color: C.azul }}
           >
             <ChevronDown size={16} style={{ transform: maisAberto ? 'rotate(180deg)' : undefined }} />
             {maisAberto ? 'Menos colunas' : `Mais colunas: ${extras.map((g) => g.label.toLowerCase()).join(', ')}`}
@@ -308,7 +318,7 @@ export function EtapaColunas({ config, onChange }: EtapaProps) {
           <p style={rotuloStyle}>Ordem na tabela</p>
           <ol className="flex flex-wrap gap-1.5">
             {escolhidas.map((campo, i) => (
-              <li key={campo.id} className="inline-flex items-center" style={{ border: `1px solid ${C.borda}`, borderRadius: 8, background: C.fundo, fontSize: 13.5, color: C.texto }}>
+              <li key={campo.id} className="inline-flex items-center" style={{ border: `1px solid ${C.borda}`, borderRadius: 'var(--tfd-radius-md)', background: C.fundo, fontSize: 13, color: C.texto }}>
                 <BotaoIcone rotulo={`Mover ${campo.label} para a esquerda`} onClick={() => mover(i, -1)} desativado={i === 0}><ArrowLeft size={14} /></BotaoIcone>
                 <span style={{ padding: '0 2px' }}>{campo.label}</span>
                 <BotaoIcone rotulo={`Mover ${campo.label} para a direita`} onClick={() => mover(i, 1)} desativado={i === escolhidas.length - 1}><ArrowRight size={14} /></BotaoIcone>
@@ -356,7 +366,7 @@ function BotaoIcone({ children, rotulo, onClick, desativado }: { children: React
     <button
       type="button" aria-label={rotulo} title={rotulo} onClick={onClick} disabled={desativado}
       className="inline-flex items-center justify-center"
-      style={{ width: 32, height: 34, color: desativado ? '#CBD5E1' : C.apoio, cursor: desativado ? 'default' : 'pointer' }}
+      style={{ width: 32, height: 34, color: desativado ? 'var(--tfd-300)' : C.apoio, cursor: desativado ? 'default' : 'pointer' }}
     >
       {children}
     </button>
@@ -384,7 +394,7 @@ export function EtapaFiltros({ config, onChange, base, resultado, semTitulo }: E
       {aplicados.length > 0 && (
         <ul className="flex flex-wrap gap-2 mb-4" aria-label="Filtros aplicados">
           {aplicados.map((f) => (
-            <li key={f.campoId} className="inline-flex items-center" style={{ border: `1px solid ${C.azulBorda}`, background: C.azulSuave, borderRadius: 999, fontSize: 14, color: C.azulTexto }}>
+            <li key={f.campoId} className="inline-flex items-center" style={{ border: `1px solid ${C.azulBorda}`, background: C.azulSuave, borderRadius: 'var(--tfd-radius-md)', fontSize: 13, color: C.azulTexto }}>
               <button type="button" onClick={() => setCampoId(f.campoId)} style={{ padding: '8px 4px 8px 14px' }}>{descreverFiltro(resultado, f)}</button>
               <button
                 type="button" aria-label="Remover filtro" title="Remover filtro"
@@ -398,9 +408,9 @@ export function EtapaFiltros({ config, onChange, base, resultado, semTitulo }: E
         </ul>
       )}
 
-      <label className="block" style={rotuloStyle}>
-        {aplicados.length ? 'Adicionar ou alterar filtro' : 'Filtrar por'}
-        <select value={campoId} onChange={(e) => setCampoId(e.target.value)} style={{ ...campoStyle, marginTop: 8, fontWeight: 400 }}>
+      <label className="block">
+        <span style={rotuloStyle}>{aplicados.length ? 'Adicionar ou alterar filtro' : 'Filtrar por'}</span>
+        <select value={campoId} onChange={(e) => setCampoId(e.target.value)} style={{ ...campoStyle, maxWidth: 480 }}>
           <option value="">Escolha uma informação...</option>
           {disponiveis.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
         </select>
@@ -432,7 +442,7 @@ function EditorFiltro({
   );
 
   return (
-    <div className="mt-3" style={{ border: `1px solid ${C.borda}`, borderRadius: 10, padding: 14, background: C.fundo }}>
+    <div className="mt-3" style={{ border: `1px solid ${C.borda}`, borderRadius: 'var(--tfd-radius-lg)', padding: 14, background: C.fundo }}>
       {campo.tipo === 'categoria' && (
         <>
           {opcoes.length > 10 && (
@@ -457,7 +467,7 @@ function EditorFiltro({
           <input type="number" inputMode="decimal" placeholder="Até" aria-label="Valor máximo" value={valores[1] ?? ''} onChange={(e) => setValores([valores[0] ?? '', e.target.value])} style={campoStyle} />
         </div>
       )}
-      <button type="button" className="tfd-btn tfd-btn-primary mt-3" style={{ minHeight: 40 }} onClick={() => onAplicar({ campoId: campo.id, valores })}>
+      <button type="button" className="tfd-btn tfd-btn-primary mt-3" onClick={() => onAplicar({ campoId: campo.id, valores })}>
         <Plus size={15} /> Aplicar filtro
       </button>
     </div>

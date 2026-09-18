@@ -4,9 +4,10 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Check, Save } from 'lucide-react';
+import PageHeader from '@/shared/components/page-header/PageHeader';
 import { useToast } from '@/shared/components/toast/Toast';
-import { EtapaAssunto, EtapaColunas, EtapaFiltros, EtapaPeriodo, Titulo, C } from './Etapas';
-import Previa from './Previa';
+import { EtapaAssunto, EtapaColunas, EtapaFiltros, EtapaPeriodo, Titulo, C, rotuloCampo } from './Etapas';
+import Previa, { cartao } from './Previa';
 import { AbasAssunto, AvisoPdf, FORMATOS, useExportar } from './comum';
 import { executarRelatorio } from '../motor';
 import type { BaseRelatorios } from '../dataset';
@@ -84,13 +85,16 @@ export default function Construtor({ secoesIniciais, titulo, salvoId, base, carr
 
   return (
     <div className="pb-10">
-      <Link href={salvoId ? `/relatorios?salvo=${salvoId}` : '/relatorios'} className="inline-flex items-center gap-1.5" style={{ fontSize: 14, color: C.apoio, minHeight: 40 }}>
-        <ArrowLeft size={15} /> {salvoId ? 'Voltar ao relatório sem salvar' : 'Relatórios'}
-      </Link>
-      <div className="flex flex-wrap items-baseline gap-x-3 mb-5">
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: C.ink }}>{nome || 'Novo relatório'}</h1>
-        <span style={{ fontSize: 13, color: C.apoio }}>{salvoId ? 'Editando relatório salvo' : 'Novo relatório'}</span>
-      </div>
+      <PageHeader
+        title={nome.trim() || 'Novo relatório'}
+        subtitle={salvoId ? 'Editando relatório salvo. As mudanças só valem depois de salvar.' : 'Monte o relatório em etapas. A tabela ao lado mostra o resultado enquanto você escolhe.'}
+        breadcrumbs={[{ label: 'Gestão' }, { label: 'Relatórios', href: '/relatorios' }, ...(salvoId ? [{ label: titulo, href: `/relatorios?salvo=${salvoId}` }] : [])]}
+        actions={
+          <Link href={salvoId ? `/relatorios?salvo=${salvoId}` : '/relatorios'} className="tfd-btn tfd-btn-ghost">
+            <ArrowLeft size={15} /> {salvoId ? 'Cancelar edição' : 'Cancelar'}
+          </Link>
+        }
+      />
 
       {/* Indicador de progresso: desktop */}
       <nav aria-label="Etapas do relatório" className="hidden md:block mb-5">
@@ -105,13 +109,13 @@ export default function Construtor({ secoesIniciais, titulo, salvoId, base, carr
                   onClick={() => setEtapa(e.id)}
                   aria-current={atual ? 'step' : undefined}
                   className="w-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-                  style={{ padding: '10px 0 0', borderTop: `3px solid ${atual || feita ? C.azul : C.borda}`, outlineColor: C.azul }}
+                  style={{ padding: '10px 0 0', borderTop: `2px solid ${atual || feita ? C.azul : C.borda}`, outlineColor: C.azul }}
                 >
-                  <span className="flex items-center gap-1.5" style={{ fontSize: 14, fontWeight: 600, color: atual ? C.azulTexto : feita ? C.ink : C.apoio }}>
+                  <span className="flex items-center gap-1.5" style={{ fontSize: 14, fontWeight: 700, color: atual ? C.azul : feita ? C.ink : C.apoio }}>
                     {feita && <Check size={14} strokeWidth={2.5} style={{ color: C.azul }} />}
                     {e.label}
                   </span>
-                  <span className="block truncate" style={{ fontSize: 13, color: C.apoio, marginTop: 2 }}>{resumoEtapa[e.id] || ' '}</span>
+                  <span className="block truncate" style={{ fontSize: 13, color: C.claro, marginTop: 2 }}>{resumoEtapa[e.id] || ' '}</span>
                 </button>
               </li>
             );
@@ -140,7 +144,7 @@ export default function Construtor({ secoesIniciais, titulo, salvoId, base, carr
 
       <div className="grid gap-5 xl:grid-cols-[minmax(360px,440px)_minmax(0,1fr)] items-start">
         {/* Etapa atual */}
-        <section style={{ background: 'white', border: `1px solid ${C.borda}`, borderRadius: 12 }}>
+        <section style={cartao}>
           <div style={{ padding: 20 }}>
             {etapa === 'assunto' && <EtapaAssunto secoes={secoes} onChange={setSecoes} />}
             {etapa === 'periodo' && <EtapaPeriodo config={config} onChange={setConfig} />}
@@ -149,35 +153,35 @@ export default function Construtor({ secoesIniciais, titulo, salvoId, base, carr
             {etapa === 'concluir' && (
               <div>
                 <Titulo apoio="Depois de salvo, ele fica na lista de Relatórios para abrir, filtrar e exportar quando quiser.">Salvar relatório</Titulo>
-                <label className="block" style={{ fontSize: 13, fontWeight: 600, color: C.texto }}>
-                  Nome do relatório
+                <label className="block">
+                  <span style={rotuloCampo}>Nome do relatório</span>
                   <input
                     value={nome}
                     onChange={(e) => setNome(e.target.value)}
                     placeholder="Ex.: Passagens e ajudas do quadrimestre"
-                    style={{ display: 'block', width: '100%', minHeight: 40, marginTop: 8, padding: '0 12px', border: `1px solid ${C.borda}`, borderRadius: 8, fontSize: 14, fontWeight: 400 }}
+                    style={{ display: 'block', width: '100%', height: 36, padding: '0 10px', border: `1px solid ${C.campo}`, borderRadius: 'var(--tfd-radius-md)', fontSize: 14, fontWeight: 400, color: C.ink }}
                   />
                 </label>
                 <div className="flex flex-wrap gap-2 mt-3">
-                  <button type="button" className="tfd-btn tfd-btn-primary" style={{ minHeight: 40 }} disabled={!nome.trim()} onClick={() => salvar()}>
+                  <button type="button" className="tfd-btn tfd-btn-primary" disabled={!nome.trim()} onClick={() => salvar()}>
                     <Save size={15} /> {salvoId ? 'Salvar alterações' : 'Salvar relatório'}
                   </button>
                   {salvoId && (
-                    <button type="button" className="tfd-btn tfd-btn-ghost" style={{ minHeight: 40 }} disabled={!nome.trim()} onClick={() => salvar(true)}>
+                    <button type="button" className="tfd-btn tfd-btn-ghost" disabled={!nome.trim()} onClick={() => salvar(true)}>
                       Salvar como novo
                     </button>
                   )}
                 </div>
 
-                <p className="mt-6" style={{ fontSize: 13, fontWeight: 600, color: C.texto, marginBottom: 8 }}>
+                <p className="mt-6" style={rotuloCampo}>
                   Ou exporte agora{secoes.length > 1 ? `, com os ${secoes.length} assuntos no mesmo arquivo` : ''}
                 </p>
                 <div className="flex flex-col gap-2">
                   {FORMATOS.map((f) => (
                     <button
                       key={f.id} type="button" onClick={() => exportar(f.id)} disabled={vazio || exportando !== null}
-                      className="flex items-center gap-3 text-left hover:bg-[#F5F9FF]"
-                      style={{ minHeight: 48, padding: '0 14px', border: `1px solid ${C.borda}`, borderRadius: 10, opacity: vazio ? 0.5 : 1 }}
+                      className="flex items-center gap-3 text-left enabled:hover:bg-[var(--tfd-surface-hover)]"
+                      style={{ minHeight: 44, padding: '0 12px', border: `1px solid ${C.borda}`, borderRadius: 'var(--tfd-radius-md)', opacity: vazio ? 0.5 : 1 }}
                     >
                       <span style={{ color: C.azul }}>{f.icone}</span>
                       <span style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>{exportando === f.id ? 'Gerando...' : f.rotulo}</span>
@@ -191,15 +195,15 @@ export default function Construtor({ secoesIniciais, titulo, salvoId, base, carr
             )}
           </div>
 
-          <footer className="flex items-center justify-between" style={{ padding: '12px 20px', borderTop: `1px solid ${C.borda}` }}>
+          <footer className="flex items-center justify-between" style={{ padding: '12px 20px', borderTop: `1px solid ${C.borda}`, background: C.fundo, borderRadius: '0 0 var(--tfd-radius-lg) var(--tfd-radius-lg)' }}>
             <button
-              type="button" className="tfd-btn tfd-btn-ghost" style={{ minHeight: 40, visibility: indice === 0 ? 'hidden' : 'visible' }}
+              type="button" className="tfd-btn tfd-btn-ghost" style={{ visibility: indice === 0 ? 'hidden' : 'visible' }}
               onClick={() => setEtapa(ETAPAS[indice - 1].id)}
             >
               Voltar
             </button>
             {indice < ETAPAS.length - 1 && (
-              <button type="button" className="tfd-btn tfd-btn-primary" style={{ minHeight: 40 }} onClick={() => setEtapa(ETAPAS[indice + 1].id)}>
+              <button type="button" className="tfd-btn tfd-btn-primary" onClick={() => setEtapa(ETAPAS[indice + 1].id)}>
                 Continuar
               </button>
             )}

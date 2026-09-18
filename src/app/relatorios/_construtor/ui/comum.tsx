@@ -20,7 +20,7 @@ export function AbasAssunto({
 }: { assuntos: AssuntoId[]; ativa: AssuntoId; onChange: (id: AssuntoId) => void; contagens?: Partial<Record<AssuntoId, number>> }) {
   if (assuntos.length < 2) return null;
   return (
-    <div role="tablist" aria-label="Assuntos do relatório" className="flex gap-1 overflow-x-auto" style={{ borderBottom: `1px solid ${C.borda}` }}>
+    <div role="tablist" aria-label="Assuntos do relatório" className="flex gap-2 overflow-x-auto" style={{ borderBottom: `1px solid ${C.borda}` }}>
       {assuntos.map((id) => {
         const a = assuntoPorId(id);
         const Icone = a.icone;
@@ -33,17 +33,17 @@ export function AbasAssunto({
             role="tab"
             aria-selected={atual}
             onClick={() => onChange(id)}
-            className="inline-flex items-center gap-2 shrink-0 hover:bg-[#F5F9FF] focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2"
+            className="inline-flex items-center gap-2 shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2"
             style={{
-              minHeight: 44, padding: '0 14px', fontSize: 14, fontWeight: atual ? 600 : 500,
-              color: atual ? C.azulTexto : C.texto, outlineColor: C.azul,
-              boxShadow: atual ? `inset 0 -2px 0 ${C.azul}` : undefined,
+              padding: '1.1rem 1.1rem 1.25rem', fontSize: 14, fontWeight: 700,
+              color: atual ? C.azul : C.texto, outlineColor: C.azul,
+              borderBottom: `2px solid ${atual ? C.azul : 'transparent'}`, marginBottom: -1,
             }}
           >
             <Icone size={16} style={{ color: atual ? C.azul : C.apoio }} />
             {a.label}
             {qtd !== undefined && (
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: atual ? C.azulTexto : C.apoio, background: atual ? C.azulSuave : C.fundo, borderRadius: 999, padding: '1px 8px', fontVariantNumeric: 'tabular-nums' }}>
+              <span className={atual ? 'tfd-badge tfd-badge--primary' : 'tfd-badge'} style={atual ? undefined : { background: 'var(--tfd-100)', color: 'var(--tfd-600)' }}>
                 {qtd.toLocaleString('pt-BR')}
               </span>
             )}
@@ -61,7 +61,7 @@ export function AvisoPdf({ secoes }: { secoes: SecaoExportada[] }) {
   if (largas.length === 0) return null;
   const onde = secoes.length > 1 ? ` (${largas.map((r) => r.assunto.label).join(', ')})` : '';
   return (
-    <p className="flex gap-2" role="note" style={{ fontSize: 13, lineHeight: 1.45, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '8px 10px' }}>
+    <p className="flex gap-2" role="note" style={{ fontSize: 13, lineHeight: 1.45, color: '#9A3412', background: 'var(--tfd-status-warning-bg, #FFF7ED)', border: '1px solid #FED7AA', borderRadius: 'var(--tfd-radius-md)', padding: '8px 10px' }}>
       <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
       <span>
         Tabela com mais de {LIMITE_COLUNAS_PDF} colunas{onde}: no PDF ela pode sair cortada ou apertada na folha.
@@ -127,7 +127,7 @@ export function MenuExportar({ titulo, secoes }: { titulo: string; secoes: Secao
   return (
     <div ref={ref} className="relative">
       <button
-        type="button" className="tfd-btn tfd-btn-primary" style={{ minHeight: 40 }}
+        type="button" className="tfd-btn tfd-btn-primary"
         aria-haspopup="menu" aria-expanded={aberto} disabled={vazio || exportando !== null}
         onClick={() => setAberto((v) => !v)}
       >
@@ -137,10 +137,10 @@ export function MenuExportar({ titulo, secoes }: { titulo: string; secoes: Secao
         <div
           role="menu"
           className="absolute right-0 z-30 flex flex-col gap-1"
-          style={{ top: 'calc(100% + 6px)', width: 'min(340px, calc(100vw - 32px))', padding: 8, background: 'white', border: `1px solid ${C.borda}`, borderRadius: 10, boxShadow: '0 8px 24px rgba(15, 23, 42, 0.12)' }}
+          style={{ top: 'calc(100% + 6px)', width: 'min(340px, calc(100vw - 32px))', padding: 6, background: 'white', border: `1px solid ${C.borda}`, borderRadius: 'var(--tfd-radius-md)', boxShadow: 'var(--tfd-shadow-md)' }}
         >
           {secoes.length > 1 && (
-            <p style={{ fontSize: 12.5, color: C.apoio, padding: '4px 8px 6px' }}>
+            <p style={{ fontSize: 12.5, color: C.claro, padding: '4px 8px 6px' }}>
               Os {secoes.length} assuntos vão no mesmo arquivo, cada um na sua aba ou seção.
             </p>
           )}
@@ -148,8 +148,8 @@ export function MenuExportar({ titulo, secoes }: { titulo: string; secoes: Secao
             <button
               key={f.id} type="button" role="menuitem"
               onClick={() => { setAberto(false); exportar(f.id); }}
-              className="flex items-center gap-3 text-left hover:bg-[#F5F9FF]"
-              style={{ minHeight: 44, padding: '0 10px', borderRadius: 8 }}
+              className="flex items-center gap-3 text-left hover:bg-[var(--tfd-surface-hover)]"
+              style={{ minHeight: 40, padding: '0 10px', borderRadius: 'var(--tfd-radius-sm)' }}
             >
               <span style={{ color: C.azul }}>{f.icone}</span>
               <span style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>{f.rotulo}</span>

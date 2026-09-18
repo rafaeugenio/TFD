@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, CalendarDays, ChevronDown, Pencil, RotateCcw, Save, Search, SlidersHorizontal, X } from 'lucide-react';
+import { CalendarDays, ChevronDown, Eye, Pencil, RotateCcw, Save, Search, SlidersHorizontal, X } from 'lucide-react';
+import PageHeader from '@/shared/components/page-header/PageHeader';
 import { useToast } from '@/shared/components/toast/Toast';
-import { EtapaFiltros, EtapaPeriodo, C } from './Etapas';
-import Previa from './Previa';
+import { EtapaFiltros, EtapaPeriodo, C, rotuloCampo } from './Etapas';
+import Previa, { cartao } from './Previa';
 import { AbasAssunto, MenuExportar } from './comum';
 import { assuntoPorId, camposDoAssunto } from '../assuntos';
 import type { BaseRelatorios } from '../dataset';
@@ -18,15 +19,16 @@ import type { AssuntoId, ConfigRelatorio, RelatorioSalvo } from '../tipos';
 type Painel = 'periodo' | 'filtros' | null;
 
 const campoStyle: React.CSSProperties = {
-  minHeight: 40, padding: '0 12px', border: `1px solid ${C.borda}`, borderRadius: 8, background: 'white', fontSize: 14, color: C.ink,
+  height: 36, padding: '0 10px', border: `1px solid ${C.campo}`, borderRadius: 'var(--tfd-radius-md)', background: 'white', fontSize: 14, color: C.ink,
 };
 
 /**
  * Consulta de um relatório salvo. Diferente do cadastro: aqui a pessoa lê os
- * dados. Tudo o que muda a leitura fica numa barra só (período, busca,
- * filtros e forma de mostrar), sempre com o efeito visível na contagem, nos
- * totais e na tabela. Ajustes feitos aqui valem só para esta consulta até a
- * pessoa escolher salvar; a tela avisa quando a visão difere do salvo.
+ * dados. Segue o layout do relatório de Gestão do sistema: cabeçalho com
+ * breadcrumb, abas, cartão de filtros com rótulos em caixa alta, faixa de
+ * indicadores e seção de linhas. Ajustes feitos aqui valem só para esta
+ * consulta até a pessoa escolher salvar; a tela avisa quando a visão difere
+ * do salvo.
  */
 export default function Detalhe({ relatorio, base, carregando }: { relatorio: RelatorioSalvo; base: BaseRelatorios; carregando: boolean }) {
   const toast = useToast();
@@ -53,43 +55,21 @@ export default function Detalhe({ relatorio, base, carregando }: { relatorio: Re
 
   return (
     <div className="pb-10">
-      <Link href="/relatorios" className="inline-flex items-center gap-1.5" style={{ fontSize: 14, color: C.apoio, minHeight: 40 }}>
-        <ArrowLeft size={15} /> Relatórios
-      </Link>
+      <PageHeader
+        title={relatorio.nome}
+        subtitle={`${secoes.map((s) => assuntoPorId(s.assunto).label).join(' · ')} · atualizado em ${new Date(relatorio.atualizadoEm).toLocaleDateString('pt-BR')}`}
+        breadcrumbs={[{ label: 'Gestão' }, { label: 'Relatórios', href: '/relatorios' }]}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Link href={`/relatorios?editar=${relatorio.id}`} className="tfd-btn tfd-btn-secondary">
+              <Pencil size={15} /> Editar
+            </Link>
+            <MenuExportar titulo={relatorio.nome} secoes={exportaveis} />
+          </div>
+        }
+      />
 
-      {/* Cabeçalho */}
-      <header className="flex flex-wrap items-start justify-between gap-3 mb-4">
-        <div className="min-w-0">
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.ink, lineHeight: 1.25 }}>{relatorio.nome}</h1>
-          <p style={{ fontSize: 13.5, color: C.apoio, marginTop: 4 }}>
-            {secoes.map((s) => assuntoPorId(s.assunto).label).join(' · ')} · atualizado em {new Date(relatorio.atualizadoEm).toLocaleDateString('pt-BR')}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href={`/relatorios?editar=${relatorio.id}`} className="tfd-btn tfd-btn-secondary" style={{ minHeight: 40 }}>
-            <Pencil size={15} /> Editar
-          </Link>
-          <MenuExportar titulo={relatorio.nome} secoes={exportaveis} />
-        </div>
-      </header>
-
-      {/* Ajustes não salvos */}
-      {alterado && (
-        <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3" style={{ padding: '8px 12px', background: C.azulSuave, border: `1px solid ${C.azulBorda}`, borderRadius: 10, fontSize: 14, color: C.azulTexto }}>
-          <span className="flex-1 min-w-[220px]">Você está vendo um ajuste desta consulta. O relatório salvo continua como estava.</span>
-          <button type="button" className="tfd-btn tfd-btn-ghost tfd-btn--sm" style={{ minHeight: 36 }} onClick={() => setSecoes(relatorio.secoes)}>
-            <RotateCcw size={14} /> Voltar ao salvo
-          </button>
-          <button
-            type="button" className="tfd-btn tfd-btn-secondary tfd-btn--sm" style={{ minHeight: 36 }}
-            onClick={() => { salvarRelatorio(relatorio.nome, secoes, relatorio.id); toast.success('Ajustes salvos no relatório', relatorio.nome); }}
-          >
-            <Save size={14} /> Salvar no relatório
-          </button>
-        </div>
-      )}
-
-      <div className="mb-3 empty:hidden">
+      <div className="mb-5 empty:hidden">
         <AbasAssunto
           assuntos={secoes.map((s) => s.assunto)}
           ativa={ativa}
@@ -98,59 +78,82 @@ export default function Detalhe({ relatorio, base, carregando }: { relatorio: Re
         />
       </div>
 
-      {/* Barra de ajustes da leitura */}
-      <section aria-label="Ajustar a consulta" className="mb-4" style={{ background: 'white', border: `1px solid ${C.borda}`, borderRadius: 12 }}>
-        <div className="flex flex-wrap items-center gap-2" style={{ padding: 12 }}>
-          <BotaoBarra ativo={painel === 'periodo'} onClick={() => alternarPainel('periodo')} icone={<CalendarDays size={16} />}>
-            {nomePeriodo(config.periodo)}
-          </BotaoBarra>
+      {/* Ajustes não salvos */}
+      {alterado && (
+        <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-5" style={{ padding: '8px 12px 8px 14px', background: C.azulSuave, border: `1px solid ${C.azulBorda}`, borderRadius: 'var(--tfd-radius-md)', fontSize: 14, color: C.azulTexto }}>
+          <Eye size={16} style={{ flexShrink: 0 }} />
+          <span className="flex-1 min-w-[220px]">Você está vendo um ajuste desta consulta. O relatório salvo continua como estava.</span>
+          <button type="button" className="tfd-btn tfd-btn-ghost tfd-btn--sm" onClick={() => setSecoes(relatorio.secoes)}>
+            <RotateCcw size={14} /> Voltar ao salvo
+          </button>
+          <button
+            type="button" className="tfd-btn tfd-btn-primary tfd-btn--sm"
+            onClick={() => { salvarRelatorio(relatorio.nome, secoes, relatorio.id); toast.success('Ajustes salvos no relatório', relatorio.nome); }}
+          >
+            <Save size={14} /> Salvar no relatório
+          </button>
+        </div>
+      )}
 
-          <label className="relative w-full order-first sm:order-none sm:w-auto sm:flex-1" style={{ minWidth: 200, maxWidth: 420 }}>
-            <span className="sr-only">Buscar no relatório</span>
-            <Search size={16} className="absolute" style={{ left: 12, top: 12, color: C.apoio }} />
-            <input
-              type="search" value={busca} onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar nas colunas da tabela"
-              style={{ ...campoStyle, width: '100%', padding: '0 12px 0 36px' }}
-            />
-          </label>
+      {/* Filtros, no formato do cartão de filtros dos relatórios do sistema */}
+      <section aria-label="Ajustar a consulta" className="mb-5" style={cartao}>
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-3" style={{ padding: '0.875rem 1.25rem' }}>
+          <Campo rotulo="Período" icone={<CalendarDays size={12} />}>
+            <BotaoBarra ativo={painel === 'periodo'} onClick={() => alternarPainel('periodo')}>{nomePeriodo(config.periodo)}</BotaoBarra>
+          </Campo>
 
-          <BotaoBarra ativo={painel === 'filtros'} onClick={() => alternarPainel('filtros')} icone={<SlidersHorizontal size={16} />}>
-            Filtros
-            {filtrosAtivos.length > 0 && (
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'white', background: C.azul, borderRadius: 999, minWidth: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px' }}>
-                {filtrosAtivos.length}
-              </span>
-            )}
-          </BotaoBarra>
+          <Campo rotulo="Buscar" icone={<Search size={12} />} className="w-full order-first sm:order-none sm:w-auto sm:flex-1" estilo={{ minWidth: 220, maxWidth: 420 }}>
+            <span className="relative block">
+              <Search size={16} className="absolute" style={{ left: 11, top: 10, color: C.claro }} />
+              <input
+                type="search" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar nas colunas da tabela"
+                placeholder="Buscar nas colunas da tabela..."
+                style={{ ...campoStyle, width: '100%', padding: '0 10px 0 35px' }}
+              />
+            </span>
+          </Campo>
+
+          <Campo rotulo="Filtros" icone={<SlidersHorizontal size={12} />}>
+            <BotaoBarra ativo={painel === 'filtros'} onClick={() => alternarPainel('filtros')}>
+              {filtrosAtivos.length ? `${filtrosAtivos.length} ${filtrosAtivos.length === 1 ? 'aplicado' : 'aplicados'}` : 'Nenhum'}
+            </BotaoBarra>
+          </Campo>
 
           {assunto.id !== 'financeiro' && (
-            <label className="flex items-center gap-2 w-full sm:w-auto" style={{ fontSize: 14, color: C.texto }}>
-              <span className="whitespace-nowrap">Mostrar</span>
+            <Campo rotulo="Mostrar" className="w-full sm:w-auto">
               <select
                 aria-label="Como mostrar a tabela"
                 value={config.agruparPor}
                 onChange={(e) => setConfig({ ...config, agruparPor: e.target.value })}
-                className="flex-1 min-w-0"
-                style={{ ...campoStyle, maxWidth: 320 }}
+                className="w-full"
+                style={{ ...campoStyle, minWidth: 220, maxWidth: 320 }}
               >
                 <option value="">Um registro por linha</option>
                 {agrupaveis.map((c) => <option key={c.id} value={c.id}>Totais por {c.tipo === 'data' ? `${c.label.toLowerCase()} (mês)` : c.label.toLowerCase()}</option>)}
               </select>
-            </label>
+            </Campo>
+          )}
+
+          {(filtrosAtivos.length > 0 || busca.trim()) && (
+            <button
+              type="button" className="tfd-btn tfd-btn-ghost sm:ml-auto"
+              onClick={() => { setBusca(''); setConfig({ ...config, filtros: [] }); }}
+            >
+              <X size={15} /> Limpar
+            </button>
           )}
         </div>
 
         {painel && (
-          <div style={{ padding: '16px 16px 18px', borderTop: `1px solid ${C.borda}`, background: C.fundo, borderRadius: '0 0 12px 12px' }}>
+          <div style={{ padding: '1rem 1.25rem 1.1rem', borderTop: `1px dashed ${C.borda}` }}>
             <div className="flex items-start justify-between gap-3 mb-3">
               <p style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>
                 {painel === 'periodo' ? 'Período e data usada na contagem' : `Filtros de ${assunto.label.toLowerCase()}`}
                 {painel === 'periodo' && secoes.length > 1 && (
-                  <span style={{ display: 'block', fontSize: 13, fontWeight: 400, color: C.apoio }}>O período vale para todos os assuntos. A data de contagem é de {assunto.label.toLowerCase()}.</span>
+                  <span style={{ display: 'block', fontSize: 13, fontWeight: 400, color: C.claro }}>O período vale para todos os assuntos. A data de contagem é de {assunto.label.toLowerCase()}.</span>
                 )}
               </p>
-              <button type="button" aria-label="Fechar" onClick={() => setPainel(null)} className="inline-flex items-center justify-center shrink-0" style={{ width: 36, height: 36, color: C.apoio }}>
+              <button type="button" aria-label="Fechar" onClick={() => setPainel(null)} className="tfd-btn tfd-btn-ghost tfd-btn--icon-only shrink-0">
                 <X size={16} />
               </button>
             </div>
@@ -162,53 +165,57 @@ export default function Detalhe({ relatorio, base, carregando }: { relatorio: Re
         )}
 
         {/* O que os números significam, em uma linha. Filtros ativos removíveis. */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2" style={{ padding: '10px 14px', borderTop: `1px solid ${C.borda}`, fontSize: 13.5, color: C.texto }}>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2" style={{ padding: '10px 1.25rem', borderTop: `1px dashed ${C.borda}`, fontSize: 13, color: C.apoio }}>
           <span>
             {campoGrupo ? `Cada linha é um total por ${campoGrupo.label.toLowerCase()}.` : `Cada linha é ${assunto.cadaLinha}`}
             {' '}De {dataBR(resultado.periodo.inicio)} a {dataBR(resultado.periodo.fim)}
-            {assunto.id !== 'financeiro' && <>, data considerada: <strong style={{ fontWeight: 600 }}>{resultado.referencia.label.toLowerCase()}</strong></>}.
+            {assunto.id !== 'financeiro' && <>, data considerada: <strong style={{ fontWeight: 600, color: C.texto }}>{resultado.referencia.label.toLowerCase()}</strong></>}.
           </span>
           {painel !== 'filtros' && filtrosAtivos.map((f) => (
-            <span key={f.campoId} className="inline-flex items-center" style={{ border: `1px solid ${C.azulBorda}`, background: C.azulSuave, borderRadius: 999, color: C.azulTexto }}>
-              <span style={{ padding: '4px 2px 4px 12px' }}>{descreverFiltro(resultado, f)}</span>
-              <button
-                type="button" aria-label={`Remover filtro ${descreverFiltro(resultado, f)}`}
-                onClick={() => setConfig({ ...config, filtros: config.filtros.filter((x) => x.campoId !== f.campoId) })}
-                className="inline-flex items-center justify-center" style={{ width: 32, height: 32 }}
-              >
-                <X size={14} />
-              </button>
-            </span>
+            <Etiqueta key={f.campoId} texto={descreverFiltro(resultado, f)} onRemover={() => setConfig({ ...config, filtros: config.filtros.filter((x) => x.campoId !== f.campoId) })} />
           ))}
-          {busca.trim() && (
-            <span className="inline-flex items-center" style={{ border: `1px solid ${C.borda}`, background: 'white', borderRadius: 999 }}>
-              <span style={{ padding: '4px 2px 4px 12px' }}>Com &quot;{busca.trim()}&quot;</span>
-              <button type="button" aria-label="Limpar busca" onClick={() => setBusca('')} className="inline-flex items-center justify-center" style={{ width: 32, height: 32 }}>
-                <X size={14} />
-              </button>
-            </span>
-          )}
+          {busca.trim() && <Etiqueta texto={`Com "${busca.trim()}"`} onRemover={() => setBusca('')} />}
         </div>
       </section>
 
-      <Previa key={config.assunto} rotulo={secoes.length > 1 ? assunto.label : 'Resultado'} resultado={resultado} config={config} onChange={setConfig} carregando={carregando} />
+      <Previa key={config.assunto} rotulo={secoes.length > 1 ? `Linhas de ${assunto.label.toLowerCase()}` : 'Linhas do relatório'} resultado={resultado} config={config} onChange={setConfig} carregando={carregando} />
     </div>
   );
 }
 
-function BotaoBarra({ ativo, onClick, icone, children }: { ativo: boolean; onClick: () => void; icone: React.ReactNode; children: React.ReactNode }) {
+function Campo({ rotulo, icone, children, className, estilo }: { rotulo: string; icone?: React.ReactNode; children: React.ReactNode; className?: string; estilo?: React.CSSProperties }) {
+  return (
+    <div className={className} style={estilo}>
+      <span style={rotuloCampo}>{icone}{rotulo}</span>
+      {children}
+    </div>
+  );
+}
+
+function Etiqueta({ texto, onRemover }: { texto: string; onRemover: () => void }) {
+  return (
+    <span className="inline-flex items-center" style={{ background: C.azulSuave, borderRadius: 'var(--tfd-radius-md)', color: C.azulTexto, fontSize: 13 }}>
+      <span style={{ padding: '4px 2px 4px 10px' }}>{texto}</span>
+      <button type="button" aria-label={`Remover ${texto}`} onClick={onRemover} className="inline-flex items-center justify-center" style={{ width: 30, height: 30 }}>
+        <X size={14} />
+      </button>
+    </span>
+  );
+}
+
+/** Aparência de p-select: abre o painel inline abaixo da barra. */
+function BotaoBarra({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       type="button" onClick={onClick} aria-expanded={ativo}
-      className="inline-flex items-center gap-2 hover:bg-[#F5F9FF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+      className="inline-flex items-center justify-between gap-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
       style={{
-        minHeight: 40, padding: '0 12px', borderRadius: 8, fontSize: 14, fontWeight: 500, outlineColor: C.azul,
-        border: `1px solid ${ativo ? C.azul : C.borda}`, background: ativo ? C.azulSuave : 'white', color: ativo ? C.azulTexto : C.ink,
+        height: 36, minWidth: 160, padding: '0 10px', borderRadius: 'var(--tfd-radius-md)', fontSize: 14, fontWeight: 400, outlineColor: C.azul,
+        border: `1px solid ${ativo ? C.azul : C.campo}`, background: 'white', color: C.ink,
       }}
     >
-      <span style={{ color: ativo ? C.azul : C.apoio, display: 'inline-flex' }}>{icone}</span>
       {children}
-      <ChevronDown size={15} style={{ color: C.apoio, transform: ativo ? 'rotate(180deg)' : undefined }} />
+      <ChevronDown size={16} style={{ color: C.apoio, transform: ativo ? 'rotate(180deg)' : undefined }} />
     </button>
   );
 }

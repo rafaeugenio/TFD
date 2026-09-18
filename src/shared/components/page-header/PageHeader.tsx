@@ -62,10 +62,10 @@ export default function PageHeader({
     : buildAutoBreadcrumbs(pathname);
 
   return (
-    <div className="mb-8 tfd-reveal">
+    <div className="mb-6 tfd-reveal">
       {/* Breadcrumbs */}
       <nav aria-label="Breadcrumb" className="mb-3">
-        <ol className="flex items-center gap-1 text-[13px]">
+        <ol className="flex flex-wrap items-center gap-1 text-[13px]">
           <li className="flex items-center gap-1">
             <Link
               href="/dashboard"
@@ -97,22 +97,23 @@ export default function PageHeader({
           ))}
           <li className="flex items-center gap-1">
             <ChevronRight size={13} style={{ color: '#C4CAD4' }} aria-hidden />
-            <span className="font-medium" style={{ color: '#1A1D2B' }}>{title}</span>
+            <span className="font-semibold" style={{ color: 'var(--tfd-blue-500)', fontSize: '12.25px' }}>{title}</span>
           </li>
         </ol>
       </nav>
 
       {/* Title + actions */}
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-[22px] font-bold" style={{ color: '#1A1D2B', letterSpacing: '-0.02em' }}>
+      {/* Mesma escala do sistema em dev: título 24,5px slate-700, subtítulo 14px slate-400. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-[24.5px] font-bold" style={{ color: 'var(--tfd-text-primary)', letterSpacing: '-0.01em', lineHeight: 1.25 }}>
             {title}
           </h1>
           {subtitle && (
-            <p className="mt-1 text-[13px]" style={{ color: '#9CA3AF' }}>{subtitle}</p>
+            <p className="mt-1.5 text-[14px]" style={{ color: 'var(--tfd-400)' }}>{subtitle}</p>
           )}
         </div>
-        {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
     </div>
   );
