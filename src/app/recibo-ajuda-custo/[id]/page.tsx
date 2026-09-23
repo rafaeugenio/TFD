@@ -25,6 +25,8 @@ interface AjudaCustoRow {
   dias_elegiveis: number | null;
   valor_diaria: number | null;
   valor_total: number | null;
+  /** PBI 16404 — processo SEI da própria ajuda de custo. */
+  numero_sei: string | null;
 }
 
 interface SolicitacaoRow {
@@ -44,16 +46,6 @@ interface SolicitacaoRow {
   processos_sei: Array<{ numero?: string }> | null;
 }
 
-/** Pedido do Rafael (26/08/2026) — no corpo do recibo, o número do processo
- *  SEI mais recente da solicitação substitui o número do TFD (que continua
- *  no cabeçalho). Sem processo SEI registrado, devolve `null` e o recibo
- *  mostra um estado claro em vez de deixar o campo vazio. */
-function processoSeiVigenteRow(sol: SolicitacaoRow): string | null {
-  const historico = Array.isArray(sol.processos_sei) ? sol.processos_sei : [];
-  const ultimo = historico[historico.length - 1];
-  if (ultimo?.numero) return ultimo.numero;
-  return sol.numero_protocolo || null;
-}
 
 interface PacienteRow {
   nome_completo: string;
@@ -143,7 +135,7 @@ export default async function ReciboAjudaCustoPage({
 
   const { data: ajudasData, error } = await supabase
     .from('ajudas_custo')
-    .select('id, solicitacao_id, tipo, data_inicio, data_fim, dias_elegiveis, valor_diaria, valor_total')
+    .select('id, solicitacao_id, tipo, data_inicio, data_fim, dias_elegiveis, valor_diaria, valor_total, numero_sei')
     .in('id', ids);
 
   const todasAjudas = (ajudasData as unknown as AjudaCustoRow[] | null) ?? [];
@@ -174,7 +166,6 @@ export default async function ReciboAjudaCustoPage({
     console.warn('[recibo-ajuda-custo] processos_sei indisponível (migration 00081 pendente?):', seiError.message);
   }
   sol.processos_sei = (seiData as { processos_sei?: Array<{ numero?: string }> } | null)?.processos_sei ?? null;
-  const processoSei = processoSeiVigenteRow(sol);
 
   const [{ data: pacienteData }, { data: solAcompData }, { data: tentativaData }] = await Promise.all([
     supabase
@@ -243,6 +234,16 @@ export default async function ReciboAjudaCustoPage({
       };
     });
 
+  // PBI 16404 — o recibo usa o processo SEI de cada ajuda de custo, nunca o
+  // processo mais recente da solicitação. Ajudas de processos diferentes
+  // aparecem cada uma com o seu na tabela (decisão de negócio pendente).
+  const seisDasAjudas = [...new Set(linhas.map((l) => l.ajuda.numero_sei?.trim()).filter((n): n is string => !!n))];
+  const processoSeiRecibo = seisDasAjudas.length === 0
+    ? null
+    : seisDasAjudas.length === 1
+      ? seisDasAjudas[0]
+      : `${seisDasAjudas.join(' · ')} (um por ajuda de custo, ver tabela)`;
+
   const valorTotalRecibo = linhas.reduce((acc, l) => acc + l.valorTotal, 0);
   const numeroRecibo = derivarNumeroRecibo(ids[0]);
 
@@ -298,7 +299,7 @@ export default async function ReciboAjudaCustoPage({
             </div>
             <div className="recibo-grid-cel">
               <span className="recibo-grid-label">Processo SEI</span>
-              <span className="recibo-grid-valor">{processoSei ?? 'Sem processo SEI registrado'}</span>
+              <span className="recibo-grid-valor">{processoSeiRecibo ?? 'Nenhum processo SEI vinculado às ajudas de custo selecionadas'}</span>
             </div>
           </div>
           <div className="recibo-grid recibo-grid-2">
@@ -320,6 +321,7 @@ export default async function ReciboAjudaCustoPage({
               <th>Beneficiário</th>
               <th>Data de início</th>
               <th>Data de fim</th>
+              <th>Processo SEI</th>
               <th>Valor do cálculo</th>
               <th>Valor total</th>
               <th>Justificativa</th>
@@ -339,6 +341,7 @@ export default async function ReciboAjudaCustoPage({
                   </td>
                   <td>{fmtDataBR(l.ajuda.data_inicio)}</td>
                   <td>{fmtDataBR(l.ajuda.data_fim)}</td>
+                  <td style={{ fontFamily: 'ui-monospace, monospace', whiteSpace: 'nowrap' }}>{l.ajuda.numero_sei?.trim() || 'Sem processo'}</td>
                   <td>{l.memoriaCalculo}</td>
                   <td className="recibo-direita recibo-valor-forte">{fmtBRL(l.valorTotal)}</td>
                   <td className="recibo-justificativa">{l.justificativa}</td>
@@ -346,7 +349,7 @@ export default async function ReciboAjudaCustoPage({
               ))
             ) : (
               <tr>
-                <td colSpan={6} className="recibo-vazio">
+                <td colSpan={7} className="recibo-vazio">
                   Nenhuma ajuda de custo selecionada para este recibo.
                 </td>
               </tr>

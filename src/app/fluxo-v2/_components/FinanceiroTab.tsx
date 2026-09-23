@@ -1,5 +1,6 @@
 'use client';
 
+import { processoSeiVigente } from '../_utils/processoSei';
 import { useMemo, useState } from 'react';
 import { Plane, Wallet, Plus, Paperclip, Lock, User, ExternalLink, Hash } from 'lucide-react';
 import StatusDot, { type StatusDotTone } from './StatusDot';
@@ -505,23 +506,32 @@ export default function FinanceiroTab({ s }: Props) {
                     <div className="font-mono" style={{ color: '#94A3B8', fontSize: 10.5 }}>
                       {memoria}
                     </div>
-                    {/* PBI 13218 — processo próprio da ajuda no SEI, hiperlink de acesso rápido. */}
-                    {a.linkProcesso ? (
-                      <a
-                        href={a.linkProcesso}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-1 font-mono transition-colors hover:underline"
-                        style={{ color: '#146BFA', fontSize: 10.5, textUnderlineOffset: 2 }}
-                        title="Abrir processo no SEI"
-                      >
-                        <Hash size={10} style={{ opacity: 0.7 }} />
-                        {a.numeroSEI || 'Processo SEI'}
-                        <ExternalLink size={10} style={{ opacity: 0.6 }} />
-                      </a>
+                    {/* PBI 16403 — processo SEI da própria ajuda (um da lista da
+                        solicitação). É o processo que vai no recibo desta ajuda. */}
+                    {a.numeroSEI ? (
+                      <span className="inline-flex items-center gap-1.5" title="Processo SEI desta ajuda de custo, usado no recibo">
+                        <span className="text-[10.5px] font-semibold uppercase" style={{ color: '#94A3B8', letterSpacing: '0.05em' }}>SEI</span>
+                        {a.linkProcesso ? (
+                          <a
+                            href={a.linkProcesso}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 font-mono transition-colors hover:underline"
+                            style={{ color: '#3B82F6', fontSize: 12, textUnderlineOffset: 2 }}
+                          >
+                            {a.numeroSEI}
+                            <ExternalLink size={10} style={{ opacity: 0.6 }} />
+                          </a>
+                        ) : (
+                          <span className="font-mono" style={{ color: '#334155', fontSize: 12 }}>{a.numeroSEI}</span>
+                        )}
+                        {processoSeiVigente(s)?.numero?.trim() === a.numeroSEI.trim() && (
+                          <span className="text-[9.5px] font-semibold uppercase px-1.5 py-[1px]" style={{ background: '#DBEAFE', color: '#1D4ED8', borderRadius: 999, letterSpacing: '0.04em' }}>vigente</span>
+                        )}
+                      </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 font-mono" style={{ color: '#CBD5E1', fontSize: 10.5 }}>
+                      <span className="inline-flex items-center gap-1 text-[11.5px]" style={{ color: '#94A3B8' }}>
                         <Hash size={10} /> Sem processo SEI
                       </span>
                     )}

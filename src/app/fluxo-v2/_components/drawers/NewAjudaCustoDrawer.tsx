@@ -8,6 +8,7 @@ import AnexosUploadField, { type AnexoLocal } from '@/shared/components/anexos-u
 import { useToast } from '@/shared/components/toast/Toast';
 import { fmtDataBR } from '@/shared/utils/fmtData';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
+import { historicoProcessosSei, novoProcessoSeiId } from '../../_utils/processoSei';
 import { useSaldoPaciente } from '../../_state/saldoAjudaCustoStore';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import {
@@ -57,7 +58,7 @@ interface Props {
 }
 
 export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar, somenteStatus, prefill }: Props) {
-  const { addAjudaCusto, editarAjudaCusto, getById, addAnexos, aplicarDebitoSaldo, criarCreditoSaldo } = useFluxoV2State();
+  const { addAjudaCusto, editarAjudaCusto, getById, addAnexos, aplicarDebitoSaldo, criarCreditoSaldo, editarSolicitacao } = useFluxoV2State();
   const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
   const toast = useToast();
   const isEdicao = !!editar;
@@ -88,6 +89,11 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
   // distinto do processo da solicitação. Opcional.
   const [numeroSEI, setNumeroSEI] = useState('');
   const [linkProcesso, setLinkProcesso] = useState('');
+  // PBI 16403/16404 — cada ajuda de custo aponta para UM processo SEI da
+  // solicitação (lista acumulada em Editar solicitação). `__novo__` cadastra
+  // um processo novo (prorrogação), que entra no histórico da solicitação
+  // ao salvar e passa a ser o vigente. Vazio = ajuda sem processo SEI.
+  const [seiEscolha, setSeiEscolha] = useState('');
 
 
   // Ajudas anteriores ATIVAS da mesma solicitação — base do select de
@@ -100,6 +106,13 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
     [solicitacao, editar],
   );
   const ajudaReferencia = ajudasAnteriores.find((a) => a.id === ajudaReferenciaId);
+
+  const processosSolicitacao = useMemo(() => (solicitacao ? historicoProcessosSei(solicitacao) : []), [solicitacao]);
+  const escolhaInicialSei = (numero?: string) => {
+    if (numero) return processosSolicitacao.find((p) => p.numero.trim() === numero.trim())?.id ?? '__novo__';
+    return processosSolicitacao[processosSolicitacao.length - 1]?.id ?? '';
+  };
+  const processoEscolhido = processosSolicitacao.find((p) => p.id === seiEscolha);
 
   useEffect(() => {
     if (open) {
@@ -115,6 +128,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         setObservacao(editar.observacao ?? '');
         setNumeroSEI(editar.numeroSEI ?? '');
         setLinkProcesso(editar.linkProcesso ?? '');
+        setSeiEscolha(editar.numeroSEI ? escolhaInicialSei(editar.numeroSEI) : '');
           } else if (prefill) {
         setAjudaReferenciaId('');
         setDataInicio(prefill.dataInicio);
@@ -125,6 +139,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         setObservacao(prefill.observacao ?? '');
         setNumeroSEI('');
         setLinkProcesso('');
+        setSeiEscolha(escolhaInicialSei());
           } else {
         setAjudaReferenciaId('');
         setDataInicio('');
@@ -135,6 +150,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         setObservacao('');
         setNumeroSEI('');
         setLinkProcesso('');
+        setSeiEscolha(escolhaInicialSei());
           }
       setTimeout(() => firstInputRef.current?.focus(), 100);
     }
@@ -301,14 +317,17 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
 
   const blocoCalculo = montarBlocoCalculo();
 
+  const novoProcesso = seiEscolha === '__novo__';
   const linkProcessoInvalido =
-    linkProcesso.trim().length > 0 && !/^https?:\/\//i.test(linkProcesso.trim());
+    novoProcesso && linkProcesso.trim().length > 0 && !/^https?:\/\//i.test(linkProcesso.trim());
+  const novoProcessoSemNumero = novoProcesso && !numeroSEI.trim();
 
   const valid =
     !!dataInicio &&
     !!dataFim &&
     beneficiarios.length > 0 &&
-    !linkProcessoInvalido;
+    !linkProcessoInvalido &&
+    !novoProcessoSemNumero;
 
   function handleSalvar() {
     if (!valid) return;
@@ -319,6 +338,27 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
       ? (isEdicao && editar?.status === 'concluido' && editar.dataConclusao ? editar.dataConclusao : hoje)
       : undefined;
 
+    // Processo SEI da ajuda: um da lista da solicitação, ou um novo, que
+    // também entra no histórico da solicitação e vira o vigente.
+    let seiNumero: string | undefined;
+    let seiLink: string | undefined;
+    if (processoEscolhido) {
+      seiNumero = processoEscolhido.numero;
+      seiLink = processoEscolhido.url;
+    } else if (novoProcesso) {
+      seiNumero = numeroSEI.trim();
+      seiLink = linkProcesso.trim() || undefined;
+      const jaExiste = processosSolicitacao.some((p) => p.numero.trim() === seiNumero);
+      if (!jaExiste) {
+        editarSolicitacao(solicitacaoId, {
+          processosSei: [
+            ...processosSolicitacao,
+            { id: novoProcessoSeiId(), numero: seiNumero, url: seiLink, data: new Date().toISOString() },
+          ],
+        });
+      }
+    }
+
     const payloadBase = {
       dataInicio,
       dataFim,
@@ -326,8 +366,8 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
       dataConclusao,
       observacao: observacao.trim() || undefined,
       pernoiteRetorno: pernoiteRetorno || undefined,
-      numeroSEI: numeroSEI.trim() || undefined,
-      linkProcesso: linkProcesso.trim() || undefined,
+      numeroSEI: seiNumero,
+      linkProcesso: seiLink,
       tipoCalculo: tipoDeduzido,
       ajudaReferenciaId: ajudaReferenciaId || undefined,
       valorDiariaFinal,
@@ -389,7 +429,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
           pacienteCpf: solicitacao.paciente.cpf,
           pacienteId: solicitacao.paciente.id,
           valor: saldoPaciente,
-          motivo: `Saldo do paciente incluído no pagamento da ajuda de custo de ${dataInicio} a ${dataFim}${numeroSEI.trim() ? ` (processo ${numeroSEI.trim()})` : ''}.`,
+          motivo: `Saldo do paciente incluído no pagamento da ajuda de custo de ${dataInicio} a ${dataFim}${seiNumero ? ` (processo ${seiNumero})` : ''}.`,
           solicitacaoDestinoNumero: solicitacao.numero,
         });
         toast.success('Saldo incluído no pagamento', `${fmtBRL(saldoPaciente)} acrescentados a esta ajuda`);
@@ -399,7 +439,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
           pacienteCpf: solicitacao.paciente.cpf,
           pacienteId: solicitacao.paciente.id,
           valor: valorQuitado,
-          motivo: `Saldo negativo descontado no pagamento da ajuda de custo de ${dataInicio} a ${dataFim}${numeroSEI.trim() ? ` (processo ${numeroSEI.trim()})` : ''}.`,
+          motivo: `Saldo negativo descontado no pagamento da ajuda de custo de ${dataInicio} a ${dataFim}${seiNumero ? ` (processo ${seiNumero})` : ''}.`,
           solicitacaoOrigemNumero: solicitacao.numero,
         });
         toast.success('Saldo negativo descontado', `${fmtBRL(valorQuitado)} descontados desta ajuda`);
@@ -703,39 +743,67 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
 
       </FormSection>
 
-      {/* PBI 13218 — Processo SEI próprio da ajuda de custo (opcional). */}
+      {/* PBI 16403/16404 — a ajuda de custo aponta para um processo SEI da
+          solicitação. Prorrogação = novo processo, que entra no histórico. */}
       <FormSection
-        title="Processo SEI"
+        title="Processo SEI desta ajuda de custo"
         icon={<Hash size={12} />}
         tone="default"
-        hint="Opcional — cada ajuda de custo pode abrir um processo próprio no SEI."
+        hint="O recibo desta ajuda de custo usa o processo escolhido aqui."
         disabled={somenteStatus}
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          <input
-            value={numeroSEI}
-            onChange={(e) => setNumeroSEI(e.target.value)}
-            placeholder="Número SEI (ex.: 00100.000456/2026-12)"
-            className="px-3 py-2 text-[13px] font-mono"
-            style={inputStyle}
-          />
-          <input
-            value={linkProcesso}
-            onChange={(e) => setLinkProcesso(e.target.value)}
-            placeholder="URL do processo (https://...)"
-            className="px-3 py-2 text-[13px]"
-            style={{
-              background: 'white',
-              border: `1px solid ${linkProcessoInvalido ? '#FCA5A5' : 'var(--tfd-surface-border)'}`,
-              borderRadius: 8,
-            }}
-          />
+        <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Processo SEI desta ajuda de custo">
+          {[...processosSolicitacao].reverse().map((p, i) => {
+            const ativo = seiEscolha === p.id;
+            const usos = (solicitacao?.ajudasCusto ?? []).filter((a) => a.ativa !== false && a.id !== editar?.id && a.numeroSEI?.trim() === p.numero.trim()).length;
+            return (
+              <label key={p.id} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer" style={{ border: `1px solid ${ativo ? '#3B82F6' : 'var(--tfd-surface-border)'}`, background: ativo ? '#EFF6FF' : 'white', borderRadius: 6 }}>
+                <input type="radio" name="sei-ajuda" checked={ativo} onChange={() => setSeiEscolha(p.id)} />
+                <span className="font-mono text-[13px]" style={{ color: '#334155' }}>{p.numero}</span>
+                {i === 0 && <span className="text-[10px] font-semibold px-1.5 py-[1px] uppercase" style={{ background: '#DBEAFE', color: '#1D4ED8', borderRadius: 999, letterSpacing: '0.04em' }}>vigente</span>}
+                <span className="ml-auto text-[11.5px]" style={{ color: '#94A3B8' }}>
+                  {p.data ? `desde ${fmtDataBR(p.data.slice(0, 10))}` : ''}{usos ? ` · ${usos} ajuda(s)` : ''}
+                </span>
+              </label>
+            );
+          })}
+          <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer" style={{ border: `1px solid ${novoProcesso ? '#3B82F6' : 'var(--tfd-surface-border)'}`, background: novoProcesso ? '#EFF6FF' : 'white', borderRadius: 6 }}>
+            <input type="radio" name="sei-ajuda" checked={novoProcesso} onChange={() => setSeiEscolha('__novo__')} />
+            <span className="text-[13px] font-medium" style={{ color: '#334155' }}>Novo processo SEI</span>
+            <span className="text-[11.5px]" style={{ color: '#94A3B8' }}>prorrogação ou novo ciclo</span>
+          </label>
+          {novoProcesso && (
+            <div className="flex flex-col gap-1.5 pl-3" style={{ borderLeft: '2px solid #BFDBFE', marginLeft: 8 }}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <input
+                  value={numeroSEI}
+                  onChange={(e) => setNumeroSEI(e.target.value)}
+                  placeholder="Número SEI (ex.: 00100.000456/2026-12)"
+                  aria-label="Número do novo processo SEI"
+                  className="px-3 py-2 text-[13px] font-mono"
+                  style={{ ...inputStyle, borderColor: novoProcessoSemNumero ? '#FCA5A5' : undefined }}
+                />
+                <input
+                  value={linkProcesso}
+                  onChange={(e) => setLinkProcesso(e.target.value)}
+                  placeholder="URL do processo (https://...)"
+                  aria-label="Link do novo processo SEI"
+                  className="px-3 py-2 text-[13px]"
+                  style={{ background: 'white', border: `1px solid ${linkProcessoInvalido ? '#FCA5A5' : 'var(--tfd-surface-border)'}`, borderRadius: 8 }}
+                />
+              </div>
+              <p className="text-[11.5px]" style={{ color: linkProcessoInvalido ? '#B91C1C' : '#64748B' }}>
+                {linkProcessoInvalido
+                  ? 'URL inválida. Comece com http:// ou https://'
+                  : 'Ao salvar, o processo entra no histórico da solicitação e passa a ser o vigente. As ajudas anteriores continuam com o processo delas.'}
+              </p>
+            </div>
+          )}
+          <label className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer">
+            <input type="radio" name="sei-ajuda" checked={seiEscolha === ''} onChange={() => setSeiEscolha('')} />
+            <span className="text-[12.5px]" style={{ color: '#64748B' }}>Sem processo SEI</span>
+          </label>
         </div>
-        {linkProcessoInvalido && (
-          <p className="text-[11px] mt-1" style={{ color: '#B91C1C' }}>
-            URL inválida — comece com http:// ou https://
-          </p>
-        )}
       </FormSection>
 
       <AnexosUploadField value={anexos} onChange={setAnexos} disabled={somenteStatus} />

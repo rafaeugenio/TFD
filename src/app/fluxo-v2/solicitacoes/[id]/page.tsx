@@ -283,19 +283,31 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
                     className="mt-1.5 flex flex-col gap-1 px-3 py-2"
                     style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}
                   >
-                    {[...seiHistorico].reverse().map((p, i) => (
-                      <li key={p.id} className="flex items-center gap-1.5 font-mono">
-                        <span>{p.numero}</span>
-                        {i === 0 && (
-                          <span
-                            className="font-sans text-[10px] font-semibold px-1.5 py-[1px]"
-                            style={{ background: '#EFF6FF', color: '#1D4ED8', borderRadius: 999 }}
-                          >
-                            vigente
+                    {[...seiHistorico].reverse().map((p, i) => {
+                      // PBI 16403 — mostra a quais ajudas de custo cada processo está vinculado.
+                      const ajudasDoProcesso = (s.ajudasCusto ?? []).filter((a) => a.ativa !== false && a.numeroSEI?.trim() === p.numero.trim()).length;
+                      return (
+                        <li key={p.id} className="flex items-center gap-1.5 flex-wrap">
+                          {p.url ? (
+                            <a href={p.url} target="_blank" rel="noopener noreferrer" className="font-mono hover:underline" style={{ color: '#3B82F6', textUnderlineOffset: 2 }}>{p.numero}</a>
+                          ) : (
+                            <span className="font-mono" style={{ color: '#334155' }}>{p.numero}</span>
+                          )}
+                          {i === 0 && (
+                            <span
+                              className="font-sans text-[10px] font-semibold px-1.5 py-[1px]"
+                              style={{ background: '#EFF6FF', color: '#1D4ED8', borderRadius: 999 }}
+                            >
+                              vigente
+                            </span>
+                          )}
+                          <span className="font-sans" style={{ color: '#94A3B8' }}>
+                            {p.data ? `desde ${new Date(p.data).toLocaleDateString('pt-BR')}` : ''}
+                            {` · ${ajudasDoProcesso ? `${ajudasDoProcesso} ajuda(s) de custo` : 'nenhuma ajuda de custo'}`}
                           </span>
-                        )}
-                      </li>
-                    ))}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </details>
               )}
