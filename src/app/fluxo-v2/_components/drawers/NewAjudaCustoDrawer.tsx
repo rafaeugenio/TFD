@@ -110,7 +110,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
   const processosSolicitacao = useMemo(() => (solicitacao ? historicoProcessosSei(solicitacao) : []), [solicitacao]);
   const escolhaInicialSei = (numero?: string) => {
     if (numero) return processosSolicitacao.find((p) => p.numero.trim() === numero.trim())?.id ?? '__novo__';
-    return processosSolicitacao[processosSolicitacao.length - 1]?.id ?? '';
+    return processosSolicitacao[processosSolicitacao.length - 1]?.id ?? '__novo__';
   };
   const processoEscolhido = processosSolicitacao.find((p) => p.id === seiEscolha);
 
@@ -128,7 +128,7 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         setObservacao(editar.observacao ?? '');
         setNumeroSEI(editar.numeroSEI ?? '');
         setLinkProcesso(editar.linkProcesso ?? '');
-        setSeiEscolha(editar.numeroSEI ? escolhaInicialSei(editar.numeroSEI) : '');
+        setSeiEscolha(escolhaInicialSei(editar.numeroSEI));
           } else if (prefill) {
         setAjudaReferenciaId('');
         setDataInicio(prefill.dataInicio);
@@ -327,7 +327,8 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
     !!dataFim &&
     beneficiarios.length > 0 &&
     !linkProcessoInvalido &&
-    !novoProcessoSemNumero;
+    !novoProcessoSemNumero &&
+    !!seiEscolha;
 
   function handleSalvar() {
     if (!valid) return;
@@ -749,31 +750,31 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         title="Processo SEI desta ajuda de custo"
         icon={<Hash size={12} />}
         tone="default"
-        hint="O recibo desta ajuda de custo usa o processo escolhido aqui."
+        hint="Obrigatório. O recibo desta ajuda de custo usa o processo escolhido aqui."
         disabled={somenteStatus}
       >
-        <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Processo SEI desta ajuda de custo">
-          {[...processosSolicitacao].reverse().map((p, i) => {
-            const ativo = seiEscolha === p.id;
-            const usos = (solicitacao?.ajudasCusto ?? []).filter((a) => a.ativa !== false && a.id !== editar?.id && a.numeroSEI?.trim() === p.numero.trim()).length;
-            return (
-              <label key={p.id} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer" style={{ border: `1px solid ${ativo ? '#3B82F6' : 'var(--tfd-surface-border)'}`, background: ativo ? '#EFF6FF' : 'white', borderRadius: 6 }}>
-                <input type="radio" name="sei-ajuda" checked={ativo} onChange={() => setSeiEscolha(p.id)} />
-                <span className="font-mono text-[13px]" style={{ color: '#334155' }}>{p.numero}</span>
-                {i === 0 && <span className="text-[10px] font-semibold px-1.5 py-[1px] uppercase" style={{ background: '#DBEAFE', color: '#1D4ED8', borderRadius: 999, letterSpacing: '0.04em' }}>vigente</span>}
-                <span className="ml-auto text-[11.5px]" style={{ color: '#94A3B8' }}>
-                  {p.data ? `desde ${fmtDataBR(p.data.slice(0, 10))}` : ''}{usos ? ` · ${usos} ajuda(s)` : ''}
-                </span>
-              </label>
-            );
-          })}
-          <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer" style={{ border: `1px solid ${novoProcesso ? '#3B82F6' : 'var(--tfd-surface-border)'}`, background: novoProcesso ? '#EFF6FF' : 'white', borderRadius: 6 }}>
-            <input type="radio" name="sei-ajuda" checked={novoProcesso} onChange={() => setSeiEscolha('__novo__')} />
-            <span className="text-[13px] font-medium" style={{ color: '#334155' }}>Novo processo SEI</span>
-            <span className="text-[11.5px]" style={{ color: '#94A3B8' }}>prorrogação ou novo ciclo</span>
-          </label>
+        <div className="flex flex-col gap-2">
+          <select
+            value={seiEscolha}
+            onChange={(e) => setSeiEscolha(e.target.value)}
+            aria-label="Processo SEI desta ajuda de custo"
+            className="w-full px-3 py-2 text-[13px]"
+            style={inputStyle}
+          >
+            {[...processosSolicitacao].reverse().map((p, i) => {
+              const usos = (solicitacao?.ajudasCusto ?? []).filter((a) => a.ativa !== false && a.id !== editar?.id && a.numeroSEI?.trim() === p.numero.trim()).length;
+              const detalhes = [i === 0 ? 'vigente' : '', p.data ? `desde ${fmtDataBR(p.data.slice(0, 10))}` : '', usos ? `${usos} ajuda(s)` : ''].filter(Boolean).join(' · ');
+              return <option key={p.id} value={p.id}>{p.numero}{detalhes ? ` (${detalhes})` : ''}</option>;
+            })}
+            <option value="__novo__">+ Novo processo SEI (prorrogação ou novo ciclo)</option>
+          </select>
+          {processoEscolhido?.url && (
+            <a href={processoEscolhido.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[12px] hover:underline" style={{ color: '#3B82F6', textUnderlineOffset: 2 }}>
+              <Link2 size={12} /> Abrir processo no SEI
+            </a>
+          )}
           {novoProcesso && (
-            <div className="flex flex-col gap-1.5 pl-3" style={{ borderLeft: '2px solid #BFDBFE', marginLeft: 8 }}>
+            <div className="flex flex-col gap-1.5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 <input
                   value={numeroSEI}
@@ -799,10 +800,6 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
               </p>
             </div>
           )}
-          <label className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer">
-            <input type="radio" name="sei-ajuda" checked={seiEscolha === ''} onChange={() => setSeiEscolha('')} />
-            <span className="text-[12.5px]" style={{ color: '#64748B' }}>Sem processo SEI</span>
-          </label>
         </div>
       </FormSection>
 
