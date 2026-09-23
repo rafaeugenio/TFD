@@ -3,16 +3,14 @@
 import { Suspense, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, BarChart3, Receipt, ClipboardList, FileSpreadsheet, Stamp } from 'lucide-react';
+import { ArrowLeft, BarChart3, FileSpreadsheet, Stamp } from 'lucide-react';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import RelatorioFinanceiro from './_RelatorioFinanceiro';
-import RelatorioFaturamento from './_RelatorioFaturamento';
-import RelatorioRPB from './_RelatorioRPB';
 import RelatorioGestao from './_RelatorioGestao';
 import RelatorioRegulacao from './_RelatorioRegulacao';
 
-type TabKey = 'financeiro' | 'faturamento' | 'rpb' | 'gestao' | 'regulacao';
+type TabKey = 'financeiro' | 'gestao' | 'regulacao';
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode; desc: string }[] = [
   {
@@ -20,18 +18,6 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode; desc: string }[
     label: 'Financeiro',
     icon: <BarChart3 size={15} />,
     desc: 'Acompanhamento quadrimestral consolidado',
-  },
-  {
-    key: 'faturamento',
-    label: 'Faturamento',
-    icon: <Receipt size={15} />,
-    desc: 'Relatório mensal de passagens',
-  },
-  {
-    key: 'rpb',
-    label: 'BPA',
-    icon: <ClipboardList size={15} />,
-    desc: 'Dados para lançamento no BPA',
   },
   {
     key: 'gestao',
@@ -120,8 +106,6 @@ function RelatoriosInner() {
 
       <div className="animate-fade-in">
         {activeTab === 'financeiro' && <RelatorioFinanceiro />}
-        {activeTab === 'faturamento' && <RelatorioFaturamento />}
-        {activeTab === 'rpb' && <RelatorioRPB />}
         {activeTab === 'gestao' && <RelatorioGestao />}
         {activeTab === 'regulacao' && <RelatorioRegulacao />}
       </div>

@@ -19,6 +19,7 @@ const titles: Record<string, string> = {
   '/ajuda-custo': 'Ajuda de Custo',
   '/permanencia': 'Permanência',
   '/relatorios': 'Relatórios',
+  '/financeiro': 'Financeiro',
   '/configuracoes': 'Configurações',
   '/atendimento-destino': 'Agendamentos',
   '/alta-encerramento': 'Altas',

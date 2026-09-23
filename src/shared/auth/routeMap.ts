@@ -30,6 +30,8 @@ const RULES: RouteRule[] = [
   { prefix: '/unidades-saude',         tela: 'unidades_saude' },
   { prefix: '/regionais-saude',        tela: 'regionais_saude' },
   { prefix: '/relatorios',             tela: 'relatorios' },
+  // Competências de Faturamento e BPA (saíram de Relatórios): mesma permissão por enquanto.
+  { prefix: '/financeiro',             tela: 'relatorios' },
   { prefix: '/sistema/configuracoes',  tela: 'sys_configuracoes' },
   { prefix: '/sistema/papeis',         tela: 'sys_papeis' },
   { prefix: '/sistema/usuarios',       tela: 'sys_usuarios' },
