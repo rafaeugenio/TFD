@@ -124,9 +124,6 @@ export interface CasaApoioMock {
   endereco: string;
   contato: string;
   responsavel: string;
-  /** Inativa continua no histórico, mas sai da escolha de novos
-   *  encaminhamentos. Exclusão não faz parte do escopo do protótipo. */
-  ativa: boolean;
   /** Vínculo opcional com uma unidade de saúde já cadastrada. */
   unidadeVinculadaId?: string;
   unidadeVinculadaNome?: string;
@@ -142,7 +139,6 @@ export const seedCasasApoio: CasaApoioMock[] = [
     cidadeUf: 'São Paulo - SP',
     contato: '(11) 3456-7890',
     responsavel: 'Irmã Terezinha Alves',
-    ativa: true,
   },
   {
     id: 'casa-2',
@@ -151,7 +147,6 @@ export const seedCasasApoio: CasaApoioMock[] = [
     cidadeUf: 'Brasília - DF',
     contato: '(61) 3244-1180',
     responsavel: 'Marcos Vinícius Pereira',
-    ativa: true,
   },
   {
     id: 'casa-3',
@@ -160,7 +155,6 @@ export const seedCasasApoio: CasaApoioMock[] = [
     cidadeUf: 'Fortaleza - CE',
     contato: '(85) 3222-4477',
     responsavel: 'Luciana Sampaio',
-    ativa: true,
   },
   {
     id: 'casa-4',
@@ -169,7 +163,6 @@ export const seedCasasApoio: CasaApoioMock[] = [
     cidadeUf: 'São Luís - MA',
     contato: '(98) 3232-7788',
     responsavel: 'Antônio Carlos Ribeiro',
-    ativa: false,
   },
 ];
 

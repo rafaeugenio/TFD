@@ -283,6 +283,23 @@ export function criarCasaApoio(input: CasaApoioInput): CasaApoioMock {
   return nova;
 }
 
+/** Vínculos da casa no sistema: unidade de saúde e instrumentos sociais
+ *  que a citam. Usado para avisar antes da exclusão (que não é bloqueada). */
+export function vinculosDaCasa(id: string): { unidade?: string; instrumentos: number } {
+  const casa = state.casas.find((c) => c.id === id);
+  return {
+    unidade: casa?.unidadeVinculadaNome,
+    instrumentos: state.instrumentos.filter((i) => i.casaApoioId === id).length,
+  };
+}
+
+/** Exclui a casa. Instrumentos já emitidos continuam existindo; o nome da
+ *  casa fica registrado no próprio conteúdo do documento. */
+export function excluirCasaApoio(id: string): void {
+  state = { ...state, casas: state.casas.filter((c) => c.id !== id) };
+  emit();
+}
+
 export function editarCasaApoio(id: string, patch: Partial<CasaApoioInput>): void {
   state = {
     ...state,

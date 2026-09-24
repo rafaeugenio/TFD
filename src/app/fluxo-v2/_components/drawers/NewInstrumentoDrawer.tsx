@@ -44,7 +44,7 @@ interface Props {
 export default function NewInstrumentoDrawer({ open, onClose, s, demandas, demandaInicialId }: Props) {
   const { user } = usePermissions();
   const casas = useCasasApoio();
-  const casasAtivas = useMemo(() => casas.filter((c) => c.ativa), [casas]);
+  const casasAtivas = casas;
 
   const [demandaId, setDemandaId] = useState(demandaInicialId);
   const [tipo, setTipo] = useState<TipoInstrumento | ''>('');

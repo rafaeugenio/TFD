@@ -228,11 +228,15 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
                       <td className="px-3 py-2" style={{ color: '#1A1D2B' }}>
                         <div className="leading-tight">
                           <div style={{ fontWeight: 500 }}>{TIPO_INSTRUMENTO_LABEL[i.tipo]}</div>
-                          {casa && (
+                          {casa ? (
                             <div className="inline-flex items-center gap-1" style={{ color: '#94A3B8' }}>
                               <Home size={10} /> {casa.nome}
                             </div>
-                          )}
+                          ) : i.casaApoioId ? (
+                            <div className="inline-flex items-center gap-1" style={{ color: '#94A3B8' }}>
+                              <Home size={10} /> Casa de apoio excluída do cadastro
+                            </div>
+                          ) : null}
                         </div>
                       </td>
                       <td className="px-3 py-2" style={{ color: '#64748B' }}>
