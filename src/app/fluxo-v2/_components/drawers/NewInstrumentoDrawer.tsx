@@ -193,7 +193,7 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demandas, deman
         <FormSection
           title="Casa de apoio"
           icon={<Home size={12} />}
-          hint="Opcional. Só aparecem casas ativas; o encaminhamento pode ficar sem casa definida."
+          hint="Opcional. Aparecem todas as casas cadastradas; o encaminhamento pode ficar sem casa definida."
         >
           <select
             value={casaId}
