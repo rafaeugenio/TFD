@@ -75,8 +75,8 @@ export default function Lista({ competencias, carregando }: { competencias: Comp
               {competencias.map((c) => (
                 <tr key={c.id} className="cursor-pointer hover:bg-[var(--tfd-surface-hover)]" onClick={() => router.push(`/financeiro?c=${c.id}`)}>
                   <td style={td}>
-                    <a href={`/financeiro?c=${c.id}`} onClick={(e) => { e.preventDefault(); router.push(`/financeiro?c=${c.id}`); }} className="hover:underline" style={{ color: 'var(--tfd-blue-500)', fontWeight: 500, textTransform: 'capitalize' }}>
-                      {nomeCompetencia(c)}
+                    <a href={`/financeiro?c=${c.id}`} onClick={(e) => { e.preventDefault(); router.push(`/financeiro?c=${c.id}`); }} className="hover:underline" style={{ color: 'var(--tfd-blue-500)', fontWeight: 500 }}>
+                      {nomeCompetencia(c).replace(/^./, (l) => l.toUpperCase())}
                     </a>
                   </td>
                   <td style={td}><Situacao c={c} frente="faturamento" /></td>
