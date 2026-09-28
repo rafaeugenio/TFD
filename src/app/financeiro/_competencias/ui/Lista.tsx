@@ -7,7 +7,7 @@ import PageHeader from '@/shared/components/page-header/PageHeader';
 import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MES_LABEL } from '@/app/relatorios/_shared/format';
-import { abrirCompetencia, type Competencia, type Frente } from '../store';
+import { abrirCompetencia, competenciaCompleta, type Competencia, type Frente } from '../store';
 import { nomeCompetencia } from './Competencia';
 
 const cartao: React.CSSProperties = { background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8, boxShadow: 'var(--tfd-shadow-sm)' };
@@ -78,6 +78,7 @@ export default function Lista({ competencias, carregando }: { competencias: Comp
                     <a href={`/financeiro?c=${c.id}`} onClick={(e) => { e.preventDefault(); router.push(`/financeiro?c=${c.id}`); }} className="hover:underline" style={{ color: 'var(--tfd-blue-500)', fontWeight: 500 }}>
                       {nomeCompetencia(c).replace(/^./, (l) => l.toUpperCase())}
                     </a>
+                    {competenciaCompleta(c) && <span className="tfd-badge ml-2" style={{ background: '#DCFCE7', color: '#15803D' }}>Completa</span>}
                   </td>
                   <td style={td}><Situacao c={c} frente="faturamento" /></td>
                   <td style={td}><Situacao c={c} frente="bpa" /></td>

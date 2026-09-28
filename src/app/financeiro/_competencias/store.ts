@@ -134,6 +134,11 @@ export function removerLinha(id: string, frente: Frente, chave: string, por: str
   );
 }
 
+/** Completa quando Faturamento e BPA estão fechados; reabrir qualquer frente desfaz. */
+export function competenciaCompleta(c: Competencia): boolean {
+  return c.frentes.faturamento.status === 'fechada' && c.frentes.bpa.status === 'fechada';
+}
+
 export function fecharFrente(id: string, frente: Frente, por: string) {
   atualizarFrente(id, frente, (f) =>
     f.status === 'fechada' ? f : { ...f, status: 'fechada', fechadaEm: agora(), historico: [...f.historico, evento('fechada', por, { quantidade: f.itens.length })] },

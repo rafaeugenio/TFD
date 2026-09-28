@@ -14,7 +14,7 @@ import {
   type LinhaBpa, type LinhaFaturamento, type ProcedimentoBpa,
 } from '../dados';
 import {
-  chavesUsadas, fecharFrente, incluirLinhas, reabrirFrente, removerLinha, useCompetencias,
+  chavesUsadas, competenciaCompleta, fecharFrente, incluirLinhas, reabrirFrente, removerLinha, useCompetencias,
   type Competencia as TCompetencia, type EventoHistorico, type Frente,
 } from '../store';
 import AdicionarLinhas from './AdicionarLinhas';
@@ -124,6 +124,12 @@ export default function Competencia({ id }: { id: string }) {
         breadcrumbs={[{ label: 'Gestão' }, { label: 'Financeiro', href: '/financeiro' }]}
         actions={<button type="button" className="tfd-btn tfd-btn-secondary" onClick={() => window.print()}><Printer size={15} /> Imprimir</button>}
       />
+
+      {competenciaCompleta(c) && (
+        <p className="mb-4 px-4 py-3" role="status" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8, fontSize: 14, color: '#15803D' }}>
+          <strong>Competência completa.</strong> Faturamento e BPA estão fechados. Se uma das frentes for reaberta, a competência deixa de ser completa.
+        </p>
+      )}
 
       {/* Abas por frente */}
       <div role="tablist" aria-label="Frentes da competência" className="flex gap-2 mb-5" style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>

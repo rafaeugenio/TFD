@@ -185,7 +185,8 @@ export default function ServicoSocialListPage() {
         case 'situacao': return d ? SITUACAO_DEMANDA_LABEL[d.situacao] : '';
         case 'responsavel': return d?.profissionalResponsavel ?? '';
         case 'instrumentos': return totaisInstrumentos.get(s.id) ?? 0;
-        case 'tempo': return d?.dataEncaminhamento ?? '';
+        // Tempo de espera: "desc" (padrão) põe a demanda mais antiga em cima.
+        case 'tempo': return d ? Date.now() - Date.parse(d.dataEncaminhamento) : Number.NEGATIVE_INFINITY;
         default: return '';
       }
     };
