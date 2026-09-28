@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Send, FilePlus, PlayCircle, FileText, HeartHandshake } from 'lucide-react';
+import { Search, Send, FilePlus, PlayCircle, FileText } from 'lucide-react';
 import RowActions from '../_components/RowActions';
 import BotaoEnvio from '../_components/BotaoEnvio';
 import SolicitacaoNumeroCell from '../_components/SolicitacaoNumeroCell';
@@ -12,7 +12,6 @@ import StatusDot, { type StatusDotTone } from '../_components/StatusDot';
 import StatusV2Badge from '../_components/StatusV2Badge';
 import EnviarParaSetorDrawer from '../_components/drawers/EnviarParaSetorDrawer';
 import AssumirDemandaDrawer from '../_components/drawers/AssumirDemandaDrawer';
-import NovaDemandaSocialDrawer from '../_components/drawers/NovaDemandaSocialDrawer';
 import NewInstrumentoDrawer from '../_components/drawers/NewInstrumentoDrawer';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import {
@@ -83,7 +82,6 @@ export default function ServicoSocialListPage() {
     kind: null, sol: null, demanda: null,
   });
   const [enviar, setEnviar] = useState<SolicitacaoMock | null>(null);
-  const [demandaSocial, setDemandaSocial] = useState<SolicitacaoMock | null>(null);
   const [busca, setBusca] = useState('');
   const [situacaoFiltro, setSituacaoFiltro] = useState<SituacaoFiltro>('abertas');
   const [profissionalFiltro, setProfissionalFiltro] = useState('');
@@ -411,12 +409,6 @@ export default function ServicoSocialListPage() {
                       <RowActions
                         actions={[
                           {
-                            key: 'demanda-social' as const,
-                            icon: HeartHandshake,
-                            label: 'Nova demanda social',
-                            onClick: () => setDemandaSocial(s),
-                          },
-                          {
                             key: 'assumir' as const,
                             icon: PlayCircle,
                             label: 'Assumir demanda',
@@ -460,13 +452,6 @@ export default function ServicoSocialListPage() {
         />
       </div>
 
-      {demandaSocial && (
-        <NovaDemandaSocialDrawer
-          open={!!demandaSocial}
-          onClose={() => setDemandaSocial(null)}
-          s={demandaSocial}
-        />
-      )}
 
       {/* Drawer único de tramitação entre setores */}
       {enviar && (

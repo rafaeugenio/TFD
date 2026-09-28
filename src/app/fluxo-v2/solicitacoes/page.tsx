@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Pencil, Archive, Send , HeartHandshake} from 'lucide-react';
+import { Plus, Search, Pencil, Archive, Send } from 'lucide-react';
 import StatusV2Badge from '../_components/StatusV2Badge';
 import RowActions from '../_components/RowActions';
 import BotaoEnvio from '../_components/BotaoEnvio';
@@ -11,7 +11,6 @@ import EnviarParaSetorDrawer from '../_components/drawers/EnviarParaSetorDrawer'
 import { snapshotFromSolicitacao } from '../_components/SnapshotPaciente';
 import SolicitacaoNumeroCell from '../_components/SolicitacaoNumeroCell';
 import PacienteHoverCell from '../_components/PacienteHoverCell';
-import NovaDemandaSocialDrawer from '../_components/drawers/NovaDemandaSocialDrawer';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { derivarEventos, tempoRelativo } from '../_utils/derivarLinhaDoTempo';
 import { isLocked, setorAtual, tooltipLocked } from '../_utils/lock';
@@ -58,7 +57,6 @@ export default function SolicitacoesV2ListPage() {
   const [regiaoFiltro, setRegiaoFiltro] = useState<RegiaoFiltroValue>(REGIAO_FILTRO_VAZIO);
   const [responsavelFiltro, setResponsavelFiltro] = useState<ResponsavelFiltroValue>(RESPONSAVEL_FILTRO_VAZIO);
   const [busca, setBusca] = useState('');
-  const [demandaSocial, setDemandaSocial] = useState<SolicitacaoMock | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'numero', dir: 'desc' });
@@ -346,12 +344,6 @@ export default function SolicitacoesV2ListPage() {
                       <RowActions
                         actions={[
                           {
-                            key: 'demanda-social' as const,
-                            icon: HeartHandshake,
-                            label: 'Nova demanda social',
-                            onClick: () => setDemandaSocial(s),
-                          },
-                          {
                             key: 'editar',
                             icon: Pencil,
                             label: isLocked(s, 'dados_basicos')
@@ -400,13 +392,6 @@ export default function SolicitacoesV2ListPage() {
 
       <NewSolicitacaoDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
-      {demandaSocial && (
-        <NovaDemandaSocialDrawer
-          open={!!demandaSocial}
-          onClose={() => setDemandaSocial(null)}
-          s={demandaSocial}
-        />
-      )}
 
       {enviar && (
         <EnviarParaSetorDrawer

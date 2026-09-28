@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Wallet, Send, Search , HeartHandshake} from 'lucide-react';
+import { Wallet, Send, Search } from 'lucide-react';
 import RowActions from '../_components/RowActions';
 import BotaoEnvio from '../_components/BotaoEnvio';
 import NewAjudaCustoDrawer from '../_components/drawers/NewAjudaCustoDrawer';
@@ -10,7 +10,6 @@ import SolicitacaoNumeroCell from '../_components/SolicitacaoNumeroCell';
 import PacienteHoverCell from '../_components/PacienteHoverCell';
 import EnviarParaSetorDrawer from '../_components/drawers/EnviarParaSetorDrawer';
 import { snapshotFromSolicitacao } from '../_components/SnapshotPaciente';
-import NovaDemandaSocialDrawer from '../_components/drawers/NovaDemandaSocialDrawer';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
 import { tempoNoSetor } from '../_utils/tempoSetor';
 import { isTramitacaoRecente } from '../_utils/tramitacao';
@@ -121,7 +120,6 @@ export default function AjudaCustoListPage() {
   const [filtro, setFiltro] = useState<AjudaCustoFiltro>('all');
   const [regiaoFiltro, setRegiaoFiltro] = useState<RegiaoFiltroValue>(REGIAO_FILTRO_VAZIO);
   const [responsavelFiltro, setResponsavelFiltro] = useState<ResponsavelFiltroValue>(RESPONSAVEL_FILTRO_VAZIO);
-  const [demandaSocial, setDemandaSocial] = useState<SolicitacaoMock | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [sort, setSort] = useState<{ field: string; dir: SortDir }>({ field: 'tempo', dir: 'desc' });
@@ -410,12 +408,6 @@ export default function AjudaCustoListPage() {
                       <RowActions
                         actions={[
                           {
-                            key: 'demanda-social' as const,
-                            icon: HeartHandshake,
-                            label: 'Nova demanda social',
-                            onClick: () => setDemandaSocial(s),
-                          },
-                          {
                             key: 'ajuda' as const,
                             icon: Wallet,
                             label: locked ? lockedTip : 'Adicionar ajuda de custo',
@@ -448,13 +440,6 @@ export default function AjudaCustoListPage() {
         />
       </div>
 
-      {demandaSocial && (
-        <NovaDemandaSocialDrawer
-          open={!!demandaSocial}
-          onClose={() => setDemandaSocial(null)}
-          s={demandaSocial}
-        />
-      )}
 
       {enviar && (
         <EnviarParaSetorDrawer
