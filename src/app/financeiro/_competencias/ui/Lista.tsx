@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { CalendarPlus, FileText, ClipboardList, Lock, CalendarDays } from 'lucide-react';
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
+import { usePermissions } from '@/shared/auth/PermissionsProvider';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MES_LABEL } from '@/app/relatorios/_shared/format';
 import { abrirCompetencia, competenciaCompleta, type Competencia, type Frente } from '../store';
@@ -31,6 +32,8 @@ function Situacao({ c, frente }: { c: Competencia; frente: Frente }) {
 export default function Lista({ competencias, carregando }: { competencias: Competencia[]; carregando: boolean }) {
   const router = useRouter();
   const { user } = useCurrentUser();
+  // Sem "criar competência" o botão some; as competências existentes seguem visíveis.
+  const podeCriar = usePermissions().can('competencia.criar');
   const hoje = new Date();
   const [abrindo, setAbrindo] = useState(false);
   const [ano, setAno] = useState(hoje.getFullYear());
@@ -48,7 +51,7 @@ export default function Lista({ competencias, carregando }: { competencias: Comp
         title="Financeiro"
         subtitle="Competências mensais de Faturamento e BPA. Cada competência recebe as linhas escolhidas e é fechada depois do envio."
         breadcrumbs={[{ label: 'Gestão' }]}
-        actions={<button type="button" className="tfd-btn tfd-btn-primary" onClick={() => setAbrindo(true)}><CalendarPlus size={16} /> Abrir competência</button>}
+        actions={podeCriar ? <button type="button" className="tfd-btn tfd-btn-primary" onClick={() => setAbrindo(true)}><CalendarPlus size={16} /> Abrir competência</button> : undefined}
       />
 
       {carregando ? (
@@ -57,8 +60,12 @@ export default function Lista({ competencias, carregando }: { competencias: Comp
         <section className="flex flex-col items-center justify-center text-center" style={{ ...cartao, padding: '56px 24px', minHeight: 'calc(100vh - 300px)' }}>
           <span className="inline-flex items-center justify-center" style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--tfd-blue-50)', color: 'var(--tfd-blue-500)' }}><CalendarDays size={26} /></span>
           <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--tfd-text-primary)', marginTop: 14 }}>Nenhuma competência aberta ainda</p>
-          <p style={{ fontSize: 14, color: 'var(--tfd-400)', marginTop: 4, maxWidth: 460 }}>Abra a competência do mês. Ela nasce vazia, com Faturamento e BPA separados, e você escolhe as linhas de cada um.</p>
-          <button type="button" className="tfd-btn tfd-btn-primary mt-5" onClick={() => setAbrindo(true)}><CalendarPlus size={16} /> Abrir competência</button>
+          <p style={{ fontSize: 14, color: 'var(--tfd-400)', marginTop: 4, maxWidth: 460 }}>
+            {podeCriar
+              ? 'Abra a competência do mês. Ela nasce vazia, com Faturamento e BPA separados, e você escolhe as linhas de cada um.'
+              : 'Quando uma competência for aberta, ela aparece aqui.'}
+          </p>
+          {podeCriar && <button type="button" className="tfd-btn tfd-btn-primary mt-5" onClick={() => setAbrindo(true)}><CalendarPlus size={16} /> Abrir competência</button>}
         </section>
       ) : (
         <section className="overflow-hidden" style={cartao}>
@@ -66,9 +73,9 @@ export default function Lista({ competencias, carregando }: { competencias: Comp
             <thead>
               <tr>
                 <th style={th}>Competência</th>
+                <th style={th}>Aberta em</th>
                 <th style={th}><span className="inline-flex items-center gap-1.5"><FileText size={12} /> Faturamento</span></th>
                 <th style={th}><span className="inline-flex items-center gap-1.5"><ClipboardList size={12} /> BPA</span></th>
-                <th style={th}>Aberta em</th>
               </tr>
             </thead>
             <tbody>
@@ -80,9 +87,9 @@ export default function Lista({ competencias, carregando }: { competencias: Comp
                     </a>
                     {competenciaCompleta(c) && <span className="tfd-badge ml-2" style={{ background: '#DCFCE7', color: '#15803D' }}>Completa</span>}
                   </td>
+                  <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--tfd-text-secondary)' }}>{new Date(c.criadaEm).toLocaleDateString('pt-BR')}</td>
                   <td style={td}><Situacao c={c} frente="faturamento" /></td>
                   <td style={td}><Situacao c={c} frente="bpa" /></td>
-                  <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--tfd-text-secondary)' }}>{new Date(c.criadaEm).toLocaleDateString('pt-BR')}</td>
                 </tr>
               ))}
             </tbody>
@@ -93,7 +100,7 @@ export default function Lista({ competencias, carregando }: { competencias: Comp
         </section>
       )}
 
-      {abrindo && (
+      {abrindo && podeCriar && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.45)' }} role="dialog" aria-modal="true" aria-labelledby="abrir-titulo">
           <div style={{ ...cartao, width: 'min(440px, 100%)', boxShadow: 'var(--tfd-shadow-lg)' }}>
             <div style={{ padding: '20px 22px' }}>

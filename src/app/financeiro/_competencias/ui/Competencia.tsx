@@ -6,6 +6,7 @@ import { AlertTriangle, ClipboardList, FileText, History, Lock, LockOpen, Plane,
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
+import { usePermissions } from '@/shared/auth/PermissionsProvider';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MES_LABEL, fmtBRL, fmtDataBR, valorPorExtenso } from '@/app/relatorios/_shared/format';
 import { TipoBeneficiarioBadge } from '@/app/relatorios/_shared/ReportTable';
@@ -26,7 +27,11 @@ const rotulo: React.CSSProperties = { display: 'flex', alignItems: 'center', gap
 const campo: React.CSSProperties = { height: 36, padding: '0 10px', border: '1px solid var(--tfd-300)', borderRadius: 6, background: 'white', fontSize: 14, color: 'var(--tfd-text-primary)' };
 const norm = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 export const nomeCompetencia = (c: Pick<TCompetencia, 'ano' | 'mes'>) => `${MES_LABEL[c.mes - 1].toLowerCase()} de ${c.ano}`;
-const dataHora = (iso: string) => new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+/** dd/mm/aaaa hh:mm */
+const dataHora = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+};
 
 /**
  * Competência de um mês, com as frentes Faturamento e BPA em abas. Cada
@@ -38,6 +43,7 @@ export default function Competencia({ id }: { id: string }) {
   const toast = useToast();
   const { user } = useCurrentUser();
   const quem = user?.nome ?? 'Usuário';
+  const { can } = usePermissions();
   const competencias = useCompetencias();
   const c = competencias.find((x) => x.id === id);
 
@@ -64,8 +70,8 @@ export default function Competencia({ id }: { id: string }) {
   }, []);
 
   const f = c?.frentes[frente];
-  const itens = useMemo(() => new Set(f?.itens.map((i) => i.chave) ?? []), [f]);
-  const aposReabertura = useMemo(() => new Set(f?.itens.filter((i) => i.aposReabertura).map((i) => i.chave) ?? []), [f]);
+  const itens = new Set(f?.itens.map((i) => i.chave) ?? []);
+  const aposReabertura = new Set(f?.itens.filter((i) => i.aposReabertura).map((i) => i.chave) ?? []);
   const usadasFat = useMemo(() => chavesUsadas(competencias, 'faturamento'), [competencias]);
   const usadasBpa = useMemo(() => chavesUsadas(competencias, 'bpa'), [competencias]);
 
@@ -81,11 +87,16 @@ export default function Competencia({ id }: { id: string }) {
   const nome = nomeCompetencia(c);
   const mesCompetencia = `${c.ano}-${String(c.mes).padStart(2, '0')}`;
   const aberta = f.status === 'aberta';
+  // Permissões separadas por aba: "adicionar linhas" cobre incluir e remover.
+  const podeLinhas = can(`competencia.${frente}.adicionar_linhas`);
+  const podeFechar = can(`competencia.${frente}.fechar`);
+  const podeReabrir = can(`competencia.${frente}.reabrir`);
+  const editavel = aberta && podeLinhas;
   const t = norm(busca.trim());
 
   const fatDaComp = fat.filter((l) => itens.has(l.chave)).filter((l) => !t || norm(`${l.passageiro} ${l.processo}`).includes(t));
   const bpaDaComp = bpa.filter((l) => itens.has(l.chave));
-  const bpaVisiveis = bpaDaComp.filter((l) => l.procedimento === procedimento).filter((l) => !t || norm(`${l.nome} ${l.processo} ${l.documento}`).includes(t));
+  const bpaVisiveis = bpaDaComp.filter((l) => l.procedimento === procedimento).filter((l) => !t || norm(`${l.nome} ${l.processo}`).includes(t));
 
   const onVer = (sid: string) => router.push(`/fluxo-v2/solicitacoes/${sid}`);
   const remover = (chave: string) => {
@@ -94,7 +105,7 @@ export default function Competencia({ id }: { id: string }) {
     removerLinha(c.id, frente, chave, quem, detalhe);
     toast.success('Linha removida da competência', 'Ela volta a ficar disponível para outras competências.');
   };
-  const opcoes = { mesCompetencia, onVer, onRemover: aberta ? remover : undefined };
+  const opcoes = { mesCompetencia, onVer, onRemover: editavel ? remover : undefined };
 
   const alternarLancado = async (l: LinhaBpa) => {
     const marcar = !lancados.has(l.chave);
@@ -174,18 +185,26 @@ export default function Competencia({ id }: { id: string }) {
           <span className="flex flex-wrap gap-2 ml-auto">
             {aberta ? (
               <>
-                <button type="button" className="tfd-btn tfd-btn-secondary" onClick={() => setDialogo('fechar')} disabled={f.itens.length === 0} title={f.itens.length === 0 ? 'Inclua pelo menos uma linha antes de fechar' : undefined}>
-                  <Lock size={15} /> Fechar competência
-                </button>
-                <button type="button" className="tfd-btn tfd-btn-primary" onClick={() => setAdicionando(true)}>
-                  <Plus size={15} /> Adicionar linhas
-                </button>
+                {podeFechar && (
+                  // A dica fica no invólucro: botão desabilitado não recebe o mouse em todos os navegadores.
+                  <span className="inline-flex" title={f.itens.length === 0 ? 'Inclua pelo menos uma linha antes de fechar' : undefined}>
+                    <button type="button" className="tfd-btn tfd-btn-secondary" onClick={() => setDialogo('fechar')} disabled={f.itens.length === 0} aria-describedby={f.itens.length === 0 ? 'dica-fechar' : undefined}>
+                      <Lock size={15} /> Fechar competência
+                    </button>
+                    {f.itens.length === 0 && <span id="dica-fechar" className="sr-only">Inclua pelo menos uma linha antes de fechar</span>}
+                  </span>
+                )}
+                {podeLinhas && (
+                  <button type="button" className="tfd-btn tfd-btn-primary" onClick={() => setAdicionando(true)}>
+                    <Plus size={15} /> Adicionar linhas
+                  </button>
+                )}
               </>
-            ) : (
+            ) : podeReabrir ? (
               <button type="button" className="tfd-btn tfd-btn-secondary" onClick={() => setDialogo('reabrir')}>
                 <LockOpen size={15} /> Reabrir competência
               </button>
-            )}
+            ) : null}
           </span>
         </div>
         {!aberta && (
@@ -218,7 +237,7 @@ export default function Competencia({ id }: { id: string }) {
               linhas={fatDaComp}
               chave={(l) => l.chave}
               destaque={(l) => (aposReabertura.has(l.chave) ? { background: '#FFFBEB' } : undefined)}
-              vazio={aberta ? <>Competência vazia. Use <strong>Adicionar linhas</strong> para escolher os itens de {nome}.</> : 'Nenhum item nesta competência.'}
+              vazio={editavel ? <>Competência vazia. Use <strong>Adicionar linhas</strong> para escolher os itens de {nome}.</> : 'Nenhum item nesta competência.'}
             />
           </Secao>
           <Secao titulo="Reembolsos concedidos ao TFD" quantidade={reembolsos.length} subtitulo="Devoluções aplicadas pelo fornecedor nos itens desta competência">
@@ -258,7 +277,7 @@ export default function Competencia({ id }: { id: string }) {
               linhas={bpaVisiveis}
               chave={(l) => l.chave}
               destaque={(l) => ({ ...(lancados.has(l.chave) ? { opacity: 0.6 } : {}), ...(aposReabertura.has(l.chave) ? { background: '#FFFBEB' } : {}) })}
-              vazio={aberta ? <>Nenhuma linha de {procedimento === 'ajuda_custo' ? 'ajuda de custo' : 'deslocamento'} nesta competência. Use <strong>Adicionar linhas</strong>.</> : 'Nenhuma linha nesta competência.'}
+              vazio={editavel ? <>Nenhuma linha de {procedimento === 'ajuda_custo' ? 'ajuda de custo' : 'deslocamento'} nesta competência. Use <strong>Adicionar linhas</strong>.</> : 'Nenhuma linha nesta competência.'}
             />
           </Secao>
         </>
@@ -267,7 +286,7 @@ export default function Competencia({ id }: { id: string }) {
       <Historico eventos={f.historico} frente={frente} />
 
       <AdicionarLinhas
-        open={adicionando}
+        open={adicionando && editavel}
         onClose={() => setAdicionando(false)}
         frente={frente}
         rotuloCompetencia={nome}
@@ -283,7 +302,7 @@ export default function Competencia({ id }: { id: string }) {
         }}
       />
 
-      {dialogo && (
+      {((dialogo === 'fechar' && aberta && podeFechar) || (dialogo === 'reabrir' && !aberta && podeReabrir)) && (
         <DialogoFrente
           modo={dialogo}
           frente={frente}

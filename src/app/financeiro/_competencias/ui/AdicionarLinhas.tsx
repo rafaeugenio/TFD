@@ -69,14 +69,15 @@ export default function AdicionarLinhas(p: Props) {
 
   const fechar = () => { setSelecionadas(new Set()); setBusca(''); setMes(''); p.onClose(); };
   const incluir = () => {
-    const detalhe = p.frente === 'faturamento'
-      ? escolhidas.map((l) => ('processo' in l ? l.processo : '')).filter(Boolean).slice(0, 5).join(', ')
-      : escolhidas.map((l) => ('nome' in l ? l.nome : '')).filter(Boolean).slice(0, 5).join(', ');
-    p.onIncluir(escolhidas.map((l) => l.chave), detalhe + (escolhidas.length > 5 ? ` e mais ${escolhidas.length - 5}` : ''));
+    // Histórico registra os processos afetados, nas duas abas.
+    const processos = [...new Set(escolhidas.map((l) => l.processo).filter(Boolean))];
+    p.onIncluir(escolhidas.map((l) => l.chave), processos.length ? `Processos: ${processos.join(', ')}` : '');
     fechar();
   };
 
   const opcoes = { mesCompetencia: p.mesCompetencia, onVer: p.onVer };
+  // Sem nenhuma linha livre na aba, a mensagem é a geral; havendo linhas fora do filtro (inclusive do outro procedimento), a do filtro.
+  const vazio = todasDisponiveis.length === 0 ? 'Todas as linhas já estão em alguma competência.' : 'Nenhuma linha disponível com esse filtro.';
   const tituloFrente = p.frente === 'faturamento' ? 'Faturamento' : 'BPA';
 
   return (
@@ -143,7 +144,7 @@ export default function AdicionarLinhas(p: Props) {
             selecionadas={selecionadas}
             onSelecionar={selecionar}
             rotuloSelecao="Selecionar para incluir"
-            vazio={busca || mes ? 'Nenhuma linha disponível com esse filtro.' : 'Todas as linhas já estão em alguma competência.'}
+            vazio={vazio}
           />
         ) : (
           <Tabela
@@ -153,7 +154,7 @@ export default function AdicionarLinhas(p: Props) {
             selecionadas={selecionadas}
             onSelecionar={selecionar}
             rotuloSelecao="Selecionar para incluir"
-            vazio={busca || mes ? 'Nenhuma linha disponível com esse filtro.' : 'Todas as linhas já estão em alguma competência.'}
+            vazio={vazio}
           />
         )}
       </div>
