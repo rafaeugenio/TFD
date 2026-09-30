@@ -30,8 +30,8 @@ const RULES: RouteRule[] = [
   { prefix: '/unidades-saude',         tela: 'unidades_saude' },
   { prefix: '/regionais-saude',        tela: 'regionais_saude' },
   { prefix: '/relatorios',             tela: 'relatorios' },
-  // Competências de Faturamento e BPA (saíram de Relatórios): mesma permissão por enquanto.
-  { prefix: '/financeiro',             tela: 'relatorios' },
+  // Competências de Faturamento e BPA: permissão própria, separada de Relatórios (PBI 16400).
+  { prefix: '/financeiro',             tela: 'financeiro' },
   { prefix: '/sistema/configuracoes',  tela: 'sys_configuracoes' },
   { prefix: '/sistema/papeis',         tela: 'sys_papeis' },
   { prefix: '/sistema/usuarios',       tela: 'sys_usuarios' },

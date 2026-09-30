@@ -65,6 +65,9 @@ const CHAVE_ANTIGA_PARA_NOVA: Record<string, string> = {
   'sys_papeis.visualizar': 'tela.sys_papeis.visualizar',
   'sys_usuarios.visualizar': 'tela.sys_usuarios.visualizar',
   'sys_logs.visualizar': 'tela.sys_logs.visualizar',
+  'servico_social.visualizar': 'tela.servico_social.visualizar',
+  'casas_apoio.visualizar': 'tela.casas_apoio.visualizar',
+  'financeiro.visualizar': 'tela.financeiro.visualizar',
 
   // Cadastros — solicitação e ações de fluxo associadas
   'solicitacoes.criar': 'solicitacao.criar',

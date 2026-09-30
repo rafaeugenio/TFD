@@ -77,7 +77,7 @@ const navSections: NavSection[] = [
   {
     title: 'GESTÃO',
     items: [
-      { icon: Landmark,   label: 'Financeiro',     href: '/financeiro',              tela: 'relatorios' },
+      { icon: Landmark,   label: 'Financeiro',     href: '/financeiro',              tela: 'financeiro' },
       { icon: BarChart3,  label: 'Relatórios',     href: '/relatorios',              tela: 'relatorios' },
       { icon: Settings,   label: 'Configurações',  href: '/sistema/configuracoes',   tela: 'sys_configuracoes' },
       { icon: Shield,     label: 'Administrativo', href: '/sistema/administrativo',  tela: 'sys_usuarios' },
