@@ -114,6 +114,11 @@ export interface InstrumentoSocialMock {
   dataCriacao: string; // ISO datetime
   /** Só no encaminhamento para casa de apoio, e mesmo lá é opcional. */
   casaApoioId?: string;
+  /** Cópias da solicitação e do paciente, para o detalhe da casa de apoio
+   *  listar o encaminhamento mesmo quando ele é avulso (sem demanda). */
+  solicitacaoNumero?: string;
+  pacienteNome?: string;
+  pacienteCpf?: string;
 }
 
 /* ── Casa de apoio ───────────────────────────────────────────────────────── */
@@ -166,45 +171,25 @@ export const seedCasasApoio: CasaApoioMock[] = [
   },
 ];
 
-/* ── Profissionais autorizadas ao conteúdo sigiloso ──────────────────────── */
+/* ── Profissionais do Serviço Social (fallback de demonstração) ────────── */
 
 /**
- * Conteúdo sigiloso é restrito às profissionais do Serviço Social. A direção
- * do TFD e os administradores enxergam que o instrumento existe (tipo, data,
- * autora e o selo), mas não abrem nem baixam o conteúdo. O protótipo não cria
- * fluxo digital de acesso excepcional: em demanda de auditoria, ouvidoria ou
- * pedido judicial, a solicitação continua sendo feita presencialmente à
- * equipe social, como ocorre hoje.
+ * As profissionais são os usuários com o perfil "Serviço Social" (PBI 16409,
+ * RN09), lidos da tabela `usuarios` pelo hook `useProfissionaisServicoSocial`.
+ * Esta lista só entra quando o banco ainda não tem nenhum usuário ativo com
+ * esse perfil, para o seletor de "Assumir demanda" não ficar vazio na
+ * demonstração. Não é cadastro nem regra: some sozinha assim que existir
+ * usuário com o perfil.
+ *
+ * O acesso ao conteúdo sigiloso vem da permissão `acao.servico_social.sigilo`
+ * (e nunca do administrador), conferida direto na aba Serviço Social.
  */
 export interface ProfissionalSocial {
   id: string;
   nome: string;
 }
 
-export const PROFISSIONAIS_SERVICO_SOCIAL: ProfissionalSocial[] = [
-  { id: 'ss-1', nome: 'Ana Cláudia Mendes' },
-  { id: 'ss-2', nome: 'Rosângela Barros Lima' },
+export const PROFISSIONAIS_SERVICO_SOCIAL_DEMO: ProfissionalSocial[] = [
+  { id: 'ss-demo-1', nome: 'Ana Cláudia Mendes' },
+  { id: 'ss-demo-2', nome: 'Rosângela Barros Lima' },
 ];
-
-/** CPFs e e-mails das duas profissionais autorizadas. No sistema real isso
- *  vira papel/permissão; no protótipo fica explícito para a validação. */
-export const EMAILS_SERVICO_SOCIAL: string[] = [
-  'ana.mendes@ses.ma.gov.br',
-  'rosangela.lima@ses.ma.gov.br',
-];
-
-/**
- * Quem pode abrir o conteúdo de um instrumento sigiloso. Diferente do resto
- * do sistema, ser administrador NÃO libera: o sigilo é do documento, não do
- * nível de acesso.
- */
-export function podeVerConteudoSigiloso(user: {
-  email?: string | null;
-  perfil?: string | null;
-} | null | undefined): boolean {
-  if (!user) return false;
-  const email = (user.email ?? '').trim().toLowerCase();
-  if (EMAILS_SERVICO_SOCIAL.includes(email)) return true;
-  const perfil = (user.perfil ?? '').trim().toLowerCase();
-  return perfil.includes('serviço social') || perfil.includes('servico social');
-}

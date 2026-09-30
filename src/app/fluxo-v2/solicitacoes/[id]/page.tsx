@@ -15,6 +15,7 @@ import RegulacaoTab from '../../_components/RegulacaoTab';
 import FinanceiroTab from '../../_components/FinanceiroTab';
 import AnexosTab from '../../_components/AnexosTab';
 import ServicoSocialTab from '../../_components/ServicoSocialTab';
+import ServicoSocialAlerta from '../../_components/ServicoSocialAlerta';
 import { useFlagServicoSocial } from '../../_state/servicoSocialStore';
 import { agregarAnexos } from '../../_utils/anexosUnificados';
 import EnviarParaSetorDrawer from '../../_components/drawers/EnviarParaSetorDrawer';
@@ -226,6 +227,8 @@ function SolicitacaoDetalheInner({ id }: { id: string }) {
               >
                 {s.numero}
               </span>
+              {/* PBI 16409, RN07: alerta de demanda social aberta ao lado do número, em todas as telas */}
+              <ServicoSocialAlerta solicitacaoId={s.id} />
               {seiVigente ? (
                 seiVigente.url ? (
                   <a

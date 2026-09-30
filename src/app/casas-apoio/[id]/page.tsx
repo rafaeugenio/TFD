@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Pencil, Trash2, Phone, MapPin, FileText, User, Clock, ExternalLink, Home } from 'lucide-react';
 import { useToast } from '@/shared/components/toast/Toast';
+import { usePermissions } from '@/shared/auth/PermissionsProvider';
 import { encaminhamentosDaCasa, useCasasApoio } from '@/app/fluxo-v2/_state/servicoSocialStore';
 import { SITUACAO_DEMANDA_LABEL, TIPO_INSTRUMENTO_LABEL } from '@/core/mocks/servico-social-seed';
 import CasaApoioDrawer from '../_CasaApoioDrawer';
@@ -25,6 +26,9 @@ export default function CasaApoioDetalhePage({ params }: { params: Promise<{ id:
   const router = useRouter();
   const toast = useToast();
   const casas = useCasasApoio();
+  const { can } = usePermissions();
+  const podeEditar = can('casa_apoio.editar');
+  const podeExcluir = can('casa_apoio.excluir');
   const casa = casas.find((c) => c.id === id);
   const [editOpen, setEditOpen] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
@@ -44,7 +48,10 @@ export default function CasaApoioDetalhePage({ params }: { params: Promise<{ id:
   }
 
   const encaminhamentos = encaminhamentosDaCasa(casa.id);
-  const pacientes = new Set(encaminhamentos.map((e) => e.demanda?.pacienteCpf ?? e.instrumento.solicitacaoId)).size;
+  // Pacientes diferentes: pelo CPF copiado no instrumento (vale também para o avulso).
+  const pacientes = new Set(
+    encaminhamentos.map((e) => e.instrumento.pacienteCpf ?? e.demanda?.pacienteCpf ?? e.instrumento.solicitacaoId),
+  ).size;
   const emAberto = encaminhamentos.filter((e) => e.demanda && (e.demanda.situacao === 'pendente' || e.demanda.situacao === 'em_atendimento')).length;
 
   return (
@@ -58,12 +65,16 @@ export default function CasaApoioDetalhePage({ params }: { params: Promise<{ id:
         <div className="flex items-start justify-between gap-4 px-6 pt-6 pb-3 flex-wrap">
           <h1 className="text-[20px] font-semibold min-w-0" style={{ color: '#146BFA', letterSpacing: '-0.02em' }}>{casa.nome}</h1>
           <div className="flex gap-2 shrink-0">
-            <button className="tfd-btn tfd-btn-secondary" style={{ color: '#DC2626' }} onClick={() => setExcluindo(true)}>
-              <Trash2 size={14} /> Excluir
-            </button>
-            <button className="tfd-btn tfd-btn-primary" onClick={() => setEditOpen(true)}>
-              <Pencil size={14} /> Editar
-            </button>
+            {podeExcluir && (
+              <button className="tfd-btn tfd-btn-secondary" style={{ color: '#DC2626' }} onClick={() => setExcluindo(true)}>
+                <Trash2 size={14} /> Excluir
+              </button>
+            )}
+            {podeEditar && (
+              <button className="tfd-btn tfd-btn-primary" onClick={() => setEditOpen(true)}>
+                <Pencil size={14} /> Editar
+              </button>
+            )}
           </div>
         </div>
 
@@ -123,12 +134,12 @@ export default function CasaApoioDetalhePage({ params }: { params: Promise<{ id:
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold" style={{ color: 'var(--tfd-primary-500)' }}>{demanda?.solicitacaoNumero ?? 'Solicitação'}</span>
+                      <span className="text-sm font-semibold" style={{ color: 'var(--tfd-primary-500)' }}>{instrumento.solicitacaoNumero ?? demanda?.solicitacaoNumero ?? 'Solicitação'}</span>
                       <span className="text-[11px] px-2 py-[1px] rounded-full" style={{ background: '#F1F5F9', color: '#475569' }}>{TIPO_INSTRUMENTO_LABEL[instrumento.tipo]}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5">
-                      {demanda?.pacienteNome && (
-                        <span className="text-xs flex items-center gap-1" style={{ color: 'var(--tfd-text-secondary)' }}><User size={11} />{demanda.pacienteNome}</span>
+                      {(instrumento.pacienteNome ?? demanda?.pacienteNome) && (
+                        <span className="text-xs flex items-center gap-1" style={{ color: 'var(--tfd-text-secondary)' }}><User size={11} />{instrumento.pacienteNome ?? demanda?.pacienteNome}</span>
                       )}
                       <span className="text-xs flex items-center gap-1" style={{ color: 'var(--tfd-text-muted)' }}><Clock size={11} />{dataBR(instrumento.dataCriacao)}</span>
                       <span className="text-xs" style={{ color: 'var(--tfd-text-muted)' }}>{demanda ? SITUACAO_DEMANDA_LABEL[demanda.situacao] : 'Instrumento avulso'}</span>

@@ -27,7 +27,6 @@ import {
   SITUACAO_DEMANDA_LABEL,
   TIPO_INSTRUMENTO_LABEL,
   demandaEstaAberta,
-  podeVerConteudoSigiloso,
   type DemandaSocialMock,
   type InstrumentoSocialMock,
   type SituacaoDemandaSocial,
@@ -59,7 +58,7 @@ function dataHoraBR(iso: string | undefined): string {
  * setor em que a solicitação está.
  */
 export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
-  const { user } = usePermissions();
+  const { user, can, isAdmin } = usePermissions();
   useServicoSocial(); // assina o store para reagir a qualquer escrita
   const demandas = useDemandasDaSolicitacao(s.id);
   const instrumentos = instrumentosDaSolicitacao(s.id);
@@ -70,15 +69,13 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
   const [demandaParaInstrumento, setDemandaParaInstrumento] = useState<string | null>(null);
   const [visualizando, setVisualizando] = useState<InstrumentoSocialMock | null>(null);
 
-  /**
-   * Controle só do protótipo: o sigilo é restrito às profissionais do Serviço
-   * Social e nem administrador abre o conteúdo, então sem este seletor não
-   * haveria como demonstrar os dois lados na validação presencial com a
-   * equipe. No sistema real quem decide é o papel do usuário logado.
-   */
-  const acessoReal = podeVerConteudoSigiloso(user);
-  const [verComoSocial, setVerComoSocial] = useState(acessoReal);
-  const podeAbrirSigiloso = acessoReal || verComoSocial;
+  /** PBI 16406, RN09: "Criar instrumento" e as ações da equipe (Assumir,
+   *  Concluir, Cancelar, Reabrir) vêm das permissões do perfil Serviço Social.
+   *  O sigiloso só abre para quem tem a permissão de sigilo, e o
+   *  administrador também não abre: o sigilo é do documento. */
+  const podeAtender = can('acao.servico_social.atender');
+  const podeCriarInstrumento = can('instrumento_social.criar');
+  const podeAbrirSigiloso = !isAdmin && can('acao.servico_social.sigilo');
 
   const counts = useMemo(() => ({
     total: demandas.length,
@@ -127,28 +124,6 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
         <Stat label="Instrumentos" value={counts.instrumentos} />
       </div>
 
-      {/* Seletor de visão (protótipo) */}
-      {!acessoReal && (
-        <div
-          className="flex items-center gap-2.5 px-3 py-2 mb-6 text-[12px]"
-          style={{ background: '#F1F5F9', border: '1px dashed #CBD5E1', borderRadius: 8, color: '#475569' }}
-        >
-          <Eye size={13} className="shrink-0" />
-          <span className="flex-1">
-            Controle apenas do protótipo, para demonstrar os dois lados do sigilo.
-            No sistema o acesso vem do papel do usuário.
-          </span>
-          <label className="flex items-center gap-1.5 cursor-pointer shrink-0">
-            <input
-              type="checkbox"
-              checked={verComoSocial}
-              onChange={(e) => setVerComoSocial(e.target.checked)}
-            />
-            <span>Ver como assistente social</span>
-          </label>
-        </div>
-      )}
-
       {/* ── Bloco Demandas ─────────────────────────────────── */}
       <Section
         icon={HeartHandshake}
@@ -180,6 +155,8 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
                 d={d}
                 ordinal={demandas.length - idx}
                 usuario={usuario}
+                podeAtender={podeAtender}
+                podeCriarInstrumento={podeCriarInstrumento}
                 onGerarInstrumento={(id) => { setDemandaParaInstrumento(id); setInstrumentoOpen(true); }}
               />
             ))}
@@ -193,14 +170,16 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
         title="Instrumentos"
         subtitle={`${instrumentos.length} documento(s) produzido(s) pelo Serviço Social nesta solicitação.`}
         action={
-          <button
-            type="button"
-            className="tfd-btn tfd-btn-primary tfd-btn--sm"
-            onClick={() => setInstrumentoOpen(true)}
-            title="O instrumento pode ficar vinculado a uma demanda ou ser avulso."
-          >
-            <Plus size={14} /> Criar instrumento
-          </button>
+          podeCriarInstrumento ? (
+            <button
+              type="button"
+              className="tfd-btn tfd-btn-primary tfd-btn--sm"
+              onClick={() => setInstrumentoOpen(true)}
+              title="O instrumento pode ficar vinculado a uma demanda ou ser avulso."
+            >
+              <Plus size={14} /> Criar instrumento
+            </button>
+          ) : undefined
         }
       >
         {instrumentos.length > 0 ? (
@@ -265,7 +244,7 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
                           <span
                             className="text-[11.5px]"
                             style={{ color: '#B91C1C' }}
-                            title="Conteúdo restrito às profissionais do Serviço Social. Administradores e a direção do TFD veem que o instrumento existe, mas não abrem nem baixam."
+                            title="Conteúdo restrito às profissionais do Serviço Social. Administradores e demais perfis veem que o instrumento existe, mas não abrem nem baixam."
                           >
                             Conteúdo restrito ao Serviço Social
                           </span>
@@ -296,6 +275,7 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
         s={s}
       />
 
+      {podeCriarInstrumento && (
       <NewInstrumentoDrawer
         open={instrumentoOpen}
         onClose={() => { setInstrumentoOpen(false); setDemandaParaInstrumento(null); }}
@@ -303,6 +283,7 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
         demandas={demandas}
         demandaInicialId={demandaParaInstrumento ?? demandaAlvo?.id ?? ''}
       />
+      )}
 
       {visualizando && (
         <Drawer
@@ -337,11 +318,17 @@ function DemandaCard({
   d,
   ordinal,
   usuario,
+  podeAtender,
+  podeCriarInstrumento,
   onGerarInstrumento,
 }: {
   d: DemandaSocialMock;
   ordinal: number;
   usuario: string;
+  /** Assumir, Concluir, Cancelar e Reabrir (acao.servico_social.atender). */
+  podeAtender: boolean;
+  /** "Concluir e gerar instrumento" também exige instrumento_social.criar. */
+  podeCriarInstrumento: boolean;
   /** Abre o drawer de instrumento já vinculado a esta demanda. */
   onGerarInstrumento: (demandaId: string) => void;
 }) {
@@ -397,11 +384,19 @@ function DemandaCard({
               Aberta por <span style={{ color: '#1E293B', fontWeight: 500 }}>{d.encaminhadoPor}</span>
               {' · '}
               {SETOR_ORIGEM_LABEL[d.setorOrigem]}
-              {d.profissionalResponsavel ? ` · Atendida por ${d.profissionalResponsavel}` : ''}
+              {d.profissionalResponsavel ? (
+                <>
+                  {' · Atendida por '}
+                  <span style={{ color: '#1E293B', fontWeight: 500 }}>{d.profissionalResponsavel}</span>
+                </>
+              ) : (
+                ' · Não assumida'
+              )}
             </p>
           </div>
         </div>
 
+        {podeAtender && (
         <div className="flex items-center gap-1 shrink-0">
           {d.situacao === 'pendente' && (
             <button type="button" className="tfd-btn tfd-btn-ghost tfd-btn--sm" onClick={() => setAssumir(true)}>
@@ -423,6 +418,7 @@ function DemandaCard({
             </button>
           )}
         </div>
+        )}
       </div>
 
       <div className="px-3 py-3 flex flex-col gap-3">
@@ -461,15 +457,17 @@ function DemandaCard({
               <button type="button" className="tfd-btn tfd-btn-ghost tfd-btn--sm" onClick={fecharAcao}>
                 Voltar
               </button>
-              <button
-                type="button"
-                className="tfd-btn tfd-btn-secondary tfd-btn--sm"
-                onClick={() => confirmar(true)}
-                title="Fecha a demanda e já abre o instrumento vinculado a ela."
-              >
-                <FileText size={13} />
-                {acao === 'concluir' ? 'Concluir e gerar instrumento' : 'Cancelar e gerar instrumento'}
-              </button>
+              {podeCriarInstrumento && (
+                <button
+                  type="button"
+                  className="tfd-btn tfd-btn-secondary tfd-btn--sm"
+                  onClick={() => confirmar(true)}
+                  title="Fecha a demanda e já abre o instrumento vinculado a ela."
+                >
+                  <FileText size={13} />
+                  {acao === 'concluir' ? 'Concluir e gerar instrumento' : 'Cancelar e gerar instrumento'}
+                </button>
+              )}
               <button type="button" className="tfd-btn tfd-btn-primary tfd-btn--sm" onClick={() => confirmar(false)}>
                 {acao === 'concluir' ? 'Concluir demanda' : 'Cancelar demanda'}
               </button>
@@ -482,7 +480,9 @@ function DemandaCard({
         )}
       </div>
 
-      <AssumirDemandaDrawer open={assumir} onClose={() => setAssumir(false)} demanda={d} />
+      {podeAtender && (
+        <AssumirDemandaDrawer open={assumir} onClose={() => setAssumir(false)} demanda={d} />
+      )}
     </div>
   );
 }

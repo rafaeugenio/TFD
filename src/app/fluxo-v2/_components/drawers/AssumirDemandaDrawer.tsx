@@ -1,14 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { UserCheck } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormSection from '@/shared/components/drawer/FormSection';
-import { usePermissions } from '@/shared/auth/PermissionsProvider';
 import { useToast } from '@/shared/components/toast/Toast';
 import { assumirDemanda } from '../../_state/servicoSocialStore';
+import { useProfissionaisServicoSocial } from '../../_state/useProfissionaisServicoSocial';
 import {
-  PROFISSIONAIS_SERVICO_SOCIAL,
   SETOR_ORIGEM_LABEL,
   type DemandaSocialMock,
 } from '@/core/mocks/servico-social-seed';
@@ -27,22 +26,21 @@ interface Props {
  * setor nem transfere responsabilidade do fluxo.
  */
 export default function AssumirDemandaDrawer({ open, onClose, demanda }: Props) {
-  const { user } = usePermissions();
   const toast = useToast();
 
-  /** As profissionais cadastradas mais quem está logado, para o protótipo
-   *  funcionar com qualquer usuário na validação presencial. */
-  const opcoes = useMemo(() => {
-    const nomes = PROFISSIONAIS_SERVICO_SOCIAL.map((p) => p.nome);
-    const eu = user?.nome_completo;
-    return eu && !nomes.includes(eu) ? [...nomes, eu] : nomes;
-  }, [user]);
+  /** Usuários com o perfil "Serviço Social" (PBI 16409, RN09). */
+  const { profissionais, isLoading, erro, demonstracao } = useProfissionaisServicoSocial(open);
+  const opcoes = profissionais.map((p) => p.nome);
 
-  const [profissional, setProfissional] = useState(opcoes[0] ?? '');
+  const [profissional, setProfissional] = useState('');
 
   useEffect(() => {
-    if (open) setProfissional(demanda.profissionalResponsavel ?? opcoes[0] ?? '');
-  }, [open, demanda.profissionalResponsavel, opcoes]);
+    if (!open) return;
+    const atual = demanda.profissionalResponsavel;
+    setProfissional(atual && opcoes.includes(atual) ? atual : opcoes[0] ?? '');
+    // `opcoes` muda de identidade a cada render; a chave estável é a lista de nomes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, demanda.profissionalResponsavel, opcoes.join('|')]);
 
   function confirmar() {
     if (!profissional) return;
@@ -93,6 +91,8 @@ export default function AssumirDemandaDrawer({ open, onClose, demanda }: Props) 
         <select
           value={profissional}
           onChange={(e) => setProfissional(e.target.value)}
+          disabled={isLoading || opcoes.length === 0}
+          aria-label="Profissional responsável"
           className="w-full text-[13px] px-3 outline-none"
           style={{
             height: 38,
@@ -102,10 +102,22 @@ export default function AssumirDemandaDrawer({ open, onClose, demanda }: Props) 
             color: '#1A1D2B',
           }}
         >
+          {isLoading && <option value="">Carregando profissionais...</option>}
+          {!isLoading && opcoes.length === 0 && <option value="">Nenhuma profissional disponível</option>}
           {opcoes.map((nome) => (
             <option key={nome} value={nome}>{nome}</option>
           ))}
         </select>
+        {erro && (
+          <p className="text-[12px] mt-1.5" role="alert" style={{ color: 'var(--tfd-status-danger)' }}>
+            {erro} Feche e abra o drawer para tentar de novo.
+          </p>
+        )}
+        {demonstracao && (
+          <p className="text-[12px] mt-1.5" style={{ color: '#94A3B8' }}>
+            Nomes de demonstração: ainda não há usuário com o perfil Serviço Social.
+          </p>
+        )}
       </FormSection>
 
       <p className="text-[12px] px-1" style={{ color: '#94A3B8' }}>

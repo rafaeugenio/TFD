@@ -8,6 +8,7 @@ import PageHeader from '@/shared/components/page-header/PageHeader';
 import StatsRow from '@/shared/components/stats-row/StatsRow';
 import Pagination from '@/shared/components/pagination/Pagination';
 import { useToast } from '@/shared/components/toast/Toast';
+import { usePermissions } from '@/shared/auth/PermissionsProvider';
 import SortableHeader from '@/shared/components/table/SortableHeader';
 import { useTableControls } from '@/shared/hooks/useTableControls';
 import { useCasasApoio } from '@/app/fluxo-v2/_state/servicoSocialStore';
@@ -38,6 +39,10 @@ function CasasApoioPage() {
   const router = useRouter();
   const toast = useToast();
   const casas = useCasasApoio();
+  const { can } = usePermissions();
+  const podeCriar = can('casa_apoio.criar');
+  const podeEditar = can('casa_apoio.editar');
+  const podeExcluir = can('casa_apoio.excluir');
 
   /* ---- Drawer state ---- */
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -61,7 +66,7 @@ function CasasApoioPage() {
   const editarParam = searchParams.get('editar');
   const editarHandled = useRef<string | null>(null);
   useEffect(() => {
-    if (editarParam && editarParam !== editarHandled.current) {
+    if (editarParam && editarParam !== editarHandled.current && podeEditar) {
       const casa = casas.find((c) => c.id === editarParam);
       if (!casa) return;
       editarHandled.current = editarParam;
@@ -69,7 +74,7 @@ function CasasApoioPage() {
       setDrawerOpen(true);
       router.replace('/casas-apoio', { scroll: false });
     }
-  }, [editarParam, casas, router]);
+  }, [editarParam, casas, router, podeEditar]);
 
   function handleOpenCreate() {
     setEditing(null);
@@ -89,10 +94,12 @@ function CasasApoioPage() {
         title="Casas de Apoio"
         subtitle="Gerenciamento das casas de apoio usadas nos encaminhamentos do Serviço Social"
         actions={
-          <button className="tfd-btn tfd-btn-primary" onClick={handleOpenCreate}>
-            <Plus size={16} />
-            Nova Casa de Apoio
-          </button>
+          podeCriar ? (
+            <button className="tfd-btn tfd-btn-primary" onClick={handleOpenCreate}>
+              <Plus size={16} />
+              Nova Casa de Apoio
+            </button>
+          ) : undefined
         }
       />
 
@@ -162,12 +169,16 @@ function CasasApoioPage() {
                     <td className="hidden xl:table-cell max-w-[220px] truncate" style={{ color: 'var(--tfd-text-secondary)' }}>{c.unidadeVinculadaNome || '—'}</td>
                     <td>
                       <div className="flex items-center gap-1">
-                        <button className="tfd-btn tfd-btn-ghost tfd-btn--icon-only" title="Editar" onClick={(e) => { e.stopPropagation(); handleOpenEdit(c); }}>
-                          <Pencil size={15} />
-                        </button>
-                        <button className="tfd-btn tfd-btn-ghost tfd-btn--icon-only" title="Excluir" style={{ color: '#DC2626' }} onClick={(e) => { e.stopPropagation(); setExcluindo(c); }}>
-                          <Trash2 size={15} />
-                        </button>
+                        {podeEditar && (
+                          <button className="tfd-btn tfd-btn-ghost tfd-btn--icon-only" title="Editar" aria-label={`Editar ${c.nome}`} onClick={(e) => { e.stopPropagation(); handleOpenEdit(c); }}>
+                            <Pencil size={15} />
+                          </button>
+                        )}
+                        {podeExcluir && (
+                          <button className="tfd-btn tfd-btn-ghost tfd-btn--icon-only" title="Excluir" aria-label={`Excluir ${c.nome}`} style={{ color: '#DC2626' }} onClick={(e) => { e.stopPropagation(); setExcluindo(c); }}>
+                            <Trash2 size={15} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FileText, Home, Lock, HeartHandshake } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormSection from '@/shared/components/drawer/FormSection';
@@ -44,7 +44,6 @@ interface Props {
 export default function NewInstrumentoDrawer({ open, onClose, s, demandas, demandaInicialId }: Props) {
   const { user } = usePermissions();
   const casas = useCasasApoio();
-  const casasAtivas = casas;
 
   const [demandaId, setDemandaId] = useState(demandaInicialId);
   const [tipo, setTipo] = useState<TipoInstrumento | ''>('');
@@ -59,15 +58,15 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demandas, deman
     if (open) setDemandaId(demandaInicialId);
   }, [open, demandaInicialId]);
 
-  // Escolher o tipo carrega o template correspondente. Trocar a casa de apoio
-  // recarrega também, mas nunca por cima de um texto que já foi editado.
+  // Escolher o tipo carrega o template correspondente. Trocar o tipo ou a
+  // casa de apoio recarrega também, mas nunca por cima de um texto que a
+  // profissional já editou (PBI 16406, RN07).
   useEffect(() => {
+    if (tocado) return;
     if (!tipo) {
       setConteudo('');
-      setTocado(false);
       return;
     }
-    if (tocado) return;
     setConteudo(
       montarTemplateInstrumento(tipo, {
         s,
@@ -102,6 +101,9 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demandas, deman
       autora: profissional,
       autoraId: user?.id,
       casaApoioId: tipoUsaCasaApoio(tipo) && casaId ? casaId : undefined,
+      solicitacaoNumero: s.numero,
+      pacienteNome: s.paciente.nome,
+      pacienteCpf: s.paciente.cpf,
     });
     reset();
     onClose();
@@ -167,10 +169,7 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demandas, deman
       >
         <select
           value={tipo}
-          onChange={(e) => {
-            setTipo(e.target.value as TipoInstrumento | '');
-            setTocado(false);
-          }}
+          onChange={(e) => setTipo(e.target.value as TipoInstrumento | '')}
           className="w-full text-[13px] px-3 outline-none"
           style={{
             height: 38,
@@ -197,10 +196,7 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demandas, deman
         >
           <select
             value={casaId}
-            onChange={(e) => {
-              setCasaId(e.target.value);
-              setTocado(false);
-            }}
+            onChange={(e) => setCasaId(e.target.value)}
             className="w-full text-[13px] px-3 outline-none"
             style={{
               height: 38,
@@ -211,7 +207,7 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demandas, deman
             }}
           >
             <option value="">Sem casa de apoio definida</option>
-            {casasAtivas.map((c) => (
+            {casas.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.nome}
                 {c.cidadeUf ? ` - ${c.cidadeUf}` : ''}
@@ -274,7 +270,7 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demandas, deman
                 <span className="block text-[12px] mt-0.5" style={{ color: '#64748B' }}>
                   O instrumento continua aparecendo na lista com tipo, data, autora e o
                   selo Sigiloso. Abrir e baixar o conteúdo fica restrito às profissionais
-                  do Serviço Social, inclusive para administradores e para a direção do TFD.
+                  do Serviço Social; administradores também não abrem.
                 </span>
               </span>
             </label>

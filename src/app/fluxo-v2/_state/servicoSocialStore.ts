@@ -250,6 +250,9 @@ export interface NovoInstrumentoInput {
   autora: string;
   autoraId?: string;
   casaApoioId?: string;
+  solicitacaoNumero?: string;
+  pacienteNome?: string;
+  pacienteCpf?: string;
 }
 
 export function criarInstrumento(input: NovoInstrumentoInput): InstrumentoSocialMock {
@@ -263,6 +266,9 @@ export function criarInstrumento(input: NovoInstrumentoInput): InstrumentoSocial
     autora: input.autora,
     autoraId: input.autoraId,
     casaApoioId: input.casaApoioId,
+    solicitacaoNumero: input.solicitacaoNumero,
+    pacienteNome: input.pacienteNome,
+    pacienteCpf: input.pacienteCpf,
     dataCriacao: nowIso(),
   };
   state = { ...state, instrumentos: [...state.instrumentos, novo] };

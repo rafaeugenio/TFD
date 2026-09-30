@@ -14,10 +14,7 @@ import EnviarParaSetorDrawer from '../_components/drawers/EnviarParaSetorDrawer'
 import AssumirDemandaDrawer from '../_components/drawers/AssumirDemandaDrawer';
 import NewInstrumentoDrawer from '../_components/drawers/NewInstrumentoDrawer';
 import { useFluxoV2State } from '../_state/FluxoV2Provider';
-import {
-  useServicoSocial,
-  contarInstrumentos,
-} from '../_state/servicoSocialStore';
+import { useServicoSocial } from '../_state/servicoSocialStore';
 import { tempoNoSetor } from '../_utils/tempoSetor';
 import { setorAtual, type SetorAcao } from '../_utils/lock';
 import { casaComFiltroRegiao, REGIAO_FILTRO_VAZIO, type RegiaoFiltroValue } from '../_utils/derivarRegional';
@@ -27,6 +24,7 @@ import PageHeader from '@/shared/components/page-header/PageHeader';
 import SortTh, { compareValues, nextSort, type SortDir } from '@/shared/components/sort-th/SortTh';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Can } from '@/shared/auth/Can';
+import { usePermissions } from '@/shared/auth/PermissionsProvider';
 import {
   SITUACAO_DEMANDA_LABEL,
   demandaEstaAberta,
@@ -76,7 +74,11 @@ type DrawerKind = 'instrumento' | 'assumir' | null;
 export default function ServicoSocialListPage() {
   const router = useRouter();
   const { solicitacoes, isLoading } = useFluxoV2State();
-  const { demandas } = useServicoSocial();
+  const { demandas, instrumentos } = useServicoSocial();
+  const { can } = usePermissions();
+  /** PBI 16409, RN09: as ações da equipe dependem do perfil Serviço Social. */
+  const podeAtender = can('acao.servico_social.atender');
+  const podeCriarInstrumento = can('instrumento_social.criar');
 
   const [drawer, setDrawer] = useState<{ kind: DrawerKind; sol: SolicitacaoMock | null; demanda: DemandaSocialMock | null }>({
     kind: null, sol: null, demanda: null,
@@ -127,13 +129,15 @@ export default function ServicoSocialListPage() {
     return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [demandas]);
 
+  /** Documentos do Serviço Social da solicitação, vinculados a demanda ou
+   *  avulsos (PBI 16409, CA01). */
   const totaisInstrumentos = useMemo(() => {
     const m = new Map<string, number>();
-    for (const [id, lista] of porSolicitacao) {
-      m.set(id, lista.reduce((acc, d) => acc + contarInstrumentos(d.id), 0));
+    for (const i of instrumentos) {
+      m.set(i.solicitacaoId, (m.get(i.solicitacaoId) ?? 0) + 1);
     }
     return m;
-  }, [porSolicitacao]);
+  }, [instrumentos]);
 
   const stats = useMemo(() => {
     const pendentes = demandas.filter((d) => d.situacao === 'pendente').length;
@@ -378,7 +382,7 @@ export default function ServicoSocialListPage() {
                           {SITUACAO_DEMANDA_LABEL[d.situacao]}
                         </StatusDot>
                         <div style={{ color: '#94A3B8', fontSize: 12 }}>
-                          Origem: {d.encaminhadoPor}
+                          Aberta por {d.encaminhadoPor}
                           {lista.length > 1 ? ` · ${lista.length} demandas` : ''}
                         </div>
                       </div>
@@ -416,7 +420,7 @@ export default function ServicoSocialListPage() {
                               const alvo = lista.find((x) => x.situacao === 'pendente');
                               if (alvo) setDrawer({ kind: 'assumir', sol: s, demanda: alvo });
                             },
-                            visivel: temPendente,
+                            visivel: temPendente && podeAtender,
                           },
                           {
                             key: 'instrumento' as const,
@@ -425,6 +429,7 @@ export default function ServicoSocialListPage() {
                               ? 'Criar instrumento'
                               : 'Criar instrumento na última demanda',
                             onClick: () => abrirInstrumento(s),
+                            visivel: podeCriarInstrumento,
                           },
                         ]}
                       />
@@ -463,7 +468,7 @@ export default function ServicoSocialListPage() {
         />
       )}
 
-      {drawer.demanda && drawer.kind === 'assumir' && (
+      {drawer.demanda && drawer.kind === 'assumir' && podeAtender && (
         <AssumirDemandaDrawer
           open
           onClose={fechar}
@@ -471,7 +476,7 @@ export default function ServicoSocialListPage() {
         />
       )}
 
-      {drawer.sol && drawer.demanda && drawer.kind === 'instrumento' && (
+      {drawer.sol && drawer.demanda && drawer.kind === 'instrumento' && podeCriarInstrumento && (
         <NewInstrumentoDrawer
           open={drawer.kind === 'instrumento'}
           onClose={fechar}
