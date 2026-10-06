@@ -8,22 +8,23 @@ type Props = {
   pageSize: number;
   page: number; // 1-based
   onPageChange: (page: number) => void;
-  /** Optional: enables the rows-per-page dropdown. */
+  /** Opcional: habilita o seletor de itens por página. */
   onPageSizeChange?: (size: number) => void;
-  /** Options for the pageSize dropdown. Default: [10, 25, 50, 100, 200]. */
+  /** Opções do seletor de itens por página. Padrão: [10, 25, 50, 100, 200]. */
   pageSizeOptions?: number[];
-  /** Singular label for the "records" count. Default: 'registros'. */
+  /** Nome dos registros no plural, usado em "Mostrando X a Y de N <rótulo>". Padrão: 'registros'. */
   recordLabel?: string;
 };
 
 const DEFAULT_OPTIONS = [10, 25, 50, 100, 200];
 
 /**
- * Paginação estilo Supabase — pill horizontal compacta com:
- *   ←  Page [N] of M  →     [N rows ▾]   12,345 registros
+ * Paginação padrão do sistema, em português:
+ *   Mostrando 1 a 10 de 52 pacientes        ←  Página [1] de 6  →   [10 por página ▾]
  *
- * Mantém retrocompatibilidade: page/pageSize/onPageChange seguem obrigatórios.
+ * API mantida: page/pageSize/onPageChange seguem obrigatórios.
  * Passe `onPageSizeChange` para habilitar o seletor de tamanho.
+ * `recordLabel` é o nome dos registros no plural (ex.: "pacientes").
  */
 export default function Pagination({
   total,
@@ -50,6 +51,10 @@ export default function Pagination({
     if (clamped !== safePage) onPageChange(clamped);
   };
 
+  const primeiro = (safePage - 1) * pageSize + 1;
+  const ultimo = Math.min(safePage * pageSize, total);
+  const forte = { color: 'var(--tfd-text-primary, #1E293B)', fontWeight: 600 } as const;
+
   return (
     <div
       className="flex items-center justify-between flex-wrap gap-3"
@@ -61,54 +66,60 @@ export default function Pagination({
         color: 'var(--tfd-text-secondary, #475569)',
       }}
     >
-      {/* Esquerda: navegação por página */}
-      <div className="flex items-center gap-2">
-        <NavButton
-          disabled={safePage <= 1}
-          onClick={() => onPageChange(safePage - 1)}
-          aria-label="Página anterior"
-        >
-          <ChevronLeft size={16} />
-        </NavButton>
+      {/* Esquerda: faixa exibida e total */}
+      <span role="status" aria-live="polite" style={{ fontSize: 13 }}>
+        Mostrando <strong style={forte}>{primeiro.toLocaleString('pt-BR')}</strong> a{' '}
+        <strong style={forte}>{ultimo.toLocaleString('pt-BR')}</strong> de{' '}
+        <strong style={forte}>{total.toLocaleString('pt-BR')}</strong> {recordLabel}
+      </span>
 
-        <span style={{ fontSize: 13 }}>Page</span>
-        <input
-          type="text"
-          inputMode="numeric"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value.replace(/[^\d]/g, ''))}
-          onBlur={commitDraft}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.currentTarget.blur(); }
-            if (e.key === 'Escape') { setDraft(String(safePage)); e.currentTarget.blur(); }
-          }}
-          style={{
-            width: Math.max(48, String(totalPages).length * 12 + 24),
-            height: 30,
-            textAlign: 'center',
-            borderRadius: 6,
-            border: '1px solid var(--tfd-surface-border, #E2E8F0)',
-            background: 'white',
-            color: 'var(--tfd-text-primary, #1E293B)',
-            fontSize: 13,
-            fontWeight: 600,
-            padding: '0 6px',
-          }}
-          aria-label="Página atual"
-        />
-        <span style={{ fontSize: 13 }}>of <strong style={{ color: 'var(--tfd-text-primary, #1E293B)' }}>{totalPages.toLocaleString('pt-BR')}</strong></span>
+      {/* Direita: navegação por página e tamanho da página */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <NavButton
+            disabled={safePage <= 1}
+            onClick={() => onPageChange(safePage - 1)}
+            aria-label="Página anterior"
+          >
+            <ChevronLeft size={16} />
+          </NavButton>
 
-        <NavButton
-          disabled={safePage >= totalPages}
-          onClick={() => onPageChange(safePage + 1)}
-          aria-label="Próxima página"
-        >
-          <ChevronRight size={16} />
-        </NavButton>
-      </div>
+          <span style={{ fontSize: 13 }}>Página</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value.replace(/[^\d]/g, ''))}
+            onBlur={commitDraft}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.currentTarget.blur(); }
+              if (e.key === 'Escape') { setDraft(String(safePage)); e.currentTarget.blur(); }
+            }}
+            style={{
+              width: Math.max(48, String(totalPages).length * 12 + 24),
+              height: 30,
+              textAlign: 'center',
+              borderRadius: 6,
+              border: '1px solid var(--tfd-surface-border, #E2E8F0)',
+              background: 'white',
+              color: 'var(--tfd-text-primary, #1E293B)',
+              fontSize: 13,
+              fontWeight: 600,
+              padding: '0 6px',
+            }}
+            aria-label="Página atual"
+          />
+          <span style={{ fontSize: 13 }}>de <strong style={forte}>{totalPages.toLocaleString('pt-BR')}</strong></span>
 
-      {/* Direita: tamanho da página + total */}
-      <div className="flex items-center gap-3">
+          <NavButton
+            disabled={safePage >= totalPages}
+            onClick={() => onPageChange(safePage + 1)}
+            aria-label="Próxima página"
+          >
+            <ChevronRight size={16} />
+          </NavButton>
+        </div>
+
         {onPageSizeChange && (
           <select
             value={pageSize}
@@ -133,17 +144,10 @@ export default function Pagination({
             aria-label="Itens por página"
           >
             {pageSizeOptions.map((opt) => (
-              <option key={opt} value={opt}>{opt} rows</option>
+              <option key={opt} value={opt}>{opt} por página</option>
             ))}
           </select>
         )}
-
-        <span style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
-          <strong style={{ color: 'var(--tfd-text-primary, #1E293B)', fontWeight: 600 }}>
-            {total.toLocaleString('pt-BR')}
-          </strong>{' '}
-          {recordLabel}
-        </span>
       </div>
     </div>
   );

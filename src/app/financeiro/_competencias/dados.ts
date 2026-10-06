@@ -1,12 +1,15 @@
 'use client';
 
 /* -------------------------------------------------------------------------- */
-/*  Linhas do Faturamento e do BPA, com as mesmas consultas e regras das      */
-/*  telas de Relatórios que existiam antes (Faturamento e BPA), mas sem       */
-/*  filtro de mês: a competência escolhe as linhas de qualquer mês.           */
+/*  Linhas do Faturamento e do BPA. Elegibilidade = os relatórios fixos que   */
+/*  existiam em Relatórios (_RelatorioFaturamento e _RelatorioRPB): mesmas    */
+/*  consultas, mesmos critérios e o mesmo campo de data para situar a linha   */
+/*  no mês, mas sem filtro de mês (a competência escolhe de qualquer mês).    */
+/*  Linha com valor zero entra e aparece com R$ 0,00.                         */
 /* -------------------------------------------------------------------------- */
 
 import { createClient } from '@/lib/supabase/client';
+import { MES_LABEL } from '@/app/relatorios/_shared/format';
 import {
   calcularQuantidadePassagem,
   resolveSigtapAjudaCusto,
@@ -30,8 +33,11 @@ export interface LinhaFaturamento {
   id: string;
   solicitacaoId: string;
   processo: string;
-  /** Data em que a agência emitiu o bilhete; define o mês de referência. */
+  /** Data exibida como emissão do bilhete (emissão ou, sem ela, cadastro). */
   dataEmissao: string;
+  /** Mês de referência (AAAA-MM): o mesmo campo que o relatório antigo de
+   *  Faturamento usava para listar a linha no mês (data de cadastro). */
+  mesReferencia: string;
   passageiro: string;
   beneficiario: Beneficiario;
   tipo: 'IDA' | 'VOLTA' | 'IDA_E_VOLTA';
@@ -57,7 +63,7 @@ export async function carregarFaturamento(): Promise<LinhaFaturamento[]> {
     .order('created_at', { ascending: false });
   if (error || !data) throw new ErroCarregamento('faturamento', error);
   const tipoDe = (t: string): LinhaFaturamento['tipo'] => (t === 'RETORNO' || t === 'VOLTA' ? 'VOLTA' : t === 'IDA_E_VOLTA' ? 'IDA_E_VOLTA' : 'IDA');
-  return (data as unknown as Array<Record<string, unknown>>).map((r) => {
+  return (data as unknown as Array<Record<string, unknown>>).map((r): LinhaFaturamento => {
     const sol = r.solicitacoes as Record<string, unknown> | null;
     const pac = sol?.pacientes as Record<string, unknown> | null;
     return {
@@ -66,6 +72,7 @@ export async function carregarFaturamento(): Promise<LinhaFaturamento[]> {
       solicitacaoId: String(r.solicitacao_id),
       processo: (sol?.numero_processo as string) ?? '',
       dataEmissao: String((r.emitido_em as string) ?? (r.created_at as string) ?? '').slice(0, 10),
+      mesReferencia: String((r.created_at as string) ?? '').slice(0, 7),
       passageiro: (pac?.nome_completo as string) ?? 'Paciente',
       beneficiario: 'paciente',
       tipo: tipoDe(String(r.tipo ?? '')),
@@ -77,7 +84,7 @@ export async function carregarFaturamento(): Promise<LinhaFaturamento[]> {
       valorReembolso: Number(r.valor_reembolso) || 0,
       dataReembolso: (r.data_reembolso as string) ?? null,
     };
-  });
+  }).filter((l) => !!l.mesReferencia); // o relatório antigo nunca listava viagem sem data
 }
 
 /* ── BPA ─────────────────────────────────────────────────────────────────── */
@@ -93,6 +100,8 @@ export interface LinhaBpa {
   trecho: 'ida' | 'volta' | null;
   /** Início da ajuda ou data da viagem; define o mês de referência. */
   dataAtendimento: string;
+  /** Mês de referência (AAAA-MM), igual ao filtro do relatório antigo de BPA. */
+  mesReferencia: string;
   documento: string;
   nome: string;
   beneficiario: Beneficiario;
@@ -193,6 +202,7 @@ export async function carregarBpa(): Promise<LinhaBpa[]> {
       processo: (sol?.numero_processo as string) ?? '',
       trecho: null,
       dataAtendimento: String(r.data_inicio ?? ''),
+      mesReferencia: String(r.data_inicio ?? '').slice(0, 7),
       ...pessoaBase(pac, a),
       beneficiario,
       cid: (sol?.cid10_principal as string) ?? null,
@@ -227,6 +237,7 @@ export async function carregarBpa(): Promise<LinhaBpa[]> {
       processo: (sol?.numero_processo as string) ?? '',
       trecho,
       dataAtendimento: String(v.data_embarque_prevista ?? ''),
+      mesReferencia: String(v.data_embarque_prevista ?? '').slice(0, 7),
       ...pessoaBase(pac, a),
       beneficiario,
       cid: (sol?.cid10_principal as string) ?? null,
@@ -241,7 +252,8 @@ export async function carregarBpa(): Promise<LinhaBpa[]> {
     };
   });
 
-  return [...linhasAjuda, ...linhasDesloc];
+  // Sem data o relatório antigo não listava a linha em mês nenhum.
+  return [...linhasAjuda, ...linhasDesloc].filter((l) => !!l.mesReferencia);
 }
 
 /** Valor unitário de cada código SIGTAP presente nas linhas. */
@@ -286,5 +298,20 @@ export async function marcarLancado(l: LinhaBpa, lancado: boolean) {
   }
 }
 
-/** Mês de referência da linha (AAAA-MM). */
-export const mesDaLinha = (iso: string) => iso.slice(0, 7);
+/** Valores SIGTAP só dos códigos usados nas linhas (vai na cópia do fechamento). */
+export function sigtapDasLinhas(linhas: LinhaBpa[], sig: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const l of linhas) for (const c of [l.codigo, l.codigoPernoite, l.codigoSemPernoite]) if (c) out[c] = sig[c] ?? 0;
+  return out;
+}
+
+/** "agosto/2026" a partir de AAAA-MM. */
+export const nomeMesCurto = (aaaamm: string) => {
+  const [a, m] = aaaamm.split('-').map(Number);
+  return m ? `${MES_LABEL[m - 1]?.toLowerCase()}/${a}` : '';
+};
+
+/** Aviso permanente da linha cujo mês de referência difere do mês da
+ *  competência (vazio quando está no mês). Vai também na cópia do fechamento. */
+export const avisoPeriodo = (mesReferencia: string, mesCompetencia: string) =>
+  mesReferencia && mesCompetencia && mesReferencia !== mesCompetencia ? `Fora do período: ref. ${nomeMesCurto(mesReferencia)}` : '';

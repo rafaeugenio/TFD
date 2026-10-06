@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import Pagination from '@/shared/components/pagination/Pagination';
 
 export interface Coluna<T> {
   key: string;
@@ -23,6 +23,8 @@ interface Props<T> {
   destaque?: (l: T) => React.CSSProperties | undefined;
   rodape?: React.ReactNode;
   porPaginaInicial?: number;
+  /** Nome dos registros no plural, na paginação. */
+  rotuloRegistros?: string;
 }
 
 const th: React.CSSProperties = {
@@ -31,8 +33,8 @@ const th: React.CSSProperties = {
 };
 
 /** Tabela no padrão das listagens do sistema: cabeçalho em caixa alta,
- *  células de 13px, seleção opcional e paginação "Mostrando". */
-export default function Tabela<T>({ colunas, linhas, chave, vazio, selecionadas, onSelecionar, rotuloSelecao = 'Selecionar', destaque, rodape, porPaginaInicial = 10 }: Props<T>) {
+ *  células de 13px, seleção opcional e a paginação padrão do sistema. */
+export default function Tabela<T>({ colunas, linhas, chave, vazio, selecionadas, onSelecionar, rotuloSelecao = 'Selecionar', destaque, rodape, porPaginaInicial = 10, rotuloRegistros = 'linhas' }: Props<T>) {
   const [pagina, setPagina] = useState(1);
   const [porPagina, setPorPagina] = useState(porPaginaInicial);
   const [ultimo, setUltimo] = useState(linhas);
@@ -40,22 +42,10 @@ export default function Tabela<T>({ colunas, linhas, chave, vazio, selecionadas,
     setUltimo(linhas);
     setPagina(1);
   }
-  const paginas = Math.max(1, Math.ceil(linhas.length / porPagina));
   const visiveis = linhas.slice((pagina - 1) * porPagina, pagina * porPagina);
   const comSelecao = !!selecionadas && !!onSelecionar;
   const todasMarcadas = comSelecao && linhas.length > 0 && linhas.every((l) => selecionadas!.has(chave(l)));
   const algumaMarcada = comSelecao && linhas.some((l) => selecionadas!.has(chave(l)));
-
-  const botao = (conteudo: React.ReactNode, destino: number, rotulo: string, desativado: boolean, atual = false) => (
-    <button
-      type="button" aria-label={rotulo} aria-current={atual ? 'page' : undefined} disabled={desativado} onClick={() => setPagina(destino)}
-      className="inline-flex items-center justify-center enabled:hover:bg-[var(--tfd-100)]"
-      style={{ width: 34, height: 34, borderRadius: '50%', fontSize: 14, color: atual ? 'var(--tfd-blue-700)' : desativado ? 'var(--tfd-300)' : 'var(--tfd-text-muted)', background: atual ? 'var(--tfd-blue-50)' : undefined }}
-    >
-      {conteudo}
-    </button>
-  );
-  const inicio = Math.max(1, Math.min(pagina - 2, paginas - 4));
 
   return (
     <div>
@@ -102,21 +92,15 @@ export default function Tabela<T>({ colunas, linhas, chave, vazio, selecionadas,
           {rodape && linhas.length > 0 && <tfoot>{rodape}</tfoot>}
         </table>
       </div>
-      <footer className="flex flex-wrap items-center gap-2" style={{ padding: '10px 16px', background: 'var(--tfd-50)', borderTop: '1px solid var(--tfd-surface-border)', fontSize: 14, color: 'var(--tfd-text-secondary)' }}>
-        <span>
-          Mostrando {linhas.length ? (pagina - 1) * porPagina + 1 : 0} a {Math.min(pagina * porPagina, linhas.length)} de {linhas.length} {linhas.length === 1 ? 'linha' : 'linhas'}
-        </span>
-        <span className="flex items-center gap-0.5">
-          {botao(<ChevronsLeft size={15} />, 1, 'Primeira página', pagina <= 1)}
-          {botao(<ChevronLeft size={15} />, pagina - 1, 'Página anterior', pagina <= 1)}
-          {Array.from({ length: Math.min(5, paginas) }, (_, i) => inicio + i).map((n) => <span key={n}>{botao(n, n, `Página ${n}`, false, n === pagina)}</span>)}
-          {botao(<ChevronRight size={15} />, pagina + 1, 'Próxima página', pagina >= paginas)}
-          {botao(<ChevronsRight size={15} />, paginas, 'Última página', pagina >= paginas)}
-        </span>
-        <select aria-label="Linhas por página" value={porPagina} onChange={(e) => { setPorPagina(Number(e.target.value)); setPagina(1); }} style={{ height: 34, padding: '0 8px', border: '1px solid var(--tfd-300)', borderRadius: 6, background: 'white', fontSize: 14 }}>
-          {[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
-        </select>
-      </footer>
+      <Pagination
+        total={linhas.length}
+        page={pagina}
+        pageSize={porPagina}
+        onPageChange={setPagina}
+        onPageSizeChange={setPorPagina}
+        pageSizeOptions={[10, 25, 50, 100]}
+        recordLabel={rotuloRegistros}
+      />
     </div>
   );
 }

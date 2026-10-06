@@ -1,12 +1,12 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { CalendarDays, ClipboardList, Plus, Search } from 'lucide-react';
+import { AlertTriangle, CalendarDays, ClipboardList, Plus, Search } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MES_LABEL, fmtBRL } from '@/app/relatorios/_shared/format';
 import { valorBpa, type LinhaBpa, type LinhaFaturamento, type ProcedimentoBpa } from '../dados';
-import type { Frente } from '../store';
+import { MENSAGEM_CONFLITO, type Frente, type Resultado } from '../store';
 import ErroLinhas from './ErroLinhas';
 import Tabela from './Tabela';
 import { colunasBpaAjuda, colunasBpaDeslocamento, colunasFaturamento } from './colunas';
@@ -27,7 +27,8 @@ interface Props {
   erro: boolean;
   onTentarNovamente: () => void;
   onVer: (solicitacaoId: string) => void;
-  onIncluir: (chaves: string[], detalhe: string) => void;
+  /** Grava a inclusão; recusa se a linha entrou em outra competência ou a aba foi fechada. */
+  onIncluir: (chaves: string[], detalhe: string) => Resultado;
 }
 
 const rotulo: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--tfd-text-muted)', marginBottom: 6 };
@@ -45,15 +46,15 @@ export default function AdicionarLinhas(p: Props) {
   const [mes, setMes] = useState('');
   const [procedimento, setProcedimento] = useState<ProcedimentoBpa>('ajuda_custo');
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
+  const [conflito, setConflito] = useState<string | null>(null);
 
   const base = p.frente === 'faturamento' ? p.disponiveisFaturamento : p.disponiveisBpa.filter((l) => l.procedimento === procedimento);
-  const dataDe = (l: LinhaFaturamento | LinhaBpa) => ('dataEmissao' in l ? l.dataEmissao : l.dataAtendimento);
-  const meses = useMemo(() => [...new Set(base.map((l) => dataDe(l).slice(0, 7)).filter(Boolean))].sort().reverse(), [base]);
+  const meses = useMemo(() => [...new Set(base.map((l) => l.mesReferencia).filter(Boolean))].sort().reverse(), [base]);
 
   const filtradas = useMemo(() => {
     const t = norm(busca.trim());
     return base.filter((l) => {
-      if (mes && dataDe(l).slice(0, 7) !== mes) return false;
+      if (mes && l.mesReferencia !== mes) return false;
       if (!t) return true;
       const texto = 'passageiro' in l ? `${l.passageiro} ${l.processo}` : `${l.nome} ${l.processo} ${l.documento}`;
       return norm(texto).includes(t);
@@ -70,14 +71,17 @@ export default function AdicionarLinhas(p: Props) {
   const todasDisponiveis = p.frente === 'faturamento' ? p.disponiveisFaturamento : p.disponiveisBpa;
   const escolhidas = todasDisponiveis.filter((l) => selecionadas.has(l.chave));
   const valorEscolhido = escolhidas.reduce((s, l) => s + ('passageiro' in l ? l.valor : valorBpa(l, p.sig)), 0);
-  const outrosMeses = escolhidas.filter((l) => dataDe(l).slice(0, 7) !== p.mesCompetencia).length;
+  const outrosMeses = escolhidas.filter((l) => l.mesReferencia !== p.mesCompetencia).length;
 
-  const fechar = () => { setSelecionadas(new Set()); setBusca(''); setMes(''); p.onClose(); };
+  const fechar = () => { setSelecionadas(new Set()); setBusca(''); setMes(''); setConflito(null); p.onClose(); };
   const incluir = () => {
     // Histórico registra os processos afetados, nas duas abas.
     const processos = [...new Set(escolhidas.map((l) => l.processo).filter(Boolean))];
-    p.onIncluir(escolhidas.map((l) => l.chave), processos.length ? `Processos: ${processos.join(', ')}` : '');
-    fechar();
+    const r = p.onIncluir(escolhidas.map((l) => l.chave), processos.length ? `Processos: ${processos.join(', ')}` : '');
+    if (r.ok) { fechar(); return; }
+    // Outra pessoa incluiu a linha ou fechou a aba: recusa e mantém a tela aberta.
+    setConflito(MENSAGEM_CONFLITO[r.conflito]);
+    setSelecionadas(new Set());
   };
 
   const opcoes = { mesCompetencia: p.mesCompetencia, onVer: p.onVer };
@@ -99,6 +103,11 @@ export default function AdicionarLinhas(p: Props) {
             {selecionadas.size > 0 && <> · {fmtBRL(valorEscolhido)}</>}
             {outrosMeses > 0 && <span style={{ color: 'var(--tfd-status-caution-accent)' }}> · {outrosMeses} de outro mês</span>}
           </span>
+          {conflito && (
+            <p role="alert" className="flex items-center gap-2 w-full" style={{ padding: '8px 12px', borderRadius: 6, background: 'var(--tfd-danger-bg)', color: 'var(--tfd-status-danger)', fontSize: 13.5 }}>
+              <AlertTriangle size={15} /> {conflito}
+            </p>
+          )}
           <span className="flex gap-2">
             {selecionadas.size > 0 && <button type="button" className="tfd-btn tfd-btn-ghost" onClick={() => setSelecionadas(new Set())}>Limpar seleção</button>}
             <button type="button" className="tfd-btn tfd-btn-ghost" onClick={fechar}>Cancelar</button>
@@ -127,7 +136,7 @@ export default function AdicionarLinhas(p: Props) {
           </span>
         </label>
         <label>
-          <span style={rotulo}><CalendarDays size={12} /> {p.frente === 'faturamento' ? 'Mês da emissão' : 'Mês do atendimento'}</span>
+          <span style={rotulo}><CalendarDays size={12} /> Mês de referência</span>
           <select value={mes} onChange={(e) => setMes(e.target.value)} style={{ ...campo, minWidth: 200 }}>
             <option value="">Todos os meses</option>
             {meses.map((m) => <option key={m} value={m}>{nomeMes(m)}</option>)}
@@ -171,7 +180,7 @@ export default function AdicionarLinhas(p: Props) {
         )}
       </div>
       <p className="mt-2" style={{ fontSize: 12.5, color: 'var(--tfd-text-muted)' }}>
-        Linhas de outro mês podem entrar nesta competência (por exemplo, um lançamento atrasado). Elas aparecem com o mês de origem em destaque.
+        Aparecem as mesmas linhas que os relatórios de {tituloFrente} listavam, inclusive as de valor zero (R$ 0,00). Linhas de outro mês podem entrar nesta competência (por exemplo, um lançamento atrasado) e ficam com o selo &ldquo;Fora do período&rdquo;.
       </p>
     </Drawer>
   );

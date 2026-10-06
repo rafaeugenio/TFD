@@ -2,15 +2,15 @@
 
 import { ArrowRightLeft, Eye, Trash2 } from 'lucide-react';
 import { TipoBeneficiarioBadge, TipoPercursoBadge } from '@/app/relatorios/_shared/ReportTable';
-import { fmtBRL, fmtDataBR, MES_LABEL } from '@/app/relatorios/_shared/format';
-import { valorBpa, type LinhaBpa, type LinhaFaturamento } from '../dados';
+import { fmtBRL, fmtDataBR } from '@/app/relatorios/_shared/format';
+import { avisoPeriodo, valorBpa, type LinhaBpa, type LinhaFaturamento } from '../dados';
 import type { Coluna } from './Tabela';
 
 const mono: React.CSSProperties = { fontFamily: 'var(--tfd-mono)' };
 const apoio: React.CSSProperties = { fontSize: 11.5, color: 'var(--tfd-text-muted)' };
 
 export interface OpcoesColunas {
-  /** Mês da competência (AAAA-MM): linhas de outro mês ganham um aviso. */
+  /** Mês da competência (AAAA-MM): linhas de outro mês ganham o selo "Fora do período". */
   mesCompetencia?: string;
   onVer: (solicitacaoId: string) => void;
   /** Remover da competência (só com a frente aberta). */
@@ -19,12 +19,13 @@ export interface OpcoesColunas {
   competenciaDe?: (chave: string) => string | undefined;
 }
 
-function OutroMes({ iso, mesCompetencia }: { iso: string; mesCompetencia?: string }) {
-  if (!mesCompetencia || !iso || iso.slice(0, 7) === mesCompetencia) return null;
-  const [a, m] = iso.slice(0, 7).split('-').map(Number);
+/** Selo permanente de linha fora do mês da competência (ex.: lançamento atrasado). */
+function ForaDoPeriodo({ mesReferencia, mesCompetencia }: { mesReferencia: string; mesCompetencia?: string }) {
+  const aviso = mesCompetencia ? avisoPeriodo(mesReferencia, mesCompetencia) : '';
+  if (!aviso) return null;
   return (
-    <span className="block" title="Linha de outro mês. Pode entrar nesta competência (ex.: lançamento atrasado)." style={{ fontSize: 11, color: '#B45309', marginTop: 2 }}>
-      de {MES_LABEL[m - 1]?.toLowerCase()}/{a}
+    <span className="tfd-tag tfd-tag--warning" style={{ display: 'flex', width: 'fit-content', marginTop: 4, fontSize: 11, padding: '2px 8px' }}>
+      {aviso}
     </span>
   );
 }
@@ -91,7 +92,7 @@ export function colunasFaturamento(o: OpcoesColunas): Coluna<LinhaFaturamento>[]
     { key: 'processo', header: 'Processo', render: (l) => <span style={{ ...mono, whiteSpace: 'nowrap' }}>{l.processo || 'Sem número'}</span> },
     {
       key: 'emissao', header: 'Data emissão',
-      render: (l) => (<><span style={{ whiteSpace: 'nowrap' }}>{fmtDataBR(l.dataEmissao)}</span><OutroMes iso={l.dataEmissao} mesCompetencia={o.mesCompetencia} /></>),
+      render: (l) => (<><span style={{ whiteSpace: 'nowrap' }}>{fmtDataBR(l.dataEmissao)}</span><ForaDoPeriodo mesReferencia={l.mesReferencia} mesCompetencia={o.mesCompetencia} /></>),
     },
     { key: 'passageiro', header: 'Passageiro', render: (l) => <span className="inline-flex items-center gap-1.5"><TipoBeneficiarioBadge tipo={l.beneficiario} /><span style={{ fontWeight: 500 }}>{l.passageiro}</span></span> },
     { key: 'tipo', header: 'Tipo', render: (l) => <TipoPercursoBadge tipo={l.tipo} /> },
@@ -113,7 +114,7 @@ export function colunasBpaAjuda(o: OpcoesColunas, sig: Record<string, number>): 
     { key: 'pessoa', header: 'Pessoa', render: (l) => <Pessoa l={l} /> },
     { key: 'contato', header: 'Contato', render: (l) => <Contato l={l} /> },
     { key: 'endereco', header: 'Endereço', render: (l) => <Endereco l={l} /> },
-    { key: 'inicio', header: 'Início ajuda', render: (l) => (<><span style={{ ...mono, whiteSpace: 'nowrap' }}>{fmtDataBR(l.dataAtendimento)}</span><OutroMes iso={l.dataAtendimento} mesCompetencia={o.mesCompetencia} /></>) },
+    { key: 'inicio', header: 'Início ajuda', render: (l) => (<><span style={{ ...mono, whiteSpace: 'nowrap' }}>{fmtDataBR(l.dataAtendimento)}</span><ForaDoPeriodo mesReferencia={l.mesReferencia} mesCompetencia={o.mesCompetencia} /></>) },
     { key: 'cid', header: 'CID', render: (l) => <span style={mono}>{l.cid || 'Sem CID'}</span> },
     { key: 'com', header: 'Proced. c/ pernoite', render: (l) => <Procedimento codigo={l.codigoPernoite} descricao={l.descricaoPernoite} qtd={l.qtdPernoite} valor={l.codigoPernoite && l.qtdPernoite ? (sig[l.codigoPernoite] ?? 0) * l.qtdPernoite : null} /> },
     { key: 'sem', header: 'Proced. s/ pernoite', render: (l) => <Procedimento codigo={l.codigoSemPernoite} descricao={l.descricaoSemPernoite} qtd={l.qtdSemPernoite} valor={l.codigoSemPernoite && l.qtdSemPernoite ? (sig[l.codigoSemPernoite] ?? 0) * l.qtdSemPernoite : null} /> },
@@ -129,7 +130,7 @@ export function colunasBpaDeslocamento(o: OpcoesColunas, sig: Record<string, num
     { key: 'pessoa', header: 'Pessoa', render: (l) => <Pessoa l={l} /> },
     { key: 'contato', header: 'Contato', render: (l) => <Contato l={l} /> },
     { key: 'endereco', header: 'Endereço', render: (l) => <Endereco l={l} /> },
-    { key: 'dt', header: 'Dt. viagem', render: (l) => (<><span style={{ ...mono, whiteSpace: 'nowrap' }}>{fmtDataBR(l.dataAtendimento)}</span><OutroMes iso={l.dataAtendimento} mesCompetencia={o.mesCompetencia} /></>) },
+    { key: 'dt', header: 'Dt. viagem', render: (l) => (<><span style={{ ...mono, whiteSpace: 'nowrap' }}>{fmtDataBR(l.dataAtendimento)}</span><ForaDoPeriodo mesReferencia={l.mesReferencia} mesCompetencia={o.mesCompetencia} /></>) },
     {
       key: 'rota', header: 'Rota',
       render: (l) => (

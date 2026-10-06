@@ -9,7 +9,7 @@ import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MES_LABEL } from '@/app/relatorios/_shared/format';
-import { abrirCompetencia, competenciaCompleta, type Competencia, type Frente } from '../store';
+import { abrirCompetencia, competenciaCompleta, quantidadeLinhas, type Competencia, type Frente } from '../store';
 import { nomeCompetencia } from './Competencia';
 
 const cartao: React.CSSProperties = { background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8, boxShadow: 'var(--tfd-shadow-sm)' };
@@ -20,12 +20,14 @@ const td: React.CSSProperties = { padding: '12.6px 12px', fontSize: 13, color: '
 
 function Situacao({ c, frente }: { c: Competencia; frente: Frente }) {
   const f = c.frentes[frente];
+  // Fechada conta as linhas da cópia do fechamento; aberta, as atuais.
+  const n = quantidadeLinhas(f);
   return (
     <span className="inline-flex items-center gap-2" style={{ whiteSpace: 'nowrap' }}>
       {f.status === 'aberta'
         ? <span className="tfd-badge tfd-badge--success">Aberta</span>
         : <span className="tfd-badge inline-flex items-center gap-1" style={{ background: 'var(--tfd-100)', color: 'var(--tfd-600)' }}><Lock size={10} /> Fechada</span>}
-      <span style={{ color: 'var(--tfd-text-secondary)' }}>{f.itens.length} {f.itens.length === 1 ? 'linha' : 'linhas'}</span>
+      <span style={{ color: 'var(--tfd-text-secondary)' }}>{n} {n === 1 ? 'linha' : 'linhas'}</span>
       {f.reaberturas > 0 && <span style={{ fontSize: 12, color: 'var(--tfd-status-caution-accent)' }}>reaberta {f.reaberturas}x</span>}
     </span>
   );
