@@ -257,8 +257,8 @@ export default function Detalhe({ relatorio, secoesIniciais, base, carregando, a
         </div>
       )}
 
-      <div className={personalizar ? 'grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px] items-start' : ''}>
-        <div className="min-w-0 flex flex-col gap-5">
+      <div className="rel-layout">
+        <div className="rel-conteudo flex flex-col gap-5">
           {/* Barra de consulta */}
           {config && assunto && (
             <section aria-label="Ajustar a consulta" style={cartao}>
@@ -354,10 +354,12 @@ export default function Detalhe({ relatorio, secoesIniciais, base, carregando, a
           )}
         </div>
 
-        {personalizar && (
+        <div className="rel-painel-wrap" data-aberto={personalizar}>
+          <div className="rel-painel-clip">
           <aside
             id={painelId} aria-label="Personalizar o relatório"
-            className="max-xl:order-first xl:sticky xl:top-4 xl:overflow-y-auto"
+            className="rel-painel xl:overflow-y-auto"
+            inert={!personalizar} aria-hidden={!personalizar}
             style={{ ...cartao, padding: 16, maxHeight: 'calc(100vh - 32px)' }}
           >
             <div className="flex items-center justify-between gap-2 mb-4">
@@ -375,7 +377,8 @@ export default function Detalhe({ relatorio, secoesIniciais, base, carregando, a
               onRemoverPendencias={aplicarRemocao}
             />
           </aside>
-        )}
+          </div>
+        </div>
       </div>
 
       {relatorio && (

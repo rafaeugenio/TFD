@@ -970,3 +970,43 @@ body {
   body { @apply bg-background text-foreground; }
   html { @apply font-sans; }
 }
+
+/* Construtor de relatórios: painel Personalizar abre e fecha animando a
+   largura (desktop) ou a altura (telas estreitas); o conteúdo ao lado
+   acompanha. Sem animação com prefers-reduced-motion. */
+.rel-layout { display: flex; flex-direction: column; }
+.rel-layout > .rel-conteudo { min-width: 0; flex: 1 1 auto; }
+.rel-painel-wrap {
+  order: -1;
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-bottom: 0;
+  transition: grid-template-rows 400ms cubic-bezier(0.4, 0, 0.2, 1), margin 400ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.rel-painel-wrap[data-aberto='true'] { grid-template-rows: 1fr; margin-bottom: 20px; }
+.rel-painel-wrap > .rel-painel-clip { min-height: 0; overflow: hidden; }
+.rel-painel {
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 280ms var(--tfd-ease-out), transform 400ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.rel-painel-wrap[data-aberto='true'] .rel-painel { opacity: 1; transform: none; transition-delay: 80ms; }
+@media (min-width: 1280px) {
+  .rel-layout { flex-direction: row; align-items: flex-start; }
+  .rel-painel-wrap {
+    order: 0;
+    display: block;
+    flex: 0 0 auto;
+    width: 0;
+    margin: 0;
+    position: sticky;
+    top: 16px;
+    transition: width 400ms cubic-bezier(0.4, 0, 0.2, 1), margin 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .rel-painel-wrap[data-aberto='true'] { width: 340px; margin: 0 0 0 20px; }
+  .rel-painel-wrap > .rel-painel-clip { width: 100%; }
+  .rel-painel { width: 340px; transform: translateX(24px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rel-painel-wrap, .rel-painel { transition: none !important; }
+}
