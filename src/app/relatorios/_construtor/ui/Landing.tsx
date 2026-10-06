@@ -12,14 +12,14 @@ import { assuntoPorId } from '../assuntos';
 import { nomePeriodo } from '../periodo';
 import { excluirRelatorio } from '../salvos';
 import type { RelatorioSalvo } from '../tipos';
-import { C } from './Etapas';
+import { C } from './estilo';
 import { cartao } from './Previa';
 
 const normalizar = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /**
  * Entrada de Relatórios: só os relatórios que o usuário criou. Criar um novo
- * é o único caminho para o cadastro em etapas. Cada linha abre o relatório
+ * abre a janela de assunto e depois a tela única do relatório. Cada linha abre o relatório
  * (tela de consulta) e tem Editar e Excluir.
  */
 export default function Landing({ salvos, carregando }: { salvos: RelatorioSalvo[]; carregando: boolean }) {
@@ -60,7 +60,7 @@ export default function Landing({ salvos, carregando }: { salvos: RelatorioSalvo
           </span>
           <p style={{ fontSize: 16, fontWeight: 600, color: C.ink, marginTop: 14 }}>Você ainda não criou nenhum relatório</p>
           <p style={{ fontSize: 14, color: C.claro, marginTop: 4, maxWidth: 440 }}>
-            Escolha o assunto, o período e as colunas uma vez. Depois é só abrir, ajustar o período e exportar.
+            Escolha o assunto e o relatório abre pronto, com a tabela carregada. Ajuste o que quiser, salve e exporte quando precisar.
           </p>
           <Link href="/relatorios?novo=1" className="tfd-btn tfd-btn-primary mt-5">
             <Plus size={16} /> Criar relatório
@@ -140,7 +140,7 @@ function ItemSalvo({ relatorio: r }: { relatorio: RelatorioSalvo }) {
       <td className="hidden lg:table-cell" style={{ ...td, whiteSpace: 'nowrap' }}>{new Date(r.atualizadoEm).toLocaleDateString('pt-BR')}</td>
       <td style={{ ...td, textAlign: 'center', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
         <Link
-          href={`/relatorios?editar=${r.id}`} aria-label={`Editar ${r.nome}`} title="Editar"
+          href={`/relatorios?salvo=${r.id}&personalizar=1`} aria-label={`Editar ${r.nome}`} title="Editar"
           className="inline-flex items-center justify-center hover:bg-[var(--tfd-100)]"
           style={{ width: 34, height: 34, borderRadius: 'var(--tfd-radius-md)', color: C.texto }}
         >

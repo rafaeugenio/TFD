@@ -48,7 +48,7 @@ export function useRelatoriosSalvos(): RelatorioSalvo[] {
   );
 }
 
-export function salvarRelatorio(nome: string, secoes: ConfigRelatorio[], idExistente?: string): RelatorioSalvo {
+export function salvarRelatorio(nome: string, secoes: ConfigRelatorio[], idExistente?: string, donoId?: string): RelatorioSalvo {
   const agora = new Date().toISOString();
   const lista = ler();
   if (idExistente) {
@@ -60,6 +60,7 @@ export function salvarRelatorio(nome: string, secoes: ConfigRelatorio[], idExist
     id: `rel-${Date.now().toString(36)}`,
     nome: nome.trim(),
     secoes,
+    donoId,
     criadoEm: agora,
     atualizadoEm: agora,
   };
@@ -69,6 +70,12 @@ export function salvarRelatorio(nome: string, secoes: ConfigRelatorio[], idExist
 
 export function excluirRelatorio(id: string) {
   gravar(ler().filter((r) => r.id !== id));
+}
+
+/** Privados por usuário. Os salvos sem dono (anteriores a esta regra) continuam
+ *  visíveis para todos, para ninguém perder dados. */
+export function doUsuario(lista: RelatorioSalvo[], usuarioId: string | undefined): RelatorioSalvo[] {
+  return lista.filter((r) => !r.donoId || r.donoId === usuarioId);
 }
 
 export function relatorioSalvoPorId(id: string): RelatorioSalvo | undefined {

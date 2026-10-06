@@ -101,6 +101,9 @@ export interface Assunto {
 /* ── Período ─────────────────────────────────────────────────────────────── */
 
 export type PeriodoTipo =
+  | 'hoje'
+  | 'ultimos_7_dias'
+  | 'ultimos_30_dias'
   | 'este_mes'
   | 'mes_passado'
   | 'este_quadrimestre'
@@ -158,4 +161,7 @@ export interface RelatorioSalvo {
   secoes: ConfigRelatorio[];
   criadoEm: string;
   atualizadoEm: string;
+  /** Id do usuário que criou. Relatórios são privados. Salvos antes dessa
+   *  regra não têm dono e continuam visíveis para não perder dados. */
+  donoId?: string;
 }

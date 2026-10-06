@@ -1,23 +1,26 @@
 'use client';
 
-import { Suspense, useMemo, useSyncExternalStore } from 'react';
+import { Suspense, useMemo, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { usePermissions } from '@/shared/auth/PermissionsProvider';
 import { FluxoV2Provider, useFluxoV2State } from '@/app/fluxo-v2/_state/FluxoV2Provider';
 import { Skeleton } from '@/components/ui/skeleton';
 import Landing from './_construtor/ui/Landing';
-import Construtor from './_construtor/ui/Construtor';
+import JanelaAssunto from './_construtor/ui/JanelaAssunto';
 import Detalhe from './_construtor/ui/Detalhe';
 import { montarBase } from './_construtor/dataset';
-import { configInicial } from './_construtor/motor';
-import { useRelatoriosSalvos } from './_construtor/salvos';
+import { doUsuario, useRelatoriosSalvos } from './_construtor/salvos';
+import type { ConfigRelatorio } from './_construtor/tipos';
 
 /**
- * Relatórios: construtor de relatórios personalizáveis.
+ * Relatórios: construtor de relatórios personalizáveis, em tela única.
  * - sem parâmetro: lista dos relatórios criados pelo usuário;
- * - `?novo=1`: cadastro em etapas de um relatório novo;
- * - `?salvo=<id>`: consulta do relatório salvo (filtrar, pesquisar, exportar);
- * - `?editar=<id>`: cadastro em etapas com o relatório salvo preenchido.
+ * - `?novo=1`: janela curta para escolher o assunto; depois abre a tela do
+ *   relatório já com tabela, e ao salvar vira `?salvo=<id>`;
+ * - `?salvo=<id>`: a mesma tela com o relatório salvo (consultar, ajustar,
+ *   personalizar, exportar); `&personalizar=1` abre o painel Personalizar;
+ * - `?editar=<id>`: atalho antigo, equivale a `?salvo=<id>&personalizar=1`.
  * Os relatórios fixos antigos continuam em /relatorios/anteriores.
  */
 export default function RelatoriosPage() {
@@ -32,33 +35,37 @@ export default function RelatoriosPage() {
 
 function RelatoriosApp() {
   const params = useSearchParams();
+  const router = useRouter();
+  const { user, isLoading: carregandoUsuario } = usePermissions();
   const { solicitacoes, isLoading } = useFluxoV2State();
   // Lido pelo hook (e não direto do localStorage) para o servidor e o
   // navegador renderizarem a mesma coisa na primeira pintura. Até montar no
   // navegador a lista ainda está vazia, então nada decide antes disso.
-  const salvos = useRelatoriosSalvos();
+  const todos = useRelatoriosSalvos();
   const montado = useSyncExternalStore(semAssinatura, () => true, () => false);
   const base = useMemo(() => montarBase(solicitacoes), [solicitacoes]);
+  // Cada pessoa vê os seus. Os salvos antes desta regra (sem dono) continuam visíveis.
+  const salvos = useMemo(() => doUsuario(todos, user?.id), [todos, user?.id]);
+  const [rascunho, setRascunho] = useState<ConfigRelatorio[] | null>(null);
 
   const salvoId = params.get('salvo');
   const editarId = params.get('editar');
   const novo = params.get('novo');
 
   if (novo) {
-    return <Construtor key="novo" secoesIniciais={[configInicial('passagens')]} titulo="" base={base} carregando={isLoading} />;
+    if (!rascunho) {
+      return <JanelaAssunto onConfirmar={setRascunho} onFechar={() => router.push('/relatorios')} />;
+    }
+    return <Detalhe key="novo" secoesIniciais={rascunho} base={base} carregando={isLoading} />;
   }
 
-  if (!montado) return <CarregandoTela />;
+  if (!montado || (carregandoUsuario && (salvoId || editarId))) return <CarregandoTela />;
 
   const id = salvoId ?? editarId;
   if (id) {
     const salvo = salvos.find((x) => x.id === id);
     if (!salvo) return <NaoEncontrado />;
-    return editarId ? (
-      <Construtor key={`e:${salvo.id}`} secoesIniciais={salvo.secoes} titulo={salvo.nome} salvoId={salvo.id} base={base} carregando={isLoading} />
-    ) : (
-      <Detalhe key={`d:${salvo.id}`} relatorio={salvo} base={base} carregando={isLoading} />
-    );
+    return <Detalhe key={`d:${salvo.id}`} relatorio={salvo} base={base} carregando={isLoading} abrirPersonalizar={Boolean(editarId) || params.get('personalizar') === '1'} />;
   }
 
   return <Landing salvos={salvos} carregando={false} />;

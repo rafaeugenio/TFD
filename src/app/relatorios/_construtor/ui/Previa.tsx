@@ -1,14 +1,15 @@
 'use client';
 
-import { useState } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Hash, Info } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { ArrowDown, ArrowUp, ChevronDown, Hash, Info } from 'lucide-react';
+import Pagination from '@/shared/components/pagination/Pagination';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DIVERGENCIAS } from '../dataset';
 import { fmtMoeda, fmtNumero, formatarValor, type ResultadoRelatorio } from '../motor';
 import type { Campo, ConfigRelatorio, Linha } from '../tipos';
-import { C } from './Etapas';
+import { C } from './estilo';
 
-const POR_PAGINA = 20;
+const TAMANHOS = [20, 50, 100, 200];
 
 interface Props {
   resultado: ResultadoRelatorio;
@@ -26,12 +27,13 @@ export const cartao: React.CSSProperties = {
 /**
  * Resultado no padrão visual do relatório de Gestão do sistema: faixa de
  * indicadores (rótulo em caixa alta, número em fonte mono) e seção de linhas
- * com contagem, tabela com cabeçalho em caixa alta e paginação "Mostrando".
+ * com contagem, tabela com cabeçalho em caixa alta e paginação do sistema.
  * No celular a tabela vira cartões.
  */
 export default function Previa({ resultado, config, onChange, carregando, rotulo = 'Linhas do relatório' }: Props) {
   // Qualquer mudança no resultado (período, filtro, busca) volta à página 1.
   const [pagina, setPagina] = useState(1);
+  const [porPagina, setPorPagina] = useState(50);
   const [ultimo, setUltimo] = useState(resultado);
   if (ultimo !== resultado) {
     setUltimo(resultado);
@@ -39,8 +41,7 @@ export default function Previa({ resultado, config, onChange, carregando, rotulo
   }
 
   const { colunas, linhas, assunto, agrupado, totalRegistros } = resultado;
-  const paginas = Math.max(1, Math.ceil(linhas.length / POR_PAGINA));
-  const visiveis = linhas.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
+  const visiveis = useMemo(() => linhas.slice((pagina - 1) * porPagina, pagina * porPagina), [linhas, pagina, porPagina]);
   const totais = resultado.totais.filter((t) => t.id !== 'registros').slice(0, 4);
   const plural = (assunto.contagem?.[1] ?? 'registros').replace(/ encontrados?/, '');
 
@@ -139,7 +140,7 @@ export default function Previa({ resultado, config, onChange, carregando, rotulo
               {visiveis.map((l, li) => <Cartao key={String(l.id ?? li)} linha={l} colunas={colunas} />)}
             </ul>
 
-            <Paginador pagina={pagina} paginas={paginas} total={linhas.length} porPagina={POR_PAGINA} onPagina={setPagina} />
+            <Pagination total={linhas.length} page={pagina} pageSize={porPagina} onPageChange={setPagina} onPageSizeChange={setPorPagina} pageSizeOptions={TAMANHOS} recordLabel="linhas" />
           </>
         )}
 
@@ -171,35 +172,6 @@ function Indicador({ rotulo, valor, ajuda, icone }: { rotulo: string; valor: str
         </span>
       )}
     </div>
-  );
-}
-
-/** Paginação no padrão do sistema: "Mostrando X a Y de N" e página em círculo. */
-function Paginador({ pagina, paginas, total, porPagina, onPagina }: { pagina: number; paginas: number; total: number; porPagina: number; onPagina: (p: number) => void }) {
-  const inicio = Math.max(1, Math.min(pagina - 2, paginas - 4));
-  const numeros = Array.from({ length: Math.min(5, paginas) }, (_, i) => inicio + i);
-  const botao = (conteudo: React.ReactNode, destino: number, rotulo: string, desativado: boolean, atual = false) => (
-    <button
-      type="button" aria-label={rotulo} aria-current={atual ? 'page' : undefined} disabled={desativado} onClick={() => onPagina(destino)}
-      className="inline-flex items-center justify-center enabled:hover:bg-[var(--tfd-100)]"
-      style={{ width: 36, height: 36, borderRadius: '50%', fontSize: 14, color: atual ? C.azulTexto : desativado ? 'var(--tfd-300)' : C.apoio, background: atual ? C.azulSuave : undefined }}
-    >
-      {conteudo}
-    </button>
-  );
-  return (
-    <footer className="flex flex-wrap items-center justify-between gap-2" style={{ padding: '10.5px 17.5px', background: C.fundo, borderTop: `1px solid ${C.borda}`, fontSize: 14, color: C.texto }}>
-      <span>
-        Mostrando {((pagina - 1) * porPagina + 1).toLocaleString('pt-BR')} a {Math.min(pagina * porPagina, total).toLocaleString('pt-BR')} de {total.toLocaleString('pt-BR')} linhas
-      </span>
-      <span className="flex items-center gap-0.5">
-        {botao(<ChevronsLeft size={16} />, 1, 'Primeira página', pagina <= 1)}
-        {botao(<ChevronLeft size={16} />, pagina - 1, 'Página anterior', pagina <= 1)}
-        {numeros.map((n) => <span key={n} className="hidden sm:inline-flex">{botao(n, n, `Página ${n}`, false, n === pagina)}</span>)}
-        {botao(<ChevronRight size={16} />, pagina + 1, 'Próxima página', pagina >= paginas)}
-        {botao(<ChevronsRight size={16} />, paginas, 'Última página', pagina >= paginas)}
-      </span>
-    </footer>
   );
 }
 

@@ -13,6 +13,9 @@ export const MESES = [
 ];
 
 export const ATALHOS_PERIODO: { tipo: PeriodoTipo; label: string }[] = [
+  { tipo: 'hoje', label: 'Hoje' },
+  { tipo: 'ultimos_7_dias', label: 'Últimos 7 dias' },
+  { tipo: 'ultimos_30_dias', label: 'Últimos 30 dias' },
   { tipo: 'este_mes', label: 'Este mês' },
   { tipo: 'mes_passado', label: 'Mês passado' },
   { tipo: 'este_quadrimestre', label: 'Este quadrimestre' },
@@ -76,7 +79,16 @@ export function resolverPeriodo(p: Periodo, hoje = new Date()): PeriodoResolvido
     rotulo: `Ano de ${a}`,
   });
 
+  const dia = (d: Date) => iso(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  const recuar = (dias: number) => new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - dias);
+
   switch (p.tipo) {
+    case 'hoje':
+      return { inicio: dia(hoje), fim: dia(hoje), rotulo: `Hoje, ${dataBR(dia(hoje))}` };
+    case 'ultimos_7_dias':
+      return { inicio: dia(recuar(6)), fim: dia(hoje), rotulo: `${dataBR(dia(recuar(6)))} a ${dataBR(dia(hoje))}` };
+    case 'ultimos_30_dias':
+      return { inicio: dia(recuar(29)), fim: dia(hoje), rotulo: `${dataBR(dia(recuar(29)))} a ${dataBR(dia(hoje))}` };
     case 'este_mes':
       return deMes(anoAtual, mesAtual);
     case 'mes_passado':

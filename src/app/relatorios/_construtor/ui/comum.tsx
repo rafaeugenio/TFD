@@ -3,10 +3,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ChevronDown, Download, FileSpreadsheet, FileText, Table2 } from 'lucide-react';
 import { useToast } from '@/shared/components/toast/Toast';
+import { usePermissions } from '@/shared/auth/PermissionsProvider';
+import { registrarLog } from '@/services/auditoria.service';
+import type { AcaoAuditoria, PerfilUsuario } from '@/lib/supabase/database.types';
 import { assuntoPorId } from '../assuntos';
 import { exportarCSV, exportarPDF, exportarXLSX, LIMITE_COLUNAS_PDF, secoesLargasParaPdf, type SecaoExportada } from '../exportar';
 import type { AssuntoId } from '../tipos';
-import { C } from './Etapas';
+import { C } from './estilo';
 
 /* ── Abas por assunto ────────────────────────────────────────────────────── */
 
@@ -83,9 +86,27 @@ export const FORMATOS: { id: Formato; rotulo: string; apoio: string; icone: Reac
 
 /** Gera o arquivo com o mesmo recorte da tela. O aviso de colunas demais no
  *  PDF aparece antes (na tela) e de novo ao gerar, sem impedir. */
-export function useExportar(titulo: string, secoes: SecaoExportada[]) {
+export function useExportar(titulo: string, secoes: SecaoExportada[], relatorioId?: string) {
   const toast = useToast();
+  const { user } = usePermissions();
   const [exportando, setExportando] = useState<Formato | null>(null);
+
+  /** Cada exportação vai para o log do sistema (sem tela de histórico para
+   *  quem exporta). Falha ao gravar o log nunca impede o arquivo. */
+  function registrarExportacao(formato: Formato) {
+    if (!user) return;
+    const linhas = secoes.reduce((acc, s) => acc + s.res.linhas.length, 0);
+    const rotulo = FORMATOS.find((f) => f.id === formato)?.rotulo ?? formato;
+    void Promise.resolve(registrarLog({
+      usuario_id: user.id,
+      perfil_usuario: user.perfil as PerfilUsuario,
+      acao: 'EXPORTOU' as AcaoAuditoria,
+      entidade_alterada: 'relatorios',
+      entidade_id: null as unknown as string,
+      campo_alterado: relatorioId ? `relatorio:${relatorioId}` : 'relatorio:nao-salvo',
+      valor_novo: `${titulo} · ${rotulo} · ${linhas.toLocaleString('pt-BR')} ${linhas === 1 ? 'linha' : 'linhas'}`,
+    })).catch(() => undefined);
+  }
 
   async function exportar(formato: Formato) {
     setExportando(formato);
@@ -93,6 +114,7 @@ export function useExportar(titulo: string, secoes: SecaoExportada[]) {
       if (formato === 'csv') exportarCSV(titulo, secoes);
       if (formato === 'xlsx') await exportarXLSX(titulo, secoes);
       if (formato === 'pdf') await exportarPDF(titulo, secoes);
+      registrarExportacao(formato);
       if (formato === 'pdf' && secoesLargasParaPdf(secoes.map((s) => s.res)).length) {
         toast.warning('PDF gerado com tabela larga', `Com mais de ${LIMITE_COLUNAS_PDF} colunas a leitura pode ficar ruim. Confira o arquivo.`);
       } else {
@@ -110,8 +132,8 @@ export function useExportar(titulo: string, secoes: SecaoExportada[]) {
 }
 
 /** Botão "Exportar" com menu dos três formatos. Usado no cabeçalho do detalhe. */
-export function MenuExportar({ titulo, secoes }: { titulo: string; secoes: SecaoExportada[] }) {
-  const { exportar, exportando, vazio } = useExportar(titulo, secoes);
+export function MenuExportar({ titulo, secoes, relatorioId }: { titulo: string; secoes: SecaoExportada[]; relatorioId?: string }) {
+  const { exportar, exportando, vazio } = useExportar(titulo, secoes, relatorioId);
   const [aberto, setAberto] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
