@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FileBarChart2, History, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import ConfirmDialog from '@/shared/components/confirm-dialog/ConfirmDialog';
+import { useToast } from '@/shared/components/toast/Toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { assuntoPorId } from '../assuntos';
 import { nomePeriodo } from '../periodo';
@@ -109,6 +111,8 @@ export default function Landing({ salvos, carregando }: { salvos: RelatorioSalvo
 
 function ItemSalvo({ relatorio: r }: { relatorio: RelatorioSalvo }) {
   const router = useRouter();
+  const toast = useToast();
+  const [excluindo, setExcluindo] = useState(false);
   const assuntos = r.secoes.map((s) => assuntoPorId(s.assunto));
   const periodo = nomePeriodo(r.secoes[0].periodo);
   const td: React.CSSProperties = { padding: '12.6px 12px', fontSize: 13, color: C.ink, borderBottom: '1px solid var(--tfd-100)', verticalAlign: 'middle' };
@@ -144,12 +148,26 @@ function ItemSalvo({ relatorio: r }: { relatorio: RelatorioSalvo }) {
         </Link>
         <button
           type="button" aria-label={`Excluir ${r.nome}`} title="Excluir"
-          onClick={() => window.confirm(`Excluir o relatório "${r.nome}"? Essa ação não pode ser desfeita.`) && excluirRelatorio(r.id)}
+          onClick={() => setExcluindo(true)}
           className="inline-flex items-center justify-center hover:bg-[var(--tfd-danger-bg,#FEF2F2)]"
           style={{ width: 34, height: 34, borderRadius: 'var(--tfd-radius-md)', color: 'var(--tfd-danger)', marginLeft: 4 }}
         >
           <Trash2 size={16} />
         </button>
+        {/* Dentro da célula: o clique no diálogo para aqui e não abre o relatório. */}
+        <ConfirmDialog
+          open={excluindo}
+          tone="delete"
+          title="Excluir relatório?"
+          subject={r.nome}
+          description="Essa ação não pode ser desfeita."
+          onClose={() => setExcluindo(false)}
+          onConfirm={() => {
+            excluirRelatorio(r.id);
+            setExcluindo(false);
+            toast.success('Relatório excluído', r.nome);
+          }}
+        />
       </td>
     </tr>
   );

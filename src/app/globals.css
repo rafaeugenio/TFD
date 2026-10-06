@@ -547,9 +547,9 @@ body {
 
 .tfd-tag--rounded { border-radius: var(--tfd-radius-full); }
 
-.tfd-tag--success  { background: #f0fdf4; color: #15803d; }
+.tfd-tag--success  { background: var(--tfd-success-bg); color: var(--tfd-status-success-text); }
 .tfd-tag--danger   { background: #fef2f2; color: #b91c1c; }
-.tfd-tag--warning  { background: #fff7ed; color: #c2410c; }
+.tfd-tag--warning  { background: var(--tfd-warning-bg); color: var(--tfd-status-warning-text); }
 .tfd-tag--info     { background: #f0f9ff; color: #0369a1; }
 .tfd-tag--neutral  { background: var(--tfd-100); color: var(--tfd-600); }
 
@@ -578,6 +578,9 @@ body {
   background: var(--tfd-blue);
   color: white;
 }
+
+/* Situação em badge (mesmo tamanho do badge, cor do token de status) */
+.tfd-badge--success { background: var(--tfd-status-success-soft); color: var(--tfd-status-success-text); }
 
 /* ────────────────────────────────────────────────────
    AVATAR — PrimeOne Avatar

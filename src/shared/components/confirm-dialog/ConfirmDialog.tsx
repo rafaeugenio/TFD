@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, ArrowRight, Loader2, Plus, Pencil, Trash2 } from 'lucide-react';
 
@@ -8,7 +8,7 @@ import { AlertTriangle, ArrowRight, Loader2, Plus, Pencil, Trash2 } from 'lucide
 /*  Tipos                                              */
 /* -------------------------------------------------- */
 
-export type ConfirmTone = 'create' | 'edit' | 'delete';
+export type ConfirmTone = 'create' | 'edit' | 'delete' | 'warning';
 
 export interface DiffField {
   /** Rótulo apresentável do campo. */
@@ -39,6 +39,14 @@ export interface ConfirmDialogProps {
   cancelLabel?: string;
   /** Está executando a ação remota? Desabilita botões e mostra spinner. */
   busy?: boolean;
+  /** Conteúdo extra (campos, avisos) renderizado entre a descrição e o rodapé. */
+  children?: React.ReactNode;
+  /** Desabilita só o botão de confirmar (ex.: campo obrigatório vazio). */
+  confirmDisabled?: boolean;
+  /** Ícone do cabeçalho no lugar do ícone padrão do tom. */
+  icon?: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
+  /** Ícone do botão de confirmar no lugar do padrão do tom. */
+  confirmIcon?: React.ReactNode;
 }
 
 const TONE_VISUAL: Record<ConfirmTone, {
@@ -73,7 +81,17 @@ const TONE_VISUAL: Record<ConfirmTone, {
     defaultConfirm: 'Excluir',
     defaultTitle: 'Confirmar exclusão',
   },
+  warning: {
+    icon: AlertTriangle,
+    iconBg: 'var(--tfd-status-caution-bg)',
+    iconFg: 'var(--tfd-status-caution-accent)',
+    btnClass: 'tfd-btn tfd-btn-primary',
+    defaultConfirm: 'Confirmar',
+    defaultTitle: 'Confirmar ação',
+  },
 };
+
+const FOCAVEIS = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /* -------------------------------------------------- */
 /*  Componente                                         */
@@ -91,7 +109,15 @@ export default function ConfirmDialog({
   confirmLabel,
   cancelLabel = 'Cancelar',
   busy,
+  children,
+  confirmDisabled,
+  icon,
+  confirmIcon,
 }: ConfirmDialogProps) {
+  const tituloId = useId();
+  const descricaoId = useId();
+  const caixaRef = useRef<HTMLDivElement>(null);
+
   /* Fechar com Esc */
   useEffect(() => {
     if (!open) return;
@@ -106,10 +132,32 @@ export default function ConfirmDialog({
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
+  /* Foco: entra no primeiro campo marcado com data-autofocus (ou no botão
+     Cancelar) ao abrir e volta para quem abriu o diálogo ao fechar. */
+  useEffect(() => {
+    if (!open || !mounted) return;
+    const anterior = document.activeElement as HTMLElement | null;
+    const caixa = caixaRef.current;
+    const alvo = caixa?.querySelector<HTMLElement>('[data-autofocus]') ?? caixa?.querySelector<HTMLElement>('[data-cancelar]');
+    alvo?.focus();
+    return () => { anterior?.focus?.(); };
+  }, [open, mounted]);
+
+  /* Tab e Shift+Tab circulam só dentro do diálogo. */
+  const prenderFoco = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Tab' || !caixaRef.current) return;
+    const itens = [...caixaRef.current.querySelectorAll<HTMLElement>(FOCAVEIS)];
+    if (itens.length === 0) return;
+    const primeiro = itens[0];
+    const ultimo = itens[itens.length - 1];
+    if (e.shiftKey && document.activeElement === primeiro) { e.preventDefault(); ultimo.focus(); }
+    else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primeiro.focus(); }
+  };
+
   if (!open || !mounted) return null;
 
   const v = TONE_VISUAL[tone];
-  const Icon = v.icon;
+  const Icon = icon ?? v.icon;
   const changedDiff = diff?.filter((d) => normalizeValue(d.before) !== normalizeValue(d.after)) ?? [];
 
   return createPortal(
@@ -119,23 +167,29 @@ export default function ConfirmDialog({
       onClick={() => !busy && onClose()}
     >
       <div
+        ref={caixaRef}
+        role={tone === 'delete' ? 'alertdialog' : 'dialog'}
+        aria-modal="true"
+        aria-labelledby={tituloId}
+        aria-describedby={description ? descricaoId : undefined}
         className="tfd-card w-full max-w-md"
         style={{ backgroundColor: 'var(--tfd-surface-card, white)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={prenderFoco}
       >
         <div className="flex items-start gap-3 mb-4">
           <div
             className="flex items-center justify-center w-10 h-10 rounded-full shrink-0"
             style={{ backgroundColor: tone === 'delete' ? v.iconBg : v.iconBg }}
           >
-            {tone === 'delete' ? (
+            {tone === 'delete' && !icon ? (
               <AlertTriangle size={18} style={{ color: v.iconFg }} />
             ) : (
               <Icon size={18} style={{ color: v.iconFg }} />
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-base font-semibold mb-1" style={{ color: 'var(--tfd-text-primary)' }}>
+            <h3 id={tituloId} className="text-base font-semibold mb-1" style={{ color: 'var(--tfd-text-primary)' }}>
               {title}
             </h3>
             {subject && (
@@ -144,7 +198,7 @@ export default function ConfirmDialog({
               </p>
             )}
             {description && (
-              <p className="text-sm mt-1" style={{ color: 'var(--tfd-text-secondary)' }}>
+              <p id={descricaoId} className="text-sm mt-1" style={{ color: 'var(--tfd-text-secondary)' }}>
                 {description}
               </p>
             )}
@@ -206,8 +260,12 @@ export default function ConfirmDialog({
           </p>
         )}
 
+        {children && <div className="mb-4">{children}</div>}
+
         <div className="flex items-center justify-end gap-2">
           <button
+            type="button"
+            data-cancelar
             className="tfd-btn tfd-btn-secondary"
             onClick={onClose}
             disabled={busy}
@@ -215,9 +273,10 @@ export default function ConfirmDialog({
             {cancelLabel}
           </button>
           <button
+            type="button"
             className={v.btnClass}
             onClick={onConfirm}
-            disabled={busy || (tone === 'edit' && diff !== undefined && changedDiff.length === 0)}
+            disabled={busy || confirmDisabled || (tone === 'edit' && diff !== undefined && changedDiff.length === 0)}
           >
             {busy ? (
               <>
@@ -225,7 +284,7 @@ export default function ConfirmDialog({
               </>
             ) : (
               <>
-                {tone === 'delete' && <Trash2 size={14} />}
+                {confirmIcon ?? (tone === 'delete' && <Trash2 size={14} />)}
                 {confirmLabel ?? v.defaultConfirm}
               </>
             )}

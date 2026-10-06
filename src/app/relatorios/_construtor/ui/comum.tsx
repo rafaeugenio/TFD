@@ -61,7 +61,7 @@ export function AvisoPdf({ secoes }: { secoes: SecaoExportada[] }) {
   if (largas.length === 0) return null;
   const onde = secoes.length > 1 ? ` (${largas.map((r) => r.assunto.label).join(', ')})` : '';
   return (
-    <p className="flex gap-2" role="note" style={{ fontSize: 13, lineHeight: 1.45, color: '#9A3412', background: 'var(--tfd-status-warning-bg, #FFF7ED)', border: '1px solid #FED7AA', borderRadius: 'var(--tfd-radius-md)', padding: '8px 10px' }}>
+    <p className="flex gap-2" role="note" style={{ fontSize: 13, lineHeight: 1.45, color: 'var(--tfd-status-warning-strong)', background: 'var(--tfd-warning-bg)', border: '1px solid var(--tfd-status-warning-border)', borderRadius: 'var(--tfd-radius-md)', padding: '8px 10px' }}>
       <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
       <span>
         Tabela com mais de {LIMITE_COLUNAS_PDF} colunas{onde}: no PDF ela pode sair cortada ou apertada na folha.

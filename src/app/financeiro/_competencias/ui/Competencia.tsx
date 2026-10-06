@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, ClipboardList, FileText, History, Lock, LockOpen, Plane, Plus, Printer, Receipt, Search, Wallet } from 'lucide-react';
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import ConfirmDialog from '@/shared/components/confirm-dialog/ConfirmDialog';
 import { useToast } from '@/shared/components/toast/Toast';
 import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
@@ -19,6 +20,7 @@ import {
   type Competencia as TCompetencia, type EventoHistorico, type Frente,
 } from '../store';
 import AdicionarLinhas from './AdicionarLinhas';
+import ErroLinhas from './ErroLinhas';
 import Tabela, { type Coluna } from './Tabela';
 import { colunasBpaAjuda, colunasBpaDeslocamento, colunasFaturamento } from './colunas';
 
@@ -49,6 +51,8 @@ export default function Competencia({ id }: { id: string }) {
 
   const [frente, setFrente] = useState<Frente>('faturamento');
   const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(false);
+  const [tentativa, setTentativa] = useState(0);
   const [fat, setFat] = useState<LinhaFaturamento[]>([]);
   const [bpa, setBpa] = useState<LinhaBpa[]>([]);
   const [sig, setSig] = useState<Record<string, number>>({});
@@ -61,13 +65,22 @@ export default function Competencia({ id }: { id: string }) {
   useEffect(() => {
     let ativo = true;
     (async () => {
-      const [f, b, l] = await Promise.all([carregarFaturamento(), carregarBpa(), carregarLancados()]);
-      const s = await carregarValoresSigtap(b);
-      if (!ativo) return;
-      setFat(f); setBpa(b); setLancados(l); setSig(s); setCarregando(false);
+      try {
+        const [f, b, l] = await Promise.all([carregarFaturamento(), carregarBpa(), carregarLancados()]);
+        const s = await carregarValoresSigtap(b);
+        if (!ativo) return;
+        setFat(f); setBpa(b); setLancados(l); setSig(s); setErro(false);
+      } catch {
+        if (!ativo) return;
+        setFat([]); setBpa([]); setLancados(new Set()); setSig({}); setErro(true);
+      } finally {
+        if (ativo) setCarregando(false);
+      }
     })();
     return () => { ativo = false; };
-  }, []);
+  }, [tentativa]);
+
+  const tentarNovamente = () => { setCarregando(true); setErro(false); setTentativa((n) => n + 1); };
 
   const f = c?.frentes[frente];
   const itens = new Set(f?.itens.map((i) => i.chave) ?? []);
@@ -92,6 +105,10 @@ export default function Competencia({ id }: { id: string }) {
   const podeFechar = can(`competencia.${frente}.fechar`);
   const podeReabrir = can(`competencia.${frente}.reabrir`);
   const editavel = aberta && podeLinhas;
+  // Sem as linhas carregadas não dá para conferir o que será fechado.
+  const dicaFechar = erro
+    ? 'Não foi possível carregar as linhas. Tente novamente antes de fechar'
+    : f.itens.length === 0 ? 'Inclua pelo menos uma linha antes de fechar' : undefined;
   const t = norm(busca.trim());
 
   const fatDaComp = fat.filter((l) => itens.has(l.chave)).filter((l) => !t || norm(`${l.passageiro} ${l.processo}`).includes(t));
@@ -137,7 +154,7 @@ export default function Competencia({ id }: { id: string }) {
       />
 
       {competenciaCompleta(c) && (
-        <p className="mb-4 px-4 py-3" role="status" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8, fontSize: 14, color: '#15803D' }}>
+        <p className="mb-4 px-4 py-3" role="status" style={{ background: 'var(--tfd-success-bg)', border: '1px solid var(--tfd-status-success-border)', borderRadius: 8, fontSize: 14, color: 'var(--tfd-status-success-text)' }}>
           <strong>Competência completa.</strong> Faturamento e BPA estão fechados. Se uma das frentes for reaberta, a competência deixa de ser completa.
         </p>
       )}
@@ -187,11 +204,11 @@ export default function Competencia({ id }: { id: string }) {
               <>
                 {podeFechar && (
                   // A dica fica no invólucro: botão desabilitado não recebe o mouse em todos os navegadores.
-                  <span className="inline-flex" title={f.itens.length === 0 ? 'Inclua pelo menos uma linha antes de fechar' : undefined}>
-                    <button type="button" className="tfd-btn tfd-btn-secondary" onClick={() => setDialogo('fechar')} disabled={f.itens.length === 0} aria-describedby={f.itens.length === 0 ? 'dica-fechar' : undefined}>
+                  <span className="inline-flex" title={dicaFechar}>
+                    <button type="button" className="tfd-btn tfd-btn-secondary" onClick={() => setDialogo('fechar')} disabled={!!dicaFechar} aria-describedby={dicaFechar ? 'dica-fechar' : undefined}>
                       <Lock size={15} /> Fechar competência
                     </button>
-                    {f.itens.length === 0 && <span id="dica-fechar" className="sr-only">Inclua pelo menos uma linha antes de fechar</span>}
+                    {dicaFechar && <span id="dica-fechar" className="sr-only">{dicaFechar}</span>}
                   </span>
                 )}
                 {podeLinhas && (
@@ -214,7 +231,7 @@ export default function Competencia({ id }: { id: string }) {
           </div>
         )}
         {aberta && f.reaberturas > 0 && (
-          <div className="flex items-center gap-2" style={{ padding: '10px 1.25rem', borderTop: '1px dashed var(--tfd-surface-border)', fontSize: 13.5, color: '#92400E', background: '#FFFBEB', borderRadius: '0 0 8px 8px' }}>
+          <div className="flex items-center gap-2" style={{ padding: '10px 1.25rem', borderTop: '1px dashed var(--tfd-surface-border)', fontSize: 13.5, color: 'var(--tfd-status-caution-text)', background: 'var(--tfd-status-caution-bg)', borderRadius: '0 0 8px 8px' }}>
             <AlertTriangle size={14} />
             Competência reaberta. Linhas incluídas depois da reabertura aparecem com fundo amarelo claro na tabela.
           </div>
@@ -223,6 +240,8 @@ export default function Competencia({ id }: { id: string }) {
 
       {carregando ? (
         <div className="flex flex-col gap-3"><Skeleton className="h-24 w-full" /><Skeleton className="h-72 w-full" /></div>
+      ) : erro ? (
+        <section className="mb-5" style={cartao}><ErroLinhas onTentarNovamente={tentarNovamente} /></section>
       ) : frente === 'faturamento' ? (
         <>
           <Indicadores itens={[
@@ -236,7 +255,7 @@ export default function Competencia({ id }: { id: string }) {
               colunas={colunasFaturamento(opcoes)}
               linhas={fatDaComp}
               chave={(l) => l.chave}
-              destaque={(l) => (aposReabertura.has(l.chave) ? { background: '#FFFBEB' } : undefined)}
+              destaque={(l) => (aposReabertura.has(l.chave) ? { background: 'var(--tfd-status-caution-bg)' } : undefined)}
               vazio={editavel ? <>Competência vazia. Use <strong>Adicionar linhas</strong> para escolher os itens de {nome}.</> : 'Nenhum item nesta competência.'}
             />
           </Secao>
@@ -255,20 +274,20 @@ export default function Competencia({ id }: { id: string }) {
               vazio="Nenhum reembolso registrado."
             />
           </Secao>
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-5" style={{ ...cartao, padding: '16px 20px', background: '#F0FDF4', borderColor: '#BBF7D0' }}>
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-5" style={{ ...cartao, padding: '16px 20px', background: 'var(--tfd-success-bg)', borderColor: 'var(--tfd-status-success-border)' }}>
             <div>
-              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#15803D' }}>Total do faturamento</p>
+              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--tfd-status-success-text)' }}>Total do faturamento</p>
               <p style={{ fontSize: 12.5, fontStyle: 'italic', color: 'var(--tfd-text-secondary)' }}>{valorPorExtenso(totalPagar)}.</p>
             </div>
-            <p style={{ fontFamily: 'var(--tfd-mono)', fontSize: 26, fontWeight: 700, color: '#15803D' }}>{fmtBRL(totalPagar)}</p>
+            <p style={{ fontFamily: 'var(--tfd-mono)', fontSize: 26, fontWeight: 700, color: 'var(--tfd-status-success-text)' }}>{fmtBRL(totalPagar)}</p>
           </div>
         </>
       ) : (
         <>
           <Indicadores itens={[
             { rotulo: 'Total de linhas', valor: String(bpaVisiveis.length), icone: <ClipboardList size={12} /> },
-            { rotulo: 'Lançadas no BPA', valor: String(lancadasBpa), cor: '#15803D' },
-            { rotulo: 'Pendentes', valor: String(bpaVisiveis.length - lancadasBpa), cor: '#C2410C' },
+            { rotulo: 'Lançadas no BPA', valor: String(lancadasBpa), cor: 'var(--tfd-status-success-text)' },
+            { rotulo: 'Pendentes', valor: String(bpaVisiveis.length - lancadasBpa), cor: 'var(--tfd-status-warning-text)' },
             { rotulo: 'Valor total SIGTAP', valor: fmtBRL(valorBpaTotal) },
           ]} />
           <Secao titulo="Itens para lançamento" quantidade={bpaVisiveis.length} subtitulo={procedimento === 'ajuda_custo' ? 'Ajuda de Custo' : 'Deslocamentos'}>
@@ -276,7 +295,7 @@ export default function Competencia({ id }: { id: string }) {
               colunas={[colunaLancado, ...(procedimento === 'ajuda_custo' ? colunasBpaAjuda(opcoes, sig) : colunasBpaDeslocamento(opcoes, sig))]}
               linhas={bpaVisiveis}
               chave={(l) => l.chave}
-              destaque={(l) => ({ ...(lancados.has(l.chave) ? { opacity: 0.6 } : {}), ...(aposReabertura.has(l.chave) ? { background: '#FFFBEB' } : {}) })}
+              destaque={(l) => ({ ...(lancados.has(l.chave) ? { opacity: 0.6 } : {}), ...(aposReabertura.has(l.chave) ? { background: 'var(--tfd-status-caution-bg)' } : {}) })}
               vazio={editavel ? <>Nenhuma linha de {procedimento === 'ajuda_custo' ? 'ajuda de custo' : 'deslocamento'} nesta competência. Use <strong>Adicionar linhas</strong>.</> : 'Nenhuma linha nesta competência.'}
             />
           </Secao>
@@ -295,6 +314,8 @@ export default function Competencia({ id }: { id: string }) {
         disponiveisBpa={bpa.filter((l) => !usadasBpa.has(l.chave))}
         sig={sig}
         carregando={carregando}
+        erro={erro}
+        onTentarNovamente={tentarNovamente}
         onVer={onVer}
         onIncluir={(chaves, detalhe) => {
           incluirLinhas(c.id, frente, chaves, quem, detalhe);
@@ -327,7 +348,7 @@ export default function Competencia({ id }: { id: string }) {
 
 function StatusChip({ status }: { status: 'aberta' | 'fechada' }) {
   return status === 'aberta'
-    ? <span className="tfd-badge" style={{ background: '#DCFCE7', color: '#15803D' }}>Aberta</span>
+    ? <span className="tfd-badge tfd-badge--success">Aberta</span>
     : <span className="tfd-badge inline-flex items-center gap-1" style={{ background: 'var(--tfd-100)', color: 'var(--tfd-600)' }}><Lock size={10} /> Fechada</span>;
 }
 
@@ -377,14 +398,14 @@ function Historico({ eventos, frente }: { eventos: EventoHistorico[]; frente: Fr
       </header>
       <ol style={{ borderTop: '1px solid var(--tfd-surface-border)' }}>
         {[...eventos].reverse().map((e) => (
-          <li key={e.id} className="flex flex-wrap items-start gap-x-4 gap-y-1" style={{ padding: '10px 1.25rem', borderBottom: '1px solid var(--tfd-100)', fontSize: 13.5, background: e.tipo === 'reaberta' ? '#FFFBEB' : undefined }}>
+          <li key={e.id} className="flex flex-wrap items-start gap-x-4 gap-y-1" style={{ padding: '10px 1.25rem', borderBottom: '1px solid var(--tfd-100)', fontSize: 13.5, background: e.tipo === 'reaberta' ? 'var(--tfd-status-caution-bg)' : undefined }}>
             <span style={{ fontFamily: 'var(--tfd-mono)', fontSize: 12.5, color: 'var(--tfd-text-muted)', minWidth: 120 }}>{dataHora(e.em)}</span>
             <span className="flex-1 min-w-[220px]">
               <strong style={{ fontWeight: 600, color: 'var(--tfd-text-primary)' }}>{TEXTO_EVENTO[e.tipo]}</strong>
               {e.quantidade != null && e.tipo !== 'fechada' && <> · {e.quantidade} {e.quantidade === 1 ? 'linha' : 'linhas'}</>}
               {e.tipo === 'fechada' && e.quantidade != null && <> com {e.quantidade} {e.quantidade === 1 ? 'linha' : 'linhas'}</>}
               {e.detalhe && <span className="block" style={{ fontSize: 12.5, color: 'var(--tfd-text-muted)' }}>{e.detalhe}</span>}
-              {e.motivo && <span className="block" style={{ fontSize: 13, color: '#92400E' }}>Motivo: {e.motivo}</span>}
+              {e.motivo && <span className="block" style={{ fontSize: 13, color: 'var(--tfd-status-caution-text)' }}>Motivo: {e.motivo}</span>}
             </span>
             <span style={{ fontSize: 13, color: 'var(--tfd-text-secondary)' }}>{e.por}</span>
           </li>
@@ -401,50 +422,59 @@ function DialogoFrente({ modo, frente, nome, quantidade, onCancelar, onConfirmar
   const [motivo, setMotivo] = useState('');
   const [ciente, setCiente] = useState(false);
   const nomeFrente = frente === 'faturamento' ? 'Faturamento' : 'BPA';
-  const podeConfirmar = modo === 'fechar' || (motivo.trim().length >= 10 && ciente);
-  useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancelar(); };
-    document.addEventListener('keydown', esc);
-    return () => document.removeEventListener('keydown', esc);
-  }, [onCancelar]);
+  const motivoOk = motivo.trim().length >= 10;
+  const podeConfirmar = modo === 'fechar' || (motivoOk && ciente);
+
+  if (modo === 'fechar') {
+    return (
+      <ConfirmDialog
+        open
+        tone="edit"
+        icon={Lock}
+        title={`Fechar ${nomeFrente} de ${nome}?`}
+        description={`A competência fica trancada com as ${quantidade} ${quantidade === 1 ? 'linha' : 'linhas'} de hoje. Depois de fechada, só dá para visualizar os valores: nada pode ser incluído, removido ou marcado. Para mudar, será preciso reabrir com motivo.`}
+        confirmLabel="Fechar competência"
+        confirmIcon={<Lock size={15} />}
+        onClose={onCancelar}
+        onConfirm={() => onConfirmar('')}
+      />
+    );
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.45)' }} role="dialog" aria-modal="true" aria-labelledby="dlg-titulo">
-      <div style={{ ...cartao, width: 'min(520px, 100%)', boxShadow: 'var(--tfd-shadow-lg)' }}>
-        <div style={{ padding: '20px 22px' }}>
-          <h2 id="dlg-titulo" className="flex items-center gap-2" style={{ fontSize: 17, fontWeight: 700, color: 'var(--tfd-text-primary)' }}>
-            {modo === 'fechar' ? <Lock size={18} /> : <AlertTriangle size={18} style={{ color: '#D97706' }} />}
-            {modo === 'fechar' ? `Fechar ${nomeFrente} de ${nome}?` : `Reabrir ${nomeFrente} de ${nome}?`}
-          </h2>
-          {modo === 'fechar' ? (
-            <p style={{ fontSize: 14, color: 'var(--tfd-text-secondary)', marginTop: 10, lineHeight: 1.5 }}>
-              A competência fica trancada com as {quantidade} {quantidade === 1 ? 'linha' : 'linhas'} de hoje. Depois de fechada, só dá para visualizar os valores: nada pode ser incluído, removido ou marcado. Para mudar, será preciso reabrir com motivo.
-            </p>
-          ) : (
-            <>
-              <ul style={{ fontSize: 14, color: 'var(--tfd-text-secondary)', marginTop: 10, lineHeight: 1.5, paddingLeft: 18, listStyle: 'disc' }}>
-                <li>Os valores já enviados podem mudar se linhas forem incluídas ou removidas.</li>
-                <li>A reabertura, o motivo e tudo o que for feito depois ficam no histórico de auditoria.</li>
-                <li>Linhas incluídas após a reabertura ficam destacadas na tabela.</li>
-              </ul>
-              <label className="block mt-4">
-                <span style={rotulo}>Motivo da reabertura *</span>
-                <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={3} placeholder="Ex.: auditoria da SES pediu inclusão de passagem emitida em atraso." style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--tfd-300)', borderRadius: 6, fontSize: 14 }} />
-                <span style={{ fontSize: 12, color: motivo.trim().length >= 10 ? 'var(--tfd-text-muted)' : '#B45309' }}>Mínimo de 10 caracteres.</span>
-              </label>
-              <label className="flex items-start gap-2 mt-3" style={{ fontSize: 13.5, color: 'var(--tfd-text-primary)' }}>
-                <input type="checkbox" checked={ciente} onChange={(e) => setCiente(e.target.checked)} style={{ marginTop: 3 }} />
-                Entendo que a reabertura fica registrada e que os valores desta competência podem mudar.
-              </label>
-            </>
-          )}
-        </div>
-        <footer className="flex justify-end gap-2" style={{ padding: '12px 22px', borderTop: '1px solid var(--tfd-surface-border)', background: 'var(--tfd-50)', borderRadius: '0 0 8px 8px' }}>
-          <button type="button" className="tfd-btn tfd-btn-ghost" onClick={onCancelar}>Cancelar</button>
-          <button type="button" className="tfd-btn tfd-btn-primary" disabled={!podeConfirmar} onClick={() => onConfirmar(motivo.trim())}>
-            {modo === 'fechar' ? <><Lock size={15} /> Fechar competência</> : <><LockOpen size={15} /> Reabrir competência</>}
-          </button>
-        </footer>
-      </div>
-    </div>
+    <ConfirmDialog
+      open
+      tone="warning"
+      title={`Reabrir ${nomeFrente} de ${nome}?`}
+      confirmLabel="Reabrir competência"
+      confirmIcon={<LockOpen size={15} />}
+      confirmDisabled={!podeConfirmar}
+      onClose={onCancelar}
+      onConfirm={() => { if (podeConfirmar) onConfirmar(motivo.trim()); }}
+    >
+      <ul style={{ fontSize: 14, color: 'var(--tfd-text-secondary)', lineHeight: 1.5, paddingLeft: 18, listStyle: 'disc' }}>
+        <li>Os valores já enviados podem mudar se linhas forem incluídas ou removidas.</li>
+        <li>A reabertura, o motivo e tudo o que for feito depois ficam no histórico de auditoria.</li>
+        <li>Linhas incluídas após a reabertura ficam destacadas na tabela.</li>
+      </ul>
+      <label className="block mt-4">
+        <span style={rotulo}>Motivo da reabertura *</span>
+        <textarea
+          data-autofocus
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          rows={3}
+          required
+          aria-describedby="motivo-minimo"
+          placeholder="Ex.: auditoria da SES pediu inclusão de passagem emitida em atraso."
+          style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--tfd-300)', borderRadius: 6, fontSize: 14 }}
+        />
+        <span id="motivo-minimo" style={{ fontSize: 12, color: motivoOk ? 'var(--tfd-text-muted)' : 'var(--tfd-status-caution-accent)' }}>Mínimo de 10 caracteres.</span>
+      </label>
+      <label className="flex items-start gap-2 mt-3" style={{ fontSize: 13.5, color: 'var(--tfd-text-primary)' }}>
+        <input type="checkbox" checked={ciente} onChange={(e) => setCiente(e.target.checked)} style={{ marginTop: 3 }} />
+        Entendo que a reabertura fica registrada e que os valores desta competência podem mudar.
+      </label>
+    </ConfirmDialog>
   );
 }

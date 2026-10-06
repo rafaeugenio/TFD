@@ -143,6 +143,20 @@
   --tfd-status-warning: var(--tfd-warning);
   --tfd-status-danger:  var(--tfd-danger);
 
+  /* Texto, borda e fundo forte das situações (tags, avisos e totais) */
+  --tfd-status-success-soft:   #dcfce7;
+  --tfd-status-success-border: #bbf7d0;
+  --tfd-status-success-text:   #15803d;
+  --tfd-status-warning-border: #fed7aa;
+  --tfd-status-warning-text:   #c2410c;
+  --tfd-status-warning-strong: #9a3412;
+
+  /* Atenção (amarelo): reabertura e itens incluídos depois dela */
+  --tfd-status-caution-bg:     #fffbeb;
+  --tfd-status-caution-border: #fde68a;
+  --tfd-status-caution-text:   #92400e;
+  --tfd-status-caution-accent: #b45309;
+
   /* ═══ BRAND GRADIENT (animado) ══════════════════════════
    * Gradiente azul oficial da marca TFD, usado em superfícies
    * "hero" (tela de login, banners de onboarding, splashes).

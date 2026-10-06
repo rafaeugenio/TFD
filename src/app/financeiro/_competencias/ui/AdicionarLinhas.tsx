@@ -3,9 +3,11 @@
 import { useMemo, useState } from 'react';
 import { CalendarDays, ClipboardList, Plus, Search } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
+import { Skeleton } from '@/components/ui/skeleton';
 import { MES_LABEL, fmtBRL } from '@/app/relatorios/_shared/format';
 import { valorBpa, type LinhaBpa, type LinhaFaturamento, type ProcedimentoBpa } from '../dados';
 import type { Frente } from '../store';
+import ErroLinhas from './ErroLinhas';
 import Tabela from './Tabela';
 import { colunasBpaAjuda, colunasBpaDeslocamento, colunasFaturamento } from './colunas';
 
@@ -21,6 +23,9 @@ interface Props {
   disponiveisBpa: LinhaBpa[];
   sig: Record<string, number>;
   carregando: boolean;
+  /** A consulta das linhas falhou: mostra o erro em vez da lista vazia. */
+  erro: boolean;
+  onTentarNovamente: () => void;
   onVer: (solicitacaoId: string) => void;
   onIncluir: (chaves: string[], detalhe: string) => void;
 }
@@ -92,7 +97,7 @@ export default function AdicionarLinhas(p: Props) {
           <span style={{ fontSize: 14, color: 'var(--tfd-text-secondary)' }}>
             <strong style={{ color: 'var(--tfd-text-primary)' }}>{selecionadas.size}</strong> {selecionadas.size === 1 ? 'linha selecionada' : 'linhas selecionadas'}
             {selecionadas.size > 0 && <> · {fmtBRL(valorEscolhido)}</>}
-            {outrosMeses > 0 && <span style={{ color: '#B45309' }}> · {outrosMeses} de outro mês</span>}
+            {outrosMeses > 0 && <span style={{ color: 'var(--tfd-status-caution-accent)' }}> · {outrosMeses} de outro mês</span>}
           </span>
           <span className="flex gap-2">
             {selecionadas.size > 0 && <button type="button" className="tfd-btn tfd-btn-ghost" onClick={() => setSelecionadas(new Set())}>Limpar seleção</button>}
@@ -128,14 +133,21 @@ export default function AdicionarLinhas(p: Props) {
             {meses.map((m) => <option key={m} value={m}>{nomeMes(m)}</option>)}
           </select>
         </label>
-        <span className="ml-auto" style={{ fontSize: 13, color: 'var(--tfd-text-muted)', paddingBottom: 8 }}>
-          {filtradas.length} {filtradas.length === 1 ? 'linha disponível' : 'linhas disponíveis'}
-        </span>
+        {!p.erro && (
+          <span className="ml-auto" style={{ fontSize: 13, color: 'var(--tfd-text-muted)', paddingBottom: 8 }}>
+            {filtradas.length} {filtradas.length === 1 ? 'linha disponível' : 'linhas disponíveis'}
+          </span>
+        )}
       </div>
 
       <div style={{ border: '1px solid var(--tfd-surface-border)', borderRadius: 8, overflow: 'hidden', background: 'white' }}>
         {p.carregando ? (
-          <p style={{ padding: 40, textAlign: 'center', color: 'var(--tfd-text-muted)' }}>Carregando linhas...</p>
+          <div className="flex flex-col gap-2" style={{ padding: 12 }} aria-busy="true" aria-label="Carregando linhas">
+            <Skeleton className="h-10 w-full" />
+            {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
+          </div>
+        ) : p.erro ? (
+          <ErroLinhas onTentarNovamente={p.onTentarNovamente} />
         ) : p.frente === 'faturamento' ? (
           <Tabela
             colunas={colunasFaturamento(opcoes)}

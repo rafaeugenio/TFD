@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CalendarPlus, FileText, ClipboardList, Lock, CalendarDays } from 'lucide-react';
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import ConfirmDialog from '@/shared/components/confirm-dialog/ConfirmDialog';
 import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -13,6 +14,8 @@ import { nomeCompetencia } from './Competencia';
 
 const cartao: React.CSSProperties = { background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8, boxShadow: 'var(--tfd-shadow-sm)' };
 const th: React.CSSProperties = { padding: '14px 12px', fontSize: 11, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--tfd-text-muted)', textAlign: 'left', background: 'var(--tfd-50)', borderBottom: '1px solid var(--tfd-surface-border)', whiteSpace: 'nowrap' };
+const rotulo: React.CSSProperties = { fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--tfd-text-muted)', marginBottom: 6 };
+const campo: React.CSSProperties = { width: '100%', height: 36, padding: '0 10px', border: '1px solid var(--tfd-300)', borderRadius: 6, fontSize: 14 };
 const td: React.CSSProperties = { padding: '12.6px 12px', fontSize: 13, color: 'var(--tfd-text-primary)', borderBottom: '1px solid var(--tfd-100)', verticalAlign: 'middle' };
 
 function Situacao({ c, frente }: { c: Competencia; frente: Frente }) {
@@ -20,10 +23,10 @@ function Situacao({ c, frente }: { c: Competencia; frente: Frente }) {
   return (
     <span className="inline-flex items-center gap-2" style={{ whiteSpace: 'nowrap' }}>
       {f.status === 'aberta'
-        ? <span className="tfd-badge" style={{ background: '#DCFCE7', color: '#15803D' }}>Aberta</span>
+        ? <span className="tfd-badge tfd-badge--success">Aberta</span>
         : <span className="tfd-badge inline-flex items-center gap-1" style={{ background: 'var(--tfd-100)', color: 'var(--tfd-600)' }}><Lock size={10} /> Fechada</span>}
       <span style={{ color: 'var(--tfd-text-secondary)' }}>{f.itens.length} {f.itens.length === 1 ? 'linha' : 'linhas'}</span>
-      {f.reaberturas > 0 && <span style={{ fontSize: 12, color: '#B45309' }}>reaberta {f.reaberturas}x</span>}
+      {f.reaberturas > 0 && <span style={{ fontSize: 12, color: 'var(--tfd-status-caution-accent)' }}>reaberta {f.reaberturas}x</span>}
     </span>
   );
 }
@@ -69,66 +72,66 @@ export default function Lista({ competencias, carregando }: { competencias: Comp
         </section>
       ) : (
         <section className="overflow-hidden" style={cartao}>
-          <table className="w-full" style={{ borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={th}>Competência</th>
-                <th style={th}>Aberta em</th>
-                <th style={th}><span className="inline-flex items-center gap-1.5"><FileText size={12} /> Faturamento</span></th>
-                <th style={th}><span className="inline-flex items-center gap-1.5"><ClipboardList size={12} /> BPA</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {competencias.map((c) => (
-                <tr key={c.id} className="cursor-pointer hover:bg-[var(--tfd-surface-hover)]" onClick={() => router.push(`/financeiro?c=${c.id}`)}>
-                  <td style={td}>
-                    <a href={`/financeiro?c=${c.id}`} onClick={(e) => { e.preventDefault(); router.push(`/financeiro?c=${c.id}`); }} className="hover:underline" style={{ color: 'var(--tfd-blue-500)', fontWeight: 500 }}>
-                      {nomeCompetencia(c).replace(/^./, (l) => l.toUpperCase())}
-                    </a>
-                    {competenciaCompleta(c) && <span className="tfd-badge ml-2" style={{ background: '#DCFCE7', color: '#15803D' }}>Completa</span>}
-                  </td>
-                  <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--tfd-text-secondary)' }}>{new Date(c.criadaEm).toLocaleDateString('pt-BR')}</td>
-                  <td style={td}><Situacao c={c} frente="faturamento" /></td>
-                  <td style={td}><Situacao c={c} frente="bpa" /></td>
+          {/* Em tela estreita a tabela rola na horizontal em vez de cortar as colunas. */}
+          <div className="overflow-x-auto">
+            <table className="w-full" style={{ borderCollapse: 'collapse', minWidth: 640 }}>
+              <thead>
+                <tr>
+                  <th style={th}>Competência</th>
+                  <th style={th}>Aberta em</th>
+                  <th style={th}><span className="inline-flex items-center gap-1.5"><FileText size={12} /> Faturamento</span></th>
+                  <th style={th}><span className="inline-flex items-center gap-1.5"><ClipboardList size={12} /> BPA</span></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {competencias.map((c) => (
+                  <tr key={c.id} className="cursor-pointer hover:bg-[var(--tfd-surface-hover)]" onClick={() => router.push(`/financeiro?c=${c.id}`)}>
+                    <td style={td}>
+                      <a href={`/financeiro?c=${c.id}`} onClick={(e) => { e.preventDefault(); router.push(`/financeiro?c=${c.id}`); }} className="hover:underline" style={{ color: 'var(--tfd-blue-500)', fontWeight: 500 }}>
+                        {nomeCompetencia(c).replace(/^./, (l) => l.toUpperCase())}
+                      </a>
+                      {competenciaCompleta(c) && <span className="tfd-badge tfd-badge--success ml-2">Completa</span>}
+                    </td>
+                    <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--tfd-text-secondary)' }}>{new Date(c.criadaEm).toLocaleDateString('pt-BR')}</td>
+                    <td style={td}><Situacao c={c} frente="faturamento" /></td>
+                    <td style={td}><Situacao c={c} frente="bpa" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <footer style={{ padding: '10px 16px', background: 'var(--tfd-50)', borderTop: '1px solid var(--tfd-surface-border)', fontSize: 14, color: 'var(--tfd-text-secondary)' }}>
             {competencias.length} {competencias.length === 1 ? 'competência' : 'competências'}
           </footer>
         </section>
       )}
 
-      {abrindo && podeCriar && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.45)' }} role="dialog" aria-modal="true" aria-labelledby="abrir-titulo">
-          <div style={{ ...cartao, width: 'min(440px, 100%)', boxShadow: 'var(--tfd-shadow-lg)' }}>
-            <div style={{ padding: '20px 22px' }}>
-              <h2 id="abrir-titulo" style={{ fontSize: 17, fontWeight: 700, color: 'var(--tfd-text-primary)' }}>Abrir competência</h2>
-              <p style={{ fontSize: 14, color: 'var(--tfd-text-secondary)', marginTop: 6 }}>Cria o Faturamento e o BPA do mês, vazios e abertos.</p>
-              <div className="grid grid-cols-2 gap-3 mt-4">
-                <label>
-                  <span className="block" style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--tfd-text-muted)', marginBottom: 6 }}>Mês</span>
-                  <select value={mes} onChange={(e) => setMes(Number(e.target.value))} style={{ width: '100%', height: 36, padding: '0 10px', border: '1px solid var(--tfd-300)', borderRadius: 6, fontSize: 14 }}>
-                    {MES_LABEL.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-                  </select>
-                </label>
-                <label>
-                  <span className="block" style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--tfd-text-muted)', marginBottom: 6 }}>Ano</span>
-                  <select value={ano} onChange={(e) => setAno(Number(e.target.value))} style={{ width: '100%', height: 36, padding: '0 10px', border: '1px solid var(--tfd-300)', borderRadius: 6, fontSize: 14 }}>
-                    {[hoje.getFullYear() - 1, hoje.getFullYear(), hoje.getFullYear() + 1].map((a) => <option key={a} value={a}>{a}</option>)}
-                  </select>
-                </label>
-              </div>
-              {jaExiste && <p className="mt-3" style={{ fontSize: 13, color: '#B45309' }}>A competência de {nomeCompetencia(jaExiste)} já existe. Você será levado até ela.</p>}
-            </div>
-            <footer className="flex justify-end gap-2" style={{ padding: '12px 22px', borderTop: '1px solid var(--tfd-surface-border)', background: 'var(--tfd-50)', borderRadius: '0 0 8px 8px' }}>
-              <button type="button" className="tfd-btn tfd-btn-ghost" onClick={() => setAbrindo(false)}>Cancelar</button>
-              <button type="button" className="tfd-btn tfd-btn-primary" onClick={abrir}>{jaExiste ? 'Ir para a competência' : 'Abrir competência'}</button>
-            </footer>
-          </div>
+      <ConfirmDialog
+        open={abrindo && podeCriar}
+        tone="create"
+        icon={CalendarPlus}
+        title="Abrir competência"
+        description="Cria o Faturamento e o BPA do mês, vazios e abertos."
+        confirmLabel={jaExiste ? 'Ir para a competência' : 'Abrir competência'}
+        onClose={() => setAbrindo(false)}
+        onConfirm={abrir}
+      >
+        <div className="grid grid-cols-2 gap-3">
+          <label>
+            <span className="block" style={rotulo}>Mês</span>
+            <select data-autofocus value={mes} onChange={(e) => setMes(Number(e.target.value))} style={campo}>
+              {MES_LABEL.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+            </select>
+          </label>
+          <label>
+            <span className="block" style={rotulo}>Ano</span>
+            <select value={ano} onChange={(e) => setAno(Number(e.target.value))} style={campo}>
+              {[hoje.getFullYear() - 1, hoje.getFullYear(), hoje.getFullYear() + 1].map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </label>
         </div>
-      )}
+        {jaExiste && <p className="mt-3" role="status" style={{ fontSize: 13, color: 'var(--tfd-status-caution-accent)' }}>A competência de {nomeCompetencia(jaExiste)} já existe. Você será levado até ela.</p>}
+      </ConfirmDialog>
     </div>
   );
 }

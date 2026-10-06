@@ -15,6 +15,14 @@ import {
   type Modal,
 } from '@/app/relatorios/_shared/sigtap-mapper';
 
+/** Falha de consulta: a tela mostra erro em vez de tratar como lista vazia. */
+export class ErroCarregamento extends Error {
+  constructor(consulta: string, causa?: unknown) {
+    super(`Falha ao carregar ${consulta}`, { cause: causa });
+    this.name = 'ErroCarregamento';
+  }
+}
+
 /* ── Faturamento ─────────────────────────────────────────────────────────── */
 
 export interface LinhaFaturamento {
@@ -47,7 +55,7 @@ export async function carregarFaturamento(): Promise<LinhaFaturamento[]> {
     )
     .eq('ativa', true)
     .order('created_at', { ascending: false });
-  if (error || !data) return [];
+  if (error || !data) throw new ErroCarregamento('faturamento', error);
   const tipoDe = (t: string): LinhaFaturamento['tipo'] => (t === 'RETORNO' || t === 'VOLTA' ? 'VOLTA' : t === 'IDA_E_VOLTA' ? 'IDA_E_VOLTA' : 'IDA');
   return (data as unknown as Array<Record<string, unknown>>).map((r) => {
     const sol = r.solicitacoes as Record<string, unknown> | null;
@@ -120,10 +128,11 @@ type Pessoa = Record<string, unknown>;
 async function acompanhantesPorSolicitacao(ids: string[]) {
   const mapa = new Map<string, Pessoa & { doador: boolean }>();
   if (ids.length === 0) return mapa;
-  const { data } = await createClient()
+  const { data, error } = await createClient()
     .from('solicitacao_acompanhantes')
     .select('solicitacao_id, doador, acompanhantes(nome_completo, cpf, cns, sexo, email, data_nascimento, telefone)')
     .in('solicitacao_id', ids);
+  if (error) throw new ErroCarregamento('acompanhantes', error);
   for (const v of (data as unknown as Array<Record<string, unknown>>) ?? []) {
     const a = v.acompanhantes as Pessoa | null;
     const sid = v.solicitacao_id as string;
@@ -160,6 +169,8 @@ export async function carregarBpa(): Promise<LinhaBpa[]> {
       .eq('ativa', true)
       .order('data_embarque_prevista', { ascending: false }),
   ]);
+  if (aj.error || !aj.data) throw new ErroCarregamento('ajudas de custo', aj.error);
+  if (vg.error || !vg.data) throw new ErroCarregamento('deslocamentos', vg.error);
   const ajudas = (aj.data as unknown as Array<Record<string, unknown>>) ?? [];
   const viagens = (vg.data as unknown as Array<Record<string, unknown>>) ?? [];
   const acomp = await acompanhantesPorSolicitacao([...new Set([...ajudas, ...viagens].map((r) => r.solicitacao_id as string).filter(Boolean))]);
@@ -237,7 +248,8 @@ export async function carregarBpa(): Promise<LinhaBpa[]> {
 export async function carregarValoresSigtap(linhas: LinhaBpa[]): Promise<Record<string, number>> {
   const codigos = [...new Set(linhas.flatMap((l) => [l.codigo, l.codigoPernoite, l.codigoSemPernoite]).filter((c): c is string => !!c))];
   if (codigos.length === 0) return {};
-  const { data } = await createClient().from('sigtap_procedimentos').select('codigo, valor_unitario').in('codigo', codigos);
+  const { data, error } = await createClient().from('sigtap_procedimentos').select('codigo, valor_unitario').in('codigo', codigos);
+  if (error || !data) throw new ErroCarregamento('valores SIGTAP', error);
   return Object.fromEntries(((data as Array<Record<string, unknown>>) ?? []).map((s) => [s.codigo as string, Number(s.valor_unitario) || 0]));
 }
 
@@ -253,7 +265,8 @@ export function valorBpa(l: LinhaBpa, sig: Record<string, number>): number {
 /* ── Lançado no BPA (mesma marcação das telas antigas) ───────────────────── */
 
 export async function carregarLancados(): Promise<Set<string>> {
-  const { data } = await createClient().from('bpa_lancamentos').select('tipo, origem_id, trecho');
+  const { data, error } = await createClient().from('bpa_lancamentos').select('tipo, origem_id, trecho');
+  if (error || !data) throw new ErroCarregamento('lançamentos do BPA', error);
   const s = new Set<string>();
   for (const l of (data as Array<Record<string, unknown>>) ?? []) {
     s.add(l.tipo === 'ajuda_custo' ? `a:${l.origem_id}` : `d:${l.origem_id}:${l.trecho ?? 'ida'}`);
