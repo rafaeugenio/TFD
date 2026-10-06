@@ -2,22 +2,23 @@
 
 import { Suspense, useMemo, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
 import { FluxoV2Provider, useFluxoV2State } from '@/app/fluxo-v2/_state/FluxoV2Provider';
 import { Skeleton } from '@/components/ui/skeleton';
 import Landing from './_construtor/ui/Landing';
-import JanelaAssunto from './_construtor/ui/JanelaAssunto';
 import Detalhe from './_construtor/ui/Detalhe';
 import { montarBase } from './_construtor/dataset';
+import { secoesNovoRelatorio } from './_construtor/motor';
 import { doUsuario, useRelatoriosSalvos } from './_construtor/salvos';
 import type { ConfigRelatorio } from './_construtor/tipos';
 
 /**
  * Relatórios: construtor de relatórios personalizáveis, em tela única.
  * - sem parâmetro: lista dos relatórios criados pelo usuário;
- * - `?novo=1`: janela curta para escolher o assunto; depois abre a tela do
- *   relatório já com tabela, e ao salvar vira `?salvo=<id>`;
+ * - `?novo=1`: abre direto a tela do relatório com todos os assuntos marcados
+ *   e o painel Personalizar aberto; o usuário desmarca o que não precisa, e
+ *   ao salvar vira `?salvo=<id>`;
  * - `?salvo=<id>`: a mesma tela com o relatório salvo (consultar, ajustar,
  *   personalizar, exportar); `&personalizar=1` abre o painel Personalizar;
  * - `?editar=<id>`: atalho antigo, equivale a `?salvo=<id>&personalizar=1`.
@@ -35,7 +36,6 @@ export default function RelatoriosPage() {
 
 function RelatoriosApp() {
   const params = useSearchParams();
-  const router = useRouter();
   const { user, isLoading: carregandoUsuario } = usePermissions();
   const { solicitacoes, isLoading } = useFluxoV2State();
   // Lido pelo hook (e não direto do localStorage) para o servidor e o
@@ -46,17 +46,14 @@ function RelatoriosApp() {
   const base = useMemo(() => montarBase(solicitacoes), [solicitacoes]);
   // Cada pessoa vê os seus. Os salvos antes desta regra (sem dono) continuam visíveis.
   const salvos = useMemo(() => doUsuario(todos, user?.id), [todos, user?.id]);
-  const [rascunho, setRascunho] = useState<ConfigRelatorio[] | null>(null);
+  const [rascunho] = useState<ConfigRelatorio[]>(secoesNovoRelatorio);
 
   const salvoId = params.get('salvo');
   const editarId = params.get('editar');
   const novo = params.get('novo');
 
   if (novo) {
-    if (!rascunho) {
-      return <JanelaAssunto onConfirmar={setRascunho} onFechar={() => router.push('/relatorios')} />;
-    }
-    return <Detalhe key="novo" secoesIniciais={rascunho} base={base} carregando={isLoading} />;
+    return <Detalhe key="novo" secoesIniciais={rascunho} base={base} carregando={isLoading} abrirPersonalizar />;
   }
 
   if (!montado || (carregandoUsuario && (salvoId || editarId))) return <CarregandoTela />;

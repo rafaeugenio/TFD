@@ -3,7 +3,7 @@
 /*  agrupamento e totais sobre a base. Não conhece a interface.               */
 /* -------------------------------------------------------------------------- */
 
-import { assuntoPorId, camposDoAssunto, campoPorId, filtrosDoAssunto } from './assuntos';
+import { ASSUNTOS_ORDEM, assuntoPorId, camposDoAssunto, campoPorId, filtrosDoAssunto } from './assuntos';
 import type { BaseRelatorios } from './dataset';
 import {
   dataBR, diaNoPeriodo, intervaloCruzaPeriodo, MESES, mesAno, resolverPeriodo, type PeriodoResolvido,
@@ -314,4 +314,19 @@ export function configInicial(assuntoId: Assunto['id']): ConfigRelatorio {
     agruparPor: '',
     metaAnualSigtap: a.id === 'financeiro' ? 12000 : undefined,
   };
+}
+
+/** Alterna um assunto em uma lista de seções, mantendo a ordem fixa e o
+ *  mesmo período em todas. Nunca deixa a lista sem assunto. */
+export function alternarAssunto(secoes: ConfigRelatorio[], id: Assunto['id']): ConfigRelatorio[] {
+  if (secoes.some((s) => s.assunto === id)) return secoes.length > 1 ? secoes.filter((s) => s.assunto !== id) : secoes;
+  const periodo = secoes[0]?.periodo ?? configInicial(id).periodo;
+  return ordenarSecoes([...secoes, { ...configInicial(id), periodo }], ASSUNTOS_ORDEM);
+}
+
+/** Relatório novo: começa com todos os assuntos marcados e o mesmo período;
+ *  o usuário desmarca no painel Personalizar o que não precisa. */
+export function secoesNovoRelatorio(): ConfigRelatorio[] {
+  const periodo = configInicial(ASSUNTOS_ORDEM[0]).periodo;
+  return ASSUNTOS_ORDEM.map((id) => ({ ...configInicial(id), periodo }));
 }

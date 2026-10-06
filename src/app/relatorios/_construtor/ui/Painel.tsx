@@ -11,7 +11,7 @@ import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown } from 'lucide-react';
 import { ASSUNTOS_ORDEM, assuntoPorId, camposDoAssunto } from '../assuntos';
 import type { Pendencia } from '../validacao';
 import type { Campo, ConfigRelatorio, GrupoCampos } from '../tipos';
-import { alternarAssunto } from './JanelaAssunto';
+import { alternarAssunto } from '../motor';
 import { C, Pilula, campoStyle, rotuloCampo } from './estilo';
 
 interface Props {
