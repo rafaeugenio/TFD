@@ -1,14 +1,13 @@
 'use client';
 
-import { Suspense, useMemo, useState, useSyncExternalStore } from 'react';
+import { Suspense, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
 import { FluxoV2Provider, useFluxoV2State } from '@/app/fluxo-v2/_state/FluxoV2Provider';
 import { Skeleton } from '@/components/ui/skeleton';
 import Landing from './_construtor/ui/Landing';
 import Detalhe from './_construtor/ui/Detalhe';
-import Assistente from './_assistente/ui/Assistente';
 import { montarBase } from './_construtor/dataset';
 import { secoesNovoRelatorio } from './_construtor/motor';
 import { doUsuario, useRelatoriosSalvos } from './_construtor/salvos';
@@ -23,7 +22,7 @@ import type { ConfigRelatorio } from './_construtor/tipos';
  * - `?salvo=<id>`: a mesma tela com o relatório salvo (consultar, ajustar,
  *   personalizar, exportar); `&personalizar=1` abre o painel Personalizar;
  * - `?editar=<id>`: atalho antigo, equivale a `?salvo=<id>&personalizar=1`.
- * - `?aba=assistente`: Assistente de Relatórios (perguntas em linguagem natural).
+ * - `?aba=assistente`: endereço antigo do assistente, redireciona para /ia.
  * Os relatórios fixos antigos continuam em /relatorios/anteriores.
  */
 export default function RelatoriosPage() {
@@ -38,6 +37,9 @@ export default function RelatoriosPage() {
 
 function RelatoriosApp() {
   const params = useSearchParams();
+  const router = useRouter();
+  const irParaIa = params.get('aba') === 'assistente';
+  useEffect(() => { if (irParaIa) router.replace('/ia'); }, [irParaIa, router]);
   const { user, isLoading: carregandoUsuario } = usePermissions();
   const { solicitacoes, isLoading } = useFluxoV2State();
   // Lido pelo hook (e não direto do localStorage) para o servidor e o
@@ -54,7 +56,8 @@ function RelatoriosApp() {
   const editarId = params.get('editar');
   const novo = params.get('novo');
 
-  if (params.get('aba') === 'assistente') return <Assistente />;
+  if (irParaIa) return <CarregandoTela />;
+
 
   if (novo) {
     return <Detalhe key="novo" secoesIniciais={rascunho} base={base} carregando={isLoading} abrirPersonalizar />;

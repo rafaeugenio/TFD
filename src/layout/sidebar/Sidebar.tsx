@@ -25,6 +25,7 @@ import {
   Building2,
   HeartHandshake,
   Home,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-react';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
@@ -51,6 +52,8 @@ const navSections: NavSection[] = [
   {
     items: [
       { icon: LayoutDashboard, label: 'Painel', href: '/dashboard', tela: 'painel' },
+      // Assistente de Relatórios: mesma permissão de Relatórios, também checada no endpoint.
+      { icon: Sparkles,        label: 'IA',     href: '/ia',        tela: 'relatorios' },
     ],
   },
   {

@@ -30,6 +30,8 @@ const RULES: RouteRule[] = [
   { prefix: '/unidades-saude',         tela: 'unidades_saude' },
   { prefix: '/regionais-saude',        tela: 'regionais_saude' },
   { prefix: '/relatorios',             tela: 'relatorios' },
+  // IA (Assistente de Relatórios) usa a permissão de Relatórios.
+  { prefix: '/ia',                     tela: 'relatorios' },
   // Competências de Faturamento e BPA: permissão própria, separada de Relatórios (PBI 16400).
   { prefix: '/financeiro',             tela: 'financeiro' },
   { prefix: '/sistema/configuracoes',  tela: 'sys_configuracoes' },

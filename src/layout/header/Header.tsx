@@ -11,6 +11,7 @@ import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
 
 const titles: Record<string, string> = {
   '/dashboard': 'Painel',
+  '/ia': 'IA',
   '/solicitacoes': 'Solicitações',
   '/diagnostico-clinico': 'Diagnóstico Clínico',
   '/parecer-medico': 'Parecer Médico',

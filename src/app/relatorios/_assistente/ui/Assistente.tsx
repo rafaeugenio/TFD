@@ -9,7 +9,6 @@ import PageHeader from '@/shared/components/page-header/PageHeader';
 import { C, rotuloCampo } from '../../_construtor/ui/estilo';
 import { cartao } from '../../_construtor/ui/Previa';
 import { LIMITE_PERGUNTA, SUGESTOES_INICIAIS, type RespostaAssistente } from '../contrato';
-import AbasRelatorios from './AbasRelatorios';
 
 /**
  * Assistente de Relatórios: conversa em que o usuário pergunta em linguagem
@@ -82,9 +81,9 @@ export default function Assistente() {
   return (
     <div className="pb-8">
       <PageHeader
-        title="Relatórios"
+        title="IA"
         subtitle="Pergunte em linguagem natural e receba totais calculados direto da base do TFD."
-        breadcrumbs={[{ label: 'Gestão' }]}
+        breadcrumbs={[]}
         actions={
           !vazio ? (
             <button type="button" className="tfd-btn tfd-btn-secondary" onClick={novaConversa} disabled={enviando}>
@@ -93,7 +92,6 @@ export default function Assistente() {
           ) : undefined
         }
       />
-      <AbasRelatorios ativa="assistente" />
 
       <div className="mx-auto flex flex-col gap-4" style={{ maxWidth: 880 }}>
         {vazio && (
