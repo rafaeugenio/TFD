@@ -20,7 +20,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  LabelList,
   Legend,
   Pie,
   PieChart,
@@ -31,27 +30,15 @@ import {
 } from 'recharts';
 
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import { CORES_GRAFICO, TopBarChart } from '@/shared/components/charts/Graficos';
 import { FluxoV2Provider, useFluxoV2State } from '@/app/fluxo-v2/_state/FluxoV2Provider';
 import { contarPorStatus } from '@/app/fluxo-v2/_utils/stats';
 import { Skeleton } from '@/components/ui/skeleton';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
 
-/* ── Paleta dos charts ───────────────────────────────── */
-
-const COLORS = {
-  blue: '#146BFA',
-  indigo: '#6366F1',
-  amber: '#F59E0B',
-  orange: '#F97316',
-  cyan: '#0891B2',
-  green: '#10B981',
-  slate: '#94A3B8',
-  red: '#EF4444',
-  border: '#E2E8F0',
-  text: '#0F172A',
-  muted: '#64748B',
-};
+/* ── Paleta dos charts (compartilhada em shared/components/charts) ── */
+const COLORS = CORES_GRAFICO;
 
 /* ── Mapa município → regional de saúde (MA) ─────────── */
 /**
@@ -482,68 +469,6 @@ function ChartCard({
       </div>
       {children}
     </section>
-  );
-}
-
-function TopBarChart({
-  data,
-  color,
-  width,
-}: {
-  data: { name: string; value: number }[];
-  color: string;
-  width: number;
-}) {
-  if (data.length === 0) {
-    return <EmptyChart>Sem dados</EmptyChart>;
-  }
-  return (
-    <div style={{ width: '100%', height: 240 }}>
-      <ResponsiveContainer>
-        <BarChart
-          data={data}
-          layout="vertical"
-          margin={{ top: 4, right: 24, left: 0, bottom: 0 }}
-        >
-          <XAxis type="number" hide />
-          <YAxis
-            type="category"
-            dataKey="name"
-            tick={{ fontSize: 11, fill: COLORS.text }}
-            axisLine={false}
-            tickLine={false}
-            width={width}
-          />
-          <Tooltip
-            contentStyle={{
-              background: 'white',
-              border: `1px solid ${COLORS.border}`,
-              borderRadius: 8,
-              fontSize: 12,
-            }}
-            cursor={{ fill: '#F8FAFC' }}
-          />
-          <Bar dataKey="value" fill={color} radius={[0, 6, 6, 0]} barSize={14}>
-            <LabelList
-              dataKey="value"
-              position="right"
-              style={{ fontSize: 11, fill: COLORS.muted, fontWeight: 600 }}
-            />
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-function EmptyChart({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="flex items-center justify-center text-[12px]"
-      style={{ color: COLORS.muted, height: 220 }}
-    >
-      {children}
-    </div>
   );
 }
 

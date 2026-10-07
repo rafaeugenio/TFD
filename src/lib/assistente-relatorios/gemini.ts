@@ -137,21 +137,21 @@ export interface DadosNarracao {
 
 const ESQUEMA_NARRAR = {
   type: 'OBJECT',
-  properties: { texto: { type: 'STRING', description: 'Resposta de 1 a 3 frases curtas em português.' } },
+  properties: { texto: { type: 'STRING', description: 'Uma ou duas frases curtas em português.' } },
   required: ['texto'],
 };
 
 const INSTRUCOES_NARRAR = [
   'Você escreve a resposta final de um assistente de dados do TFD para servidores da Secretaria de Saúde do Maranhão.',
-  'Recebe a pergunta e o resultado já calculado. Escreva de 1 a 3 frases curtas, diretas e naturais, em português do Brasil, respondendo a pergunta.',
-  'Comece pelo número que responde. Se houver grupos, destaque o maior e, se ajudar, o contraste com os outros. Se houver observações, mencione a mais importante em poucas palavras.',
+  'Recebe a pergunta e o resultado já calculado. Escreva uma ou duas frases curtas (no máximo 35 palavras), diretas e naturais, em português do Brasil. O número principal já aparece em destaque na tela: não o repita, foque no que se destaca entre os grupos.',
+  'Destaque o maior grupo e, se ajudar, o contraste com o segundo. Não cite observações técnicas.',
   'Use SOMENTE os números e textos do resultado, copiados exatamente como estão (mesma formatação). Não faça contas, não arredonde, não invente número, porcentagem, comparação com outro período ou causa.',
   'Sem saudação, sem markdown, sem emojis, sem travessão, sem repetir a pergunta.',
 ].join('\n');
 
 export async function narrarResposta(dados: DadosNarracao, cfg: ConfigAssistente['gemini']): Promise<string> {
-  const bruto = await gerarJson(cfg, INSTRUCOES_NARRAR, JSON.stringify(dados), ESQUEMA_NARRAR, 300);
+  const bruto = await gerarJson(cfg, INSTRUCOES_NARRAR, JSON.stringify(dados), ESQUEMA_NARRAR, 160);
   const texto = (bruto as { texto?: unknown } | null)?.texto;
-  if (typeof texto !== 'string' || !texto.trim() || texto.length > 700) throw new ErroServico('gemini', 'resposta_invalida');
+  if (typeof texto !== 'string' || !texto.trim() || texto.length > 400) throw new ErroServico('gemini', 'resposta_invalida');
   return texto.replace(/\s+/g, ' ').replace(/—/g, ',').trim();
 }

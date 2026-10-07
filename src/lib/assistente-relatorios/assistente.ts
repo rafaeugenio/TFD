@@ -40,22 +40,37 @@ function descreverFiltros(f: Filtros): { rotulo: string; valor: string }[] {
 
 const percentual = (v: number, total: number) => `${Math.round((v / total) * 100)}%`;
 
-/** Resumo escrito pelo código: usado quando o Gemini não responde ou falha na checagem. */
-function resumoDeterministico(r: ResultadoConsulta, p: PeriodoResolvido | null): string {
-  const fmt = formatador(r.unidade);
-  const quando = p ? (p.descricao.toLowerCase().startsWith('de ') ? ` ${p.descricao.toLowerCase()}` : ` no período: ${p.descricao.toLowerCase()}`) : '';
-  let frase = `${r.rotulo}: ${fmt(r.total)}${quando}.`;
-  if (r.unidade === 'dias') frase = `${r.rotulo}: ${fmt(r.total)}, em ${QTD(r.registros)} ${r.registros === 1 ? 'solicitação concluída' : 'solicitações concluídas'}${quando}.`;
-  const g = r.grupos;
-  if (g && !g.cronologico && g.itens.length > 1 && r.total > 0) {
-    const topo = g.itens[0];
-    frase += r.unidade === 'dias'
-      ? ` A maior média foi ${topo.rotulo}, com ${fmt(topo.valor)}.`
-      : ` O maior foi ${topo.rotulo}, com ${fmt(topo.valor)} (${percentual(topo.valor, r.total)} do total).`;
-  } else if (g && !g.cronologico && g.itens.length === 1 && r.total > 0) {
-    frase += ` Tudo ficou em ${g.itens[0].rotulo}.`;
+const plural = (n: number, um: string, varios: string) => `${QTD(n)} ${n === 1 ? um : varios}`;
+/** Legenda curta do número principal: de quantos registros ele saiu. */
+function legenda(rel: RelatorioId, r: ResultadoConsulta): string | undefined {
+  switch (rel) {
+    case 'gasto_passagens': case 'passagens_por_modal': case 'custo_por_destino':
+      return `em ${plural(r.registros, 'passagem', 'passagens')}`;
+    case 'gasto_diarias': return `em ${plural(r.registros, 'ajuda de custo concluída', 'ajudas de custo concluídas')}`;
+    case 'tempo_medio_conclusao': return `de ${plural(r.registros, 'solicitação concluída', 'solicitações concluídas')}`;
+    case 'custo_total': return 'passagens, adicionais e diárias';
+    default: return undefined;
   }
-  return frase;
+}
+
+/**
+ * Resumo escrito pelo código quando há grupos para comparar (o número
+ * principal já aparece em destaque na tela, então não é repetido).
+ */
+function resumoDeterministico(r: ResultadoConsulta): string | undefined {
+  const fmt = formatador(r.unidade);
+  const g = r.grupos;
+  if (!g || r.total <= 0) return undefined;
+  if (g.cronologico) {
+    if (g.itens.length < 2) return undefined;
+    const maior = [...g.itens].sort((a, b) => b.valor - a.valor)[0];
+    return `O mês com maior valor foi ${maior.rotulo}, com ${fmt(maior.valor)}.`;
+  }
+  if (g.itens.length === 1) return `Tudo ficou em ${g.itens[0].rotulo}.`;
+  const topo = g.itens[0];
+  return r.unidade === 'dias'
+    ? `A maior média foi ${topo.rotulo}, com ${fmt(topo.valor)}.`
+    : `${topo.rotulo} lidera, com ${fmt(topo.valor)} (${percentual(topo.valor, r.total)} do total).`;
 }
 
 /** Números (com vírgula, ponto e %) que aparecem num texto. */
@@ -107,6 +122,17 @@ export async function responderPergunta(
     if (!(e instanceof ErroServico)) throw e;
     interp = interpretarPorRegras(pergunta, historico);
     etapas.push({ rotulo: 'Gemini indisponível', valor: e.tipo === 'cobranca' ? 'O projeto do Gemini está sem crédito; a pergunta foi lida por regras simples.' : 'A pergunta foi lida por regras simples.' });
+  }
+
+  // Métricas que ficam em outro módulo: responde direto, sem gastar JEV nem Gemini.
+  if (/sigtap|\bbpa\b|faturamento sus|tabela sus/i.test(`${pergunta} ${interp.perguntaInterpretada}`)) {
+    return {
+      status: 'nao_suportado',
+      mensagem: 'Valores SIGTAP e BPA ficam no módulo Financeiro, nas competências de Faturamento e BPA. Aqui eu respondo o valor real gasto com passagens, diárias e o custo total.',
+      sugestoes: ['Quanto foi gasto em passagens em setembro?', 'Qual foi o custo total do TFD no último trimestre?'],
+      perguntaInterpretada: interp.perguntaInterpretada,
+      geradoEm,
+    };
   }
 
   // 2) JEV escolhe a consulta, os parâmetros, e mede risco e confiança.
@@ -195,22 +221,25 @@ export async function responderPergunta(
     composicao: r.composicao?.map((c) => ({ rotulo: c.rotulo, valor: BRL(c.valor) })),
     observacoes: r.avisos,
   };
-  let resumo = resumoDeterministico(r, periodo);
-  try {
-    const texto = await narrarResposta(dados, cfg.gemini);
-    if (textoConfere(texto, dados)) {
-      resumo = texto;
-      etapas.push({ rotulo: 'Gemini escreveu', valor: 'Texto conferido: todos os números vêm do resultado.' });
-    } else {
-      etapas.push({ rotulo: 'Texto do Gemini descartado', valor: 'Trazia número fora do resultado; usei o resumo calculado.' });
+  let resumo = resumoDeterministico(r);
+  // O Gemini só escreve quando há grupos para comparar; com um número só, o destaque já responde (e economiza uma chamada).
+  if ((r.grupos?.itens.length ?? 0) > 1) {
+    try {
+      const texto = await narrarResposta({ ...dados, grupos: dados.grupos?.slice(0, 6), composicao: undefined, observacoes: undefined }, cfg.gemini);
+      if (textoConfere(texto, dados)) {
+        resumo = texto;
+        etapas.push({ rotulo: 'Gemini escreveu', valor: 'Texto conferido: todos os números vêm do resultado.' });
+      } else {
+        etapas.push({ rotulo: 'Texto do Gemini descartado', valor: 'Trazia número fora do resultado; usei o resumo calculado.' });
+      }
+    } catch (e) {
+      if (!(e instanceof ErroServico)) throw e;
     }
-  } catch (e) {
-    if (!(e instanceof ErroServico)) throw e;
   }
 
   return {
     ...base,
-    resultado: { rotulo: r.rotulo, valor: r.total, unidade: r.unidade, composicao: r.composicao },
+    resultado: { rotulo: r.rotulo, valor: r.total, unidade: r.unidade, legenda: legenda(rel, r), composicao: r.composicao },
     grupos: r.grupos && r.grupos.itens.length ? { titulo: agrupamento ?? 'Detalhe', unidade: r.unidade, itens: r.grupos.itens, omitidos: r.grupos.omitidos } : undefined,
     resumo,
     etapas,

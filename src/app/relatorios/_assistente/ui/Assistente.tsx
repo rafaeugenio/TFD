@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  AlertTriangle, ArrowUp, CalendarRange, Database, HelpCircle, Info, Loader2, MessageSquarePlus, ShieldAlert,
+  AlertTriangle, ArrowUp, HelpCircle, Info, Loader2, MessageSquarePlus, ShieldAlert,
   Sparkles, Settings2, SearchX,
 } from 'lucide-react';
 import PageHeader from '@/shared/components/page-header/PageHeader';
+import { ColunasChart, DonutChart, SEQUENCIA_CORES, TendenciaChart, TopBarChart } from '@/shared/components/charts/Graficos';
 import { C, rotuloCampo } from '../../_construtor/ui/estilo';
 import { cartao } from '../../_construtor/ui/Previa';
 import { LIMITE_PERGUNTA, SUGESTOES_INICIAIS, type RespostaAssistente } from '../contrato';
@@ -225,120 +226,105 @@ function CartaoResposta({ r, onSugestao }: { r: RespostaAssistente; onSugestao: 
 
   const res = r.resultado!;
   const fmt = res.unidade === 'BRL' ? BRL : res.unidade === 'dias' ? DIAS : QTD;
-  const grupos = r.grupos;
-  const maxGrupo = grupos ? Math.max(...grupos.itens.map((i) => i.valor), 0) : 0;
+  const grupos = r.grupos && r.grupos.itens.length > 1 ? r.grupos : undefined;
 
   return (
     <section className="self-start w-full" style={{ ...cartao, padding: 20 }} aria-label="Resposta do assistente">
-      {r.perguntaInterpretada && (
-        <p style={{ ...rotuloCampo, marginBottom: 4 }}><Sparkles size={12} /> Entendi: {r.perguntaInterpretada}</p>
-      )}
-      <p style={{ fontSize: 13, color: C.texto }}>{res.rotulo}</p>
-      <p style={{ fontSize: 32, fontWeight: 700, color: C.ink, fontFamily: 'var(--tfd-mono)', lineHeight: 1.15, marginTop: 2 }}>{fmt(res.valor)}</p>
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1" style={{ fontSize: 13, color: C.texto }}>
+        <span>{res.rotulo}</span>
+        {r.periodo && <span style={{ color: C.apoio }}>· {r.periodo.descricao}</span>}
+        {r.filtros?.map((f) => (
+          <span key={f.rotulo} style={{ padding: '1px 8px', borderRadius: 999, background: C.azulSuave, color: C.azulTexto, fontSize: 12 }}>{f.valor}</span>
+        ))}
+      </p>
+      <p className="flex flex-wrap items-baseline gap-x-2" style={{ marginTop: 2 }}>
+        <span style={{ fontSize: 30, fontWeight: 700, color: C.ink, fontFamily: 'var(--tfd-mono)', lineHeight: 1.15 }}>{fmt(res.valor)}</span>
+        {res.legenda && <span style={{ fontSize: 13, color: C.apoio }}>{res.legenda}</span>}
+      </p>
       {r.resumo && <p style={{ fontSize: 14, color: C.texto, marginTop: 8, lineHeight: 1.5 }}>{r.resumo}</p>}
 
-      <Contexto r={r} />
+      {grupos && <GraficoGrupos grupos={grupos} fmt={fmt} total={res.valor} unidade={res.unidade} />}
 
-      {res.composicao && res.composicao.length > 1 && grupos?.titulo !== 'Categoria de custo' && (
-        <dl className="grid gap-x-6 gap-y-1 mt-4" style={{ gridTemplateColumns: 'minmax(0,1fr) auto', fontSize: 13 }}>
-          {res.composicao.map((c) => (
-            <div key={c.rotulo} className="contents">
-              <dt style={{ color: C.texto }}>{c.rotulo}{c.quantidade !== undefined && <span style={{ color: C.apoio }}> · {QTD(c.quantidade)}</span>}</dt>
-              <dd style={{ color: C.ink, fontWeight: 600, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{BRL(c.valor)}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-
-      {grupos && grupos.itens.length > 1 && (
-        <div className="mt-5 overflow-x-auto">
-          <p style={rotuloCampo} aria-hidden>Por {grupos.titulo.toLowerCase()}</p>
-          <table className="w-full" style={{ borderCollapse: 'collapse', fontSize: 13 }}>
-            <caption className="sr-only">Resultado por {grupos.titulo.toLowerCase()}</caption>
-            <thead>
-              <tr style={{ borderBottom: `1px solid ${C.borda}` }}>
-                <th scope="col" className="text-left" style={{ padding: '6px 8px 6px 0', color: C.apoio, fontWeight: 600 }}>{grupos.titulo}</th>
-                <th scope="col" className="text-right" style={{ padding: '6px 8px', color: C.apoio, fontWeight: 600 }}>{res.unidade === 'BRL' ? 'Valor' : res.unidade === 'dias' ? 'Média' : 'Quantidade'}</th>
-                <th scope="col" className="w-[38%]"><span className="sr-only">Proporção</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {grupos.itens.map((g) => (
-                <tr key={g.rotulo} style={{ borderBottom: `1px solid var(--tfd-100)` }}>
-                  <th scope="row" className="text-left" style={{ padding: '8px 8px 8px 0', color: C.ink, fontWeight: 500 }}>
-                    {g.rotulo}
-                    {res.unidade !== 'quantidade' && g.quantidade !== undefined && <span style={{ color: C.apoio, fontWeight: 400 }}> · {QTD(g.quantidade)}</span>}
-                  </th>
-                  <td className="text-right whitespace-nowrap" style={{ padding: '8px', color: C.ink, fontVariantNumeric: 'tabular-nums' }}>{fmt(g.valor)}</td>
-                  <td style={{ padding: '8px 0' }} aria-hidden>
-                    <div style={{ height: 8, borderRadius: 4, background: 'var(--tfd-100)' }}>
-                      <div style={{ height: 8, borderRadius: 4, background: C.azul, width: `${maxGrupo > 0 ? Math.max(2, (g.valor / maxGrupo) * 100) : 0}%` }} />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {grupos.omitidos > 0 && <p style={{ fontSize: 12, color: C.apoio, marginTop: 6 }}>Mais {grupos.omitidos} {grupos.omitidos === 1 ? 'item' : 'itens'} com valores menores não aparecem aqui.</p>}
-        </div>
-      )}
-
-      {r.avisos && r.avisos.length > 0 && (
-        <ul className="mt-4 flex flex-col gap-1.5" style={{ fontSize: 13, color: 'var(--tfd-status-warning-strong, #9A3412)', background: 'var(--tfd-warning-bg, #FFF7ED)', border: '1px solid var(--tfd-status-warning-border, #FED7AA)', borderRadius: 'var(--tfd-radius-md)', padding: '8px 12px' }}>
-          {r.avisos.map((a) => <li key={a} className="flex gap-2"><AlertTriangle size={14} className="shrink-0 mt-0.5" />{a}</li>)}
-        </ul>
-      )}
-
-      {r.premissa && (
-        <details className="mt-4" style={{ fontSize: 13, color: C.texto }}>
-          <summary className="cursor-pointer inline-flex items-center gap-1.5" style={{ color: C.azulTexto, fontWeight: 600 }}>
-            <Info size={14} /> Como cheguei nesse número
-          </summary>
-          <p style={{ marginTop: 6, lineHeight: 1.5 }}>{r.premissa}</p>
-          {r.etapas && r.etapas.length > 0 && (
-            <ol className="mt-3 flex flex-col gap-1.5" style={{ paddingLeft: 0, listStyle: 'none' }}>
-              {r.etapas.map((e, i) => (
-                <li key={i} className="flex gap-2">
-                  <span className="inline-flex items-center justify-center shrink-0" style={{ width: 18, height: 18, borderRadius: '50%', background: C.azulSuave, color: C.azulTexto, fontSize: 11, fontWeight: 700 }}>{i + 1}</span>
-                  <span><strong style={{ color: C.ink, fontWeight: 600 }}>{e.rotulo}:</strong> {e.valor}</span>
-                </li>
-              ))}
-            </ol>
+      <details className="mt-4" style={{ fontSize: 13, color: C.texto }}>
+        <summary className="cursor-pointer inline-flex items-center gap-1.5" style={{ color: C.azulTexto, fontWeight: 600 }}>
+          <Info size={14} /> Como cheguei nesse número
+        </summary>
+        <dl className="mt-2 flex flex-col gap-2" style={{ lineHeight: 1.5 }}>
+          {r.perguntaInterpretada && <Item rotulo="Entendi">{r.perguntaInterpretada}</Item>}
+          {r.periodo && <Item rotulo="Período">{dataBR(r.periodo.inicio)} a {dataBR(r.periodo.fim)}, pela {r.periodo.campoData}</Item>}
+          {res.composicao && res.composicao.length > 1 && (
+            <Item rotulo="Composição">{res.composicao.map((c) => `${c.rotulo}: ${BRL(c.valor)}`).join('; ')}</Item>
           )}
-        </details>
-      )}
-
-      <Rodape r={r} />
+          {r.premissa && <Item rotulo="Regra">{r.premissa}</Item>}
+          {r.avisos?.map((a) => <Item key={a} rotulo="Atenção">{a}</Item>)}
+          {r.etapas && r.etapas.length > 0 && <Item rotulo="Etapas">{r.etapas.map((e) => `${e.rotulo}: ${e.valor}`).join(' → ')}</Item>}
+          <Item rotulo="Fonte">
+            {r.fonte}{r.geradoEm && `, ${horaBR(r.geradoEm)}`}{typeof r.confianca === 'number' && `, confiança ${Math.round(r.confianca * 100)}%`}
+          </Item>
+        </dl>
+      </details>
     </section>
   );
 }
 
-function Contexto({ r }: { r: RespostaAssistente }) {
-  if (!r.periodo && !r.filtros?.length) return null;
+function Item({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 mt-4" style={{ fontSize: 13 }}>
-      {r.periodo && (
-        <span className="inline-flex flex-wrap items-center gap-x-1.5" style={{ padding: '4px 10px', borderRadius: 'var(--tfd-radius-md)', background: 'var(--tfd-50)', border: `1px solid ${C.borda}`, color: C.texto }}>
-          <CalendarRange size={13} style={{ color: C.apoio }} />
-          <span>{r.periodo.descricao}: {dataBR(r.periodo.inicio)} a {dataBR(r.periodo.fim)}</span>
-          <span style={{ color: C.apoio }}>· por {r.periodo.campoData}</span>
-        </span>
-      )}
-      {r.filtros?.map((f) => (
-        <span key={f.rotulo} style={{ padding: '4px 10px', borderRadius: 'var(--tfd-radius-md)', background: C.azulSuave, border: `1px solid ${C.azulBorda}`, color: C.azulTexto }}>
-          {f.rotulo}: {f.valor}
-        </span>
-      ))}
+    <div>
+      <dt className="inline" style={{ color: C.ink, fontWeight: 600 }}>{rotulo}: </dt>
+      <dd className="inline">{children}</dd>
     </div>
   );
 }
 
-function Rodape({ r }: { r: RespostaAssistente }) {
+/**
+ * Escolhe o template de gráfico do Painel conforme os dados:
+ * meses viram colunas (até 6) ou área (mais longos), até 5 partes de um total viram donut,
+ * rankings maiores (ou médias) viram barras horizontais.
+ */
+function GraficoGrupos({
+  grupos, fmt, total, unidade,
+}: { grupos: NonNullable<RespostaAssistente['grupos']>; fmt: (v: number) => string; total: number; unidade: string }) {
+  const dados = grupos.itens.map((g) => ({ name: g.rotulo, value: g.valor }));
+  const porMes = grupos.titulo === 'Mês';
+  const partes = !porMes && unidade !== 'dias' && dados.length <= 5;
+  const largura = Math.min(200, Math.max(110, Math.max(...dados.map((d) => d.name.length)) * 7.5 + 16));
+
   return (
-    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-4 pt-3" style={{ borderTop: `1px solid ${C.borda}`, fontSize: 12, color: C.apoio }}>
-      <span className="inline-flex items-center gap-1"><Database size={12} /> Fonte: {r.fonte}</span>
-      {r.geradoEm && <span>Gerado em {horaBR(r.geradoEm)}</span>}
-      {typeof r.confianca === 'number' && <span>Confiança da interpretação: {Math.round(r.confianca * 100)}%</span>}
-    </p>
+    <figure className="mt-4" aria-label={`Gráfico por ${grupos.titulo.toLowerCase()}`}>
+      {porMes && dados.length <= 6 ? (
+        <ColunasChart data={dados} nome={grupos.titulo} formatar={fmt} />
+      ) : porMes ? (
+        <TendenciaChart data={dados} nome={grupos.titulo} formatar={fmt} id={`ia-${dados.length}-${Math.round(total)}`} />
+      ) : partes ? (
+        <div className="grid items-center gap-2 sm:grid-cols-[200px_1fr]">
+          <DonutChart data={dados} formatar={fmt} altura={180} />
+          <ul className="flex flex-col gap-1.5" style={{ fontSize: 13 }}>
+            {dados.map((d, i) => (
+              <li key={d.name} className="flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-2 min-w-0" style={{ color: C.texto }}>
+                  <span className="shrink-0 rounded-full" style={{ width: 8, height: 8, background: SEQUENCIA_CORES[i % SEQUENCIA_CORES.length] }} />
+                  <span className="truncate">{d.name}</span>
+                </span>
+                <span className="whitespace-nowrap" style={{ color: C.ink, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                  {fmt(d.value)} <span style={{ color: C.apoio, fontWeight: 400 }}>{total > 0 ? `${Math.round((d.value / total) * 100)}%` : ''}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <TopBarChart data={dados} width={largura} formatar={fmt} altura={Math.min(380, dados.length * 30 + 24)} />
+      )}
+      {grupos.omitidos > 0 && (
+        <figcaption style={{ fontSize: 12, color: C.apoio, marginTop: 4 }}>
+          Mais {grupos.omitidos} {grupos.omitidos === 1 ? 'item menor' : 'itens menores'} fora do gráfico.
+        </figcaption>
+      )}
+    </figure>
   );
+}
+
+function Contexto({ r }: { r: RespostaAssistente }) {
+  if (!r.periodo) return null;
+  return <p style={{ fontSize: 13, color: C.apoio, marginTop: 6 }}>{r.periodo.descricao}: {dataBR(r.periodo.inicio)} a {dataBR(r.periodo.fim)}</p>;
 }

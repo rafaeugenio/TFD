@@ -44,6 +44,8 @@ export interface RespostaAssistente {
     rotulo: string;
     valor: number;
     unidade: Unidade;
+    /** Legenda curta abaixo do número (ex.: "em 16 passagens"). */
+    legenda?: string;
     /** Parcelas que somam o valor principal (ex.: passagens + adicionais). */
     composicao?: ItemValor[];
   };
