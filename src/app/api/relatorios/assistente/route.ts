@@ -56,6 +56,16 @@ export async function POST(req: NextRequest) {
     return json({ status: limpa.motivo === 'dado_pessoal' ? 'bloqueado' : 'erro', mensagem, geradoEm }, limpa.motivo === 'dado_pessoal' ? 200 : 400);
   }
 
+  // Histórico da conversa: no máximo 3 turnos, cada pergunta passa pela mesma limpeza.
+  const brutoHist = (corpo as { historico?: unknown } | null)?.historico;
+  const historico = (Array.isArray(brutoHist) ? brutoHist.slice(-3) : []).flatMap((t) => {
+    const item = t as { pergunta?: unknown; interpretacao?: unknown } | null;
+    const p = sanitizarPergunta(item?.pergunta);
+    if (!p.ok) return [];
+    const interpretacao = typeof item?.interpretacao === 'string' ? item.interpretacao.replace(/\s+/g, ' ').slice(0, 240) : undefined;
+    return [{ pergunta: p.pergunta, interpretacao }];
+  });
+
   const cfg = lerConfigAssistente();
   if (!cfg.ok) {
     return json(
@@ -69,7 +79,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const resposta = await responderPergunta(limpa.pergunta, cfg.config, sb);
+    const resposta = await responderPergunta(limpa.pergunta, historico, cfg.config, sb);
     console.info(`[assistente-relatorios] ${resposta.relatorio ?? '-'} ${resposta.status} ${Date.now() - inicio}ms`);
     return json(resposta);
   } catch (e) {

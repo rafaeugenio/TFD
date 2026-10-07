@@ -1,9 +1,10 @@
 import 'server-only';
 
 /**
- * Catálogo fechado de relatórios que o assistente sabe responder. A IA só
- * escolhe um destes ids e preenche parâmetros dentro das listas abaixo; a
- * consulta de cada um está em `consultas.ts` e nunca é escrita pela IA.
+ * Catálogo fechado de consultas que o assistente sabe responder. A IA só
+ * escolhe um destes ids e parâmetros dentro das listas abaixo; a consulta de
+ * cada um está em `consultas.ts` e nunca é escrita pela IA. Tudo é agregado:
+ * nenhuma consulta devolve dado de pessoa.
  */
 
 export type RelatorioId =
@@ -11,10 +12,19 @@ export type RelatorioId =
   | 'passagens_por_modal'
   | 'custo_por_destino'
   | 'gasto_diarias'
+  | 'custo_total'
   | 'solicitacoes_por_status'
-  | 'custo_total';
+  | 'solicitacoes_em_andamento'
+  | 'pareceres_regulacao'
+  | 'agendamentos'
+  | 'pacientes_cadastrados'
+  | 'tempo_medio_conclusao';
 
-export type Agrupamento = 'nenhum' | 'mes' | 'modal' | 'destino' | 'origem' | 'beneficiario' | 'status' | 'categoria';
+export const AGRUPAMENTOS = [
+  'nenhum', 'mes', 'modal', 'destino', 'origem', 'beneficiario', 'status', 'categoria',
+  'setor', 'municipio', 'regional', 'especialidade', 'prioridade', 'decisao', 'sexo',
+] as const;
+export type Agrupamento = (typeof AGRUPAMENTOS)[number];
 
 export const MODAIS = ['AEREO', 'TERRESTRE', 'FLUVIAL', 'TRANSFER'] as const;
 export type Modal = (typeof MODAIS)[number];
@@ -23,6 +33,10 @@ export const MODAL_ROTULO: Record<Modal, string> = { AEREO: 'Aéreo', TERRESTRE:
 export const BENEFICIARIOS = ['PACIENTE', 'ACOMPANHANTE'] as const;
 export type Beneficiario = (typeof BENEFICIARIOS)[number];
 export const BENEFICIARIO_ROTULO: Record<Beneficiario, string> = { PACIENTE: 'Paciente', ACOMPANHANTE: 'Acompanhante' };
+
+export const PRIORIDADES = ['URGENTE', 'NORMAL'] as const;
+export type Prioridade = (typeof PRIORIDADES)[number];
+export const PRIORIDADE_ROTULO: Record<Prioridade, string> = { URGENTE: 'Urgente', NORMAL: 'Normal' };
 
 /** Status da solicitação no banco (CHECK da migration 00073). */
 export const STATUS_SOLICITACAO = [
@@ -40,26 +54,58 @@ export const STATUS_ROTULO: Record<StatusSolicitacao, string> = {
   EM_VIAGEM: 'Em viagem', EM_PERMANENCIA: 'Em permanência', REMARCACAO: 'Em remarcação', EM_PAGAMENTO: 'Em pagamento',
   EM_APROVACAO: 'Em aprovação', CONCLUIDO: 'Concluída', INDEFERIDO: 'Indeferida', CANCELADO: 'Cancelada',
 };
+/** Situações em que a solicitação já saiu do fluxo. */
+export const STATUS_ENCERRADOS: StatusSolicitacao[] = ['CONCLUIDO', 'INDEFERIDO', 'CANCELADO'];
+
+/** Setor atual (derivado do status por gatilho no banco). */
+export const SETOR_ROTULO: Record<string, string> = {
+  dados_basicos: 'Dados básicos', regulacao: 'Regulação', passagens: 'Passagens', ajuda_custo: 'Ajuda de custo',
+  acompanhamento: 'Acompanhamento', aprovacao: 'Aprovação', encerramento: 'Encerramento', servico_social: 'Serviço Social',
+};
 
 export const AGRUPAMENTO_ROTULO: Record<Agrupamento, string> = {
   nenhum: 'Sem agrupamento', mes: 'Mês', modal: 'Modal de transporte', destino: 'Cidade de destino',
   origem: 'Cidade de origem', beneficiario: 'Beneficiário', status: 'Situação', categoria: 'Categoria de custo',
+  setor: 'Setor', municipio: 'Município', regional: 'Regional de saúde', especialidade: 'Especialidade',
+  prioridade: 'Prioridade', decisao: 'Decisão do parecer', sexo: 'Sexo',
+};
+
+/** Descrição de cada agrupamento para o JEV escolher (em linguagem do usuário). */
+export const AGRUPAMENTO_CRITERIO: Record<Agrupamento, string> = {
+  nenhum: 'Só o total, sem separar em grupos.',
+  mes: 'Separado por mês, evolução ao longo do tempo.',
+  modal: 'Separado por meio de transporte (aéreo, terrestre, fluvial, transfer).',
+  destino: 'Separado por cidade de destino.',
+  origem: 'Separado por cidade de origem ou saída.',
+  beneficiario: 'Separado entre paciente e acompanhante.',
+  status: 'Separado pela situação ou status da solicitação.',
+  categoria: 'Separado por tipo de custo (passagens, adicionais, diárias).',
+  setor: 'Separado pelo setor ou etapa do fluxo em que está (regulação, passagens, ajuda de custo...).',
+  municipio: 'Separado pelo município do paciente ou de origem da solicitação.',
+  regional: 'Separado pela regional de saúde.',
+  especialidade: 'Separado pela especialidade médica (oncologia, cardiologia...).',
+  prioridade: 'Separado entre urgente e normal.',
+  decisao: 'Separado pela decisão do parecer (deferido ou indeferido).',
+  sexo: 'Separado por sexo.',
 };
 
 export interface Filtros {
   modal?: Modal[];
   beneficiario?: Beneficiario[];
   status?: StatusSolicitacao[];
+  prioridade?: Prioridade[];
 }
 
 export interface DefinicaoRelatorio {
   id: RelatorioId;
   titulo: string;
-  /** Descrição usada pelo JEV para escolher o relatório (em linguagem do usuário). */
+  /** Descrição usada pelo JEV para escolher a consulta (em linguagem do usuário). */
   descricao: string;
   agrupamentos: Agrupamento[];
   agrupamentoPadrao: Agrupamento;
   filtros: (keyof Filtros)[];
+  /** Sem período informado, a consulta olha o momento atual em vez de pedir período. */
+  periodoOpcional?: boolean;
   /** Data que define o período, como aparece para o usuário. */
   campoData: string;
   /** Regra de cálculo explicada na resposta. */
@@ -111,17 +157,6 @@ export const CATALOGO: Record<RelatorioId, DefinicaoRelatorio> = {
     premissa:
       'Ajudas de custo ativas e concluídas, pela data de conclusão. Valor calculado pelas diárias do período (R$ 24,75 por pernoite e R$ 8,40 na diária de retorno) menos reembolso. Ajudas de cálculo aditivo ou subtrativo ficam fora, porque viram saldo do paciente. Mesma regra do indicador "Total em diárias" do Painel.',
   },
-  solicitacoes_por_status: {
-    id: 'solicitacoes_por_status',
-    titulo: 'Solicitações por situação',
-    descricao: 'Quantas solicitações de TFD foram abertas ou existem em um período, separadas pela situação atual (em análise, aprovada, concluída, cancelada etc.).',
-    agrupamentos: ['status', 'mes'],
-    agrupamentoPadrao: 'status',
-    filtros: ['status'],
-    campoData: 'data de abertura da solicitação',
-    premissa:
-      'Conta as solicitações abertas no período, pela situação em que estão hoje. O sistema não guarda a data de aprovação, então "aprovadas neste mês" mostra as abertas no mês com a situação atual de cada uma.',
-  },
   custo_total: {
     id: 'custo_total',
     titulo: 'Custo total do TFD',
@@ -132,6 +167,70 @@ export const CATALOGO: Record<RelatorioId, DefinicaoRelatorio> = {
     campoData: 'data de cadastro da passagem e data de conclusão da ajuda de custo',
     premissa:
       'Soma do gasto com passagens (valor líquido das passagens ativas, mais adicionais ligados a passagem não indeferidos) com o gasto com diárias (ajudas concluídas, sem aditivas e subtrativas). Cada parte usa a mesma regra dos indicadores do Painel. Despesas funerárias e outros custos ainda não entram.',
+  },
+  solicitacoes_por_status: {
+    id: 'solicitacoes_por_status',
+    titulo: 'Solicitações abertas no período',
+    descricao: 'Quantas solicitações de TFD foram abertas, criadas ou recebidas em um período, separadas pela situação atual, especialidade, município, regional, setor ou prioridade.',
+    agrupamentos: ['status', 'mes', 'setor', 'especialidade', 'municipio', 'regional', 'prioridade'],
+    agrupamentoPadrao: 'status',
+    filtros: ['status', 'prioridade'],
+    campoData: 'data de abertura da solicitação',
+    premissa:
+      'Conta as solicitações abertas no período, pela situação em que estão hoje. O sistema não guarda a data de aprovação, então "aprovadas neste mês" mostra as abertas no mês com a situação atual de cada uma.',
+  },
+  solicitacoes_em_andamento: {
+    id: 'solicitacoes_em_andamento',
+    titulo: 'Solicitações em andamento',
+    descricao: 'Quantas solicitações estão em andamento agora, na fila ou paradas em cada setor ou etapa do fluxo (dados básicos, regulação, passagens, ajuda de custo, aprovação, acompanhamento), por situação, especialidade, município ou prioridade.',
+    agrupamentos: ['setor', 'status', 'especialidade', 'municipio', 'regional', 'prioridade'],
+    agrupamentoPadrao: 'setor',
+    filtros: ['status', 'prioridade'],
+    periodoOpcional: true,
+    campoData: 'data de abertura da solicitação',
+    premissa:
+      'Conta as solicitações que ainda não foram concluídas, indeferidas ou canceladas, no setor e na situação em que estão agora. Com período informado, considera só as abertas nesse período.',
+  },
+  pareceres_regulacao: {
+    id: 'pareceres_regulacao',
+    titulo: 'Pareceres da regulação',
+    descricao: 'Quantos pareceres médicos da regulação foram emitidos, quantos deferidos e quantos indeferidos, taxa de deferimento ou indeferimento em um período.',
+    agrupamentos: ['decisao', 'mes'],
+    agrupamentoPadrao: 'decisao',
+    filtros: [],
+    campoData: 'data do parecer',
+    premissa: 'Conta os pareceres registrados no período pela decisão do médico regulador. Uma solicitação pode ter mais de um parecer.',
+  },
+  agendamentos: {
+    id: 'agendamentos',
+    titulo: 'Agendamentos de atendimento',
+    descricao: 'Quantos agendamentos de consulta ou atendimento fora do domicílio foram marcados em um período, por cidade de destino ou por mês.',
+    agrupamentos: ['destino', 'mes', 'status'],
+    agrupamentoPadrao: 'destino',
+    filtros: [],
+    campoData: 'data e hora do agendamento',
+    premissa: 'Conta os agendamentos pela data marcada para o atendimento.',
+  },
+  pacientes_cadastrados: {
+    id: 'pacientes_cadastrados',
+    titulo: 'Pacientes cadastrados',
+    descricao: 'Quantos pacientes estão cadastrados no TFD, por município, sexo ou mês de cadastro, ou quantos foram cadastrados em um período.',
+    agrupamentos: ['nenhum', 'municipio', 'sexo', 'mes'],
+    agrupamentoPadrao: 'nenhum',
+    filtros: [],
+    periodoOpcional: true,
+    campoData: 'data de cadastro do paciente',
+    premissa: 'Conta os pacientes ativos no cadastro. Com período informado, considera só os cadastrados nesse período.',
+  },
+  tempo_medio_conclusao: {
+    id: 'tempo_medio_conclusao',
+    titulo: 'Tempo médio até a conclusão',
+    descricao: 'Quanto tempo, em média, uma solicitação leva desde a abertura até ser concluída ou encerrada, demora média do processo, por especialidade ou mês.',
+    agrupamentos: ['nenhum', 'especialidade', 'mes', 'prioridade'],
+    agrupamentoPadrao: 'nenhum',
+    filtros: ['prioridade'],
+    campoData: 'data de encerramento da solicitação',
+    premissa: 'Média de dias entre a abertura e o encerramento das solicitações concluídas, pela data de encerramento.',
   },
 };
 

@@ -25,15 +25,16 @@ interface Mensagem {
 
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const QTD = (v: number) => v.toLocaleString('pt-BR');
+const DIAS = (v: number) => `${v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${v === 1 ? 'dia' : 'dias'}`;
 const dataBR = (s: string) => s.split('-').reverse().join('/');
 const horaBR = (iso?: string) => (iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '');
 
-async function perguntar(pergunta: string): Promise<RespostaAssistente> {
+async function perguntar(pergunta: string, historico: { pergunta: string; interpretacao?: string }[]): Promise<RespostaAssistente> {
   try {
     const r = await fetch('/api/relatorios/assistente', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pergunta }),
+      body: JSON.stringify({ pergunta, historico }),
     });
     // Sem sessão o middleware redireciona para o login e volta HTML.
     if (!(r.headers.get('content-type') ?? '').includes('application/json')) {
@@ -61,10 +62,13 @@ export default function Assistente() {
     const limpa = pergunta.trim();
     if (!limpa || enviando) return;
     const id = proximoId.current++;
+    // Contexto para perguntas de continuação ("e no mês passado?"): só as últimas perguntas e como foram entendidas.
+    const historico = mensagens.filter((m) => m.resposta && m.resposta.status !== 'bloqueado').slice(-3)
+      .map((m) => ({ pergunta: m.pergunta, interpretacao: m.resposta?.perguntaInterpretada }));
     setMensagens((m) => [...m, { id, pergunta: limpa }]);
     setTexto('');
     setEnviando(true);
-    const resposta = await perguntar(limpa);
+    const resposta = await perguntar(limpa, historico);
     setMensagens((m) => m.map((x) => (x.id === id ? { ...x, resposta } : x)));
     setEnviando(false);
     campoRef.current?.focus();
@@ -103,7 +107,7 @@ export default function Assistente() {
               <div>
                 <h2 id="assistente-titulo" style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>Assistente de Relatórios</h2>
                 <p style={{ fontSize: 14, color: C.texto, marginTop: 4, maxWidth: 640 }}>
-                  Faça uma pergunta sobre gastos e quantidades do TFD. Os números vêm da base do sistema e são calculados no servidor; a IA só entende a pergunta. Respondo apenas totais e contagens, nunca dados de pessoas.
+                  Pergunte sobre gastos, solicitações, setores, pareceres, agendamentos e pacientes do TFD. O Gemini entende a pergunta, o JEV escolhe a consulta certa e os números saem da base do sistema, calculados no servidor. Respondo só totais, contagens e médias, nunca dados de pessoas. Dá para continuar a conversa, por exemplo: &quot;e no mês passado?&quot;.
                 </p>
               </div>
             </div>
@@ -220,7 +224,7 @@ function CartaoResposta({ r, onSugestao }: { r: RespostaAssistente; onSugestao: 
   }
 
   const res = r.resultado!;
-  const fmt = res.unidade === 'BRL' ? BRL : QTD;
+  const fmt = res.unidade === 'BRL' ? BRL : res.unidade === 'dias' ? DIAS : QTD;
   const grupos = r.grupos;
   const maxGrupo = grupos ? Math.max(...grupos.itens.map((i) => i.valor), 0) : 0;
 
@@ -254,7 +258,7 @@ function CartaoResposta({ r, onSugestao }: { r: RespostaAssistente; onSugestao: 
             <thead>
               <tr style={{ borderBottom: `1px solid ${C.borda}` }}>
                 <th scope="col" className="text-left" style={{ padding: '6px 8px 6px 0', color: C.apoio, fontWeight: 600 }}>{grupos.titulo}</th>
-                <th scope="col" className="text-right" style={{ padding: '6px 8px', color: C.apoio, fontWeight: 600 }}>{res.unidade === 'BRL' ? 'Valor' : 'Quantidade'}</th>
+                <th scope="col" className="text-right" style={{ padding: '6px 8px', color: C.apoio, fontWeight: 600 }}>{res.unidade === 'BRL' ? 'Valor' : res.unidade === 'dias' ? 'Média' : 'Quantidade'}</th>
                 <th scope="col" className="w-[38%]"><span className="sr-only">Proporção</span></th>
               </tr>
             </thead>
@@ -263,7 +267,7 @@ function CartaoResposta({ r, onSugestao }: { r: RespostaAssistente; onSugestao: 
                 <tr key={g.rotulo} style={{ borderBottom: `1px solid var(--tfd-100)` }}>
                   <th scope="row" className="text-left" style={{ padding: '8px 8px 8px 0', color: C.ink, fontWeight: 500 }}>
                     {g.rotulo}
-                    {res.unidade === 'BRL' && g.quantidade !== undefined && <span style={{ color: C.apoio, fontWeight: 400 }}> · {QTD(g.quantidade)}</span>}
+                    {res.unidade !== 'quantidade' && g.quantidade !== undefined && <span style={{ color: C.apoio, fontWeight: 400 }}> · {QTD(g.quantidade)}</span>}
                   </th>
                   <td className="text-right whitespace-nowrap" style={{ padding: '8px', color: C.ink, fontVariantNumeric: 'tabular-nums' }}>{fmt(g.valor)}</td>
                   <td style={{ padding: '8px 0' }} aria-hidden>
@@ -288,9 +292,19 @@ function CartaoResposta({ r, onSugestao }: { r: RespostaAssistente; onSugestao: 
       {r.premissa && (
         <details className="mt-4" style={{ fontSize: 13, color: C.texto }}>
           <summary className="cursor-pointer inline-flex items-center gap-1.5" style={{ color: C.azulTexto, fontWeight: 600 }}>
-            <Info size={14} /> Como esse número foi calculado
+            <Info size={14} /> Como cheguei nesse número
           </summary>
           <p style={{ marginTop: 6, lineHeight: 1.5 }}>{r.premissa}</p>
+          {r.etapas && r.etapas.length > 0 && (
+            <ol className="mt-3 flex flex-col gap-1.5" style={{ paddingLeft: 0, listStyle: 'none' }}>
+              {r.etapas.map((e, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="inline-flex items-center justify-center shrink-0" style={{ width: 18, height: 18, borderRadius: '50%', background: C.azulSuave, color: C.azulTexto, fontSize: 11, fontWeight: 700 }}>{i + 1}</span>
+                  <span><strong style={{ color: C.ink, fontWeight: 600 }}>{e.rotulo}:</strong> {e.valor}</span>
+                </li>
+              ))}
+            </ol>
+          )}
         </details>
       )}
 

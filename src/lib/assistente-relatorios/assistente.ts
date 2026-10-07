@@ -1,63 +1,85 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { SUGESTOES_INICIAIS, type RespostaAssistente } from '@/app/relatorios/_assistente/contrato';
+import { SUGESTOES_INICIAIS, type RespostaAssistente, type Unidade } from '@/app/relatorios/_assistente/contrato';
 import {
-  AGRUPAMENTO_ROTULO, BENEFICIARIO_ROTULO, CATALOGO, MODAL_ROTULO, STATUS_ROTULO,
+  AGRUPAMENTO_ROTULO, BENEFICIARIO_ROTULO, CATALOGO, MODAL_ROTULO, PRIORIDADE_ROTULO, STATUS_ROTULO,
   type Filtros, type RelatorioId,
 } from './catalogo';
 import type { ConfigAssistente } from './config';
 import { executarConsulta, type ResultadoConsulta } from './consultas';
-import { extrairParametros } from './gemini';
+import { interpretarPergunta, narrarResposta, type DadosNarracao, type Interpretacao, type TurnoAnterior } from './gemini';
 import { ErroServico } from './http';
 import { CONFIANCA_MINIMA, LIMITE_DADO_INDIVIDUAL, LIMITE_DESVIO, decidirComJev } from './jev';
-import { MAX_MESES, resolverPeriodo, type PeriodoResolvido } from './periodo';
+import { MAX_MESES, periodoPorTexto, resolverPeriodo, type PeriodoResolvido } from './periodo';
 
 /**
- * Fluxo do Assistente de Relatórios, depois da autenticação e da limpeza da
- * pergunta: JEV escolhe o relatório, Gemini extrai os parâmetros, o código
- * valida, consulta o banco e escreve o resumo com os números calculados.
+ * Fluxo do assistente, depois da autenticação e da limpeza da pergunta:
+ *  1. Gemini (gratuito) pensa na pergunta e a traduz numa frase explícita, com o período.
+ *  2. JEV escolhe a consulta do catálogo, o agrupamento e os filtros, e mede risco e confiança.
+ *  3. O código consulta o banco (só leitura, sessão do usuário) e calcula os números.
+ *  4. Gemini escreve a resposta a partir do resultado agregado; o texto só é aceito
+ *     se cada número dele existir no resultado. Se o Gemini falhar ou passar do
+ *     limite gratuito, o código usa regras simples no passo 1 e texto próprio no 4.
  */
 
 const FONTE = 'Supabase/PostgreSQL do TFD, calculado no servidor';
 
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const QTD = (v: number) => v.toLocaleString('pt-BR');
+const DIAS = (v: number) => `${v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${v === 1 ? 'dia' : 'dias'}`;
+const formatador = (u: Unidade) => (u === 'BRL' ? BRL : u === 'dias' ? DIAS : QTD);
 
 function descreverFiltros(f: Filtros): { rotulo: string; valor: string }[] {
   const lista: { rotulo: string; valor: string }[] = [];
   if (f.modal?.length) lista.push({ rotulo: 'Modal', valor: f.modal.map((m) => MODAL_ROTULO[m]).join(', ') });
   if (f.beneficiario?.length) lista.push({ rotulo: 'Beneficiário', valor: f.beneficiario.map((b) => BENEFICIARIO_ROTULO[b]).join(', ') });
+  if (f.prioridade?.length) lista.push({ rotulo: 'Prioridade', valor: f.prioridade.map((p) => PRIORIDADE_ROTULO[p]).join(', ') });
   if (f.status?.length) lista.push({ rotulo: 'Situação', valor: f.status.map((s) => STATUS_ROTULO[s]).join(', ') });
   return lista;
 }
 
-/** Resumo escrito pelo código a partir dos números já calculados (a IA não toca em valores). */
-function resumir(rel: RelatorioId, r: ResultadoConsulta, p: PeriodoResolvido): string {
-  const fmt = r.unidade === 'BRL' ? BRL : QTD;
-  const periodo = p.descricao.toLowerCase().startsWith('de ') ? p.descricao.toLowerCase() : `no período: ${p.descricao.toLowerCase()}`;
-  let frase: string;
-  switch (rel) {
-    case 'solicitacoes_por_status':
-      frase = `${QTD(r.total)} ${r.total === 1 ? 'solicitação foi aberta' : 'solicitações foram abertas'} ${periodo}.`;
-      break;
-    case 'gasto_diarias':
-      frase = `Foram pagos ${BRL(r.total)} em diárias, em ${QTD(r.registros)} ${r.registros === 1 ? 'ajuda de custo concluída' : 'ajudas de custo concluídas'}, ${periodo}.`;
-      break;
-    case 'custo_total':
-      frase = `O custo total do TFD foi de ${BRL(r.total)} ${periodo}.`;
-      break;
-    default:
-      frase = `Foram gastos ${BRL(r.total)} em ${QTD(r.registros)} ${r.registros === 1 ? 'passagem' : 'passagens'} ${periodo}.`;
-  }
+const percentual = (v: number, total: number) => `${Math.round((v / total) * 100)}%`;
+
+/** Resumo escrito pelo código: usado quando o Gemini não responde ou falha na checagem. */
+function resumoDeterministico(r: ResultadoConsulta, p: PeriodoResolvido | null): string {
+  const fmt = formatador(r.unidade);
+  const quando = p ? (p.descricao.toLowerCase().startsWith('de ') ? ` ${p.descricao.toLowerCase()}` : ` no período: ${p.descricao.toLowerCase()}`) : '';
+  let frase = `${r.rotulo}: ${fmt(r.total)}${quando}.`;
+  if (r.unidade === 'dias') frase = `${r.rotulo}: ${fmt(r.total)}, em ${QTD(r.registros)} ${r.registros === 1 ? 'solicitação concluída' : 'solicitações concluídas'}${quando}.`;
   const g = r.grupos;
   if (g && !g.cronologico && g.itens.length > 1 && r.total > 0) {
     const topo = g.itens[0];
-    const pct = Math.round((topo.valor / r.total) * 100);
-    frase += ` O maior valor foi ${topo.rotulo}, com ${fmt(topo.valor)} (${pct}% do total).`;
+    frase += r.unidade === 'dias'
+      ? ` A maior média foi ${topo.rotulo}, com ${fmt(topo.valor)}.`
+      : ` O maior foi ${topo.rotulo}, com ${fmt(topo.valor)} (${percentual(topo.valor, r.total)} do total).`;
   } else if (g && !g.cronologico && g.itens.length === 1 && r.total > 0) {
-    frase += ` Todo o valor ficou em ${g.itens[0].rotulo}.`;
+    frase += ` Tudo ficou em ${g.itens[0].rotulo}.`;
   }
   return frase;
+}
+
+/** Números (com vírgula, ponto e %) que aparecem num texto. */
+const numeros = (t: string) => (t.match(/\d+(?:[.,]\d+)*%?/g) ?? []).map((n) => n.replace(/[.,]$/, ''));
+
+/** Aceita o texto do Gemini só se todo número dele vier dos dados ou da pergunta. */
+function textoConfere(texto: string, dados: DadosNarracao): boolean {
+  const permitidos = new Set(numeros(JSON.stringify(dados)));
+  return numeros(texto).every((n) => permitidos.has(n));
+}
+
+/**
+ * Reserva sem Gemini: continuação curta ("e no mês passado?", "e por destino?")
+ * herda o assunto da pergunta anterior; o período vem da pergunta atual ou da anterior.
+ */
+function interpretarPorRegras(pergunta: string, historico: TurnoAnterior[]): Interpretacao {
+  const anterior = historico[historico.length - 1];
+  const continuacao = anterior && /^(e|e\s+(no|na|nos|nas|o|a|os|as|por|em|para|pro|pra))\b/i.test(pergunta.trim()) && pergunta.length <= 60;
+  if (!continuacao) return { perguntaInterpretada: pergunta, periodo: periodoPorTexto(pergunta) };
+  const base = anterior.interpretacao ?? anterior.pergunta;
+  // O período mais recente vale: a pergunta atual, depois os ajustes anteriores, do último para o primeiro.
+  const trechos = [pergunta, ...base.split(' Ajuste pedido: ').reverse()];
+  const periodo = trechos.map((t) => periodoPorTexto(t)).find((p) => p.tipo !== 'nao_informado') ?? { tipo: 'nao_informado' as const };
+  return { perguntaInterpretada: `${base} Ajuste pedido: ${pergunta}`.slice(0, 240), periodo };
 }
 
 const MSG_PERIODO: Record<string, string> = {
@@ -67,15 +89,32 @@ const MSG_PERIODO: Record<string, string> = {
   periodo_longo: `O período pedido passa de ${MAX_MESES} meses. Pergunte por um período menor, como "este ano" ou "nos últimos 12 meses".`,
 };
 
-export async function responderPergunta(pergunta: string, cfg: ConfigAssistente, sb: SupabaseClient): Promise<RespostaAssistente> {
+export async function responderPergunta(
+  pergunta: string,
+  historico: TurnoAnterior[],
+  cfg: ConfigAssistente,
+  sb: SupabaseClient,
+): Promise<RespostaAssistente> {
   const geradoEm = new Date().toISOString();
+  const etapas: { rotulo: string; valor: string }[] = [];
 
-  // 1) JEV: qual relatório, risco e confiança.
-  const decisao = await decidirComJev(pergunta, cfg.jev);
+  // 1) Gemini interpreta (com regras simples de reserva).
+  let interp: Interpretacao;
+  try {
+    interp = await interpretarPergunta(pergunta, historico, cfg.gemini);
+    etapas.push({ rotulo: 'Gemini entendeu', valor: interp.perguntaInterpretada });
+  } catch (e) {
+    if (!(e instanceof ErroServico)) throw e;
+    interp = interpretarPorRegras(pergunta, historico);
+    etapas.push({ rotulo: 'Gemini indisponível', valor: e.tipo === 'cobranca' ? 'O projeto do Gemini está sem crédito; a pergunta foi lida por regras simples.' : 'A pergunta foi lida por regras simples.' });
+  }
+
+  // 2) JEV escolhe a consulta, os parâmetros, e mede risco e confiança.
+  const decisao = await decidirComJev(pergunta, interp.perguntaInterpretada, cfg.jev);
   if (decisao.desvio >= LIMITE_DESVIO || decisao.dadoIndividual >= LIMITE_DADO_INDIVIDUAL) {
     return {
       status: 'bloqueado',
-      mensagem: 'Este assistente responde só totais e contagens agregadas. Ele não mostra dados de pessoas específicas, não altera o sistema e não segue instruções para mudar essas regras.',
+      mensagem: 'Respondo só totais, contagens e médias. Não mostro dados de pessoas específicas, não altero o sistema e não sigo instruções para mudar essas regras.',
       sugestoes: SUGESTOES_INICIAIS.slice(0, 3),
       geradoEm,
     };
@@ -83,52 +122,56 @@ export async function responderPergunta(pergunta: string, cfg: ConfigAssistente,
   if (decisao.relatorio === 'fora_do_catalogo') {
     return {
       status: 'nao_suportado',
-      mensagem: 'Ainda não sei responder essa pergunta. Por enquanto respondo sobre gasto com passagens, diárias, custo total, passagens por modal ou destino e solicitações por situação.',
+      mensagem: 'Ainda não sei responder essa pergunta com os dados do TFD. Posso falar de gastos (passagens, diárias, custo total), solicitações (abertas, em andamento, por setor, especialidade ou município), pareceres, agendamentos, pacientes cadastrados e tempo médio de conclusão.',
       sugestoes: SUGESTOES_INICIAIS,
+      perguntaInterpretada: interp.perguntaInterpretada,
       confianca: decisao.confianca,
       geradoEm,
     };
   }
+  const rel: RelatorioId = decisao.relatorio;
+  const def = CATALOGO[rel];
+  etapas.push({ rotulo: 'JEV escolheu', valor: `${def.titulo} (${Math.round(decisao.confianca * 100)}% de confiança)` });
   if (decisao.confianca < CONFIANCA_MINIMA || decisao.probabilidade < CONFIANCA_MINIMA) {
-    const def = CATALOGO[decisao.relatorio];
     return {
       status: 'esclarecimento',
-      mensagem: `Não tenho certeza do que você quer ver. Você quer saber sobre "${def.titulo.toLowerCase()}"? Reformule a pergunta citando o que quer somar ou contar e o período.`,
+      mensagem: `Não tenho certeza do que você quer ver. É sobre "${def.titulo.toLowerCase()}"? Reformule dizendo o que quer somar ou contar e o período.`,
       sugestoes: SUGESTOES_INICIAIS.slice(0, 4),
-      relatorio: def.id,
+      relatorio: rel,
+      perguntaInterpretada: interp.perguntaInterpretada,
       confianca: decisao.confianca,
       geradoEm,
     };
   }
-
-  // 2) Gemini: parâmetros estruturados (já validados contra o catálogo).
-  const rel = decisao.relatorio;
-  const def = CATALOGO[rel];
-  const params = await extrairParametros(pergunta, rel, cfg.gemini);
 
   // 3) Período calculado pelo código.
-  const per = resolverPeriodo(params.periodo);
-  if (!per.ok) {
-    return {
-      status: 'esclarecimento',
-      mensagem: MSG_PERIODO[per.motivo] ?? MSG_PERIODO.periodo_invalido,
-      sugestoes: [`${def.titulo} neste mês`, `${def.titulo} nos últimos 3 meses`, `${def.titulo} neste ano`],
-      relatorio: rel,
-      confianca: decisao.confianca,
-      geradoEm,
-    };
+  let periodo: PeriodoResolvido | null = null;
+  if (!(interp.periodo.tipo === 'nao_informado' && def.periodoOpcional)) {
+    const per = resolverPeriodo(interp.periodo);
+    if (!per.ok) {
+      return {
+        status: 'esclarecimento',
+        mensagem: MSG_PERIODO[per.motivo] ?? MSG_PERIODO.periodo_invalido,
+        sugestoes: [`${def.titulo} neste mês`, `${def.titulo} nos últimos 3 meses`, `${def.titulo} neste ano`],
+        relatorio: rel,
+        perguntaInterpretada: interp.perguntaInterpretada,
+        confianca: decisao.confianca,
+        geradoEm,
+      };
+    }
+    periodo = per.periodo;
   }
 
-  // 4) Consulta autorizada ao banco e soma em código.
-  const r = await executarConsulta(sb, rel, per.periodo, params.filtros, params.agrupamento);
-  const filtros = descreverFiltros(params.filtros);
-  const agrupamento = params.agrupamento !== 'nenhum' ? AGRUPAMENTO_ROTULO[params.agrupamento] : null;
-  // O título de relatórios já agrupados (ex.: "por modal") não repete o agrupamento padrão.
-  const porExtra = agrupamento && params.agrupamento !== def.agrupamentoPadrao ? ` por ${agrupamento.toLowerCase()}` : '';
-  const base = {
+  // 4) Consulta autorizada ao banco e cálculo em código.
+  const r = await executarConsulta(sb, rel, periodo, decisao.filtros, decisao.agrupamento);
+  etapas.push({ rotulo: 'Banco calculou', valor: `${QTD(r.registros)} ${r.registros === 1 ? 'registro considerado' : 'registros considerados'} no servidor` });
+  const filtros = descreverFiltros(decisao.filtros);
+  const agrupamento = decisao.agrupamento !== 'nenhum' ? AGRUPAMENTO_ROTULO[decisao.agrupamento] : null;
+  const base: RespostaAssistente = {
+    status: 'ok',
     relatorio: rel,
-    perguntaInterpretada: `${def.titulo}${porExtra}, ${per.periodo.descricao.toLowerCase()}`,
-    periodo: { ...per.periodo, campoData: def.campoData },
+    perguntaInterpretada: interp.perguntaInterpretada,
+    periodo: periodo ? { ...periodo, campoData: def.campoData } : undefined,
     filtros,
     premissa: def.premissa,
     avisos: r.avisos,
@@ -136,19 +179,41 @@ export async function responderPergunta(pergunta: string, cfg: ConfigAssistente,
     fonte: FONTE,
     geradoEm,
   };
+  if (r.registros === 0) {
+    return { ...base, status: 'sem_resultado', mensagem: 'Não há registros para esse período e esses filtros.', etapas };
+  }
 
-  if (r.registros === 0 && r.total === 0) {
-    return { ...base, status: 'sem_resultado', mensagem: 'Não há registros para esse período e esses filtros.' };
+  // 5) Gemini narra a partir do resultado agregado; o código confere os números.
+  const fmt = formatador(r.unidade);
+  const somaGrupos = r.unidade !== 'dias' && r.total > 0;
+  const dados: DadosNarracao = {
+    pergunta,
+    interpretacao: interp.perguntaInterpretada,
+    periodo: periodo ? `${periodo.descricao} (${periodo.inicio.split('-').reverse().join('/')} a ${periodo.fim.split('-').reverse().join('/')})` : 'situação atual',
+    principal: { rotulo: r.rotulo, valor: fmt(r.total) },
+    grupos: r.grupos?.itens.map((g) => ({ rotulo: g.rotulo, valor: fmt(g.valor), percentual: somaGrupos ? percentual(g.valor, r.total) : undefined })),
+    composicao: r.composicao?.map((c) => ({ rotulo: c.rotulo, valor: BRL(c.valor) })),
+    observacoes: r.avisos,
+  };
+  let resumo = resumoDeterministico(r, periodo);
+  try {
+    const texto = await narrarResposta(dados, cfg.gemini);
+    if (textoConfere(texto, dados)) {
+      resumo = texto;
+      etapas.push({ rotulo: 'Gemini escreveu', valor: 'Texto conferido: todos os números vêm do resultado.' });
+    } else {
+      etapas.push({ rotulo: 'Texto do Gemini descartado', valor: 'Trazia número fora do resultado; usei o resumo calculado.' });
+    }
+  } catch (e) {
+    if (!(e instanceof ErroServico)) throw e;
   }
 
   return {
     ...base,
-    status: 'ok',
     resultado: { rotulo: r.rotulo, valor: r.total, unidade: r.unidade, composicao: r.composicao },
-    grupos: r.grupos && r.grupos.itens.length
-      ? { titulo: agrupamento ?? 'Detalhe', unidade: r.unidade, itens: r.grupos.itens, omitidos: r.grupos.omitidos }
-      : undefined,
-    resumo: resumir(rel, r, per.periodo),
+    grupos: r.grupos && r.grupos.itens.length ? { titulo: agrupamento ?? 'Detalhe', unidade: r.unidade, itens: r.grupos.itens, omitidos: r.grupos.omitidos } : undefined,
+    resumo,
+    etapas,
   };
 }
 
@@ -163,6 +228,7 @@ export function respostaDeErro(e: unknown): { corpo: RespostaAssistente; status:
       : e.tipo === 'limite' ? `O limite de uso de ${nome} foi atingido. Aguarde um minuto e tente de novo.`
       : e.tipo === 'autenticacao' ? `A chave de ${nome} foi recusada. Confira a configuração do servidor.`
       : e.tipo === 'modelo' ? `O modelo configurado para ${nome} não está disponível. Confira a variável de modelo no servidor.`
+      : e.tipo === 'cobranca' ? `O projeto de ${nome} está sem crédito. Use uma chave de projeto na faixa gratuita.`
       : e.tipo === 'resposta_invalida' ? 'Não consegui interpretar a pergunta com segurança. Tente reformular com o que quer somar e o período.'
       : `Não consegui falar com ${nome} agora. Tente de novo em instantes.`;
     return { corpo: { status: 'erro', mensagem, geradoEm }, status: e.tipo === 'resposta_invalida' ? 422 : 503 };

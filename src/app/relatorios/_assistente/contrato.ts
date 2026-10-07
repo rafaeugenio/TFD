@@ -7,7 +7,11 @@
 
 export interface PerguntaAssistente {
   pergunta: string;
+  /** Últimas perguntas da conversa, para resolver "e no mês passado?". Só texto, sem resultados. */
+  historico?: { pergunta: string; interpretacao?: string }[];
 }
+
+export type Unidade = 'BRL' | 'quantidade' | 'dias';
 
 export type StatusResposta =
   | 'ok'            // resultado calculado
@@ -39,16 +43,18 @@ export interface RespostaAssistente {
   resultado?: {
     rotulo: string;
     valor: number;
-    unidade: 'BRL' | 'quantidade';
+    unidade: Unidade;
     /** Parcelas que somam o valor principal (ex.: passagens + adicionais). */
     composicao?: ItemValor[];
   };
-  grupos?: { titulo: string; unidade: 'BRL' | 'quantidade'; itens: ItemValor[]; omitidos: number };
+  grupos?: { titulo: string; unidade: Unidade; itens: ItemValor[]; omitidos: number };
   resumo?: string;
   /** Como o número foi calculado, para o usuário saber o que está lendo. */
   premissa?: string;
   /** O que ficou de fora do cálculo por limitação do banco do ambiente. */
   avisos?: string[];
+  /** Como a resposta foi montada: Gemini interpretou, JEV escolheu, banco calculou. */
+  etapas?: { rotulo: string; valor: string }[];
   confianca?: number;
   fonte?: string;
   geradoEm?: string;
@@ -58,9 +64,10 @@ export const LIMITE_PERGUNTA = 300;
 
 export const SUGESTOES_INICIAIS = [
   'Quanto foi gasto em passagens nos últimos 3 meses?',
-  'Quanto foi pago em diárias neste ano?',
-  'Qual modal de transporte gerou mais despesas este ano?',
-  'Quantas solicitações foram abertas neste mês, por situação?',
+  'Quantas solicitações estão em andamento agora, por setor?',
+  'Qual especialidade teve mais solicitações este ano?',
+  'Quantos pareceres foram deferidos e indeferidos este ano?',
+  'Quais cidades mais receberam agendamentos este ano?',
+  'Qual o tempo médio até concluir uma solicitação este ano?',
   'Qual foi o custo total do TFD no último trimestre?',
-  'Quais destinos tiveram maior gasto com passagens este ano?',
 ];

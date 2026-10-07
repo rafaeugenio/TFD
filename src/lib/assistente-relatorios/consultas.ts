@@ -3,8 +3,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { VALOR_DIARIA_PERNOITE, calcularValorAjuda } from '@/core/mocks/fluxo-v2-v3-seed';
 import type { ItemValor } from '@/app/relatorios/_assistente/contrato';
 import {
-  BENEFICIARIO_ROTULO, MODAL_ROTULO, STATUS_ROTULO,
-  type Agrupamento, type Beneficiario, type Filtros, type Modal, type RelatorioId, type StatusSolicitacao,
+  BENEFICIARIO_ROTULO, MODAL_ROTULO, PRIORIDADE_ROTULO, SETOR_ROTULO, STATUS_ENCERRADOS, STATUS_ROTULO,
+  type Agrupamento, type Beneficiario, type Filtros, type Modal, type Prioridade, type RelatorioId, type StatusSolicitacao,
 } from './catalogo';
 import { TEMPO_LIMITE_MS } from './config';
 import { ErroServico } from './http';
@@ -24,7 +24,7 @@ const MAX_GRUPOS = 12;
 
 export interface ResultadoConsulta {
   total: number;
-  unidade: 'BRL' | 'quantidade';
+  unidade: 'BRL' | 'quantidade' | 'dias';
   registros: number;
   rotulo: string;
   composicao?: ItemValor[];
@@ -234,23 +234,125 @@ function resultadoDiarias(itens: ItemDiaria[], agrupamento: Agrupamento): Result
 }
 
 /* ---------------------------------------------------------------------- */
-/*  Solicitações                                                           */
+/*  Contagens gerais do sistema (solicitações, pareceres, agendamentos...) */
 /* ---------------------------------------------------------------------- */
 
-async function resultadoSolicitacoes(sb: SupabaseClient, p: PeriodoResolvido, filtros: Filtros, agrupamento: Agrupamento): Promise<ResultadoConsulta> {
+type Chave = { chave: string; rotulo: string } | null;
+const SEM = (rotulo: string) => ({ chave: '-', rotulo });
+
+/** Municípios (id, nome, regional) para rotular solicitações. Tabela pequena. */
+async function mapaMunicipios(sb: SupabaseClient): Promise<Map<string, { nome: string; regional: string; uf: string }>> {
+  const { data, error } = await sb.from('municipios').select('id, nome, regional, uf').limit(2000);
+  if (error) throw new ErroServico('banco', 'indisponivel');
+  return new Map(((data ?? []) as Linha[]).map((m) => [texto(m.id), { nome: texto(m.nome), regional: texto(m.regional), uf: texto(m.uf) }]));
+}
+
+const titulo = (s: string) => s.toLowerCase().replace(/(^|[\s/-])(\p{L})/gu, (_, a: string, b: string) => a + b.toUpperCase());
+
+function chaveSolicitacao(l: Linha, ag: Agrupamento, mun: Map<string, { nome: string; regional: string; uf: string }>): Chave {
+  switch (ag) {
+    case 'status': { const st = texto(l.status) as StatusSolicitacao; return { chave: st || '-', rotulo: STATUS_ROTULO[st] ?? (st || 'Sem situação') }; }
+    case 'setor': { const se = texto(l.setor_atual); return { chave: se || '-', rotulo: SETOR_ROTULO[se] ?? (se ? titulo(se.replace(/_/g, ' ')) : 'Sem setor') }; }
+    case 'especialidade': { const e = texto(l.especialidade).trim(); return e ? { chave: e.toLowerCase(), rotulo: e } : SEM('Não informada'); }
+    case 'prioridade': { const pr = texto(l.prioridade) as Prioridade; return { chave: pr || '-', rotulo: PRIORIDADE_ROTULO[pr] ?? (pr || 'Não informada') }; }
+    case 'municipio': { const m = mun.get(texto(l.municipio_origem_id)); return m ? { chave: m.nome, rotulo: `${m.nome}${m.uf ? `/${m.uf}` : ''}` } : SEM('Não informado'); }
+    case 'regional': { const m = mun.get(texto(l.municipio_origem_id)); return m?.regional ? { chave: m.regional, rotulo: titulo(m.regional) } : SEM('Não informada'); }
+    case 'mes': { const m = mesBrasilia(texto(l.created_at)); return { chave: m, rotulo: rotuloMes(m) }; }
+    default: return null;
+  }
+}
+
+async function resultadoSolicitacoes(sb: SupabaseClient, p: PeriodoResolvido | null, filtros: Filtros, agrupamento: Agrupamento, emAndamento: boolean): Promise<ResultadoConsulta> {
   const linhas = await paginar((de, ate) => {
-    let q = sb.from('solicitacoes').select('id, status, created_at').gte('created_at', inicioTs(p)).lte('created_at', fimTs(p)).order('id').range(de, ate);
+    let q = sb.from('solicitacoes').select('id, status, setor_atual, especialidade, prioridade, municipio_origem_id, created_at').order('id').range(de, ate);
+    if (p) q = q.gte('created_at', inicioTs(p)).lte('created_at', fimTs(p));
+    if (emAndamento) q = q.not('status', 'in', `(${STATUS_ENCERRADOS.join(',')})`);
     if (filtros.status?.length) q = q.in('status', filtros.status);
+    if (filtros.prioridade?.length) q = q.in('prioridade', filtros.prioridade);
     return q;
   });
-  const r: ResultadoConsulta = { total: linhas.length, unidade: 'quantidade', registros: linhas.length, rotulo: 'Solicitações abertas no período' };
-  const entradas = linhas.map((l) => {
-    const st = texto(l.status) as StatusSolicitacao;
-    return agrupamento === 'mes'
-      ? { chave: mesBrasilia(texto(l.created_at)), rotulo: rotuloMes(mesBrasilia(texto(l.created_at))), valor: 1 }
-      : { chave: st, rotulo: STATUS_ROTULO[st] ?? (st || 'Sem situação'), valor: 1 };
+  const mun = agrupamento === 'municipio' || agrupamento === 'regional' ? await mapaMunicipios(sb) : new Map();
+  const r: ResultadoConsulta = {
+    total: linhas.length, unidade: 'quantidade', registros: linhas.length,
+    rotulo: emAndamento ? (p ? 'Solicitações em andamento abertas no período' : 'Solicitações em andamento agora') : 'Solicitações abertas no período',
+  };
+  if (agrupamento !== 'nenhum') r.grupos = agrupar(linhas.flatMap((l) => { const k = chaveSolicitacao(l, agrupamento, mun); return k ? [{ ...k, valor: 1 }] : []; }), agrupamento === 'mes');
+  return r;
+}
+
+async function resultadoPareceres(sb: SupabaseClient, p: PeriodoResolvido, agrupamento: Agrupamento): Promise<ResultadoConsulta> {
+  const linhas = await paginar((de, ate) => sb.from('pareceres').select('id, decisao, created_at').gte('created_at', inicioTs(p)).lte('created_at', fimTs(p)).order('id').range(de, ate));
+  const r: ResultadoConsulta = { total: linhas.length, unidade: 'quantidade', registros: linhas.length, rotulo: 'Pareceres emitidos' };
+  r.grupos = agrupar(linhas.map((l) => {
+    if (agrupamento === 'mes') { const m = mesBrasilia(texto(l.created_at)); return { chave: m, rotulo: rotuloMes(m), valor: 1 }; }
+    const d = texto(l.decisao);
+    return { chave: d || '-', rotulo: d ? titulo(d) : 'Sem decisão', valor: 1 };
+  }), agrupamento === 'mes');
+  return r;
+}
+
+async function resultadoAgendamentos(sb: SupabaseClient, p: PeriodoResolvido, agrupamento: Agrupamento): Promise<ResultadoConsulta> {
+  const linhas = await paginar((de, ate) => sb.from('agendamentos').select('id, cidade_destino, uf_destino, status, data_hora_agendamento')
+    .gte('data_hora_agendamento', inicioTs(p)).lte('data_hora_agendamento', fimTs(p)).order('id').range(de, ate));
+  const r: ResultadoConsulta = { total: linhas.length, unidade: 'quantidade', registros: linhas.length, rotulo: 'Agendamentos marcados' };
+  r.grupos = agrupar(linhas.map((l) => {
+    if (agrupamento === 'mes') { const m = mesBrasilia(texto(l.data_hora_agendamento)); return { chave: m, rotulo: rotuloMes(m), valor: 1 }; }
+    if (agrupamento === 'status') { const st = texto(l.status); return { chave: st || '-', rotulo: st ? titulo(st) : 'Sem situação', valor: 1 }; }
+    const c = texto(l.cidade_destino).trim();
+    return c ? { chave: c.toLowerCase(), rotulo: `${titulo(c)}${texto(l.uf_destino) ? `/${texto(l.uf_destino)}` : ''}`, valor: 1 } : { ...SEM('Não informada'), valor: 1 };
+  }), agrupamento === 'mes');
+  return r;
+}
+
+async function resultadoPacientes(sb: SupabaseClient, p: PeriodoResolvido | null, agrupamento: Agrupamento): Promise<ResultadoConsulta> {
+  const linhas = await paginar((de, ate) => {
+    let q = sb.from('pacientes').select('id, municipio, uf, sexo, created_at').eq('ativo', true).order('id').range(de, ate);
+    if (p) q = q.gte('created_at', inicioTs(p)).lte('created_at', fimTs(p));
+    return q;
   });
-  r.grupos = agrupar(entradas, agrupamento === 'mes');
+  const r: ResultadoConsulta = { total: linhas.length, unidade: 'quantidade', registros: linhas.length, rotulo: p ? 'Pacientes cadastrados no período' : 'Pacientes ativos no cadastro' };
+  if (agrupamento !== 'nenhum') {
+    r.grupos = agrupar(linhas.map((l) => {
+      if (agrupamento === 'mes') { const m = mesBrasilia(texto(l.created_at)); return { chave: m, rotulo: rotuloMes(m), valor: 1 }; }
+      if (agrupamento === 'sexo') { const sx = texto(l.sexo); return { chave: sx || '-', rotulo: sx ? titulo(sx) : 'Não informado', valor: 1 }; }
+      const m = texto(l.municipio).trim();
+      return m ? { chave: m.toLowerCase(), rotulo: `${titulo(m)}${texto(l.uf) ? `/${texto(l.uf)}` : ''}`, valor: 1 } : { ...SEM('Não informado'), valor: 1 };
+    }), agrupamento === 'mes');
+  }
+  return r;
+}
+
+const DIA_MS = 86_400_000;
+
+async function resultadoTempoMedio(sb: SupabaseClient, p: PeriodoResolvido, filtros: Filtros, agrupamento: Agrupamento): Promise<ResultadoConsulta> {
+  const linhas = await paginar((de, ate) => {
+    let q = sb.from('solicitacoes').select('id, especialidade, prioridade, created_at, data_encerramento')
+      .eq('status', 'CONCLUIDO').not('data_encerramento', 'is', null)
+      .gte('data_encerramento', inicioTs(p)).lte('data_encerramento', fimTs(p)).order('id').range(de, ate);
+    if (filtros.prioridade?.length) q = q.in('prioridade', filtros.prioridade);
+    return q;
+  });
+  const itens = linhas.flatMap((l) => {
+    const ini = new Date(texto(l.created_at)).getTime(); const fim = new Date(texto(l.data_encerramento)).getTime();
+    if (!Number.isFinite(ini) || !Number.isFinite(fim) || fim < ini) return [];
+    return [{ l, dias: (fim - ini) / DIA_MS }];
+  });
+  const media = (v: number[]) => (v.length ? Math.round((v.reduce((t, x) => t + x, 0) / v.length) * 10) / 10 : 0);
+  const r: ResultadoConsulta = { total: media(itens.map((i) => i.dias)), unidade: 'dias', registros: itens.length, rotulo: 'Tempo médio até a conclusão' };
+  if (agrupamento !== 'nenhum') {
+    const mapa = new Map<string, { rotulo: string; dias: number[] }>();
+    for (const i of itens) {
+      const k = chaveSolicitacao({ ...i.l, created_at: texto(i.l.data_encerramento) }, agrupamento, new Map());
+      if (!k) continue;
+      const g = mapa.get(k.chave) ?? { rotulo: k.rotulo, dias: [] };
+      g.dias.push(i.dias); mapa.set(k.chave, g);
+    }
+    const cron = agrupamento === 'mes';
+    const lista = [...mapa.entries()].map(([chave, g]) => ({ chave, rotulo: g.rotulo, valor: media(g.dias), quantidade: g.dias.length }));
+    lista.sort(cron ? (a, b) => a.chave.localeCompare(b.chave) : (a, b) => b.valor - a.valor);
+    const lim = cron ? lista.length : MAX_GRUPOS;
+    r.grupos = { itens: lista.slice(0, lim).map(({ rotulo, valor, quantidade }) => ({ rotulo, valor, quantidade })), omitidos: Math.max(0, lista.length - lim), cronologico: cron };
+  }
   return r;
 }
 
@@ -261,11 +363,13 @@ async function resultadoSolicitacoes(sb: SupabaseClient, p: PeriodoResolvido, fi
 export async function executarConsulta(
   sb: SupabaseClient,
   relatorio: RelatorioId,
-  periodo: PeriodoResolvido,
+  periodoOuNulo: PeriodoResolvido | null,
   filtros: Filtros,
   agrupamento: Agrupamento,
 ): Promise<ResultadoConsulta> {
   const avisos: string[] = [];
+  // Só as consultas com `periodoOpcional` aceitam rodar sem período.
+  const periodo = periodoOuNulo as PeriodoResolvido;
   const comAvisos = (r: ResultadoConsulta): ResultadoConsulta => (avisos.length ? { ...r, avisos } : r);
   switch (relatorio) {
     case 'gasto_passagens':
@@ -275,7 +379,17 @@ export async function executarConsulta(
     case 'gasto_diarias':
       return comAvisos(resultadoDiarias(await itensDiarias(sb, periodo, filtros, avisos), agrupamento));
     case 'solicitacoes_por_status':
-      return resultadoSolicitacoes(sb, periodo, filtros, agrupamento);
+      return resultadoSolicitacoes(sb, periodo, filtros, agrupamento, false);
+    case 'solicitacoes_em_andamento':
+      return resultadoSolicitacoes(sb, periodoOuNulo, filtros, agrupamento, true);
+    case 'pareceres_regulacao':
+      return resultadoPareceres(sb, periodo, agrupamento);
+    case 'agendamentos':
+      return resultadoAgendamentos(sb, periodo, agrupamento);
+    case 'pacientes_cadastrados':
+      return resultadoPacientes(sb, periodoOuNulo, agrupamento);
+    case 'tempo_medio_conclusao':
+      return resultadoTempoMedio(sb, periodo, filtros, agrupamento);
     case 'custo_total': {
       const [passagens, diarias] = await Promise.all([itensPassagens(sb, periodo, {}, avisos), itensDiarias(sb, periodo, {}, avisos)]);
       const soma = (l: { valor: number }[]) => centavos(l.reduce((t, i) => t + i.valor, 0));

@@ -122,3 +122,36 @@ export function resolverPeriodo(p: PeriodoPedido, agora = new Date()): { ok: tru
   if ((af - ai) * 12 + (mf - mi) + 1 > MAX_MESES) return { ok: false, motivo: 'periodo_longo' };
   return { ok: true, periodo: r };
 }
+
+/**
+ * Leitura do período por regras simples, usada só quando o Gemini não
+ * responde (limite da faixa gratuita ou indisponibilidade). Cobre os
+ * períodos mais comuns; o resto vira "não informado" e a tela pergunta.
+ */
+export function periodoPorTexto(texto: string, agora = new Date()): PeriodoPedido {
+  const t = texto.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const h = hojeBrasilia(agora);
+  const n = t.match(/ultim[oa]s\s+(\d{1,2})\s+mes/);
+  if (n) {
+    const q = Number(n[1]);
+    if (q === 3 || q === 6 || q === 12) return { tipo: 'preset', preset: `ultimos_${q}_meses` as Preset };
+  }
+  if (/ultimos\s+7\s+dias|ultima semana/.test(t)) return { tipo: 'preset', preset: 'ultimos_7_dias' };
+  if (/ultimos\s+30\s+dias/.test(t)) return { tipo: 'preset', preset: 'ultimos_30_dias' };
+  if (/\bhoje\b/.test(t)) return { tipo: 'preset', preset: 'hoje' };
+  if (/mes passado|ultimo mes|mes anterior/.test(t)) return { tipo: 'preset', preset: 'mes_passado' };
+  if (/(este|neste|esse|nesse) mes|mes atual/.test(t)) return { tipo: 'preset', preset: 'este_mes' };
+  if (/trimestre passado|ultimo trimestre/.test(t)) return { tipo: 'preset', preset: 'trimestre_passado' };
+  if (/(este|neste) trimestre/.test(t)) return { tipo: 'preset', preset: 'este_trimestre' };
+  if (/ano passado|ultimo ano/.test(t)) return { tipo: 'preset', preset: 'ano_passado' };
+  if (/(este|neste|esse|nesse) ano|ano atual/.test(t)) return { tipo: 'preset', preset: 'este_ano' };
+  const nomes = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  const mi = nomes.findIndex((m) => new RegExp(`\\b${m}\\b`).test(t));
+  const ano = t.match(/\b(20\d{2})\b/);
+  if (mi >= 0) {
+    const mes = mi + 1;
+    return { tipo: 'mes', mes, ano: ano ? Number(ano[1]) : mes <= h.mes ? h.ano : h.ano - 1 };
+  }
+  if (ano) return { tipo: 'ano', ano: Number(ano[1]) };
+  return { tipo: 'nao_informado' };
+}

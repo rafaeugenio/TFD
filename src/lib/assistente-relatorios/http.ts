@@ -4,7 +4,7 @@ import 'server-only';
 export class ErroServico extends Error {
   constructor(
     readonly servico: 'jev' | 'gemini' | 'banco',
-    readonly tipo: 'timeout' | 'limite' | 'indisponivel' | 'autenticacao' | 'modelo' | 'resposta_invalida',
+    readonly tipo: 'timeout' | 'limite' | 'indisponivel' | 'autenticacao' | 'modelo' | 'cobranca' | 'resposta_invalida',
   ) {
     super(`${servico}:${tipo}`);
   }
@@ -41,6 +41,8 @@ export async function postJson(
     }
     if (resp.status === 401 || resp.status === 403) throw new ErroServico(servico, 'autenticacao');
     if (resp.status === 404) throw new ErroServico(servico, 'modelo');
+    // 402: projeto com cobrança (pré-pago) sem crédito. A faixa gratuita não devolve 402.
+    if (resp.status === 402) throw new ErroServico(servico, 'cobranca');
     const repetivel = resp.status === 429 || resp.status === 529 || resp.status === 503;
     if (repetivel && tentativa === 0) {
       await new Promise((r) => setTimeout(r, 700));
