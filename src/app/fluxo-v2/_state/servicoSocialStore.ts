@@ -16,6 +16,7 @@
 import { useSyncExternalStore } from 'react';
 import {
   seedCasasApoio,
+  PROFISSIONAIS_SERVICO_SOCIAL_DEMO,
   demandaEstaAberta,
   type CasaApoioMock,
   type DemandaSocialMock,
@@ -342,6 +343,9 @@ export function semearDemandasDemo(solicitacoes: SolicitacaoParaSeed[]): void {
   if (seedAplicado || state.demandas.length > 0 || solicitacoes.length === 0) return;
   seedAplicado = true;
 
+  // Massa de teste dos últimos 3 meses (scripts/seed-demo): demandas fixas por cenário.
+  if (semearDemoUltimos3Meses(solicitacoes)) return;
+
   const maisRecentes = [...solicitacoes].sort((a, b) =>
     (b.numero ?? '').localeCompare(a.numero ?? ''),
   );
@@ -464,4 +468,125 @@ export function useDemandasAbertasDaSolicitacao(solicitacaoId: string): DemandaS
 export function useCasasApoio(): CasaApoioMock[] {
   useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   return todasCasas();
+}
+
+/* ------------------------------------------------------------------ */
+/*  Massa de teste dos últimos 3 meses                                  */
+/* ------------------------------------------------------------------ */
+
+/** Solicitações da massa de teste: ids `d3a00004-...`, processos TFD-*-2026/9001xx. */
+const PREFIXO_DEMO = 'd3a00004-';
+const NUMERO_BASE_DEMO = 900100;
+
+/**
+ * Demandas e instrumentos fixos para a massa de teste, de acordo com o cenário
+ * de cada solicitação (o cenário é a posição do número no gerador: 5 por
+ * cenário, na ordem de `CENARIOS` em scripts/seed-demo/seed-ultimos-3-meses.mts).
+ * Devolve false quando a massa não está no banco.
+ */
+function semearDemoUltimos3Meses(solicitacoes: SolicitacaoParaSeed[]): boolean {
+  const demo = solicitacoes.filter((s) => s.id.startsWith(PREFIXO_DEMO));
+  if (demo.length === 0) return false;
+
+  const [ana, rosangela] = PROFISSIONAIS_SERVICO_SOCIAL_DEMO;
+  const casas = ['casa-1', 'casa-2', 'casa-3', 'casa-5', 'casa-6', 'casa-7', 'casa-8', 'casa-9'];
+  const depois = (iso: string, dias: number) => {
+    const d = new Date(iso);
+    d.setDate(d.getDate() + dias);
+    const agora = new Date();
+    return (d > agora ? agora : d).toISOString();
+  };
+
+  const demandas: DemandaSocialMock[] = [];
+  const instrumentos: InstrumentoSocialMock[] = [];
+  const nova = (
+    s: SolicitacaoParaSeed, n: number,
+    d: Pick<DemandaSocialMock, 'setorOrigem' | 'motivo' | 'situacao' | 'encaminhadoPor'> & Partial<DemandaSocialMock>, dias: number,
+  ) => {
+    const demanda: DemandaSocialMock = {
+      id: `ds-demo-${n}`,
+      solicitacaoId: s.id,
+      solicitacaoNumero: s.numero,
+      pacienteNome: s.paciente.nome,
+      pacienteCpf: s.paciente.cpf,
+      dataEncaminhamento: depois(s.dataCriacao, dias),
+      ...d,
+    };
+    demandas.push(demanda);
+    return demanda;
+  };
+  const instrumento = (s: SolicitacaoParaSeed, demanda: DemandaSocialMock | undefined, tipo: InstrumentoSocialMock['tipo'], conteudo: string, autora: string, n: number, casaApoioId?: string) => {
+    instrumentos.push({
+      id: `is-demo-${n}`, demandaId: demanda?.id, solicitacaoId: s.id, tipo, conteudo, sigiloso: tipo === 'parecer_social' && n % 2 === 0,
+      autora, dataCriacao: demanda?.dataConclusao ?? depois(s.dataCriacao, 12), casaApoioId,
+      solicitacaoNumero: s.numero, pacienteNome: s.paciente.nome, pacienteCpf: s.paciente.cpf,
+    });
+  };
+
+  for (const s of demo) {
+    const n = Number(s.numero.split('/').pop()) - NUMERO_BASE_DEMO;
+    if (!Number.isFinite(n) || n < 0) continue;
+    const cenario = Math.floor(n / 5);
+    const pos = n % 5;
+    const casa = casas[n % casas.length];
+
+    if (cenario === 5) {
+      // Encaminhadas ao Serviço Social pela regulação, em todas as situações.
+      const situacao = (['pendente', 'pendente', 'em_atendimento', 'em_atendimento', 'concluida'] as const)[pos];
+      const prof = pos % 2 === 0 ? ana.nome : rosangela.nome;
+      const d = nova(s, n, {
+        setorOrigem: 'regulacao', encaminhadoPor: 'Dr. Carlos Aguiar', situacao,
+        motivo: 'Paciente sem rede de apoio no destino. Regulação pede avaliação social antes de definir acompanhante e hospedagem.',
+        profissionalResponsavel: situacao === 'pendente' ? undefined : prof,
+        dataConclusao: situacao === 'concluida' ? depois(s.dataCriacao, 14) : undefined,
+        concluidaPor: situacao === 'concluida' ? prof : undefined,
+        orientacaoFinal: situacao === 'concluida' ? 'Avaliação concluída: indicado acompanhante e encaminhamento para casa de apoio no destino.' : undefined,
+      }, 6);
+      if (situacao === 'concluida') {
+        instrumento(s, d, 'parecer_social', 'Parecer social favorável ao acompanhante, considerando vulnerabilidade socioeconômica da família.', prof, n);
+        instrumento(s, d, 'encaminhamento_casa_apoio', 'Encaminhamos o paciente e acompanhante para hospedagem durante o tratamento.', prof, n + 1000, casa);
+      }
+    } else if (cenario === 6 && pos < 2) {
+      nova(s, n, {
+        setorOrigem: 'passagens', encaminhadoPor: 'Luiz Cutrim', situacao: 'pendente',
+        motivo: 'Paciente informou que não tem onde ficar no destino. Avaliar casa de apoio antes da emissão das passagens.',
+      }, 10);
+    } else if (cenario === 11) {
+      // Em permanência: casa de apoio em atendimento ou já resolvida.
+      const concluida = pos >= 3;
+      const prof = pos % 2 === 0 ? rosangela.nome : ana.nome;
+      const d = nova(s, n, {
+        setorOrigem: 'acompanhamento', encaminhadoPor: 'Manuela Freitas', situacao: concluida ? 'concluida' : 'em_atendimento',
+        motivo: 'Permanência prolongada no destino. Família pede apoio para hospedagem e alimentação.',
+        profissionalResponsavel: prof,
+        dataConclusao: concluida ? depois(s.dataCriacao, 30) : undefined,
+        concluidaPor: concluida ? prof : undefined,
+        orientacaoFinal: concluida ? 'Paciente e acompanhante acolhidos em casa de apoio até a alta.' : undefined,
+      }, 20);
+      instrumento(s, d, 'encaminhamento_casa_apoio', 'Encaminhamento para hospedagem durante a permanência.', prof, n, casa);
+    } else if (cenario === 15 || cenario === 16) {
+      // Concluídas: Serviço Social realizado ao longo do processo.
+      const prof = pos % 2 === 0 ? ana.nome : rosangela.nome;
+      const d = nova(s, n, {
+        setorOrigem: pos % 2 === 0 ? 'ajuda_custo' : 'passagens', encaminhadoPor: 'Thiago Mendes', situacao: 'concluida',
+        motivo: 'Avaliação socioeconômica para definição de ajuda de custo e hospedagem.',
+        profissionalResponsavel: prof,
+        dataConclusao: depois(s.dataCriacao, 18),
+        concluidaPor: prof,
+        orientacaoFinal: 'Família orientada sobre direitos e documentação; ajuda de custo e hospedagem garantidas.',
+      }, 8);
+      instrumento(s, d, pos % 2 === 0 ? 'declaracao_tfd_ma' : 'encaminhamento_casa_apoio', 'Documento emitido pelo Serviço Social para o processo de TFD.', prof, n, pos % 2 === 0 ? undefined : casa);
+    } else if (cenario === 18 && pos === 0) {
+      nova(s, n, {
+        setorOrigem: 'dados_basicos', encaminhadoPor: 'Luiz Cutrim', situacao: 'cancelada',
+        motivo: 'Avaliar condições para viagem do paciente.',
+        motivoCancelamento: 'Solicitação cancelada por desistência do paciente.',
+      }, 2);
+    }
+  }
+
+  if (demandas.length === 0) return false;
+  state = { ...state, demandas: [...state.demandas, ...demandas], instrumentos: [...state.instrumentos, ...instrumentos] };
+  emit();
+  return true;
 }
