@@ -54,6 +54,8 @@ function resumir(rel: RelatorioId, r: ResultadoConsulta, p: PeriodoResolvido): s
     const topo = g.itens[0];
     const pct = Math.round((topo.valor / r.total) * 100);
     frase += ` O maior valor foi ${topo.rotulo}, com ${fmt(topo.valor)} (${pct}% do total).`;
+  } else if (g && !g.cronologico && g.itens.length === 1 && r.total > 0) {
+    frase += ` Todo o valor ficou em ${g.itens[0].rotulo}.`;
   }
   return frase;
 }
@@ -160,6 +162,7 @@ export function respostaDeErro(e: unknown): { corpo: RespostaAssistente; status:
       : e.tipo === 'limite' && e.servico === 'banco' ? 'O período tem registros demais para responder de uma vez. Pergunte por um período menor.'
       : e.tipo === 'limite' ? `O limite de uso de ${nome} foi atingido. Aguarde um minuto e tente de novo.`
       : e.tipo === 'autenticacao' ? `A chave de ${nome} foi recusada. Confira a configuração do servidor.`
+      : e.tipo === 'modelo' ? `O modelo configurado para ${nome} não está disponível. Confira a variável de modelo no servidor.`
       : e.tipo === 'resposta_invalida' ? 'Não consegui interpretar a pergunta com segurança. Tente reformular com o que quer somar e o período.'
       : `Não consegui falar com ${nome} agora. Tente de novo em instantes.`;
     return { corpo: { status: 'erro', mensagem, geradoEm }, status: e.tipo === 'resposta_invalida' ? 422 : 503 };

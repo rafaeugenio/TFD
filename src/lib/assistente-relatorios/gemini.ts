@@ -120,13 +120,15 @@ export async function extrairParametros(pergunta: string, rel: RelatorioId, cfg:
   const corpo = {
     systemInstruction: { parts: [{ text: instrucoes(rel) }] },
     contents: [{ role: 'user', parts: [{ text: pergunta }] }],
-    generationConfig: { temperature: 0, maxOutputTokens: 300, responseMimeType: 'application/json', responseSchema: esquema(rel) },
+    generationConfig: { temperature: 0, maxOutputTokens: 1024, responseMimeType: 'application/json', responseSchema: esquema(rel) },
   };
   const resp = (await postJson('gemini', url, { 'x-goog-api-key': cfg.apiKey }, corpo, TEMPO_LIMITE_MS.gemini)) as {
-    candidates?: { content?: { parts?: { text?: unknown }[] } }[];
+    candidates?: { content?: { parts?: { text?: unknown; thought?: unknown }[] } }[];
   };
-  const texto = resp?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (typeof texto !== 'string' || texto.length > 2000) throw new ErroServico('gemini', 'resposta_invalida');
+  // Modelos novos podem devolver partes de raciocínio antes da resposta: junta só o texto final.
+  const partes = resp?.candidates?.[0]?.content?.parts ?? [];
+  const texto = partes.filter((p) => typeof p.text === 'string' && !p.thought).map((p) => p.text as string).join('');
+  if (!texto || texto.length > 4000) throw new ErroServico('gemini', 'resposta_invalida');
   let json: unknown;
   try {
     json = JSON.parse(texto);

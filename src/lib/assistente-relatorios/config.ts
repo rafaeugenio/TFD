@@ -33,7 +33,7 @@ export function lerConfigAssistente(): ResultadoConfig {
     ok: true,
     config: {
       jev: { apiKey: jevKey, baseUrl: baseUrl.replace(/\/+$/, ''), model: texto(process.env.TYPESAFE_MODEL) || 'jev-latest' },
-      gemini: { apiKey: geminiKey, model: texto(process.env.GEMINI_MODEL) || 'gemini-2.5-flash-lite' },
+      gemini: { apiKey: geminiKey, model: texto(process.env.GEMINI_MODEL) || 'gemini-3.5-flash-lite' },
     },
   };
 }
