@@ -14,6 +14,7 @@ import { excluirRelatorio } from '../salvos';
 import type { RelatorioSalvo } from '../tipos';
 import { C } from './estilo';
 import { cartao } from './Previa';
+import AbasRelatorios from '../../_assistente/ui/AbasRelatorios';
 
 const normalizar = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
@@ -43,6 +44,7 @@ export default function Landing({ salvos, carregando }: { salvos: RelatorioSalvo
           </Link>
         }
       />
+      <AbasRelatorios ativa="meus" />
 
       {carregando ? (
         <div className="flex flex-col gap-3">
