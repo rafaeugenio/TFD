@@ -34,20 +34,20 @@ function descreverFiltros(f: Filtros): { rotulo: string; valor: string }[] {
 /** Resumo escrito pelo código a partir dos números já calculados (a IA não toca em valores). */
 function resumir(rel: RelatorioId, r: ResultadoConsulta, p: PeriodoResolvido): string {
   const fmt = r.unidade === 'BRL' ? BRL : QTD;
-  const periodo = p.descricao.toLowerCase().startsWith('de ') ? p.descricao.toLowerCase() : `no período (${p.descricao.toLowerCase()})`;
+  const periodo = p.descricao.toLowerCase().startsWith('de ') ? p.descricao.toLowerCase() : `no período: ${p.descricao.toLowerCase()}`;
   let frase: string;
   switch (rel) {
     case 'solicitacoes_por_status':
       frase = `${QTD(r.total)} ${r.total === 1 ? 'solicitação foi aberta' : 'solicitações foram abertas'} ${periodo}.`;
       break;
     case 'gasto_diarias':
-      frase = `Foram pagos ${BRL(r.total)} em diárias ${periodo}, em ${QTD(r.registros)} ${r.registros === 1 ? 'ajuda de custo concluída' : 'ajudas de custo concluídas'}.`;
+      frase = `Foram pagos ${BRL(r.total)} em diárias, em ${QTD(r.registros)} ${r.registros === 1 ? 'ajuda de custo concluída' : 'ajudas de custo concluídas'}, ${periodo}.`;
       break;
     case 'custo_total':
       frase = `O custo total do TFD foi de ${BRL(r.total)} ${periodo}.`;
       break;
     default:
-      frase = `Foram gastos ${BRL(r.total)} em passagens ${periodo}, em ${QTD(r.registros)} ${r.registros === 1 ? 'passagem' : 'passagens'}.`;
+      frase = `Foram gastos ${BRL(r.total)} em ${QTD(r.registros)} ${r.registros === 1 ? 'passagem' : 'passagens'} ${periodo}.`;
   }
   const g = r.grupos;
   if (g && !g.cronologico && g.itens.length > 1 && r.total > 0) {
