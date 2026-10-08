@@ -20,11 +20,12 @@ export type RelatorioId =
   | 'pacientes_cadastrados'
   | 'tempo_medio_conclusao'
   | 'bpa_sigtap'
-  | 'deslocamentos';
+  | 'deslocamentos'
+  | 'registro_extremo';
 
 export const AGRUPAMENTOS = [
   'nenhum', 'mes', 'modal', 'destino', 'origem', 'beneficiario', 'status', 'categoria',
-  'setor', 'municipio', 'regional', 'especialidade', 'prioridade', 'decisao', 'sexo', 'procedimento',
+  'setor', 'municipio', 'regional', 'especialidade', 'prioridade', 'decisao', 'sexo', 'procedimento', 'cid',
 ] as const;
 export type Agrupamento = (typeof AGRUPAMENTOS)[number];
 
@@ -69,7 +70,7 @@ export const AGRUPAMENTO_ROTULO: Record<Agrupamento, string> = {
   nenhum: 'Sem agrupamento', mes: 'Mês', modal: 'Modal de transporte', destino: 'Cidade de destino',
   origem: 'Cidade de origem', beneficiario: 'Beneficiário', status: 'Situação', categoria: 'Categoria de custo',
   setor: 'Setor', municipio: 'Município', regional: 'Regional de saúde', especialidade: 'Especialidade',
-  prioridade: 'Prioridade', decisao: 'Decisão do parecer', sexo: 'Sexo', procedimento: 'Procedimento SIGTAP',
+  prioridade: 'Prioridade', decisao: 'Decisão do parecer', sexo: 'Sexo', procedimento: 'Procedimento SIGTAP', cid: 'CID',
 };
 
 /** Descrição de cada agrupamento para o JEV escolher (em linguagem do usuário). */
@@ -90,13 +91,42 @@ export const AGRUPAMENTO_CRITERIO: Record<Agrupamento, string> = {
   decisao: 'Separado pela decisão do parecer (deferido ou indeferido).',
   sexo: 'Separado por sexo.',
   procedimento: 'Separado por procedimento SIGTAP do BPA (ajuda de custo e deslocamento).',
+  cid: 'Separado por CID (código da doença ou diagnóstico principal): quais CIDs mais aparecem.',
 };
+
+/** Registros que a consulta de extremos sabe achar (maior, menor, mais recente, mais antigo). */
+export const ENTIDADES_EXTREMO = {
+  passagem: 'Uma passagem ou bilhete (valor, rota, modal, data de emissão).',
+  ajuda_custo: 'Uma ajuda de custo ou diária (valor, período).',
+  adicional: 'Um adicional de passagem (bagagem, passagem extra, transfer).',
+  solicitacao: 'Uma solicitação ou processo de TFD (data de abertura, setor, especialidade).',
+  parecer: 'Um parecer da regulação (data, decisão).',
+  agendamento: 'Um agendamento de atendimento (data, cidade de destino).',
+  encerramento: 'Um encerramento de processo (data, motivo).',
+  fechamento_faturamento: 'Um fechamento de competência do Faturamento no módulo Financeiro (data do fechamento).',
+  fechamento_bpa: 'Um fechamento de competência do BPA no módulo Financeiro (data do fechamento).',
+  qualquer_registro: 'Qualquer dado do sistema, o primeiro ou o último registro de todos.',
+} as const;
+export type EntidadeExtremo = keyof typeof ENTIDADES_EXTREMO;
+
+export const CRITERIOS_EXTREMO = {
+  maior_valor: 'O de maior valor, o mais caro.',
+  menor_valor: 'O de menor valor, o mais barato.',
+  mais_recente: 'O mais recente, o último, a última data.',
+  mais_antigo: 'O mais antigo, o primeiro, a primeira data.',
+} as const;
+export type CriterioExtremo = keyof typeof CRITERIOS_EXTREMO;
 
 export interface Filtros {
   modal?: Modal[];
   beneficiario?: Beneficiario[];
   status?: StatusSolicitacao[];
   prioridade?: Prioridade[];
+  /** Filtros de texto livre, já conferidos contra valores que existem no banco. */
+  municipio?: { ids: string[]; nome: string };
+  especialidade?: string;
+  cid?: string;
+  destino?: string;
 }
 
 export interface DefinicaoRelatorio {
@@ -125,7 +155,7 @@ export const CATALOGO: Record<RelatorioId, DefinicaoRelatorio> = {
     descricao: 'Quanto dinheiro foi gasto ou emitido em passagens (bilhetes de transporte) em um período, no total ou separado por mês.',
     agrupamentos: ['nenhum', 'mes', 'modal', 'destino', 'origem'],
     agrupamentoPadrao: 'nenhum',
-    filtros: ['modal'],
+    filtros: ['modal', 'destino'],
     campoData: 'data de cadastro da passagem',
     premissa: PREMISSA_PASSAGENS,
   },
@@ -174,10 +204,10 @@ export const CATALOGO: Record<RelatorioId, DefinicaoRelatorio> = {
   solicitacoes_por_status: {
     id: 'solicitacoes_por_status',
     titulo: 'Solicitações abertas no período',
-    descricao: 'Quantas solicitações de TFD foram abertas, criadas ou recebidas em um período, separadas pela situação atual, especialidade, município, regional, setor ou prioridade.',
-    agrupamentos: ['status', 'mes', 'setor', 'especialidade', 'municipio', 'regional', 'prioridade'],
+    descricao: 'Quantas solicitações de TFD foram abertas, criadas ou recebidas, separadas pela situação atual, especialidade, CID (doença), município, regional, setor ou prioridade; também quais CIDs ou especialidades mais aparecem em um município.',
+    agrupamentos: ['status', 'mes', 'setor', 'especialidade', 'municipio', 'regional', 'prioridade', 'cid'],
     agrupamentoPadrao: 'status',
-    filtros: ['status', 'prioridade'],
+    filtros: ['status', 'prioridade', 'municipio', 'especialidade', 'cid'],
     campoData: 'data de abertura da solicitação',
     premissa:
       'Conta as solicitações abertas no período, pela situação em que estão hoje. O sistema não guarda a data de aprovação, então "aprovadas neste mês" mostra as abertas no mês com a situação atual de cada uma.',
@@ -186,9 +216,9 @@ export const CATALOGO: Record<RelatorioId, DefinicaoRelatorio> = {
     id: 'solicitacoes_em_andamento',
     titulo: 'Solicitações em andamento',
     descricao: 'Quantas solicitações estão em andamento agora, na fila ou paradas em cada setor ou etapa do fluxo (dados básicos, regulação, passagens, ajuda de custo, aprovação, acompanhamento), por situação, especialidade, município ou prioridade.',
-    agrupamentos: ['setor', 'status', 'especialidade', 'municipio', 'regional', 'prioridade'],
+    agrupamentos: ['setor', 'status', 'especialidade', 'municipio', 'regional', 'prioridade', 'cid'],
     agrupamentoPadrao: 'setor',
-    filtros: ['status', 'prioridade'],
+    filtros: ['status', 'prioridade', 'municipio', 'especialidade', 'cid'],
     periodoOpcional: true,
     campoData: 'data de abertura da solicitação',
     premissa:
@@ -255,6 +285,17 @@ export const CATALOGO: Record<RelatorioId, DefinicaoRelatorio> = {
     filtros: ['modal'],
     campoData: 'data de embarque prevista do trecho',
     premissa: 'Conta os trechos de viagem ativos (ida e volta contam separado; transfer conta como trecho) pela data de embarque prevista. A distância soma o que está informado em cada trecho.',
+  },
+  registro_extremo: {
+    id: 'registro_extremo',
+    titulo: 'Registro em destaque',
+    descricao: 'Um registro só: o maior ou menor valor (passagem mais cara, maior ajuda de custo) ou o mais recente ou mais antigo (última solicitação aberta, primeiro dado do sistema, última emissão, último fechamento de faturamento ou BPA, último encerramento). Pergunta por "qual o/a mais...", "último", "primeiro", "quando foi".',
+    agrupamentos: ['nenhum'],
+    agrupamentoPadrao: 'nenhum',
+    filtros: ['modal', 'municipio', 'especialidade', 'destino'],
+    periodoOpcional: true,
+    campoData: 'data do registro',
+    premissa: 'Mostra um registro só, sem dados pessoais: valor, data e atributos como rota, modal, setor e especialidade. Fechamentos de competência vêm do módulo Financeiro (no protótipo, guardados neste navegador).',
   },
 };
 

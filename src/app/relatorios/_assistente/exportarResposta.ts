@@ -53,6 +53,14 @@ export function montarTabela(r: RespostaAssistente): TabelaResposta | null {
   for (const f of r.filtros ?? []) meta.push([f.rotulo, f.valor]);
   if (r.fonte) meta.push(['Fonte', `${r.fonte}${r.geradoEm ? `, ${new Date(r.geradoEm).toLocaleString('pt-BR')}` : ''}`]);
 
+  if (res.unidade === 'data' || res.atributos?.length) {
+    // Registro em destaque: tabela de campo e valor.
+    const linhas: (string | number)[][] = [];
+    if (res.unidade === 'data') linhas.push(['Data', res.dataIso ? new Date(res.dataIso).toLocaleString('pt-BR') : '']);
+    else linhas.push(['Valor', res.valor]);
+    for (const a of res.atributos ?? []) linhas.push([a.rotulo, a.valor]);
+    return { titulo: res.rotulo, meta, cabecalho: ['Campo', 'Valor'], linhas, formatos: res.unidade === 'data' ? {} : { 1: res.unidade } };
+  }
   const g = r.grupos && r.grupos.itens.length > 0 ? r.grupos : undefined;
   if (g) {
     const soma = res.unidade !== 'dias';

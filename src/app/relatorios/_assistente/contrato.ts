@@ -9,13 +9,23 @@ export interface PerguntaAssistente {
   pergunta: string;
   /** Últimas perguntas da conversa, para resolver "e no mês passado?". Só texto, sem resultados. */
   historico?: { pergunta: string; interpretacao?: string }[];
+  /** Resumo das competências do Financeiro (no protótipo ficam neste navegador). Sem dado pessoal. */
+  competencias?: ResumoCompetencia[];
 }
 
-export type Unidade = 'BRL' | 'quantidade' | 'dias';
+export interface ResumoCompetencia {
+  ano: number;
+  mes: number;
+  faturamento: { status: 'aberta' | 'fechada'; fechadaEm?: string; linhas: number };
+  bpa: { status: 'aberta' | 'fechada'; fechadaEm?: string; linhas: number };
+}
+
+export type Unidade = 'BRL' | 'quantidade' | 'dias' | 'data';
 export type TipoGrafico = 'auto' | 'pizza' | 'barras' | 'colunas' | 'linha';
 
 export type StatusResposta =
   | 'ok'            // resultado calculado
+  | 'conversa'      // cumprimento ou ajuda: resposta curta, sem consulta
   | 'esclarecimento' // pergunta entendida em parte; falta período ou o relatório ficou ambíguo
   | 'nao_suportado'  // fora do catálogo de relatórios
   | 'bloqueado'      // pede dado pessoal ou individualizado
@@ -49,6 +59,15 @@ export interface RespostaAssistente {
     legenda?: string;
     /** Parcelas que somam o valor principal (ex.: passagens + adicionais). */
     composicao?: ItemValor[];
+    /** Para registros (maior, menor, mais recente): data em ISO quando a unidade é "data". */
+    dataIso?: string;
+    /** Detalhes do registro encontrado, sem dado pessoal (rota, modal, setor...). */
+    atributos?: { rotulo: string; valor: string }[];
+  };
+  /** Como o JEV decidiu: confiança de cada escolha e as alternativas que ele considerou. */
+  decisaoJev?: {
+    origem: 'jev' | 'regras';
+    itens: { pergunta: string; escolha: string; confianca: number; alternativas: { rotulo: string; probabilidade: number }[] }[];
   };
   grupos?: { titulo: string; unidade: Unidade; itens: ItemValor[]; omitidos: number };
   resumo?: string;

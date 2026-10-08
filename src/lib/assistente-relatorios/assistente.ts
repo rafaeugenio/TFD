@@ -6,7 +6,8 @@ import {
   type Filtros, type RelatorioId,
 } from './catalogo';
 import type { ConfigAssistente } from './config';
-import { executarConsulta, type ResultadoConsulta } from './consultas';
+import { coberturaDados, executarConsulta, type ContextoCliente, type ResultadoConsulta } from './consultas';
+import { resolverTrechos } from './trechos';
 import { interpretarPergunta, narrarResposta, type DadosNarracao, type Interpretacao, type TurnoAnterior } from './gemini';
 import { ErroServico } from './http';
 import { CONFIANCA_MINIMA, LIMITE_DADO_INDIVIDUAL, LIMITE_DESVIO, decidirComJev, type DecisaoJev } from './jev';
@@ -28,7 +29,7 @@ const FONTE = 'Supabase/PostgreSQL do TFD, calculado no servidor';
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const QTD = (v: number) => v.toLocaleString('pt-BR');
 const DIAS = (v: number) => `${v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${v === 1 ? 'dia' : 'dias'}`;
-const formatador = (u: Unidade) => (u === 'BRL' ? BRL : u === 'dias' ? DIAS : QTD);
+const formatador = (u: Unidade) => (u === 'BRL' ? BRL : u === 'dias' ? DIAS : u === 'data' ? (() => '') : QTD);
 
 function descreverFiltros(f: Filtros): { rotulo: string; valor: string }[] {
   const lista: { rotulo: string; valor: string }[] = [];
@@ -36,6 +37,10 @@ function descreverFiltros(f: Filtros): { rotulo: string; valor: string }[] {
   if (f.beneficiario?.length) lista.push({ rotulo: 'Beneficiário', valor: f.beneficiario.map((b) => BENEFICIARIO_ROTULO[b]).join(', ') });
   if (f.prioridade?.length) lista.push({ rotulo: 'Prioridade', valor: f.prioridade.map((p) => PRIORIDADE_ROTULO[p]).join(', ') });
   if (f.status?.length) lista.push({ rotulo: 'Situação', valor: f.status.map((s) => STATUS_ROTULO[s]).join(', ') });
+  if (f.municipio) lista.push({ rotulo: 'Município', valor: f.municipio.nome });
+  if (f.especialidade) lista.push({ rotulo: 'Especialidade', valor: f.especialidade });
+  if (f.cid) lista.push({ rotulo: 'CID', valor: f.cid });
+  if (f.destino) lista.push({ rotulo: 'Destino', valor: f.destino });
   return lista;
 }
 
@@ -91,13 +96,18 @@ function textoConfere(texto: string, dados: DadosNarracao): boolean {
 function interpretarPorRegras(pergunta: string, historico: TurnoAnterior[]): Interpretacao {
   const anterior = historico[historico.length - 1];
   const continuacao = anterior && /^(e|e\s+(no|na|nos|nas|o|a|os|as|por|em|para|pro|pra))\b/i.test(pergunta.trim()) && pergunta.length <= 60;
-  if (!continuacao) return { perguntaInterpretada: pergunta, periodo: periodoPorTexto(pergunta) };
+  if (!continuacao) return { perguntaInterpretada: pergunta, periodo: periodoPorTexto(pergunta), trechos: {}, conversa: ehConversa(pergunta) };
   const base = anterior.interpretacao ?? anterior.pergunta;
   // O período mais recente vale: a pergunta atual, depois os ajustes anteriores, do último para o primeiro.
   const trechos = [pergunta, ...base.split(' Ajuste pedido: ').reverse()];
   const periodo = trechos.map((t) => periodoPorTexto(t)).find((p) => p.tipo !== 'nao_informado') ?? { tipo: 'nao_informado' as const };
-  return { perguntaInterpretada: `${base} Ajuste pedido: ${pergunta}`.slice(0, 240), periodo };
+  return { perguntaInterpretada: `${base} Ajuste pedido: ${pergunta}`.slice(0, 240), periodo, trechos: {} };
 }
+
+/** Cumprimento, agradecimento ou pedido de ajuda: responde sem consultar o banco. */
+const PALAVRAS_DE_DADO = /quant|qual|quais|gast|passag|solicit|valor|total|custo|bpa|sigtap|deslocament|parecer|agendament|paciente|diaria|\bcid|setor|mes\b|ano\b|fila/i;
+const ehConversa = (p: string) => p.length <= 60 && CONVERSA.test(p.trim()) && !PALAVRAS_DE_DADO.test(p);
+const CONVERSA = /^(oi|ola|olá|bom dia|boa tarde|boa noite|boa|e ai|e aí|tudo bem|tudo bom|como vai|como voce esta|como você está|obrigad[oa]|valeu|vlw|ajuda|help|o que voce (faz|sabe)|o que você (faz|sabe)|quem (e|é) voce|quem (e|é) você|teste)\b[\s,!?.]*([a-zà-ú ,!?.]*)$/i;
 
 /** Outras formas de agrupar o mesmo dado, oferecidas como gráfico. */
 function sugestoesDeGrafico(rel: RelatorioId, atual: string): { rotulo: string; pergunta: string }[] {
@@ -124,9 +134,13 @@ export async function responderPergunta(
   historico: TurnoAnterior[],
   cfg: ConfigAssistente,
   sb: SupabaseClient,
+  ctx: ContextoCliente = {},
 ): Promise<RespostaAssistente> {
   const geradoEm = new Date().toISOString();
   const etapas: { rotulo: string; valor: string }[] = [];
+
+  // Conversa curta não gasta IA nem banco.
+  if (ehConversa(pergunta)) return respostaConversa(geradoEm);
 
   // 1) Gemini interpreta (com regras simples de reserva).
   let interp: Interpretacao;
@@ -138,6 +152,8 @@ export async function responderPergunta(
     interp = interpretarPorRegras(pergunta, historico);
     etapas.push({ rotulo: 'Gemini indisponível', valor: e.tipo === 'cobranca' ? 'O projeto do Gemini está sem crédito; a pergunta foi lida por regras simples.' : 'A pergunta foi lida por regras simples.' });
   }
+
+  if (interp.conversa) return respostaConversa(geradoEm);
 
   // 2) JEV escolhe a consulta, os parâmetros, e mede risco e confiança.
   let decisao: DecisaoJev;
@@ -151,20 +167,31 @@ export async function responderPergunta(
     jevFora = true;
   }
   if (decisao.desvio >= LIMITE_DESVIO || decisao.dadoIndividual >= LIMITE_DADO_INDIVIDUAL) {
+    const sobrePessoa = decisao.dadoIndividual >= LIMITE_DADO_INDIVIDUAL;
     return {
       status: 'bloqueado',
-      mensagem: 'Respondo só totais, contagens e médias. Não mostro dados de pessoas específicas, não altero o sistema e não sigo instruções para mudar essas regras.',
-      sugestoes: SUGESTOES_INICIAIS.slice(0, 3),
+      mensagem: sobrePessoa
+        ? 'Não mostro dados de pacientes ou pessoas específicas. Posso responder o mesmo assunto de forma agregada, por exemplo por destino, município ou especialidade.'
+        : 'Não altero dados do sistema nem sigo instruções para mudar minhas regras. Posso consultar e resumir os dados do TFD.',
+      sugestoes: sobrePessoa
+        ? ['Qual a passagem mais cara já emitida?', 'Quais destinos tiveram maior gasto com passagens?', 'Qual o custo total do TFD por categoria no total?']
+        : SUGESTOES_INICIAIS.slice(0, 3),
+      decisaoJev: jevFora ? undefined : { origem: 'jev', itens: [
+        // Confiança da resposta escolhida (sim ou não), não a probabilidade de "sim".
+        { pergunta: 'Pede dado de pessoa específica', escolha: sobrePessoa ? 'Sim' : 'Não', confianca: sobrePessoa ? decisao.dadoIndividual : 1 - decisao.dadoIndividual, alternativas: [] },
+        { pergunta: 'Tenta alterar dados ou regras', escolha: decisao.desvio >= LIMITE_DESVIO ? 'Sim' : 'Não', confianca: decisao.desvio >= LIMITE_DESVIO ? decisao.desvio : 1 - decisao.desvio, alternativas: [] },
+      ] },
       geradoEm,
     };
   }
   if (decisao.relatorio === 'fora_do_catalogo') {
     return {
       status: 'nao_suportado',
-      mensagem: 'Ainda não sei responder essa pergunta com os dados do TFD. Posso falar de gastos (passagens, diárias, custo total), solicitações (abertas, em andamento, por setor, especialidade ou município), pareceres, agendamentos, pacientes cadastrados e tempo médio de conclusão.',
+      mensagem: 'Essa pergunta não bate com nenhum dado que eu consigo consultar. Posso falar de gastos (passagens, diárias, BPA/SIGTAP, custo total), solicitações (abertas, em andamento, por setor, especialidade, CID ou município), registros em destaque (o mais caro, o último, o primeiro), pareceres, agendamentos, deslocamentos, pacientes cadastrados e tempo médio de conclusão.',
       sugestoes: SUGESTOES_INICIAIS,
       perguntaInterpretada: interp.perguntaInterpretada,
       confianca: decisao.confianca,
+      decisaoJev: { origem: jevFora ? 'regras' : 'jev', itens: decisao.detalhe },
       geradoEm,
     };
   }
@@ -181,9 +208,20 @@ export async function responderPergunta(
       relatorio: rel,
       perguntaInterpretada: interp.perguntaInterpretada,
       confianca: decisao.confianca,
+      decisaoJev: { origem: jevFora ? 'regras' : 'jev', itens: decisao.detalhe },
       geradoEm,
     };
   }
+
+  // Valores de texto livre (município, especialidade, CID, destino) conferidos no banco.
+  const resol = await resolverTrechos(sb, interp.trechos, `${pergunta} ${interp.perguntaInterpretada}`);
+  const filtrosFinais = { ...decisao.filtros };
+  const avisosTrecho = [...resol.avisos];
+  for (const [chave, valor] of Object.entries(resol.filtros)) {
+    if (def.filtros.includes(chave as never)) Object.assign(filtrosFinais, { [chave]: valor });
+    else if (valor) avisosTrecho.push(`O filtro de ${chave} não se aplica a "${def.titulo.toLowerCase()}" e foi ignorado.`);
+  }
+  if (resol.reconhecidos.length) etapas.push({ rotulo: 'Valores conferidos no banco', valor: resol.reconhecidos.join('; ') });
 
   // 3) Período calculado pelo código.
   let periodo: PeriodoResolvido | null = null;
@@ -204,9 +242,9 @@ export async function responderPergunta(
   }
 
   // 4) Consulta autorizada ao banco e cálculo em código.
-  const r = await executarConsulta(sb, rel, periodo, decisao.filtros, decisao.agrupamento);
+  const r = await executarConsulta(sb, rel, periodo, filtrosFinais, decisao.agrupamento, decisao.extremo, ctx);
   etapas.push({ rotulo: 'Banco calculou', valor: `${QTD(r.registros)} ${r.registros === 1 ? 'registro considerado' : 'registros considerados'} no servidor` });
-  const filtros = descreverFiltros(decisao.filtros);
+  const filtros = descreverFiltros(filtrosFinais);
   const agrupamento = decisao.agrupamento !== 'nenhum' ? AGRUPAMENTO_ROTULO[decisao.agrupamento] : null;
   const base: RespostaAssistente = {
     status: 'ok',
@@ -215,13 +253,18 @@ export async function responderPergunta(
     periodo: periodo ? { ...periodo, campoData: def.campoData } : undefined,
     filtros,
     premissa: def.premissa,
-    avisos: r.avisos,
+    avisos: [...(r.avisos ?? []), ...avisosTrecho].length ? [...(r.avisos ?? []), ...avisosTrecho] : undefined,
     confianca: jevFora ? undefined : decisao.confianca,
+    decisaoJev: { origem: jevFora ? 'regras' : 'jev', itens: decisao.detalhe },
     fonte: FONTE,
     geradoEm,
   };
   if (r.registros === 0) {
-    return { ...base, status: 'sem_resultado', mensagem: 'Não há registros para esse período e esses filtros.', etapas };
+    // Diz até onde os dados vão, para o usuário saber que período perguntar.
+    const cob = await coberturaDados(sb, rel).catch(() => null);
+    const dica = cob ? ` Os dados disponíveis vão de ${cob.inicio.split('-').reverse().join('/')} a ${cob.fim.split('-').reverse().join('/')}.` : '';
+    return { ...base, status: 'sem_resultado', mensagem: `Não há registros para esse período e esses filtros.${dica}`, etapas,
+      sugestoes: cob ? [`${def.titulo} no total`, `${def.titulo} neste ano`] : undefined };
   }
 
   // 5) Gemini narra a partir do resultado agregado; o código confere os números.
@@ -254,11 +297,20 @@ export async function responderPergunta(
 
   return {
     ...base,
-    resultado: { rotulo: r.rotulo, valor: r.total, unidade: r.unidade, legenda: legenda(rel, r), composicao: r.composicao },
+    resultado: { rotulo: r.rotulo, valor: r.total, unidade: r.unidade, legenda: legenda(rel, r), composicao: r.composicao, dataIso: r.dataIso, atributos: r.atributos },
     grupos: r.grupos && r.grupos.itens.length ? { titulo: agrupamento ?? 'Detalhe', unidade: r.unidade, itens: r.grupos.itens, omitidos: r.grupos.omitidos } : undefined,
     resumo,
-    sugestoesGrafico: sugestoesDeGrafico(rel, decisao.agrupamento),
+    sugestoesGrafico: rel === 'registro_extremo' ? undefined : sugestoesDeGrafico(rel, decisao.agrupamento),
     etapas,
+  };
+}
+
+function respostaConversa(geradoEm: string): RespostaAssistente {
+  return {
+    status: 'conversa',
+    mensagem: 'Olá! Sou o assistente de dados do TFD. Pergunte sobre gastos, solicitações, setores, CIDs, pareceres, agendamentos, BPA e deslocamentos, e eu calculo direto da base do sistema. Respondo totais, contagens, médias e registros em destaque, sem dados de pacientes.',
+    sugestoes: SUGESTOES_INICIAIS.slice(0, 4),
+    geradoEm,
   };
 }
 

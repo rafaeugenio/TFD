@@ -66,6 +66,20 @@ export async function POST(req: NextRequest) {
     return [{ pergunta: p.pergunta, interpretacao }];
   });
 
+  // Resumo das competências do Financeiro (no protótipo ficam no navegador): só números e datas.
+  const brutoComp = (corpo as { competencias?: unknown } | null)?.competencias;
+  const dataOk = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v) && v.length <= 40 ? v : undefined);
+  const frente = (f: unknown) => {
+    const o = (f ?? {}) as Record<string, unknown>;
+    return { status: o.status === 'fechada' ? 'fechada' as const : 'aberta' as const, fechadaEm: dataOk(o.fechadaEm), linhas: Number.isInteger(o.linhas) ? Number(o.linhas) : 0 };
+  };
+  const competencias = (Array.isArray(brutoComp) ? brutoComp.slice(0, 60) : []).flatMap((c) => {
+    const o = (c ?? {}) as Record<string, unknown>;
+    const ano = Number(o.ano); const mes = Number(o.mes);
+    if (!Number.isInteger(ano) || !Number.isInteger(mes) || mes < 1 || mes > 12) return [];
+    return [{ ano, mes, faturamento: frente(o.faturamento), bpa: frente(o.bpa) }];
+  });
+
   const cfg = lerConfigAssistente();
   if (!cfg.ok) {
     return json(
@@ -79,7 +93,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const resposta = await responderPergunta(limpa.pergunta, historico, cfg.config, sb);
+    const resposta = await responderPergunta(limpa.pergunta, historico, cfg.config, sb, { competencias });
     console.info(`[assistente-relatorios] ${resposta.relatorio ?? '-'} ${resposta.status} ${Date.now() - inicio}ms`);
     return json(resposta);
   } catch (e) {

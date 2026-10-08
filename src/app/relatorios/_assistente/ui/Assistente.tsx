@@ -12,7 +12,7 @@ import { ColunasChart, DonutChart, SEQUENCIA_CORES, TendenciaChart, TopBarChart 
 import { BarChart3, BarChartHorizontal, ChevronDown, Copy, Download, ImageIcon, LineChart as LineChartIcon, PieChart as PieIcon, Table2 } from 'lucide-react';
 import { C, rotuloCampo } from '../../_construtor/ui/estilo';
 import { cartao } from '../../_construtor/ui/Previa';
-import { LIMITE_PERGUNTA, SUGESTOES_INICIAIS, type RespostaAssistente, type TipoGrafico } from '../contrato';
+import { LIMITE_PERGUNTA, SUGESTOES_INICIAIS, type RespostaAssistente, type ResumoCompetencia, type TipoGrafico } from '../contrato';
 
 /**
  * Assistente de Relatórios: conversa em que o usuário pergunta em linguagem
@@ -46,12 +46,29 @@ const DIAS = (v: number) => `${v.toLocaleString('pt-BR', { maximumFractionDigits
 const dataBR = (s: string) => s.split('-').reverse().join('/');
 const horaBR = (iso?: string) => (iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '');
 
+/** Resumo das competências do Financeiro guardadas neste navegador (só datas e contagens). */
+function resumoCompetencias(): ResumoCompetencia[] {
+  try {
+    const bruto = JSON.parse(localStorage.getItem('tfd.financeiro.competencias.v1') ?? '[]') as Array<Record<string, unknown>>;
+    const frente = (f: unknown) => {
+      const o = (f ?? {}) as { status?: string; fechadaEm?: string; itens?: unknown[] };
+      return { status: o.status === 'fechada' ? 'fechada' as const : 'aberta' as const, fechadaEm: o.fechadaEm, linhas: Array.isArray(o.itens) ? o.itens.length : 0 };
+    };
+    return (Array.isArray(bruto) ? bruto : []).slice(0, 60).map((c) => {
+      const fr = (c.frentes ?? {}) as Record<string, unknown>;
+      return { ano: Number(c.ano), mes: Number(c.mes), faturamento: frente(fr.faturamento), bpa: frente(fr.bpa) };
+    });
+  } catch {
+    return [];
+  }
+}
+
 async function perguntar(pergunta: string, historico: { pergunta: string; interpretacao?: string }[]): Promise<RespostaAssistente> {
   try {
     const r = await fetch('/api/relatorios/assistente', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pergunta, historico }),
+      body: JSON.stringify({ pergunta, historico, competencias: resumoCompetencias() }),
     });
     // Sem sessão o middleware redireciona para o login e volta HTML.
     if (!(r.headers.get('content-type') ?? '').includes('application/json')) {
@@ -210,6 +227,7 @@ function Carregando() {
 }
 
 const AVISOS: Record<string, { icone: typeof Info; titulo: string; cor: string; fundo: string }> = {
+  conversa: { icone: Sparkles, titulo: 'Assistente de dados do TFD', cor: 'var(--tfd-blue-700)', fundo: 'var(--tfd-blue-50)' },
   esclarecimento: { icone: HelpCircle, titulo: 'Preciso de um detalhe', cor: 'var(--tfd-blue-700)', fundo: 'var(--tfd-blue-50)' },
   nao_suportado: { icone: Info, titulo: 'Pergunta ainda não suportada', cor: 'var(--tfd-text-secondary)', fundo: 'var(--tfd-50)' },
   bloqueado: { icone: ShieldAlert, titulo: 'Pergunta não permitida', cor: 'var(--tfd-status-warning-strong, #9A3412)', fundo: 'var(--tfd-warning-bg, #FFF7ED)' },
@@ -234,6 +252,12 @@ function CartaoResposta({ r, onSugestao }: { r: RespostaAssistente; onSugestao: 
             {r.status === 'sem_resultado' && <Contexto r={r} />}
             {r.status === 'configuracao' && (
               <p style={{ fontSize: 13, color: C.apoio, marginTop: 6 }}>Quem administra o sistema precisa cadastrar as chaves do JEV e do Gemini nas variáveis de ambiente do servidor e reiniciar a aplicação.</p>
+            )}
+            {r.decisaoJev && r.decisaoJev.itens.length > 0 && (
+              <details className="mt-2" style={{ fontSize: 13, color: C.texto }}>
+                <summary className="cursor-pointer" style={{ color: C.azulTexto, fontWeight: 600 }}>O que o JEV entendeu</summary>
+                <DecisaoJev d={r.decisaoJev} />
+              </details>
             )}
           </div>
         </div>
@@ -266,14 +290,27 @@ function CartaoResultado({ r, onSugestao }: { r: RespostaAssistente; onSugestao:
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1" style={{ fontSize: 13, color: C.texto }}>
         <span>{res.rotulo}</span>
         {r.periodo && <span style={{ color: C.apoio }}>· {r.periodo.descricao}</span>}
+        {r.decisaoJev && <SeloConfianca d={r.decisaoJev} />}
         {r.filtros?.map((f) => (
           <span key={f.rotulo} style={{ padding: '1px 8px', borderRadius: 999, background: C.azulSuave, color: C.azulTexto, fontSize: 12 }}>{f.valor}</span>
         ))}
       </p>
       <p className="flex flex-wrap items-baseline gap-x-2" style={{ marginTop: 2 }}>
-        <span style={{ fontSize: 30, fontWeight: 700, color: C.ink, fontFamily: 'var(--tfd-mono)', lineHeight: 1.15 }}>{fmt(res.valor)}</span>
+        <span style={{ fontSize: 30, fontWeight: 700, color: C.ink, fontFamily: 'var(--tfd-mono)', lineHeight: 1.15 }}>
+          {res.unidade === 'data' ? (res.dataIso ? dataHoraCurta(res.dataIso) : 'Sem data') : fmt(res.valor)}
+        </span>
         {res.legenda && <span style={{ fontSize: 13, color: C.apoio }}>{res.legenda}</span>}
       </p>
+      {res.atributos && res.atributos.length > 0 && (
+        <dl className="grid gap-x-6 gap-y-1.5 mt-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', fontSize: 13 }}>
+          {res.atributos.map((a) => (
+            <div key={a.rotulo}>
+              <dt style={{ color: C.apoio, fontSize: 12 }}>{a.rotulo}</dt>
+              <dd style={{ color: C.ink, fontWeight: 500 }}>{a.valor}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
       {r.resumo && <p style={{ fontSize: 14, color: C.texto, marginTop: 8, lineHeight: 1.5 }}>{r.resumo}</p>}
 
       {grupos && <GraficoGrupos grupos={grupos} fmt={fmt} total={res.valor} unidade={res.unidade} inicial={r.graficoPreferido ?? 'auto'} />}
@@ -307,6 +344,12 @@ function CartaoResultado({ r, onSugestao }: { r: RespostaAssistente; onSugestao:
           {res.composicao && res.composicao.length > 1 && (
             <Item rotulo="Composição">{res.composicao.map((c) => `${c.rotulo}: ${BRL(c.valor)}`).join('; ')}</Item>
           )}
+          {r.decisaoJev && r.decisaoJev.itens.length > 0 && (
+            <div>
+              <dt style={{ color: C.ink, fontWeight: 600 }}>{r.decisaoJev.origem === 'jev' ? 'Decisão do JEV:' : 'Decisão por palavras-chave (JEV indisponível):'}</dt>
+              <dd><DecisaoJev d={r.decisaoJev} /></dd>
+            </div>
+          )}
           {r.premissa && <Item rotulo="Regra">{r.premissa}</Item>}
           {r.avisos?.map((a) => <Item key={a} rotulo="Atenção">{a}</Item>)}
           {r.etapas && r.etapas.length > 0 && <Item rotulo="Etapas">{r.etapas.map((e) => `${e.rotulo}: ${e.valor}`).join(' → ')}</Item>}
@@ -316,6 +359,58 @@ function CartaoResultado({ r, onSugestao }: { r: RespostaAssistente; onSugestao:
         </dl>
       </details>
     </section>
+  );
+}
+
+const dataHoraCurta = (iso: string) => {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso.split('-').reverse().join('/');
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+};
+
+const corConfianca = (c: number) => (c >= 0.85 ? { fundo: '#DCFCE7', texto: '#15803D' } : c >= 0.55 ? { fundo: '#FEF3C7', texto: '#B45309' } : { fundo: '#FEE2E2', texto: '#B91C1C' });
+
+/** Selo com a confiança do JEV na consulta escolhida (ou aviso de que foi por palavras-chave). */
+function SeloConfianca({ d }: { d: NonNullable<RespostaAssistente['decisaoJev']> }) {
+  if (d.origem === 'regras') {
+    return <span title="JEV indisponível: consulta escolhida por palavras-chave" style={{ padding: '1px 8px', borderRadius: 999, background: 'var(--tfd-100)', color: C.texto, fontSize: 12 }}>Palavras-chave</span>;
+  }
+  const c = d.itens[0]?.confianca ?? 0;
+  const cor = corConfianca(c);
+  return (
+    <span title={`Confiança do JEV na consulta escolhida: ${Math.round(c * 100)}%`} style={{ padding: '1px 8px', borderRadius: 999, background: cor.fundo, color: cor.texto, fontSize: 12, fontWeight: 600 }}>
+      JEV {Math.round(c * 100)}%
+    </span>
+  );
+}
+
+/** Cada escolha do JEV com a confiança em barra e as alternativas que ele considerou. */
+function DecisaoJev({ d }: { d: NonNullable<RespostaAssistente['decisaoJev']> }) {
+  return (
+    <ul className="mt-1.5 flex flex-col gap-2" style={{ listStyle: 'none', paddingLeft: 0 }}>
+      {d.itens.map((i) => {
+        const cor = corConfianca(i.confianca);
+        return (
+          <li key={i.pergunta}>
+            <div className="flex flex-wrap items-center gap-2">
+              <span style={{ color: C.apoio, minWidth: 110 }}>{i.pergunta}</span>
+              <span style={{ color: C.ink, fontWeight: 600 }}>{i.escolha}</span>
+              {d.origem === 'jev' && <span style={{ fontSize: 12, fontWeight: 600, color: cor.texto }}>{Math.round(i.confianca * 100)}%</span>}
+            </div>
+            {d.origem === 'jev' && (
+              <div style={{ height: 4, borderRadius: 2, background: 'var(--tfd-100)', marginTop: 3, maxWidth: 320 }} aria-hidden>
+                <div style={{ height: 4, borderRadius: 2, width: `${Math.round(i.confianca * 100)}%`, background: cor.texto }} />
+              </div>
+            )}
+            {i.alternativas.length > 0 && (
+              <p style={{ fontSize: 12, color: C.apoio, marginTop: 2 }}>
+                Alternativas: {i.alternativas.map((a) => `${a.rotulo} ${Math.round(a.probabilidade * 100)}%`).join(' · ')}
+              </p>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

@@ -7,9 +7,9 @@ import 'server-only';
  */
 
 export const PRESETS = [
-  'hoje', 'ultimos_7_dias', 'ultimos_30_dias', 'este_mes', 'mes_passado',
+  'hoje', 'esta_semana', 'semana_passada', 'ultimos_7_dias', 'ultimos_30_dias', 'este_mes', 'mes_passado',
   'ultimos_3_meses', 'ultimos_6_meses', 'ultimos_12_meses', 'este_trimestre', 'trimestre_passado',
-  'este_ano', 'ano_passado',
+  'este_ano', 'ano_passado', 'todo_periodo',
 ] as const;
 export type Preset = (typeof PRESETS)[number];
 
@@ -68,12 +68,26 @@ export function resolverPeriodo(p: PeriodoPedido, agora = new Date()): { ok: tru
 
   switch (p.tipo) {
     case 'nao_informado':
-      return { ok: false, motivo: 'periodo_ausente' };
+      // Sem período na pergunta: considera todo o histórico (e a resposta mostra isso).
+      return resolverPeriodo({ tipo: 'preset', preset: 'todo_periodo' }, agora);
     case 'preset': {
       const mes = (delta: number) => mesDeslocado(h.ano, h.mes, delta);
       const trimIni = Math.floor((h.mes - 1) / 3) * 3 + 1;
       switch (p.preset) {
         case 'hoje': r = { inicio: hoje, fim: hoje, descricao: 'Hoje' }; break;
+        case 'esta_semana': case 'semana_passada': {
+          // Semana de segunda a domingo.
+          const dow = (new Date(Date.UTC(h.ano, h.mes - 1, h.dia)).getUTCDay() + 6) % 7;
+          const seg = somarDias(h.ano, h.mes, h.dia, -dow - (p.preset === 'semana_passada' ? 7 : 0));
+          const [sa, sm, sd] = seg.split('-').map(Number);
+          r = p.preset === 'esta_semana'
+            ? { inicio: seg, fim: hoje, descricao: 'Esta semana' }
+            : { inicio: seg, fim: somarDias(sa, sm, sd, 6), descricao: 'Semana passada' };
+          break;
+        }
+        case 'todo_periodo':
+          // Todo o histórico: não entra no limite de meses (o volume é limitado na consulta).
+          return { ok: true, periodo: { inicio: `${ANO_MINIMO}-01-01`, fim: hoje, descricao: 'Todo o período' } };
         case 'ultimos_7_dias': r = { inicio: somarDias(h.ano, h.mes, h.dia, -6), fim: hoje, descricao: 'Últimos 7 dias' }; break;
         case 'ultimos_30_dias': r = { inicio: somarDias(h.ano, h.mes, h.dia, -29), fim: hoje, descricao: 'Últimos 30 dias' }; break;
         case 'este_mes': r = { inicio: iso(h.ano, h.mes, 1), fim: hoje, descricao: `Este mês (${MESES[h.mes - 1]}/${h.ano})` }; break;
@@ -136,7 +150,10 @@ export function periodoPorTexto(texto: string, agora = new Date()): PeriodoPedid
     const q = Number(n[1]);
     if (q === 3 || q === 6 || q === 12) return { tipo: 'preset', preset: `ultimos_${q}_meses` as Preset };
   }
+  if (/semana passada|semana anterior/.test(t)) return { tipo: 'preset', preset: 'semana_passada' };
+  if (/(essa|esta|nessa|nesta) semana|semana atual/.test(t)) return { tipo: 'preset', preset: 'esta_semana' };
   if (/ultimos\s+7\s+dias|ultima semana/.test(t)) return { tipo: 'preset', preset: 'ultimos_7_dias' };
+  if (/no total|desde (o inicio|sempre|que comecou)|todo o (periodo|historico)|de todos os tempos|ja (foi|feit|emitid|registrad)|historico completo/.test(t)) return { tipo: 'preset', preset: 'todo_periodo' };
   if (/ultimos\s+30\s+dias/.test(t)) return { tipo: 'preset', preset: 'ultimos_30_dias' };
   if (/\bhoje\b/.test(t)) return { tipo: 'preset', preset: 'hoje' };
   if (/mes passado|ultimo mes|mes anterior/.test(t)) return { tipo: 'preset', preset: 'mes_passado' };

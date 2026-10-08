@@ -25,6 +25,10 @@ export interface TurnoAnterior {
 export interface Interpretacao {
   perguntaInterpretada: string;
   periodo: PeriodoPedido;
+  /** Valores citados em texto livre; o código confere contra o banco antes de usar. */
+  trechos: { municipio?: string; especialidade?: string; cid?: string; destino?: string };
+  /** Cumprimento, agradecimento ou pedido de ajuda (sem consulta a fazer). */
+  conversa?: boolean;
 }
 
 async function gerarJson(cfg: ConfigAssistente['gemini'], sistema: string, usuario: string, esquema: unknown, maxTokens: number): Promise<unknown> {
@@ -62,8 +66,13 @@ const ESQUEMA_INTERPRETAR = {
     ano: { type: 'INTEGER', nullable: true },
     inicio: { type: 'STRING', nullable: true, description: 'AAAA-MM-DD, só quando periodo_tipo = intervalo.' },
     fim: { type: 'STRING', nullable: true, description: 'AAAA-MM-DD, só quando periodo_tipo = intervalo.' },
+    municipio: { type: 'STRING', nullable: true, description: 'Município do Maranhão citado como origem ou residência (nome por extenso; "SLZ" vira "São Luís").' },
+    especialidade: { type: 'STRING', nullable: true, description: 'Especialidade médica citada (ex.: Oncologia).' },
+    cid: { type: 'STRING', nullable: true, description: 'Código CID citado (ex.: C50) ou nome de doença que tenha CID conhecido.' },
+    destino: { type: 'STRING', nullable: true, description: 'Cidade de destino da viagem citada.' },
+    conversa: { type: 'BOOLEAN', description: 'true quando a mensagem é só cumprimento, agradecimento, conversa ou pedido de ajuda sobre o assistente.' },
   },
-  required: ['pergunta_interpretada', 'periodo_tipo'],
+  required: ['pergunta_interpretada', 'periodo_tipo', 'conversa'],
 };
 
 function instrucoesInterpretar() {
@@ -75,7 +84,9 @@ function instrucoesInterpretar() {
     'Use a conversa anterior para resolver referências como "e no mês passado?", "e por destino?" ou "e os urgentes?": repita o assunto anterior trocando só o que mudou.',
     `O sistema tem dados agregados sobre: ${IDS_RELATORIO.map((id) => CATALOGO[id].titulo.toLowerCase()).join('; ')}.`,
     'Se a pergunta não for sobre esses dados, reescreva fielmente mesmo assim, começando com "Fora dos dados do TFD:". Nunca invente assunto, filtro ou período.',
-    'Período: preset para períodos relativos (hoje, últimos 7 ou 30 dias, este mês, mês passado, últimos 3, 6 ou 12 meses, este trimestre, trimestre passado, este ano, ano passado); mes com mes e ano quando citar um mês (sem ano, use o ano mais recente em que o mês já começou); ano quando citar só um ano; intervalo só com datas exatas; nao_informado quando não houver período na pergunta nem na conversa.',
+    'Período: preset para períodos relativos (hoje, esta semana, semana passada, últimos 7 ou 30 dias, este mês, mês passado, últimos 3, 6 ou 12 meses, este trimestre, trimestre passado, este ano, ano passado, todo_periodo para "no total", "desde o início", "já emitida"); mes com mes e ano quando citar um mês (sem ano, use o ano mais recente em que o mês já começou); ano quando citar só um ano; intervalo só com datas exatas; nao_informado quando não houver período na pergunta nem na conversa.',
+    'Extraia em campos próprios o município, a especialidade, o CID e a cidade de destino quando a pergunta citar. Siglas e apelidos: SLZ = São Luís, ITZ = Imperatriz. Não invente valor.',
+    'Perguntas de "qual o mais caro, o maior, o último, o primeiro, quando foi" pedem um registro só: reescreva deixando claro qual registro e qual critério (maior valor, menor valor, mais recente, mais antigo).',
     'Vocabulário do TFD (use para entender termos do usuário e escrever a frase com o termo certo):',
     glossarioTexto(),
     'Exemplos de reescrita:',
@@ -123,7 +134,13 @@ export async function interpretarPergunta(pergunta: string, historico: TurnoAnte
   const o = bruto as Record<string, unknown>;
   const texto = typeof o.pergunta_interpretada === 'string' ? o.pergunta_interpretada.replace(/\s+/g, ' ').trim().slice(0, 240) : '';
   if (!texto) throw new ErroServico('gemini', 'resposta_invalida');
-  return { perguntaInterpretada: texto, periodo: validarPeriodo(o) };
+  const trecho = (v: unknown) => (typeof v === 'string' && v.trim() && v.length <= 80 ? v.trim() : undefined);
+  return {
+    perguntaInterpretada: texto,
+    periodo: validarPeriodo(o),
+    trechos: { municipio: trecho(o.municipio), especialidade: trecho(o.especialidade), cid: trecho(o.cid), destino: trecho(o.destino) },
+    conversa: o.conversa === true,
+  };
 }
 
 /* ---------------------------------------------------------------------- */

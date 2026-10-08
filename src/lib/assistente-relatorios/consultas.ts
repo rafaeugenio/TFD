@@ -5,7 +5,7 @@ import { calcularQuantidadePassagem, resolveSigtapAjudaCusto, resolveSigtapPassa
 import type { ItemValor } from '@/app/relatorios/_assistente/contrato';
 import {
   BENEFICIARIO_ROTULO, MODAL_ROTULO, PRIORIDADE_ROTULO, SETOR_ROTULO, STATUS_ENCERRADOS, STATUS_ROTULO,
-  type Agrupamento, type Beneficiario, type Filtros, type Modal, type Prioridade, type RelatorioId, type StatusSolicitacao,
+  type Agrupamento, type Beneficiario, type CriterioExtremo, type EntidadeExtremo, type Filtros, type Modal, type Prioridade, type RelatorioId, type StatusSolicitacao,
 } from './catalogo';
 import { TEMPO_LIMITE_MS } from './config';
 import { ErroServico } from './http';
@@ -25,8 +25,11 @@ const MAX_GRUPOS = 12;
 
 export interface ResultadoConsulta {
   total: number;
-  unidade: 'BRL' | 'quantidade' | 'dias';
+  unidade: 'BRL' | 'quantidade' | 'dias' | 'data';
   registros: number;
+  /** Registro em destaque: data (ISO) e atributos sem dado pessoal. */
+  dataIso?: string;
+  atributos?: { rotulo: string; valor: string }[];
   rotulo: string;
   composicao?: ItemValor[];
   grupos?: { itens: ItemValor[]; omitidos: number; cronologico: boolean };
@@ -110,6 +113,7 @@ async function itensPassagens(sb: SupabaseClient, p: PeriodoResolvido, filtros: 
   const viagens = await paginar((de, ate) => {
     let q = sb.from('viagens').select(colunas).eq('ativa', true).gte('created_at', inicioTs(p)).lte('created_at', fimTs(p)).order('id').range(de, ate);
     if (filtros.modal?.length) q = q.in('modal', filtros.modal);
+    if (filtros.destino) q = q.ilike('destino_cidade', `%${filtros.destino}%`);
     return q;
   });
 
@@ -267,14 +271,33 @@ function chaveSolicitacao(l: Linha, ag: Agrupamento, mun: Map<string, { nome: st
 
 async function resultadoSolicitacoes(sb: SupabaseClient, p: PeriodoResolvido | null, filtros: Filtros, agrupamento: Agrupamento, emAndamento: boolean): Promise<ResultadoConsulta> {
   const linhas = await paginar((de, ate) => {
-    let q = sb.from('solicitacoes').select('id, status, setor_atual, especialidade, prioridade, municipio_origem_id, created_at').order('id').range(de, ate);
+    let q = sb.from('solicitacoes').select('id, status, setor_atual, especialidade, prioridade, municipio_origem_id, cid10_principal, created_at').order('id').range(de, ate);
     if (p) q = q.gte('created_at', inicioTs(p)).lte('created_at', fimTs(p));
     if (emAndamento) q = q.not('status', 'in', `(${STATUS_ENCERRADOS.join(',')})`);
     if (filtros.status?.length) q = q.in('status', filtros.status);
     if (filtros.prioridade?.length) q = q.in('prioridade', filtros.prioridade);
+    if (filtros.municipio) q = q.in('municipio_origem_id', filtros.municipio.ids);
+    if (filtros.especialidade) q = q.ilike('especialidade', filtros.especialidade);
+    if (filtros.cid) q = q.ilike('cid10_principal', `${filtros.cid}%`);
     return q;
   });
   const mun = agrupamento === 'municipio' || agrupamento === 'regional' ? await mapaMunicipios(sb) : new Map();
+  if (agrupamento === 'cid') {
+    // CID com a descrição da tabela CID-10 (só dos códigos que apareceram).
+    const codigos = [...new Set(linhas.map((l) => texto(l.cid10_principal).trim()).filter(Boolean))];
+    const desc = new Map<string, string>();
+    for (let i = 0; i < codigos.length; i += 200) {
+      const { data } = await sb.from('cid10').select('codigo, descricao').in('codigo', codigos.slice(i, i + 200));
+      for (const c of (data ?? []) as Linha[]) desc.set(texto(c.codigo), texto(c.descricao));
+    }
+    const r: ResultadoConsulta = { total: linhas.length, unidade: 'quantidade', registros: linhas.length, rotulo: emAndamento ? 'Solicitações em andamento' : 'Solicitações abertas no período' };
+    r.grupos = agrupar(linhas.map((l) => {
+      const c = texto(l.cid10_principal).trim();
+      const d = desc.get(c);
+      return c ? { chave: c, rotulo: d ? `${c} · ${d.length > 26 ? `${d.slice(0, 25).trim()}…` : d}` : c, valor: 1 } : { chave: '-', rotulo: 'Sem CID', valor: 1 };
+    }), false);
+    return r;
+  }
   const r: ResultadoConsulta = {
     total: linhas.length, unidade: 'quantidade', registros: linhas.length,
     rotulo: emAndamento ? (p ? 'Solicitações em andamento abertas no período' : 'Solicitações em andamento agora') : 'Solicitações abertas no período',
@@ -472,6 +495,176 @@ async function resultadoDeslocamentos(sb: SupabaseClient, p: PeriodoResolvido, f
   return r;
 }
 
+
+/* ---------------------------------------------------------------------- */
+/*  Registro em destaque (maior, menor, mais recente, mais antigo)         */
+/* ---------------------------------------------------------------------- */
+
+export interface ContextoCliente {
+  competencias?: { ano: number; mes: number; faturamento: { status: string; fechadaEm?: string; linhas: number }; bpa: { status: string; fechadaEm?: string; linhas: number } }[];
+}
+
+const MESES_NOME = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const dataHoraBR = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.split('-').reverse().join('/') : d.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' });
+};
+const SITUACAO_VIAGEM: Record<string, string> = { AGUARDANDO_EMISSAO: 'Aguardando emissão', EMITIDA: 'Emitida', REMARCADA: 'Remarcada', CANCELADA: 'Cancelada', NO_SHOW: 'Não compareceu', UTILIZADA: 'Utilizada' };
+
+async function registroExtremo(
+  sb: SupabaseClient, p: PeriodoResolvido | null, filtros: Filtros,
+  extremo: { entidade: EntidadeExtremo; criterio: CriterioExtremo }, ctx: ContextoCliente,
+): Promise<ResultadoConsulta> {
+  const { entidade, criterio } = extremo;
+  const asc = criterio === 'menor_valor' || criterio === 'mais_antigo';
+  const porValor = criterio === 'maior_valor' || criterio === 'menor_valor';
+  const nada = (rotulo: string): ResultadoConsulta => ({ total: 0, unidade: 'data', registros: 0, rotulo });
+  const noPeriodo = <T extends { gte: (c: string, v: string) => T; lte: (c: string, v: string) => T }>(q: T, col: string, data = false) =>
+    p ? q.gte(col, data ? p.inicio : inicioTs(p)).lte(col, data ? p.fim : fimTs(p)) : q;
+  const quando = (c: CriterioExtremo) => ({ maior_valor: 'mais cara', menor_valor: 'mais barata', mais_recente: 'mais recente', mais_antigo: 'mais antiga' } as Record<string, string>)[c];
+
+  switch (entidade) {
+    case 'passagem': {
+      let q = sb.from('viagens').select('valor, modal, tipo, origem_cidade, origem_uf, destino_cidade, destino_uf, emitido_em, created_at, data_embarque_prevista, companhia, situacao').eq('ativa', true);
+      q = noPeriodo(q, 'created_at');
+      if (filtros.modal?.length) q = q.in('modal', filtros.modal);
+      if (filtros.destino) q = q.ilike('destino_cidade', `%${filtros.destino}%`);
+      if (porValor) q = q.not('valor', 'is', null);
+      const { data, error } = await q.order(porValor ? 'valor' : 'created_at', { ascending: asc }).limit(1);
+      if (error) throw new ErroServico('banco', 'indisponivel');
+      const v = (data ?? [])[0] as Linha | undefined;
+      if (!v) return nada('Passagem');
+      const emissao = texto(v.emitido_em) || texto(v.created_at);
+      const atributos = [
+        { rotulo: 'Rota', valor: `${texto(v.origem_cidade)}/${texto(v.origem_uf)} → ${texto(v.destino_cidade)}/${texto(v.destino_uf)}` },
+        { rotulo: 'Modal', valor: MODAL_ROTULO[texto(v.modal) as Modal] ?? texto(v.modal) },
+        { rotulo: 'Trecho', valor: texto(v.tipo) === 'RETORNO' ? 'Volta' : 'Ida' },
+        { rotulo: 'Emissão', valor: dataHoraBR(emissao) },
+        { rotulo: 'Embarque previsto', valor: dataHoraBR(texto(v.data_embarque_prevista)) },
+        ...(texto(v.companhia) ? [{ rotulo: 'Companhia', valor: texto(v.companhia) }] : []),
+        { rotulo: 'Situação', valor: SITUACAO_VIAGEM[texto(v.situacao)] ?? texto(v.situacao) },
+      ];
+      return porValor
+        ? { total: numero(v.valor), unidade: 'BRL', registros: 1, rotulo: `Passagem ${quando(criterio)}`, atributos }
+        : { total: 0, unidade: 'data', registros: 1, rotulo: `Passagem ${quando(criterio)}`, dataIso: emissao, atributos: [{ rotulo: 'Valor', valor: numero(v.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }, ...atributos] };
+    }
+    case 'ajuda_custo': {
+      let q = sb.from('ajudas_custo').select('tipo, data_inicio, data_fim, status, concluido_em, created_at, valor_reembolso').eq('ativa', true);
+      q = noPeriodo(q, 'created_at');
+      const linhas = await paginar((de, ate) => q.order('id').range(de, ate));
+      if (!linhas.length) return nada('Ajuda de custo');
+      const itens = linhas.filter((a) => texto(a.data_inicio) && texto(a.data_fim)).map((a) => ({ a, valor: calcularValorAjuda(texto(a.data_inicio), texto(a.data_fim)).valor - numero(a.valor_reembolso) }));
+      itens.sort(porValor ? (x, y) => (asc ? x.valor - y.valor : y.valor - x.valor) : (x, y) => (asc ? 1 : -1) * texto(x.a.created_at).localeCompare(texto(y.a.created_at)));
+      const top = itens[0];
+      if (!top) return nada('Ajuda de custo');
+      const atributos = [
+        { rotulo: 'Período', valor: `${dataHoraBR(texto(top.a.data_inicio))} a ${dataHoraBR(texto(top.a.data_fim))}` },
+        { rotulo: 'Beneficiário', valor: texto(top.a.tipo) === 'ACOMPANHANTE' ? 'Acompanhante' : 'Paciente' },
+        { rotulo: 'Situação', valor: titulo(texto(top.a.status)) },
+      ];
+      return porValor
+        ? { total: centavos(top.valor), unidade: 'BRL', registros: 1, rotulo: `Ajuda de custo ${quando(criterio)}`, atributos }
+        : { total: 0, unidade: 'data', registros: 1, rotulo: `Ajuda de custo ${quando(criterio)}`, dataIso: texto(top.a.created_at), atributos: [{ rotulo: 'Valor', valor: top.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }, ...atributos] };
+    }
+    case 'adicional': {
+      let q = sb.from('adicionais').select('categoria, valor, status, data_ocorrencia, descricao');
+      q = noPeriodo(q, 'data_ocorrencia', true);
+      const { data, error } = await q.order(porValor ? 'valor' : 'data_ocorrencia', { ascending: asc }).limit(1);
+      if (error) throw new ErroServico('banco', 'indisponivel');
+      const a = (data ?? [])[0] as Linha | undefined;
+      if (!a) return nada('Adicional');
+      const atributos = [{ rotulo: 'Categoria', valor: titulo(texto(a.categoria).replace(/_/g, ' ')) }, { rotulo: 'Situação', valor: titulo(texto(a.status).replace(/_/g, ' ')) }, { rotulo: 'Data', valor: dataHoraBR(texto(a.data_ocorrencia)) }];
+      return porValor
+        ? { total: numero(a.valor), unidade: 'BRL', registros: 1, rotulo: `Adicional ${quando(criterio)}`, atributos }
+        : { total: 0, unidade: 'data', registros: 1, rotulo: `Adicional ${quando(criterio)}`, dataIso: texto(a.data_ocorrencia), atributos: [{ rotulo: 'Valor', valor: numero(a.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }, ...atributos] };
+    }
+    case 'solicitacao': case 'qualquer_registro': {
+      let q = sb.from('solicitacoes').select('numero_processo, status, setor_atual, especialidade, prioridade, municipio_origem_id, created_at');
+      q = noPeriodo(q, 'created_at');
+      if (filtros.municipio) q = q.in('municipio_origem_id', filtros.municipio.ids);
+      if (filtros.especialidade) q = q.ilike('especialidade', filtros.especialidade);
+      const { data, error } = await q.order('created_at', { ascending: criterio !== 'mais_recente' && criterio !== 'maior_valor' }).limit(1);
+      if (error) throw new ErroServico('banco', 'indisponivel');
+      const l = (data ?? [])[0] as Linha | undefined;
+      if (!l) return nada('Solicitação');
+      const mun = await mapaMunicipios(sb);
+      const m = mun.get(texto(l.municipio_origem_id));
+      const recente = criterio === 'mais_recente' || criterio === 'maior_valor';
+      return {
+        total: 0, unidade: 'data', registros: 1, dataIso: texto(l.created_at),
+        rotulo: entidade === 'qualquer_registro' ? (recente ? 'Registro mais recente (solicitação aberta)' : 'Primeiro registro (solicitação aberta)') : `Solicitação aberta ${recente ? 'mais recente' : 'mais antiga'}`,
+        atributos: [
+          { rotulo: 'Processo', valor: texto(l.numero_processo) },
+          { rotulo: 'Setor atual', valor: SETOR_ROTULO[texto(l.setor_atual)] ?? texto(l.setor_atual) },
+          { rotulo: 'Situação', valor: STATUS_ROTULO[texto(l.status) as StatusSolicitacao] ?? texto(l.status) },
+          ...(texto(l.especialidade) ? [{ rotulo: 'Especialidade', valor: texto(l.especialidade) }] : []),
+          ...(m ? [{ rotulo: 'Município', valor: `${m.nome}${m.uf ? `/${m.uf}` : ''}` }] : []),
+          { rotulo: 'Prioridade', valor: PRIORIDADE_ROTULO[texto(l.prioridade) as Prioridade] ?? texto(l.prioridade) },
+        ],
+      };
+    }
+    case 'parecer': case 'agendamento': case 'encerramento': {
+      const cfg = {
+        parecer: { tabela: 'pareceres', col: 'created_at', sel: 'decisao, tipo, created_at', rot: 'Parecer', data: false },
+        agendamento: { tabela: 'agendamentos', col: 'data_hora_agendamento', sel: 'cidade_destino, uf_destino, status, tipo_atendimento, data_hora_agendamento', rot: 'Agendamento', data: false },
+        encerramento: { tabela: 'encerramentos', col: 'data_encerramento', sel: 'motivo, data_encerramento', rot: 'Encerramento', data: true },
+      }[entidade];
+      let q = sb.from(cfg.tabela).select(cfg.sel);
+      q = noPeriodo(q, cfg.col, cfg.data);
+      const { data, error } = await q.order(cfg.col, { ascending: criterio === 'mais_antigo' || criterio === 'menor_valor' }).limit(1);
+      if (error) throw new ErroServico('banco', 'indisponivel');
+      const l = (data ?? [])[0] as unknown as Linha | undefined;
+      if (!l) return nada(cfg.rot);
+      const atributos = Object.entries(l).filter(([k, v]) => k !== cfg.col && v).map(([k, v]) => ({ rotulo: titulo(k.replace(/_/g, ' ')), valor: titulo(texto(v).replace(/_/g, ' ')) }));
+      return { total: 0, unidade: 'data', registros: 1, rotulo: `${cfg.rot} ${criterio === 'mais_antigo' || criterio === 'menor_valor' ? 'mais antigo' : 'mais recente'}`, dataIso: texto(l[cfg.col]), atributos };
+    }
+    case 'fechamento_faturamento': case 'fechamento_bpa': {
+      const frente = entidade === 'fechamento_faturamento' ? 'faturamento' : 'bpa';
+      const nome = frente === 'faturamento' ? 'Faturamento' : 'BPA';
+      const fechadas = (ctx.competencias ?? []).filter((c) => c[frente].fechadaEm).sort((a, b) => texto(a[frente].fechadaEm).localeCompare(texto(b[frente].fechadaEm)));
+      const c = criterio === 'mais_antigo' ? fechadas[0] : fechadas[fechadas.length - 1];
+      if (!c) {
+        // Sem fechamento: a última emissão de passagem é a referência mais próxima do faturamento.
+        const { data } = await sb.from('viagens').select('emitido_em, created_at').eq('ativa', true).order('created_at', { ascending: false }).limit(1);
+        const ult = (data ?? [])[0] as Linha | undefined;
+        return {
+          total: 0, unidade: 'data', registros: ult ? 1 : 0, rotulo: `Nenhum ${nome} fechado ainda`, dataIso: ult ? texto(ult.emitido_em) || texto(ult.created_at) : undefined,
+          atributos: ult ? [{ rotulo: 'Referência', valor: 'Data da última passagem emitida (nenhuma competência fechada no Financeiro)' }] : [],
+        };
+      }
+      return {
+        total: 0, unidade: 'data', registros: 1, rotulo: `${criterio === 'mais_antigo' ? 'Primeiro' : 'Último'} fechamento do ${nome}`, dataIso: texto(c[frente].fechadaEm),
+        atributos: [
+          { rotulo: 'Competência', valor: `${MESES_NOME[c.mes - 1]}/${c.ano}` },
+          { rotulo: 'Linhas', valor: String(c[frente].linhas) },
+          { rotulo: 'Situação agora', valor: c[frente].status === 'fechada' ? 'Fechada' : 'Reaberta' },
+        ],
+      };
+    }
+  }
+}
+
+/** Primeira e última data com registro (para explicar resultado vazio). */
+export async function coberturaDados(sb: SupabaseClient, relatorio: RelatorioId): Promise<{ inicio: string; fim: string } | null> {
+  const fonte: Partial<Record<RelatorioId, [string, string]>> = {
+    gasto_passagens: ['viagens', 'created_at'], passagens_por_modal: ['viagens', 'created_at'], custo_por_destino: ['viagens', 'created_at'],
+    deslocamentos: ['viagens', 'data_embarque_prevista'], gasto_diarias: ['ajudas_custo', 'concluido_em'], bpa_sigtap: ['viagens', 'data_embarque_prevista'],
+    custo_total: ['viagens', 'created_at'], solicitacoes_por_status: ['solicitacoes', 'created_at'], solicitacoes_em_andamento: ['solicitacoes', 'created_at'],
+    pareceres_regulacao: ['pareceres', 'created_at'], agendamentos: ['agendamentos', 'data_hora_agendamento'], pacientes_cadastrados: ['pacientes', 'created_at'],
+    tempo_medio_conclusao: ['solicitacoes', 'data_encerramento'],
+  };
+  const f = fonte[relatorio];
+  if (!f) return null;
+  const [tabela, col] = f;
+  const ponta = async (asc: boolean) => {
+    const { data } = await sb.from(tabela).select(col).not(col, 'is', null).order(col, { ascending: asc }).limit(1);
+    return texto(((data ?? [])[0] as unknown as Linha | undefined)?.[col]).slice(0, 10);
+  };
+  const [inicio, fim] = await Promise.all([ponta(true), ponta(false)]);
+  return inicio && fim ? { inicio, fim } : null;
+}
+
 /* ---------------------------------------------------------------------- */
 /*  Execução por relatório do catálogo                                     */
 /* ---------------------------------------------------------------------- */
@@ -482,6 +675,8 @@ export async function executarConsulta(
   periodoOuNulo: PeriodoResolvido | null,
   filtros: Filtros,
   agrupamento: Agrupamento,
+  extremo?: { entidade: EntidadeExtremo; criterio: CriterioExtremo },
+  ctx: ContextoCliente = {},
 ): Promise<ResultadoConsulta> {
   const avisos: string[] = [];
   // Só as consultas com `periodoOpcional` aceitam rodar sem período.
@@ -510,6 +705,8 @@ export async function executarConsulta(
       return resultadoBpa(sb, periodo, filtros, agrupamento);
     case 'deslocamentos':
       return resultadoDeslocamentos(sb, periodo, filtros, agrupamento);
+    case 'registro_extremo':
+      return registroExtremo(sb, periodoOuNulo, filtros, extremo ?? { entidade: 'solicitacao', criterio: 'mais_recente' }, ctx);
     case 'custo_total': {
       const [passagens, diarias] = await Promise.all([itensPassagens(sb, periodo, {}, avisos), itensDiarias(sb, periodo, {}, avisos)]);
       const soma = (l: { valor: number }[]) => centavos(l.reduce((t, i) => t + i.valor, 0));

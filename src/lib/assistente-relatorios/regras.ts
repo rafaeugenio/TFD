@@ -1,5 +1,5 @@
 import 'server-only';
-import { CATALOGO, type Agrupamento, type Filtros, type RelatorioId } from './catalogo';
+import { AGRUPAMENTO_ROTULO, CATALOGO, type Agrupamento, type CriterioExtremo, type EntidadeExtremo, type Filtros, type RelatorioId } from './catalogo';
 import type { DecisaoJev } from './jev';
 
 /**
@@ -14,6 +14,7 @@ const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,
 
 /** Ordem importa: o primeiro que casar vence (do mais específico ao mais geral). */
 const REGRAS_RELATORIO: { id: RelatorioId; padrao: RegExp; exige?: RegExp }[] = [
+  { id: 'registro_extremo', padrao: /mais car[ao]|mais barat|maior (valor|passagem|ajuda|diaria|adicional|gasto unico)|menor (valor|passagem|ajuda)|(ultim[oa]|primeir[oa]) (solicita|processo|passage|emiss|fechament|faturament|encerrament|parecer|agendament|registro|data|dado|bpa)|dado mais antigo|registro mais antigo|mais antig[ao]|mais recente|quando foi (o|a) (ultim|primeir)/ },
   { id: 'bpa_sigtap', padrao: /sigtap|\bbpa\b|faturamento sus|valor sus|tabela sus|producao ambulatorial|codigo 08/ },
   { id: 'tempo_medio_conclusao', padrao: /tempo medio|demora|quanto tempo|quantos dias (leva|demora)|prazo medio/ },
   { id: 'pareceres_regulacao', padrao: /parecer|deferid|indeferid|deferimento|indeferimento|taxa de aprovacao/ },
@@ -30,6 +31,7 @@ const REGRAS_RELATORIO: { id: RelatorioId; padrao: RegExp; exige?: RegExp }[] = 
 ];
 
 const REGRAS_AGRUPAMENTO: { ag: Agrupamento; padrao: RegExp }[] = [
+  { ag: 'cid', padrao: /\bcids?\b|doenca|diagnostic/ },
   { ag: 'mes', padrao: /por mes|mensal|mes a mes|cada mes|evolucao|ao longo/ },
   { ag: 'procedimento', padrao: /procedimento/ },
   { ag: 'modal', padrao: /por modal|modal|meio de transporte|por tipo de transporte/ },
@@ -55,7 +57,29 @@ export function decidirPorRegras(original: string, traduzida: string): DecisaoJe
   const pedeAlteracao = PEDIDO_DE_ALTERACAO.test(norm(original)) && !/como (faco|fazer|posso)/.test(norm(original));
   const regra = REGRAS_RELATORIO.find((r) => r.padrao.test(t) && (!r.exige || r.exige.test(t)));
   const base = { confianca: 0.7, probabilidade: 0.7, dadoIndividual: 0, desvio: pedeAlteracao ? 1 : 0, confiancaAgrupamento: 0.6 };
-  if (!regra) return { ...base, relatorio: 'fora_do_catalogo', agrupamento: 'nenhum', filtros: {} };
+  if (!regra) return { ...base, relatorio: 'fora_do_catalogo', agrupamento: 'nenhum', filtros: {}, detalhe: [] };
+  const detalhe: DecisaoJev['detalhe'] = [{ pergunta: 'Consulta', escolha: CATALOGO[regra.id].titulo, confianca: 0.7, alternativas: [] }];
+
+  if (regra.id === 'registro_extremo') {
+    const entidade: EntidadeExtremo =
+      /fechament.*bpa|bpa.*fechament/.test(t) ? 'fechamento_bpa'
+      : /fechament|faturament/.test(t) ? 'fechamento_faturamento'
+      : /passage|bilhete|emiss/.test(t) ? 'passagem'
+      : /ajuda|diaria/.test(t) ? 'ajuda_custo'
+      : /adicional/.test(t) ? 'adicional'
+      : /parecer/.test(t) ? 'parecer'
+      : /agendament/.test(t) ? 'agendamento'
+      : /encerrament/.test(t) ? 'encerramento'
+      : /solicita|processo|pedido/.test(t) ? 'solicitacao'
+      : 'qualquer_registro';
+    const criterio: CriterioExtremo =
+      /car[ao]|maior/.test(t) ? 'maior_valor' : /barat|menor/.test(t) ? 'menor_valor' : /antig|primeir/.test(t) ? 'mais_antigo' : 'mais_recente';
+    detalhe.push({ pergunta: 'Registro', escolha: entidade, confianca: 0.7, alternativas: [] }, { pergunta: 'Critério', escolha: criterio, confianca: 0.7, alternativas: [] });
+    const filtros: Filtros = {};
+    if (/aviao|aereo|voo/.test(t)) filtros.modal = ['AEREO'];
+    else if (/onibus|terrestre/.test(t)) filtros.modal = ['TERRESTRE'];
+    return { ...base, relatorio: 'registro_extremo', agrupamento: 'nenhum', filtros, extremo: { entidade, criterio }, detalhe };
+  }
 
   const def = CATALOGO[regra.id];
   const ag = REGRAS_AGRUPAMENTO.find((g) => def.agrupamentos.includes(g.ag) && g.padrao.test(t))?.ag ?? def.agrupamentoPadrao;
@@ -71,5 +95,6 @@ export function decidirPorRegras(original: string, traduzida: string): DecisaoJe
   if (def.filtros.includes('beneficiario') && ag !== 'beneficiario') {
     if (/(so|apenas|somente)?\s*(dos|de|para)? acompanhantes?\b/.test(t) && !/paciente/.test(t)) filtros.beneficiario = ['ACOMPANHANTE'];
   }
-  return { ...base, relatorio: regra.id, agrupamento: ag, filtros };
+  if (ag !== 'nenhum') detalhe.push({ pergunta: 'Agrupamento', escolha: AGRUPAMENTO_ROTULO[ag], confianca: 0.6, alternativas: [] });
+  return { ...base, relatorio: regra.id, agrupamento: ag, filtros, detalhe };
 }
