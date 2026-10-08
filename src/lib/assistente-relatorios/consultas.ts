@@ -1,6 +1,7 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { VALOR_DIARIA_PERNOITE, calcularValorAjuda } from '@/core/mocks/fluxo-v2-v3-seed';
+import { calcularQuantidadePassagem, resolveSigtapAjudaCusto, resolveSigtapPassagem } from '@/app/relatorios/_shared/sigtap-mapper';
 import type { ItemValor } from '@/app/relatorios/_assistente/contrato';
 import {
   BENEFICIARIO_ROTULO, MODAL_ROTULO, PRIORIDADE_ROTULO, SETOR_ROTULO, STATUS_ENCERRADOS, STATUS_ROTULO,
@@ -31,6 +32,8 @@ export interface ResultadoConsulta {
   grupos?: { itens: ItemValor[]; omitidos: number; cronologico: boolean };
   /** O que ficou de fora do cálculo por limitação do banco atual. */
   avisos?: string[];
+  /** Informação curta extra para a legenda do número (ex.: distância total). */
+  extra?: string;
 }
 
 type Linha = Record<string, unknown>;
@@ -356,6 +359,119 @@ async function resultadoTempoMedio(sb: SupabaseClient, p: PeriodoResolvido, filt
   return r;
 }
 
+
+/* ---------------------------------------------------------------------- */
+/*  BPA / SIGTAP e deslocamentos (mesma regra do módulo Financeiro)        */
+/* ---------------------------------------------------------------------- */
+
+type ModalSigtap = 'terrestre' | 'aereo' | 'fluvial';
+const modalSigtap = (m: string): ModalSigtap => (m === 'AEREO' ? 'aereo' : m === 'FLUVIAL' ? 'fluvial' : 'terrestre');
+
+async function acompanhantesDoadores(sb: SupabaseClient, ids: string[]): Promise<Set<string>> {
+  const doadores = new Set<string>();
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await sb.from('solicitacao_acompanhantes').select('solicitacao_id, doador').in('solicitacao_id', ids.slice(i, i + 200)).eq('doador', true);
+    if (error) throw new ErroServico('banco', 'indisponivel');
+    for (const r of (data ?? []) as Linha[]) doadores.add(texto(r.solicitacao_id));
+  }
+  return doadores;
+}
+
+async function resultadoBpa(sb: SupabaseClient, p: PeriodoResolvido, filtros: Filtros, agrupamento: Agrupamento): Promise<ResultadoConsulta> {
+  const ajudas = filtros.modal?.length ? [] : await paginar((de, ate) => {
+    let q = sb.from('ajudas_custo').select('id, tipo, data_inicio, dias_elegiveis, solicitacao_id').gte('data_inicio', p.inicio).lte('data_inicio', p.fim).order('id').range(de, ate);
+    if (filtros.beneficiario?.length) q = q.in('tipo', filtros.beneficiario);
+    return q;
+  });
+  const viagens = await paginar((de, ate) => {
+    let q = sb.from('viagens').select('id, modal, solicitacao_id, data_embarque_prevista, distancia_valor').eq('ativa', true)
+      .gte('data_embarque_prevista', p.inicio).lte('data_embarque_prevista', p.fim).order('id').range(de, ate);
+    if (filtros.modal?.length) q = q.in('modal', filtros.modal);
+    return q;
+  });
+  const doadores = await acompanhantesDoadores(sb, [...new Set(ajudas.filter((a) => texto(a.tipo) === 'ACOMPANHANTE').map((a) => texto(a.solicitacao_id)))]);
+
+  const itens: { valor: number; procedimento: string; mes: string; modal: string; beneficiario: Beneficiario; codigos: string[]; qtd: number[]; semDistancia?: boolean }[] = [];
+  for (const a of ajudas) {
+    const acomp = texto(a.tipo) === 'ACOMPANHANTE' && !doadores.has(texto(a.solicitacao_id));
+    const beneficiario: Beneficiario = acomp ? 'ACOMPANHANTE' : 'PACIENTE';
+    const dias = numero(a.dias_elegiveis);
+    const com = resolveSigtapAjudaCusto({ beneficiario: acomp ? 'acompanhante' : 'paciente', comPernoite: true, cnrac: false });
+    const sem = resolveSigtapAjudaCusto({ beneficiario: acomp ? 'acompanhante' : 'paciente', comPernoite: false, cnrac: false });
+    itens.push({ valor: 0, procedimento: 'Ajuda de custo', mes: mesBrasilia(texto(a.data_inicio)), modal: '', beneficiario, codigos: dias > 0 ? [com.codigo, sem.codigo] : [sem.codigo], qtd: dias > 0 ? [dias, 1] : [1] });
+  }
+  for (const v of viagens) {
+    if (texto(v.modal) === 'TRANSFER') continue; // transfer não tem código de deslocamento no SIGTAP
+    const sig = resolveSigtapPassagem({ beneficiario: 'paciente', modal: modalSigtap(texto(v.modal)), cnrac: false });
+    const q = calcularQuantidadePassagem(numero(v.distancia_valor) || null, sig.unidadeDivisor);
+    itens.push({ valor: 0, procedimento: 'Deslocamento', mes: mesBrasilia(texto(v.data_embarque_prevista)), modal: texto(v.modal), beneficiario: 'PACIENTE', codigos: q ? [sig.codigo] : [], qtd: q ? [q] : [], semDistancia: !q });
+  }
+
+  const codigos = [...new Set(itens.flatMap((i) => i.codigos))];
+  const valores = new Map<string, number>();
+  if (codigos.length) {
+    const { data, error } = await sb.from('sigtap_procedimentos').select('codigo, valor_unitario').in('codigo', codigos);
+    if (error) throw new ErroServico('banco', 'indisponivel');
+    for (const r of (data ?? []) as Linha[]) valores.set(texto(r.codigo), numero(r.valor_unitario));
+  }
+  for (const i of itens) i.valor = i.codigos.reduce((t, c, k) => t + (valores.get(c) ?? 0) * i.qtd[k], 0);
+
+  const soma = (l: typeof itens) => centavos(l.reduce((t, i) => t + i.valor, 0));
+  const ajudasItens = itens.filter((i) => i.procedimento === 'Ajuda de custo');
+  const desloc = itens.filter((i) => i.procedimento === 'Deslocamento');
+  const semDist = desloc.filter((i) => i.semDistancia).length;
+  const r: ResultadoConsulta = {
+    total: soma(itens), unidade: 'BRL', registros: itens.length, rotulo: 'Valor SIGTAP (BPA)',
+    composicao: [
+      { rotulo: 'Ajudas de custo', valor: soma(ajudasItens), quantidade: ajudasItens.length },
+      { rotulo: 'Deslocamentos', valor: soma(desloc), quantidade: desloc.length },
+    ],
+    extra: [ajudasItens.length ? `${QTD_(ajudasItens.length)} ${ajudasItens.length === 1 ? 'ajuda de custo' : 'ajudas de custo'}` : '', desloc.length ? `${QTD_(desloc.length)} ${desloc.length === 1 ? 'deslocamento' : 'deslocamentos'}` : ''].filter(Boolean).join(' e '),
+  };
+  if (semDist) r.avisos = [`${semDist} ${semDist === 1 ? 'deslocamento está' : 'deslocamentos estão'} sem distância informada e ficaram com valor SIGTAP zero.`];
+  const chave = (i: (typeof itens)[number]): { chave: string; rotulo: string } | null => {
+    switch (agrupamento) {
+      case 'procedimento': return { chave: i.procedimento, rotulo: i.procedimento };
+      case 'mes': return { chave: i.mes, rotulo: rotuloMes(i.mes) };
+      case 'modal': return i.procedimento === 'Deslocamento' ? { chave: i.modal, rotulo: MODAL_ROTULO[i.modal as Modal] ?? 'Não informado' } : { chave: 'ajuda', rotulo: 'Ajuda de custo' };
+      case 'beneficiario': return { chave: i.beneficiario, rotulo: BENEFICIARIO_ROTULO[i.beneficiario] };
+      default: return null;
+    }
+  };
+  if (agrupamento !== 'nenhum') r.grupos = agrupar(itens.flatMap((i) => { const k = chave(i); return k ? [{ ...k, valor: i.valor }] : []; }), agrupamento === 'mes');
+  return r;
+}
+const QTD_ = (n: number) => n.toLocaleString('pt-BR');
+
+async function resultadoDeslocamentos(sb: SupabaseClient, p: PeriodoResolvido, filtros: Filtros, agrupamento: Agrupamento): Promise<ResultadoConsulta> {
+  const linhas = await paginar((de, ate) => {
+    let q = sb.from('viagens').select('id, modal, origem_cidade, origem_uf, destino_cidade, destino_uf, data_embarque_prevista, distancia_valor, distancia_unidade')
+      .eq('ativa', true).gte('data_embarque_prevista', p.inicio).lte('data_embarque_prevista', p.fim).order('id').range(de, ate);
+    if (filtros.modal?.length) q = q.in('modal', filtros.modal);
+    return q;
+  });
+  // Distância somada por unidade (km, milhas, milhas náuticas), sem converter.
+  const porUnidade = new Map<string, number>();
+  for (const l of linhas) {
+    const d = numero(l.distancia_valor);
+    if (d > 0) { const u = texto(l.distancia_unidade) || 'km'; porUnidade.set(u, (porUnidade.get(u) ?? 0) + d); }
+  }
+  const nomeUnidade: Record<string, string> = { km: 'km', milhas: 'milhas', milhas_nauticas: 'milhas náuticas', mi: 'milhas', mn: 'milhas náuticas' };
+  const distancias = [...porUnidade.entries()].map(([u, v]) => `${Math.round(v).toLocaleString('pt-BR')} ${nomeUnidade[u] ?? u}`);
+  const cidade = (c: unknown, uf: unknown) => (texto(c) ? `${texto(c)}${texto(uf) ? `/${texto(uf)}` : ''}` : 'Não informada');
+  const r: ResultadoConsulta = {
+    total: linhas.length, unidade: 'quantidade', registros: linhas.length, rotulo: 'Deslocamentos (trechos)',
+    extra: distancias.length ? `${distancias.join(' + ')} percorridos` : undefined,
+  };
+  r.grupos = agrupar(linhas.map((l) => {
+    if (agrupamento === 'mes') { const m = mesBrasilia(texto(l.data_embarque_prevista)); return { chave: m, rotulo: rotuloMes(m), valor: 1 }; }
+    if (agrupamento === 'destino') { const c = cidade(l.destino_cidade, l.destino_uf); return { chave: c, rotulo: c, valor: 1 }; }
+    if (agrupamento === 'origem') { const c = cidade(l.origem_cidade, l.origem_uf); return { chave: c, rotulo: c, valor: 1 }; }
+    const m = texto(l.modal); return { chave: m || '-', rotulo: MODAL_ROTULO[m as Modal] ?? 'Não informado', valor: 1 };
+  }), agrupamento === 'mes');
+  return r;
+}
+
 /* ---------------------------------------------------------------------- */
 /*  Execução por relatório do catálogo                                     */
 /* ---------------------------------------------------------------------- */
@@ -390,6 +506,10 @@ export async function executarConsulta(
       return resultadoPacientes(sb, periodoOuNulo, agrupamento);
     case 'tempo_medio_conclusao':
       return resultadoTempoMedio(sb, periodo, filtros, agrupamento);
+    case 'bpa_sigtap':
+      return resultadoBpa(sb, periodo, filtros, agrupamento);
+    case 'deslocamentos':
+      return resultadoDeslocamentos(sb, periodo, filtros, agrupamento);
     case 'custo_total': {
       const [passagens, diarias] = await Promise.all([itensPassagens(sb, periodo, {}, avisos), itensDiarias(sb, periodo, {}, avisos)]);
       const soma = (l: { valor: number }[]) => centavos(l.reduce((t, i) => t + i.valor, 0));

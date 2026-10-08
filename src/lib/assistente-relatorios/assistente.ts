@@ -9,7 +9,8 @@ import type { ConfigAssistente } from './config';
 import { executarConsulta, type ResultadoConsulta } from './consultas';
 import { interpretarPergunta, narrarResposta, type DadosNarracao, type Interpretacao, type TurnoAnterior } from './gemini';
 import { ErroServico } from './http';
-import { CONFIANCA_MINIMA, LIMITE_DADO_INDIVIDUAL, LIMITE_DESVIO, decidirComJev } from './jev';
+import { CONFIANCA_MINIMA, LIMITE_DADO_INDIVIDUAL, LIMITE_DESVIO, decidirComJev, type DecisaoJev } from './jev';
+import { decidirPorRegras } from './regras';
 import { MAX_MESES, periodoPorTexto, resolverPeriodo, type PeriodoResolvido } from './periodo';
 
 /**
@@ -49,6 +50,7 @@ function legenda(rel: RelatorioId, r: ResultadoConsulta): string | undefined {
     case 'gasto_diarias': return `em ${plural(r.registros, 'ajuda de custo concluída', 'ajudas de custo concluídas')}`;
     case 'tempo_medio_conclusao': return `de ${plural(r.registros, 'solicitação concluída', 'solicitações concluídas')}`;
     case 'custo_total': return 'passagens, adicionais e diárias';
+    case 'bpa_sigtap': case 'deslocamentos': return r.extra;
     default: return undefined;
   }
 }
@@ -97,6 +99,19 @@ function interpretarPorRegras(pergunta: string, historico: TurnoAnterior[]): Int
   return { perguntaInterpretada: `${base} Ajuste pedido: ${pergunta}`.slice(0, 240), periodo };
 }
 
+/** Outras formas de agrupar o mesmo dado, oferecidas como gráfico. */
+function sugestoesDeGrafico(rel: RelatorioId, atual: string): { rotulo: string; pergunta: string }[] {
+  const nomes: Partial<Record<string, string>> = {
+    mes: 'por mês', modal: 'por modal', destino: 'por destino', origem: 'por origem', beneficiario: 'por beneficiário',
+    status: 'por situação', categoria: 'por categoria', setor: 'por setor', municipio: 'por município', regional: 'por regional',
+    especialidade: 'por especialidade', prioridade: 'por prioridade', decisao: 'por decisão', sexo: 'por sexo', procedimento: 'por procedimento',
+  };
+  return CATALOGO[rel].agrupamentos
+    .filter((a) => a !== 'nenhum' && a !== atual && nomes[a])
+    .slice(0, 4)
+    .map((a) => ({ rotulo: `Ver ${nomes[a]}`, pergunta: `e ${nomes[a]}?` }));
+}
+
 const MSG_PERIODO: Record<string, string> = {
   periodo_ausente: 'Para qual período você quer ver? Diga, por exemplo, "neste mês", "nos últimos 3 meses" ou "em agosto de 2026".',
   periodo_invalido: 'Não consegui entender as datas do período. Tente "em agosto de 2026" ou "de 01/07/2026 a 30/09/2026".',
@@ -124,19 +139,17 @@ export async function responderPergunta(
     etapas.push({ rotulo: 'Gemini indisponível', valor: e.tipo === 'cobranca' ? 'O projeto do Gemini está sem crédito; a pergunta foi lida por regras simples.' : 'A pergunta foi lida por regras simples.' });
   }
 
-  // Métricas que ficam em outro módulo: responde direto, sem gastar JEV nem Gemini.
-  if (/sigtap|\bbpa\b|faturamento sus|tabela sus/i.test(`${pergunta} ${interp.perguntaInterpretada}`)) {
-    return {
-      status: 'nao_suportado',
-      mensagem: 'Valores SIGTAP e BPA ficam no módulo Financeiro, nas competências de Faturamento e BPA. Aqui eu respondo o valor real gasto com passagens, diárias e o custo total.',
-      sugestoes: ['Quanto foi gasto em passagens em setembro?', 'Qual foi o custo total do TFD no último trimestre?'],
-      perguntaInterpretada: interp.perguntaInterpretada,
-      geradoEm,
-    };
-  }
-
   // 2) JEV escolhe a consulta, os parâmetros, e mede risco e confiança.
-  const decisao = await decidirComJev(pergunta, interp.perguntaInterpretada, cfg.jev);
+  let decisao: DecisaoJev;
+  let jevFora = false;
+  try {
+    decisao = await decidirComJev(pergunta, interp.perguntaInterpretada, cfg.jev);
+  } catch (e) {
+    // JEV fora do ar, lento ou com resposta inválida: roteador por palavras-chave.
+    if (!(e instanceof ErroServico) || e.tipo === 'autenticacao') throw e;
+    decisao = decidirPorRegras(pergunta, interp.perguntaInterpretada);
+    jevFora = true;
+  }
   if (decisao.desvio >= LIMITE_DESVIO || decisao.dadoIndividual >= LIMITE_DADO_INDIVIDUAL) {
     return {
       status: 'bloqueado',
@@ -157,7 +170,9 @@ export async function responderPergunta(
   }
   const rel: RelatorioId = decisao.relatorio;
   const def = CATALOGO[rel];
-  etapas.push({ rotulo: 'JEV escolheu', valor: `${def.titulo} (${Math.round(decisao.confianca * 100)}% de confiança)` });
+  etapas.push(jevFora
+    ? { rotulo: 'JEV indisponível', valor: `consulta escolhida por palavras-chave: ${def.titulo}` }
+    : { rotulo: 'JEV escolheu', valor: `${def.titulo} (${Math.round(decisao.confianca * 100)}% de confiança)` });
   if (decisao.confianca < CONFIANCA_MINIMA || decisao.probabilidade < CONFIANCA_MINIMA) {
     return {
       status: 'esclarecimento',
@@ -201,7 +216,7 @@ export async function responderPergunta(
     filtros,
     premissa: def.premissa,
     avisos: r.avisos,
-    confianca: decisao.confianca,
+    confianca: jevFora ? undefined : decisao.confianca,
     fonte: FONTE,
     geradoEm,
   };
@@ -242,6 +257,7 @@ export async function responderPergunta(
     resultado: { rotulo: r.rotulo, valor: r.total, unidade: r.unidade, legenda: legenda(rel, r), composicao: r.composicao },
     grupos: r.grupos && r.grupos.itens.length ? { titulo: agrupamento ?? 'Detalhe', unidade: r.unidade, itens: r.grupos.itens, omitidos: r.grupos.omitidos } : undefined,
     resumo,
+    sugestoesGrafico: sugestoesDeGrafico(rel, decisao.agrupamento),
     etapas,
   };
 }

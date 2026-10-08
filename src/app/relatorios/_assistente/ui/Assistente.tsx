@@ -7,9 +7,10 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import { ColunasChart, DonutChart, SEQUENCIA_CORES, TendenciaChart, TopBarChart } from '@/shared/components/charts/Graficos';
+import { BarChart3, BarChartHorizontal, LineChart as LineChartIcon, PieChart as PieIcon } from 'lucide-react';
 import { C, rotuloCampo } from '../../_construtor/ui/estilo';
 import { cartao } from '../../_construtor/ui/Previa';
-import { LIMITE_PERGUNTA, SUGESTOES_INICIAIS, type RespostaAssistente } from '../contrato';
+import { LIMITE_PERGUNTA, SUGESTOES_INICIAIS, type RespostaAssistente, type TipoGrafico } from '../contrato';
 
 /**
  * Assistente de Relatórios: conversa em que o usuário pergunta em linguagem
@@ -22,6 +23,19 @@ interface Mensagem {
   id: number;
   pergunta: string;
   resposta?: RespostaAssistente;
+}
+
+/** Reconhece pedidos de troca de gráfico ("mostra em pizza", "em barras", "gráfico de linha"). */
+function comandoDeGrafico(texto: string): TipoGrafico | null {
+  const t = texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (t.length > 60) return null;
+  const pedeGrafico = /grafico|mostr|exib|ver |veja|coloc|faz|quero|em (pizza|rosca|barra|coluna|linha)|^(pizza|rosca|barras?|colunas?|linha)/.test(t);
+  if (!pedeGrafico) return null;
+  if (/pizza|rosca|donut|torta/.test(t)) return 'pizza';
+  if (/coluna/.test(t)) return 'colunas';
+  if (/barra/.test(t)) return 'barras';
+  if (/linha|evolucao|tendencia/.test(t)) return 'linha';
+  return null;
 }
 
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -63,6 +77,16 @@ export default function Assistente() {
     const limpa = pergunta.trim();
     if (!limpa || enviando) return;
     const id = proximoId.current++;
+
+    // "mostra em pizza", "em barras"...: redesenha a última resposta, sem chamar o servidor.
+    const tipo = comandoDeGrafico(limpa);
+    const ultima = [...mensagens].reverse().find((m) => m.resposta?.status === 'ok' && (m.resposta.grupos?.itens.length ?? 0) > 1);
+    if (tipo && ultima?.resposta) {
+      setMensagens((m) => [...m, { id, pergunta: limpa, resposta: { ...ultima.resposta!, graficoPreferido: tipo } }]);
+      setTexto('');
+      return;
+    }
+
     // Contexto para perguntas de continuação ("e no mês passado?"): só as últimas perguntas e como foram entendidas.
     const historico = mensagens.filter((m) => m.resposta && m.resposta.status !== 'bloqueado').slice(-3)
       .map((m) => ({ pergunta: m.pergunta, interpretacao: m.resposta?.perguntaInterpretada }));
@@ -243,7 +267,18 @@ function CartaoResposta({ r, onSugestao }: { r: RespostaAssistente; onSugestao: 
       </p>
       {r.resumo && <p style={{ fontSize: 14, color: C.texto, marginTop: 8, lineHeight: 1.5 }}>{r.resumo}</p>}
 
-      {grupos && <GraficoGrupos grupos={grupos} fmt={fmt} total={res.valor} unidade={res.unidade} />}
+      {grupos && <GraficoGrupos grupos={grupos} fmt={fmt} total={res.valor} unidade={res.unidade} inicial={r.graficoPreferido ?? 'auto'} />}
+
+      {r.sugestoesGrafico && r.sugestoesGrafico.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mt-4">
+          <span style={{ fontSize: 12, color: C.apoio }}>{grupos ? 'Ver também em gráfico:' : 'Quer ver em gráfico?'}</span>
+          {r.sugestoesGrafico.map((sg) => (
+            <button key={sg.rotulo} type="button" className="tfd-btn tfd-btn-secondary inline-flex items-center gap-1.5" style={{ fontWeight: 500, height: 30, padding: '0 10px', fontSize: 13 }} onClick={() => onSugestao(sg.pergunta)}>
+              <BarChart3 size={13} /> {sg.rotulo}
+            </button>
+          ))}
+        </div>
+      )}
 
       <details className="mt-4" style={{ fontSize: 13, color: C.texto }}>
         <summary className="cursor-pointer inline-flex items-center gap-1.5" style={{ color: C.azulTexto, fontWeight: 600 }}>
@@ -278,28 +313,59 @@ function Item({ rotulo, children }: { rotulo: string; children: React.ReactNode 
 
 /**
  * Escolhe o template de gráfico do Painel conforme os dados:
- * meses viram colunas (até 6) ou área (mais longos), até 5 partes de um total viram donut,
+ * o usuário pode trocar o tipo; no automático, meses viram colunas (até 6) ou linha, até 5 partes de um total viram pizza,
  * rankings maiores (ou médias) viram barras horizontais.
  */
+const TIPOS_GRAFICO: { tipo: TipoGrafico; rotulo: string; icone: typeof Info }[] = [
+  { tipo: 'auto', rotulo: 'Automático', icone: Sparkles },
+  { tipo: 'pizza', rotulo: 'Pizza', icone: PieIcon },
+  { tipo: 'barras', rotulo: 'Barras', icone: BarChartHorizontal },
+  { tipo: 'colunas', rotulo: 'Colunas', icone: BarChart3 },
+  { tipo: 'linha', rotulo: 'Linha', icone: LineChartIcon },
+];
+
 function GraficoGrupos({
-  grupos, fmt, total, unidade,
-}: { grupos: NonNullable<RespostaAssistente['grupos']>; fmt: (v: number) => string; total: number; unidade: string }) {
+  grupos, fmt, total, unidade, inicial,
+}: { grupos: NonNullable<RespostaAssistente['grupos']>; fmt: (v: number) => string; total: number; unidade: string; inicial: TipoGrafico }) {
+  const [tipo, setTipo] = useState<TipoGrafico>(inicial);
   const dados = grupos.itens.map((g) => ({ name: g.rotulo, value: g.valor }));
   const porMes = grupos.titulo === 'Mês';
-  const partes = !porMes && unidade !== 'dias' && dados.length <= 5;
+  // Automático: meses em colunas (ou linha se longo), até 5 partes em pizza, o resto em barras.
+  const auto: TipoGrafico = porMes ? (dados.length <= 6 ? 'colunas' : 'linha') : unidade !== 'dias' && dados.length <= 5 ? 'pizza' : 'barras';
+  const efetivo = tipo === 'auto' ? auto : tipo;
+  const partes = efetivo === 'pizza';
+  // Pizza com muitas fatias repete cores e fica ilegível: 5 maiores + "Outros".
+  const dadosPizza = partes && dados.length > 6
+    ? [...dados.slice(0, 5), { name: 'Outros', value: Math.round((unidade === 'dias' ? dados.slice(5).reduce((t, d) => t + d.value, 0) : total - dados.slice(0, 5).reduce((t, d) => t + d.value, 0)) * 100) / 100 }]
+    : dados;
   const largura = Math.min(200, Math.max(110, Math.max(...dados.map((d) => d.name.length)) * 7.5 + 16));
 
   return (
     <figure className="mt-4" aria-label={`Gráfico por ${grupos.titulo.toLowerCase()}`}>
-      {porMes && dados.length <= 6 ? (
+      <div role="group" aria-label="Tipo de gráfico" className="inline-flex flex-wrap gap-1 mb-2 p-0.5" style={{ background: 'var(--tfd-50)', border: `1px solid ${C.borda}`, borderRadius: 'var(--tfd-radius-md)' }}>
+        {TIPOS_GRAFICO.map((t) => {
+          const Icone = t.icone;
+          const ativo = tipo === t.tipo;
+          return (
+            <button
+              key={t.tipo} type="button" aria-pressed={ativo} onClick={() => setTipo(t.tipo)}
+              className="inline-flex items-center gap-1 focus-visible:outline focus-visible:outline-2"
+              style={{ height: 28, padding: '0 9px', fontSize: 12, fontWeight: 600, borderRadius: 6, outlineColor: C.azul, color: ativo ? C.azulTexto : C.texto, background: ativo ? 'white' : 'transparent', boxShadow: ativo ? C.sombra : undefined }}
+            >
+              <Icone size={13} /> {t.rotulo}
+            </button>
+          );
+        })}
+      </div>
+      {efetivo === 'colunas' ? (
         <ColunasChart data={dados} nome={grupos.titulo} formatar={fmt} />
-      ) : porMes ? (
+      ) : efetivo === 'linha' ? (
         <TendenciaChart data={dados} nome={grupos.titulo} formatar={fmt} id={`ia-${dados.length}-${Math.round(total)}`} />
       ) : partes ? (
         <div className="grid items-center gap-2 sm:grid-cols-[200px_1fr]">
-          <DonutChart data={dados} formatar={fmt} altura={180} />
+          <DonutChart data={dadosPizza} formatar={fmt} altura={180} />
           <ul className="flex flex-col gap-1.5" style={{ fontSize: 13 }}>
-            {dados.map((d, i) => (
+            {dadosPizza.map((d, i) => (
               <li key={d.name} className="flex items-center justify-between gap-3">
                 <span className="inline-flex items-center gap-2 min-w-0" style={{ color: C.texto }}>
                   <span className="shrink-0 rounded-full" style={{ width: 8, height: 8, background: SEQUENCIA_CORES[i % SEQUENCIA_CORES.length] }} />
@@ -315,7 +381,7 @@ function GraficoGrupos({
       ) : (
         <TopBarChart data={dados} width={largura} formatar={fmt} altura={Math.min(380, dados.length * 30 + 24)} />
       )}
-      {grupos.omitidos > 0 && (
+      {grupos.omitidos > 0 && !(partes && dados.length > 6) && (
         <figcaption style={{ fontSize: 12, color: C.apoio, marginTop: 4 }}>
           Mais {grupos.omitidos} {grupos.omitidos === 1 ? 'item menor' : 'itens menores'} fora do gráfico.
         </figcaption>

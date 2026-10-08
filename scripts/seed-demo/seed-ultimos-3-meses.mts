@@ -4,7 +4,7 @@
  * Uso (na raiz do repo):
  *   npx tsx --env-file=.env.local scripts/seed-demo/seed-ultimos-3-meses.mts --sql      # só gera a migration
  *   npx tsx --env-file=.env.local scripts/seed-demo/seed-ultimos-3-meses.mts --aplicar  # limpa a demo anterior e insere
- *   npx tsx --env-file=.env.local scripts/seed-demo/seed-ultimos-3-meses.mts --limpar   # remove só os dados desta demo
+ *   npx tsx --env-file=.env.local scripts/seed-demo/seed-ultimos-3-meses.mts --limpar   # remove a demo (solicitações só saem depois de corrigir o gatilho de auditoria, ver ATUALIZAR_NO_LUGAR)
  *
  * Tudo é gerado de forma determinística (mesma semente, mesmos dados). Os ids
  * ficam na faixa `d3a0xxxx-...` e os processos na faixa TFD-*-2026/9xxxxx, o
@@ -329,7 +329,8 @@ for (const c of CENARIOS) {
           data_embarque_prevista: dia(data), data_embarque_real: usada ? dia(data) : null, embarcou: usada,
           situacao: usada ? 'UTILIZADA' : 'EMITIDA', valor, taxas: modal === 'AEREO' ? reais(30, 90) : 0, companhia,
           numero_bilhete: `DEMO${int(100000, 999999)}`, emitido_em: ts(emissao), created_at: ts(emissao),
-          distancia_valor: modal === 'AEREO' ? null : int(120, 1100), distancia_unidade: modal === 'AEREO' ? null : 'km',
+          distancia_valor: modal === 'AEREO' ? int(300, 1500) : modal === 'FLUVIAL' ? int(20, 160) : int(120, 1100),
+          distancia_unidade: modal === 'AEREO' ? 'milhas' : modal === 'FLUVIAL' ? 'milhas_nauticas' : 'km',
         };
       };
       const metade = Math.round((total / 2) * 100) / 100;
@@ -448,22 +449,40 @@ async function rest(metodo: string, caminho: string, corpo?: unknown, prefer?: s
 }
 async function limpar() {
   for (const t of [...ORDEM].reverse()) {
+    // O gatilho de auditoria grava um log para cada insert/delete da demo. Esses
+    // logs apontam para as solicitações da demo e precisam sair antes delas.
+    if (t === 'solicitacoes') {
+      await rest('DELETE', `log_auditoria?solicitacao_id=gte.${ID_MIN}&solicitacao_id=lt.${ID_MAX}`);
+    }
     await rest('DELETE', `${t}?id=gte.${ID_MIN}&id=lt.${ID_MAX}`);
   }
+  // Logs da própria demo que ficaram sem solicitação (entidade da faixa d3a0).
+  await rest('DELETE', `log_auditoria?entidade_id=gte.${ID_MIN}&entidade_id=lt.${ID_MAX}`).catch(() => undefined);
 }
+/**
+ * Tabelas que só são atualizadas no lugar (upsert): o gatilho de auditoria do
+ * banco grava log ao excluir solicitação apontando para a linha já excluída e
+ * a chave estrangeira recusa, então solicitação não pode ser excluída. As
+ * demais tabelas da demo são apagadas e recriadas.
+ */
+const ATUALIZAR_NO_LUGAR = new Set(['unidades_destino', 'pacientes', 'solicitacoes']);
+
 async function aplicar() {
   // CPFs não podem colidir com pacientes que já existem.
   const cpfs = out.pacientes.map((p) => p.cpf as string);
   const r = await rest('GET', `pacientes?select=cpf&cpf=in.(${cpfs.join(',')})&id=lt.${ID_MIN}`);
   const colisoes = (await r.json()) as { cpf: string }[];
   if (colisoes.length) throw new Error(`${colisoes.length} CPF(s) gerados já existem no banco; mude a semente.`);
-  await limpar();
+  for (const t of [...ORDEM].reverse()) {
+    if (!ATUALIZAR_NO_LUGAR.has(t)) await rest('DELETE', `${t}?id=gte.${ID_MIN}&id=lt.${ID_MAX}`);
+  }
   for (const t of ORDEM) {
     for (let i = 0; i < out[t].length; i += 200) {
       // Todas as linhas de um lote precisam ter as mesmas chaves no PostgREST.
       const lote = out[t].slice(i, i + 200);
       const chaves = [...new Set(lote.flatMap((l) => Object.keys(l)))];
-      await rest('POST', t, lote.map((l) => Object.fromEntries(chaves.map((k) => [k, l[k] ?? null]))), 'return=minimal');
+      const prefer = ATUALIZAR_NO_LUGAR.has(t) ? 'return=minimal,resolution=merge-duplicates' : 'return=minimal';
+      await rest('POST', t, lote.map((l) => Object.fromEntries(chaves.map((k) => [k, l[k] ?? null]))), prefer);
     }
     console.log(`  ${t}: ${out[t].length}`);
   }

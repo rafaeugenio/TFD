@@ -122,11 +122,16 @@ export function ColunasChart({
 }: { data: PontoGrafico[]; nome: string; formatar?: Formatador; altura?: number; color?: string }) {
   if (data.length === 0) return <EmptyChart altura={altura}>Sem dados</EmptyChart>;
   return (
-    <div style={{ width: '100%', height: altura }}>
+    <div style={{ width: '100%', height: data.length > 6 ? altura + 40 : altura }}>
       <ResponsiveContainer>
-        <BarChart data={data} margin={{ top: 22, right: 12, left: 12, bottom: 0 }}>
+        <BarChart data={data} margin={{ top: 22, right: 12, left: data.length > 6 ? 36 : 12, bottom: 0 }}>
           <CartesianGrid stroke="#F1F5F9" vertical={false} />
-          <XAxis dataKey="name" tick={{ fontSize: 11, fill: CORES_GRAFICO.muted }} axisLine={false} tickLine={false} interval={0} />
+          {/* Muitas colunas: rótulo inclinado para não sobrepor. */}
+          <XAxis
+            dataKey="name" axisLine={false} tickLine={false} interval={0}
+            tick={{ fontSize: 11, fill: CORES_GRAFICO.muted }}
+            angle={data.length > 6 ? -35 : 0} textAnchor={data.length > 6 ? 'end' : 'middle'} height={data.length > 6 ? 70 : 30}
+          />
           <YAxis hide />
           <Tooltip contentStyle={TOOLTIP_ESTILO} cursor={{ fill: '#F8FAFC' }} formatter={(v) => [formatar ? formatar(Number(v)) : (v as number), nome]} />
           <Bar dataKey="value" name={nome} fill={color} radius={[6, 6, 0, 0]} maxBarSize={48}>

@@ -5,6 +5,7 @@ import {
   type Agrupamento, type Filtros, type RelatorioId,
 } from './catalogo';
 import { TEMPO_LIMITE_MS, type ConfigAssistente } from './config';
+import { termosCitados } from './glossario';
 import { ErroServico, postJson } from './http';
 
 /**
@@ -70,6 +71,8 @@ export async function decidirComJev(perguntaOriginal: string, perguntaTraduzida:
       pergunta_interpretada: perguntaTraduzida,
       sistema: 'TFD (Tratamento Fora de Domicílio) da Secretaria de Saúde do Maranhão',
       contexto: 'Assistente que responde só totais, contagens e médias agregadas a partir de consultas prontas.',
+      // Definições dos termos do TFD citados na pergunta (vocabulário do sistema).
+      termos_do_sistema: Object.fromEntries(termosCitados(`${perguntaOriginal} ${perguntaTraduzida}`).map((g) => [g.termo, g.significado])),
     },
     questions: {
       relatorio: {

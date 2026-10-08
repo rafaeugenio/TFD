@@ -12,6 +12,7 @@ export interface PerguntaAssistente {
 }
 
 export type Unidade = 'BRL' | 'quantidade' | 'dias';
+export type TipoGrafico = 'auto' | 'pizza' | 'barras' | 'colunas' | 'linha';
 
 export type StatusResposta =
   | 'ok'            // resultado calculado
@@ -55,6 +56,10 @@ export interface RespostaAssistente {
   premissa?: string;
   /** O que ficou de fora do cálculo por limitação do banco do ambiente. */
   avisos?: string[];
+  /** Tipo de gráfico escolhido pelo usuário (só na tela; o servidor não usa). */
+  graficoPreferido?: TipoGrafico;
+  /** Outras formas de ver o mesmo dado em gráfico (viram perguntas de continuação). */
+  sugestoesGrafico?: { rotulo: string; pergunta: string }[];
   /** Como a resposta foi montada: Gemini interpretou, JEV escolheu, banco calculou. */
   etapas?: { rotulo: string; valor: string }[];
   confianca?: number;

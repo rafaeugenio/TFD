@@ -18,11 +18,13 @@ export type RelatorioId =
   | 'pareceres_regulacao'
   | 'agendamentos'
   | 'pacientes_cadastrados'
-  | 'tempo_medio_conclusao';
+  | 'tempo_medio_conclusao'
+  | 'bpa_sigtap'
+  | 'deslocamentos';
 
 export const AGRUPAMENTOS = [
   'nenhum', 'mes', 'modal', 'destino', 'origem', 'beneficiario', 'status', 'categoria',
-  'setor', 'municipio', 'regional', 'especialidade', 'prioridade', 'decisao', 'sexo',
+  'setor', 'municipio', 'regional', 'especialidade', 'prioridade', 'decisao', 'sexo', 'procedimento',
 ] as const;
 export type Agrupamento = (typeof AGRUPAMENTOS)[number];
 
@@ -67,7 +69,7 @@ export const AGRUPAMENTO_ROTULO: Record<Agrupamento, string> = {
   nenhum: 'Sem agrupamento', mes: 'Mês', modal: 'Modal de transporte', destino: 'Cidade de destino',
   origem: 'Cidade de origem', beneficiario: 'Beneficiário', status: 'Situação', categoria: 'Categoria de custo',
   setor: 'Setor', municipio: 'Município', regional: 'Regional de saúde', especialidade: 'Especialidade',
-  prioridade: 'Prioridade', decisao: 'Decisão do parecer', sexo: 'Sexo',
+  prioridade: 'Prioridade', decisao: 'Decisão do parecer', sexo: 'Sexo', procedimento: 'Procedimento SIGTAP',
 };
 
 /** Descrição de cada agrupamento para o JEV escolher (em linguagem do usuário). */
@@ -87,6 +89,7 @@ export const AGRUPAMENTO_CRITERIO: Record<Agrupamento, string> = {
   prioridade: 'Separado entre urgente e normal.',
   decisao: 'Separado pela decisão do parecer (deferido ou indeferido).',
   sexo: 'Separado por sexo.',
+  procedimento: 'Separado por procedimento SIGTAP do BPA (ajuda de custo e deslocamento).',
 };
 
 export interface Filtros {
@@ -231,6 +234,27 @@ export const CATALOGO: Record<RelatorioId, DefinicaoRelatorio> = {
     filtros: ['prioridade'],
     campoData: 'data de encerramento da solicitação',
     premissa: 'Média de dias entre a abertura e o encerramento das solicitações concluídas, pela data de encerramento.',
+  },
+  bpa_sigtap: {
+    id: 'bpa_sigtap',
+    titulo: 'Valor SIGTAP (BPA)',
+    descricao: 'Valor pela tabela SIGTAP do SUS, o que vai no BPA (boletim de produção ambulatorial, faturamento SUS): ajudas de custo (diárias) e deslocamentos valorados pelos códigos 08.03.01, por procedimento, mês, modal ou beneficiário. Não é o valor real pago.',
+    agrupamentos: ['nenhum', 'procedimento', 'mes', 'modal', 'beneficiario'],
+    agrupamentoPadrao: 'procedimento',
+    filtros: ['modal', 'beneficiario'],
+    campoData: 'data de início da ajuda e data de embarque do deslocamento',
+    premissa:
+      'Mesma regra do BPA do módulo Financeiro: cada ajuda de custo vale os dias elegíveis pelo código de pernoite mais uma diária sem pernoite; cada trecho de viagem ativo vale o código de deslocamento do modal vezes a distância dividida pela unidade SIGTAP (50 km terrestre, 200 milhas aéreo, 27 milhas náuticas fluvial). Trecho sem distância informada fica com valor zero. Valores unitários da tabela SIGTAP cadastrada.',
+  },
+  deslocamentos: {
+    id: 'deslocamentos',
+    titulo: 'Deslocamentos',
+    descricao: 'Quantos deslocamentos (trechos de viagem de ida ou volta) foram feitos ou marcados, e a distância percorrida em km ou milhas, por meio de transporte, destino, origem ou mês. Conta trechos, não soma valor em reais.',
+    agrupamentos: ['modal', 'destino', 'origem', 'mes'],
+    agrupamentoPadrao: 'modal',
+    filtros: ['modal'],
+    campoData: 'data de embarque prevista do trecho',
+    premissa: 'Conta os trechos de viagem ativos (ida e volta contam separado; transfer conta como trecho) pela data de embarque prevista. A distância soma o que está informado em cada trecho.',
   },
 };
 

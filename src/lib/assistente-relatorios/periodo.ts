@@ -140,11 +140,11 @@ export function periodoPorTexto(texto: string, agora = new Date()): PeriodoPedid
   if (/ultimos\s+30\s+dias/.test(t)) return { tipo: 'preset', preset: 'ultimos_30_dias' };
   if (/\bhoje\b/.test(t)) return { tipo: 'preset', preset: 'hoje' };
   if (/mes passado|ultimo mes|mes anterior/.test(t)) return { tipo: 'preset', preset: 'mes_passado' };
-  if (/(este|neste|esse|nesse) mes|mes atual/.test(t)) return { tipo: 'preset', preset: 'este_mes' };
+  if (/(este|neste|esse|nesse) mes|mes atual|\b(do|no|deste|desse) mes\b/.test(t)) return { tipo: 'preset', preset: 'este_mes' };
   if (/trimestre passado|ultimo trimestre/.test(t)) return { tipo: 'preset', preset: 'trimestre_passado' };
   if (/(este|neste) trimestre/.test(t)) return { tipo: 'preset', preset: 'este_trimestre' };
   if (/ano passado|ultimo ano/.test(t)) return { tipo: 'preset', preset: 'ano_passado' };
-  if (/(este|neste|esse|nesse) ano|ano atual/.test(t)) return { tipo: 'preset', preset: 'este_ano' };
+  if (/(este|neste|esse|nesse) ano|ano atual|\b(do|no|deste|desse) ano\b|anual/.test(t)) return { tipo: 'preset', preset: 'este_ano' };
   const nomes = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
   const mi = nomes.findIndex((m) => new RegExp(`\\b${m}\\b`).test(t));
   const ano = t.match(/\b(20\d{2})\b/);
