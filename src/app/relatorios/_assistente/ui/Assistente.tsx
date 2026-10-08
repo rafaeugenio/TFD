@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useToast } from '@/shared/components/toast/Toast';
+import { baixarCSV, baixarPDF, baixarPNG, baixarXLSX, copiarImagem, copiarTabela, imagemDoCartao, montarTabela } from '../exportarResposta';
 import {
   AlertTriangle, ArrowUp, HelpCircle, Info, Loader2, MessageSquarePlus, ShieldAlert,
   Sparkles, Settings2, SearchX,
 } from 'lucide-react';
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import { ColunasChart, DonutChart, SEQUENCIA_CORES, TendenciaChart, TopBarChart } from '@/shared/components/charts/Graficos';
-import { BarChart3, BarChartHorizontal, LineChart as LineChartIcon, PieChart as PieIcon } from 'lucide-react';
+import { BarChart3, BarChartHorizontal, ChevronDown, Copy, Download, ImageIcon, LineChart as LineChartIcon, PieChart as PieIcon, Table2 } from 'lucide-react';
 import { C, rotuloCampo } from '../../_construtor/ui/estilo';
 import { cartao } from '../../_construtor/ui/Previa';
 import { LIMITE_PERGUNTA, SUGESTOES_INICIAIS, type RespostaAssistente, type TipoGrafico } from '../contrato';
@@ -248,12 +250,19 @@ function CartaoResposta({ r, onSugestao }: { r: RespostaAssistente; onSugestao: 
     );
   }
 
+  return <CartaoResultado r={r} onSugestao={onSugestao} />;
+}
+
+function CartaoResultado({ r, onSugestao }: { r: RespostaAssistente; onSugestao: (s: string) => void }) {
+  const area = useRef<HTMLDivElement>(null);
   const res = r.resultado!;
   const fmt = res.unidade === 'BRL' ? BRL : res.unidade === 'dias' ? DIAS : QTD;
   const grupos = r.grupos && r.grupos.itens.length > 1 ? r.grupos : undefined;
 
   return (
     <section className="self-start w-full" style={{ ...cartao, padding: 20 }} aria-label="Resposta do assistente">
+      {/* Área que vira imagem ao copiar ou baixar (número + gráfico). */}
+      <div ref={area} style={{ background: 'white', padding: 4, margin: -4 }}>
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1" style={{ fontSize: 13, color: C.texto }}>
         <span>{res.rotulo}</span>
         {r.periodo && <span style={{ color: C.apoio }}>· {r.periodo.descricao}</span>}
@@ -268,6 +277,14 @@ function CartaoResposta({ r, onSugestao }: { r: RespostaAssistente; onSugestao: 
       {r.resumo && <p style={{ fontSize: 14, color: C.texto, marginTop: 8, lineHeight: 1.5 }}>{r.resumo}</p>}
 
       {grupos && <GraficoGrupos grupos={grupos} fmt={fmt} total={res.valor} unidade={res.unidade} inicial={r.graficoPreferido ?? 'auto'} />}
+      {r.periodo && (
+        <p className="hidden" data-somente-exportacao style={{ fontSize: 11, color: C.apoio, marginTop: 8 }}>
+          {dataBR(r.periodo.inicio)} a {dataBR(r.periodo.fim)} · Fonte: TFD SES-MA
+        </p>
+      )}
+      </div>
+
+      <AcoesResposta r={r} area={area} />
 
       {r.sugestoesGrafico && r.sugestoesGrafico.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 mt-4">
@@ -342,7 +359,7 @@ function GraficoGrupos({
 
   return (
     <figure className="mt-4" aria-label={`Gráfico por ${grupos.titulo.toLowerCase()}`}>
-      <div role="group" aria-label="Tipo de gráfico" className="inline-flex flex-wrap gap-1 mb-2 p-0.5" style={{ background: 'var(--tfd-50)', border: `1px solid ${C.borda}`, borderRadius: 'var(--tfd-radius-md)' }}>
+      <div role="group" aria-label="Tipo de gráfico" data-exportar="ignorar" className="inline-flex flex-wrap gap-1 mb-2 p-0.5" style={{ background: 'var(--tfd-50)', border: `1px solid ${C.borda}`, borderRadius: 'var(--tfd-radius-md)' }}>
         {TIPOS_GRAFICO.map((t) => {
           const Icone = t.icone;
           const ativo = tipo === t.tipo;
@@ -393,4 +410,99 @@ function GraficoGrupos({
 function Contexto({ r }: { r: RespostaAssistente }) {
   if (!r.periodo) return null;
   return <p style={{ fontSize: 13, color: C.apoio, marginTop: 6 }}>{r.periodo.descricao}: {dataBR(r.periodo.inicio)} a {dataBR(r.periodo.fim)}</p>;
+}
+
+/**
+ * Copiar e baixar a resposta, como no Google Forms: imagem do cartão para
+ * colar em documento, e-mail ou WhatsApp; tabela para colar no Excel ou
+ * Google Sheets; CSV, Excel e PDF. Tudo no navegador, sem chamar IA de novo.
+ */
+function AcoesResposta({ r, area }: { r: RespostaAssistente; area: React.RefObject<HTMLDivElement | null> }) {
+  const toast = useToast();
+  const [menu, setMenu] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const tabela = montarTabela(r);
+
+  // Fecha o menu "Baixar" ao clicar fora dele.
+  useEffect(() => {
+    if (!menu) return;
+    const fora = (e: MouseEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenu(false); };
+    document.addEventListener('mousedown', fora);
+    return () => document.removeEventListener('mousedown', fora);
+  }, [menu]);
+  const titulo = r.resultado?.rotulo ?? 'resposta';
+
+  const comImagem = async <T,>(fn: (img: Awaited<ReturnType<typeof imagemDoCartao>>) => Promise<T>) => {
+    if (!area.current) return;
+    setOcupado(true);
+    // O rodapé de período e fonte só aparece na imagem exportada.
+    const extras = area.current.querySelectorAll<HTMLElement>('[data-somente-exportacao]');
+    extras.forEach((e) => e.classList.remove('hidden'));
+    try {
+      return await fn(await imagemDoCartao(area.current));
+    } finally {
+      extras.forEach((e) => e.classList.add('hidden'));
+      setOcupado(false);
+    }
+  };
+
+  const executar = async (acao: () => Promise<unknown> | unknown, sucesso: string) => {
+    setMenu(false);
+    try {
+      await acao();
+      if (sucesso) toast.success(sucesso);
+    } catch {
+      toast.error('Não foi possível concluir', 'Tente de novo. Se continuar, use a opção de baixar.');
+    }
+  };
+
+  const copiarImg = () => executar(async () => {
+    const r2 = await comImagem(async (img) => {
+      const st = await copiarImagem(img.blob);
+      if (st === 'sem_suporte') baixarPNG(img.blob, titulo);
+      return st;
+    });
+    if (r2 === 'sem_suporte') toast.success('Imagem baixada', 'Este navegador não copia imagem; o arquivo PNG foi baixado.');
+    else toast.success('Imagem copiada', 'Cole em um documento, e-mail ou WhatsApp.');
+  }, '');
+
+  const botao: React.CSSProperties = { fontWeight: 500, height: 30, padding: '0 10px', fontSize: 13 };
+  return (
+    <div className="flex flex-wrap items-center gap-2 mt-4" data-exportar="ignorar">
+      <button type="button" className="tfd-btn tfd-btn-secondary inline-flex items-center gap-1.5" style={botao} onClick={copiarImg} disabled={ocupado}>
+        {ocupado ? <Loader2 size={13} className="animate-spin" /> : <ImageIcon size={13} />} Copiar imagem
+      </button>
+      {tabela && (
+        <button type="button" className="tfd-btn tfd-btn-secondary inline-flex items-center gap-1.5" style={botao} onClick={() => executar(() => copiarTabela(tabela), 'Tabela copiada')} disabled={ocupado}>
+          <Copy size={13} /> Copiar tabela
+        </button>
+      )}
+      <div className="relative" ref={menuRef}>
+        <button
+          type="button" className="tfd-btn tfd-btn-secondary inline-flex items-center gap-1.5" style={botao}
+          aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)} disabled={ocupado}
+          onKeyDown={(e) => { if (e.key === 'Escape') setMenu(false); }}
+        >
+          <Download size={13} /> Baixar <ChevronDown size={13} />
+        </button>
+        {menu && (
+          <div role="menu" className="absolute z-20 mt-1 flex flex-col py-1" style={{ ...cartao, minWidth: 190, left: 0, boxShadow: 'var(--tfd-shadow-lg)' }} onKeyDown={(e) => { if (e.key === 'Escape') setMenu(false); }}>
+            {[
+              { rotulo: 'Imagem (PNG)', icone: ImageIcon, acao: () => executar(() => comImagem(async (img) => baixarPNG(img.blob, titulo)), '') },
+              ...(tabela ? [
+                { rotulo: 'Planilha Excel (.xlsx)', icone: Table2, acao: () => executar(() => comImagem(async (img) => baixarXLSX(tabela, img.dataUrl)), '') },
+                { rotulo: 'CSV (Excel e Sheets)', icone: Table2, acao: () => executar(() => baixarCSV(tabela), '') },
+                { rotulo: 'PDF com gráfico', icone: Download, acao: () => executar(() => comImagem(async (img) => baixarPDF(tabela, img)), '') },
+              ] : []),
+            ].map((o) => (
+              <button key={o.rotulo} type="button" role="menuitem" onClick={o.acao} className="flex items-center gap-2 text-left hover:bg-[var(--tfd-50)] focus-visible:bg-[var(--tfd-50)] focus-visible:outline-none" style={{ padding: '8px 12px', fontSize: 13, color: C.ink }}>
+                <o.icone size={14} style={{ color: C.apoio }} /> {o.rotulo}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
