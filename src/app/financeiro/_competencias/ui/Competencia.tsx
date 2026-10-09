@@ -519,6 +519,7 @@ export default function Competencia({ id }: { id: string }) {
         open={adicionando && editavel}
         onClose={() => setAdicionando(false)}
         frente={frente}
+        procedimentoInicial={procedimento}
         rotuloCompetencia={nome}
         mesCompetencia={mesCompetencia}
         disponiveisFaturamento={fat.filter((l) => !usadas.faturamento.has(l.chave))}

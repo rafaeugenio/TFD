@@ -12,6 +12,8 @@ import Tabela from './Tabela';
 import { colunasBpaAjuda, colunasBpaDeslocamento, colunasFaturamento, colunasObito, colunasReembolso } from './colunas';
 
 interface Props {
+  /** Procedimento do BPA mostrado na aba; o drawer abre nele. */
+  procedimentoInicial?: ProcedimentoBpa;
   open: boolean;
   onClose: () => void;
   frente: Frente;
@@ -79,7 +81,13 @@ const RODAPE: Record<Frente, React.ReactNode> = {
 export default function AdicionarLinhas(p: Props) {
   const [busca, setBusca] = useState('');
   const [mes, setMes] = useState('');
-  const [procedimento, setProcedimento] = useState<ProcedimentoBpa>('ajuda_custo');
+  const [procedimento, setProcedimento] = useState<ProcedimentoBpa>(p.procedimentoInicial ?? 'ajuda_custo');
+  // Ao abrir, acompanha o procedimento escolhido na aba do BPA.
+  const [abertoAntes, setAbertoAntes] = useState(p.open);
+  if (p.open !== abertoAntes) {
+    setAbertoAntes(p.open);
+    if (p.open && p.procedimentoInicial) setProcedimento(p.procedimentoInicial);
+  }
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [conflito, setConflito] = useState<string | null>(null);
 
