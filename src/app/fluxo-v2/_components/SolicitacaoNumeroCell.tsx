@@ -5,6 +5,7 @@ import HoverTooltip, { TooltipKV } from './HoverTooltip';
 import { ExternalLink } from 'lucide-react';
 import { historicoProcessosSei, processoSeiVigente } from '../_utils/processoSei';
 import ServicoSocialAlerta from './ServicoSocialAlerta';
+import ObitoSelo from './ObitoSelo';
 
 function fmtDataBR(iso?: string) {
   if (!iso) return '—';
@@ -30,6 +31,7 @@ interface Props {
  * - Sem `seiUrl`, exibe sem affordance de link.
  * - Exibe o alerta de demanda do Serviço Social em aberto, que por viver
  *   aqui aparece em todas as filas de uma vez.
+ * - Exibe o selo de óbito sinalizado, pelo mesmo motivo.
  */
 export default function SolicitacaoNumeroCell({ s, trailing, size = 13 }: Props) {
   const vigente = processoSeiVigente(s);
@@ -85,6 +87,7 @@ export default function SolicitacaoNumeroCell({ s, trailing, size = 13 }: Props)
           </span>
         )}
       </HoverTooltip>
+      <ObitoSelo solicitacaoId={s.id} />
       <ServicoSocialAlerta solicitacaoId={s.id} />
       {trailing && <span className="inline-flex items-center gap-1.5 flex-wrap">{trailing}</span>}
     </span>

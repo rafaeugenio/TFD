@@ -242,6 +242,14 @@ const TIPO_VIAGEM_TO_DB: Record<string, string> = {
   transfer: 'IDA',
 };
 
+/**
+ * Marcador do status Reembolso no protótipo. O CHECK de `viagens.situacao`
+ * não aceita REEMBOLSO, então a passagem é gravada como CANCELADA com este
+ * texto em `motivo_cancelamento_texto`, e a leitura (`fromSupabase.ts`)
+ * devolve 'reembolso'. No sistema real o status REEMBOLSO entra no banco.
+ */
+export const MARCADOR_REEMBOLSO = 'REEMBOLSO';
+
 const STATUS_VIAGEM_TO_DB: Record<string, string> = {
   agendada: 'EMITIDA',
   confirmada: 'UTILIZADA',
@@ -317,7 +325,9 @@ export function buildViagem(
     data_reembolso: v.dataReembolso ?? null,
     ativa: v.ativa ?? true,
     data_cancelamento: v.dataCancelamento ?? null,
-    motivo_cancelamento_texto: v.motivoCancelamentoTexto ?? null,
+    motivo_cancelamento_texto: v.status === 'reembolso'
+      ? MARCADOR_REEMBOLSO
+      : (v.motivoCancelamentoTexto ?? null),
     // Só entra no payload quando preenchido (transfer), pra não referenciar
     // a coluna nova em inserts de aéreo/terrestre/fluvial antes da migration
     // 00080 rodar.

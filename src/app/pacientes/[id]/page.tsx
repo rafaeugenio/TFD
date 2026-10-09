@@ -25,6 +25,7 @@ import {
 
 import StatusTag from '@/shared/components/status-tag/StatusTag';
 import { useSaldoPaciente } from '@/app/fluxo-v2/_state/saldoAjudaCustoStore';
+import ObitoSelo from '@/app/fluxo-v2/_components/ObitoSelo';
 import { DetailPageSkeleton, CardListSkeleton } from '@/shared/components/skeleton';
 import { useToast } from '@/shared/components/toast/Toast';
 import { buscarPaciente, historicoProcessos } from '@/services/pacientes.service';
@@ -417,6 +418,7 @@ function PacienteDetalheInner({ id }: { id: string }) {
                           <span className="text-sm font-semibold" style={{ color: 'var(--tfd-primary-500)' }}>
                             {numProcesso}
                           </span>
+                          <ObitoSelo solicitacaoId={sol.id as string} />
                         </div>
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5">
                           <span className="text-xs flex items-center gap-1" style={{ color: 'var(--tfd-text-muted)' }}>

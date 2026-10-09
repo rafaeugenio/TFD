@@ -44,9 +44,10 @@ import {
   buildObservacao,
   buildNewSolicitacao,
   STATUS_AJUDA_TO_DB,
+  MARCADOR_REEMBOLSO,
 } from '../_adapters/toSupabase';
 import { statusGlobalToSetor } from '../_adapters/statusMapping';
-import { persistInsert, persistUpdate, persistDelete, currentUserId } from './persist';
+import { persistInsert, persistUpdate, persistDelete, currentUserId, limparMarcadorReembolso } from './persist';
 import { semearDemandasDemo } from './servicoSocialStore';
 import {
   criarCreditoSaldo as criarCreditoSaldoStore,
@@ -1054,6 +1055,11 @@ export function FluxoV2Provider({ children }: { children: ReactNode }) {
       };
       dbPatch.situacao = m[patch.status] ?? 'EMITIDA';
       dbPatch.embarcou = patch.status === 'confirmada';
+      // Protótipo: o CHECK de situacao não tem REEMBOLSO; grava CANCELADA +
+      // marcador e a leitura devolve 'reembolso'. No sistema real o status
+      // REEMBOLSO entra no banco.
+      if (patch.status === 'reembolso') dbPatch.motivo_cancelamento_texto = MARCADOR_REEMBOLSO;
+      else limparMarcadorReembolso(viagemId, MARCADOR_REEMBOLSO);
     }
     if (patch.data !== undefined) dbPatch.data_embarque_prevista = patch.data;
     if (patch.valor !== undefined) dbPatch.valor = patch.valor;

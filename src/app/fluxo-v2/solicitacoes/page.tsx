@@ -423,6 +423,7 @@ export default function SolicitacoesV2ListPage() {
                 value={motivo}
                 onChange={setMotivo}
                 required
+                excluirCodigos={['OBITO']}
               />
             </div>
             <label className="block text-[12px] font-medium mb-1" style={{ color: '#475569' }}>Data</label>

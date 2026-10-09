@@ -36,6 +36,8 @@ import { contarPorStatus } from '@/app/fluxo-v2/_utils/stats';
 import { Skeleton } from '@/components/ui/skeleton';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
+import { useObitos, obitosNoMes } from '@/app/fluxo-v2/_state/obitoStore';
+import { indicadoresDoMes, type ResumoCompetencia } from '@/app/financeiro/_competencias/resumo';
 
 /* ── Paleta dos charts (compartilhada em shared/components/charts) ── */
 const COLORS = CORES_GRAFICO;
@@ -225,6 +227,9 @@ function PainelContent() {
     <div className="flex flex-col gap-6">
       {/* ─── Meus KPIs — produção pessoal do usuário logado ─── */}
       {user && <MeusKpis usuarioId={user.id} />}
+
+      {/* ─── Indicadores do mês — visão geral do TFD no mês escolhido ─── */}
+      <IndicadoresDoMes />
 
       {/* ─── Hero: Donut + Atividades recentes ─── */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
@@ -901,6 +906,116 @@ function MeusKpis({ usuarioId }: { usuarioId: string }) {
           ))}
         </div>
       )}
+    </section>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Indicadores do mês — diárias e bilhetes vêm da competência do Financeiro  */
+/*  (o que foi incluído nela, não um cálculo automático); processos abertos   */
+/*  pela data de criação; óbitos pela data do falecimento.                    */
+/* -------------------------------------------------------------------------- */
+
+function IndicadoresDoMes() {
+  const { solicitacoes } = useFluxoV2State();
+  const obitos = useObitos();
+  const hoje = new Date();
+  const [mes, setMes] = useState(hoje.getMonth());
+  const [ano, setAno] = useState(hoje.getFullYear());
+  const [resumo, setResumo] = useState<ResumoCompetencia | null>(null);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(false);
+
+  useEffect(() => {
+    let cancel = false;
+    setCarregando(true);
+    setErro(false);
+    indicadoresDoMes(ano, mes + 1)
+      .then((r) => { if (!cancel) setResumo(r); })
+      .catch(() => { if (!cancel) { setResumo(null); setErro(true); } })
+      .finally(() => { if (!cancel) setCarregando(false); });
+    return () => { cancel = true; };
+  }, [ano, mes]);
+
+  const anoMes = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+  const processosAbertos = useMemo(
+    () => solicitacoes.filter((s) => s.dataCriacao.slice(0, 7) === anoMes).length,
+    [solicitacoes, anoMes],
+  );
+  const obitosMes = obitosNoMes(obitos, anoMes);
+
+  const semCompetencia = !carregando && !resumo;
+  const nota = erro
+    ? 'Não foi possível ler a competência'
+    : semCompetencia
+      ? 'Competência do mês ainda não aberta'
+      : 'Da competência do Financeiro';
+
+  const cards: { valor: string; label: string; nota: string }[] = [
+    { valor: resumo ? String(resumo.bpa.procedimentosAjudaCusto) : '-', label: 'Diárias no mês', nota },
+    { valor: String(processosAbertos), label: 'Processos abertos no mês', nota: 'Pela data de criação da solicitação' },
+    { valor: String(obitosMes), label: 'Óbitos no mês', nota: 'Pela data do falecimento' },
+    { valor: resumo ? String(resumo.faturamento.bilhetes) : '-', label: 'Bilhetes emitidos', nota },
+  ];
+
+  return (
+    <section
+      className="p-5 flex flex-col gap-4"
+      style={{
+        background: 'white',
+        border: `1px solid ${COLORS.border}`,
+        borderRadius: 12,
+        boxShadow: '0 1px 0 rgba(15,23,42,0.02)',
+      }}
+    >
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2">
+          <CalendarClock size={16} style={{ color: COLORS.blue }} />
+          <div>
+            <h2 className="text-[14px] font-semibold" style={{ color: COLORS.text }}>
+              Indicadores do mês
+            </h2>
+            <p className="text-[12px] mt-0.5" style={{ color: COLORS.muted }}>
+              Visão geral do TFD no mês selecionado
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <NativeSelect size="sm" value={mes} onChange={(e) => setMes(Number(e.target.value))} aria-label="Mês dos indicadores">
+            {MESES_LABEL.map((label, idx) => (
+              <NativeSelectOption key={idx} value={idx}>{label}</NativeSelectOption>
+            ))}
+          </NativeSelect>
+          <NativeSelect size="sm" value={ano} onChange={(e) => setAno(Number(e.target.value))} aria-label="Ano dos indicadores">
+            {anosDisponiveis().map((a) => (
+              <NativeSelectOption key={a} value={a}>{a}</NativeSelectOption>
+            ))}
+          </NativeSelect>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {cards.map((c) =>
+          carregando && c.valor === '-' ? (
+            <Skeleton key={c.label} className="h-[84px] w-full" />
+          ) : (
+            <div
+              key={c.label}
+              className="p-3 flex flex-col"
+              style={{ background: '#F8FAFC', border: `1px solid ${COLORS.border}`, borderRadius: 10 }}
+            >
+              <div
+                className="font-mono"
+                style={{ color: COLORS.text, fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}
+              >
+                {c.valor}
+              </div>
+              <div className="text-[11px] font-medium mt-1" style={{ color: COLORS.text }}>{c.label}</div>
+              <div className="text-[11px] mt-0.5" style={{ color: COLORS.muted }}>{c.nota}</div>
+            </div>
+          ),
+        )}
+      </div>
     </section>
   );
 }

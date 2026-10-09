@@ -97,9 +97,6 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
   const [valor, setValor] = useState('');
   const [status, setStatus] = useState<StatusViagem>('agendada');
   const [beneficiario, setBeneficiario] = useState<string>('p');
-  // Reembolso — preenchido só quando status === 'reembolso'.
-  const [valorReembolso, setValorReembolso] = useState('');
-  const [dataReembolso, setDataReembolso] = useState('');
 
   // Companhia de transporte
   const [companhias, setCompanhias] = useState<CompanhiaRow[]>([]);
@@ -269,8 +266,6 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
           : `a:${editar.beneficiarioId ?? ''}`,
       );
       setCompanhiaId('');
-      setValorReembolso(editar.valorReembolso != null ? String(editar.valorReembolso) : '');
-      setDataReembolso(editar.dataReembolso ?? '');
       setViagemVinculadaId(editar.viagemVinculadaId ?? '');
     } else {
       setOrigemCidade(''); setOrigemUf('MA');
@@ -280,7 +275,6 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       setModal('aereo'); setTipo('ida');
       setValor(''); setStatus('agendada');
       setBeneficiario('p'); setCompanhiaId('');
-      setValorReembolso(''); setDataReembolso('');
       setViagemVinculadaId('');
     }
     setTimeout(() => firstInputRef.current?.focus(), 100);
@@ -347,13 +341,9 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
         }
       : {};
 
-    // Reembolso só vale quando o status é 'reembolso'; senão limpa os campos.
-    const reembolsoExtras = status === 'reembolso'
-      ? {
-          valorReembolso: valorReembolso ? Number(valorReembolso) : 0,
-          dataReembolso: dataReembolso || undefined,
-        }
-      : { valorReembolso: undefined, dataReembolso: undefined };
+    // O status "Reembolso" só muda a situação da passagem. Data e valor a
+    // receber são registrados na competência (aba Reembolso), não aqui.
+    const reembolsoExtras = { valorReembolso: undefined, dataReembolso: undefined };
 
     // Vínculo obrigatório só existe para transfer — a passagem à qual ele
     // foi comprado junto.
@@ -599,38 +589,9 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
 
       <fieldset disabled={somenteStatus} style={{ display: 'contents' }}>
       {status === 'reembolso' && (
-        <div className="grid grid-cols-2 gap-3 mt-3">
-          <div>
-            <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-              Valor reembolsado (R$)
-            </label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={valorReembolso}
-              onChange={(e) => setValorReembolso(e.target.value)}
-              placeholder="0,00"
-              className="w-full px-3 py-2 text-[13px]"
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>
-              Data do reembolso
-            </label>
-            <input
-              type="date"
-              value={dataReembolso}
-              onChange={(e) => setDataReembolso(e.target.value)}
-              className="w-full px-3 py-2 text-[13px]"
-              style={inputStyle}
-            />
-          </div>
-          <p className="col-span-2 text-[11px]" style={{ color: '#94A3B8' }}>
-            O valor reembolsado é subtraído do custo da passagem nos totais e KPIs.
-          </p>
-        </div>
+        <p className="mt-3 text-[11px]" style={{ color: '#94A3B8' }}>
+          A passagem fica com status Reembolso. A data e o valor a receber são registrados na competência, na aba Reembolso.
+        </p>
       )}
       </fieldset>
       </FormSection>

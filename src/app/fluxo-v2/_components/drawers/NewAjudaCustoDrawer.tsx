@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarRange, Calculator, Hash, Lock, Info, Wallet, Link2 } from 'lucide-react';
+import { CalendarRange, Calculator, Hash, Lock, Info, Wallet, Link2, AlertTriangle } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormSection from '@/shared/components/drawer/FormSection';
 import AnexosUploadField, { type AnexoLocal } from '@/shared/components/anexos-upload-field/AnexosUploadField';
@@ -10,6 +10,7 @@ import { fmtDataBR } from '@/shared/utils/fmtData';
 import { useFluxoV2State } from '../../_state/FluxoV2Provider';
 import { historicoProcessosSei, novoProcessoSeiId } from '../../_utils/processoSei';
 import { useSaldoPaciente } from '../../_state/saldoAjudaCustoStore';
+import { encontrarAjudasDuplicadas } from '../../_utils/ajudaCustoDuplicada';
 import SnapshotPaciente, { type SnapshotPacienteData } from '../SnapshotPaciente';
 import {
   STATUS_AJUDA_LABEL,
@@ -58,7 +59,7 @@ interface Props {
 }
 
 export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snapshotPaciente, editar, somenteStatus, prefill }: Props) {
-  const { addAjudaCusto, editarAjudaCusto, getById, addAnexos, aplicarDebitoSaldo, criarCreditoSaldo, editarSolicitacao } = useFluxoV2State();
+  const { addAjudaCusto, editarAjudaCusto, getById, addAnexos, aplicarDebitoSaldo, criarCreditoSaldo, editarSolicitacao, solicitacoes } = useFluxoV2State();
   const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
   const toast = useToast();
   const isEdicao = !!editar;
@@ -322,16 +323,49 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
     novoProcesso && linkProcesso.trim().length > 0 && !/^https?:\/\//i.test(linkProcesso.trim());
   const novoProcessoSemNumero = novoProcesso && !numeroSEI.trim();
 
+  // Trava de duplicidade: mesma pessoa, mesmas datas de início e fim, ajuda
+  // ativa em qualquer solicitação carregada. Em edição só confere quando o
+  // período ou o beneficiário mudou (senão travaria a troca de status de um
+  // registro antigo). No modo "somente status" as datas não mudam.
+  const valorEditarOriginal = editar
+    ? (editar.beneficiarioTipo === 'paciente' ? 'p' : `a:${editar.beneficiarioId ?? ''}`)
+    : '';
+  const conferirDuplicidade = !somenteStatus && (
+    !isEdicao ||
+    dataInicio !== editar?.dataInicio ||
+    dataFim !== editar?.dataFim ||
+    beneficiarios[0] !== valorEditarOriginal
+  );
+  const duplicadas = useMemo(
+    () => conferirDuplicidade
+      ? encontrarAjudasDuplicadas({
+          solicitacoes,
+          atual: solicitacao,
+          beneficiarios,
+          dataInicio,
+          dataFim,
+          ignorarAjudaId: editar?.id,
+        })
+      : [],
+    [conferirDuplicidade, solicitacoes, solicitacao, beneficiarios, dataInicio, dataFim, editar?.id],
+  );
+  const valoresDuplicados = new Set(duplicadas.map((d) => d.valor));
+  const beneficiariosLiberados = beneficiarios.filter((v) => !valoresDuplicados.has(v));
+
   const valid =
     !!dataInicio &&
     !!dataFim &&
     beneficiarios.length > 0 &&
+    beneficiariosLiberados.length > 0 &&
     !linkProcessoInvalido &&
     !novoProcessoSemNumero &&
     !!seiEscolha;
 
   function handleSalvar() {
     if (!valid) return;
+    // Os beneficiários com ajuda igual já cadastrada ficam de fora; os demais
+    // seguem normalmente.
+    const destino = beneficiariosLiberados;
     // Data de conclusão: gravada ao marcar como "Concluído". Em edição,
     // preserva a data já registrada; senão usa hoje. Limpa se sair de concluído.
     const hoje = new Date().toISOString().slice(0, 10);
@@ -375,18 +409,24 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
     };
 
     if (isEdicao && editar) {
-      editarAjudaCusto(solicitacaoId, editar.id, { ...payloadBase, ...beneficiarioPayloadDoValor(beneficiarios[0]) });
+      editarAjudaCusto(solicitacaoId, editar.id, { ...payloadBase, ...beneficiarioPayloadDoValor(destino[0]) });
     } else {
       // Um beneficiário marcado = um lançamento; N marcados = N lançamentos
       // idênticos (mesmo período, diária final, status, SEI e anexos).
-      beneficiarios.forEach((valor) => {
+      destino.forEach((valor) => {
         addAjudaCusto(solicitacaoId, { ...payloadBase, ...beneficiarioPayloadDoValor(valor) });
       });
     }
     toast.success(
-      isEdicao ? 'Ajuda de custo atualizada' : `Ajuda de custo registrada${beneficiarios.length > 1 ? ` (${beneficiarios.length} beneficiários)` : ''}`,
-      `${dataInicio} → ${dataFim}`,
+      isEdicao ? 'Ajuda de custo atualizada' : `Ajuda de custo registrada${destino.length > 1 ? ` (${destino.length} beneficiários)` : ''}`,
+      `${fmtDataBR(dataInicio)} a ${fmtDataBR(dataFim)}`,
     );
+    if (duplicadas.length > 0) {
+      toast.warning(
+        duplicadas.length === 1 ? 'Um beneficiário ficou de fora' : `${duplicadas.length} beneficiários ficaram de fora`,
+        duplicadas.map((d) => `${d.nome} já tem ajuda neste período na solicitação ${d.solicitacaoNumero}.`).join(' '),
+      );
+    }
 
     // Movimentações de saldo do paciente são únicas por lançamento (mesmo
     // quando N ajudas idênticas são criadas para N beneficiários) — o saldo é
@@ -645,6 +685,28 @@ export default function NewAjudaCustoDrawer({ open, onClose, solicitacaoId, snap
         </div>
       </div>
 
+      {duplicadas.length > 0 && (
+        <div
+          role="alert"
+          className="flex items-start gap-2.5 mb-4 px-3 py-2.5"
+          style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, color: '#991B1B' }}
+        >
+          <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+          <div className="text-[12.5px] leading-relaxed">
+            {duplicadas.map((d) => (
+              <p key={d.valor}>
+                Já existe ajuda de custo para <strong>{d.nome}</strong> de {fmtDataBR(d.dataInicio)} a {fmtDataBR(d.dataFim)} na solicitação{' '}
+                <span className="font-mono">{d.solicitacaoNumero}</span>.
+              </p>
+            ))}
+            <p className="mt-1" style={{ color: '#B91C1C' }}>
+              {beneficiariosLiberados.length === 0
+                ? 'Altere as datas ou o beneficiário para salvar.'
+                : `Ao salvar, o lançamento é criado só para ${beneficiariosLiberados.length === 1 ? 'o outro beneficiário marcado' : `os outros ${beneficiariosLiberados.length} beneficiários marcados`}.`}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* T2.Y — Pernoite no retorno. Correção de regra (11/08/2026): esse
           checkbox é quem decide a diária do último dia, no lugar dos botões

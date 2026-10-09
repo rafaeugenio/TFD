@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  AlertTriangle, Check, ChevronDown, ClipboardList, Download, Eye, FileSpreadsheet, FileText, History, Lock, LockOpen,
-  Plane, Plus, Receipt, Search, Sheet, Trash2, Wallet,
+  AlertTriangle, Check, ChevronDown, ClipboardList, Download, Eye, FileSpreadsheet, FileText, HandCoins, History, Lock, LockOpen,
+  Plane, Plus, ReceiptText, Search, Sheet, Trash2, Wallet,
 } from 'lucide-react';
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import ConfirmDialog from '@/shared/components/confirm-dialog/ConfirmDialog';
@@ -13,69 +13,58 @@ import { useToast } from '@/shared/components/toast/Toast';
 import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useObitos } from '@/app/fluxo-v2/_state/obitoStore';
 import { MES_LABEL, fmtBRL, fmtDataBR, valorPorExtenso } from '@/app/relatorios/_shared/format';
-import { TipoBeneficiarioBadge } from '@/app/relatorios/_shared/ReportTable';
 import {
-  carregarBpa, carregarFaturamento, carregarLancados, carregarValoresSigtap, marcarLancado, sigtapDasLinhas, valorBpa,
-  type LinhaBpa, type LinhaFaturamento, type ProcedimentoBpa,
+  carregarBpa, carregarDadosSolicitacoes, carregarFaturamento, carregarLancados, carregarReembolsos, carregarValoresSigtap, marcarLancado,
+  montarLinhasObito, sigtapDasLinhas, valorBpa,
+  type DadosSolicitacao, type LinhaBpa, type LinhaFaturamento, type LinhaObito, type LinhaReembolso, type ProcedimentoBpa,
 } from '../dados';
 import {
-  MENSAGEM_CONFLITO, chavesUsadas, competenciaCompleta, completarCopiaLegada, conferirFrenteAberta, copiaAtual, excluirCompetencia,
-  fecharFrente, incluirLinhas, podeExcluirCompetencia, quantidadeLinhas, reabrirFrente, removerLinha, useCompetencias,
+  FRENTES, MENSAGEM_CONFLITO, aberturaDaCompetencia, linhasDaCopia, chavesUsadas, competenciaCompleta, completarCopiaLegada, conferirFrenteAberta, copiaAtual,
+  excluirCompetencia, fecharFrente, incluirLinhas, podeExcluirCompetencia, quantidadeLinhas, reabrirFrente, registrarDespesasObito,
+  registrarReembolso, removerLinha, useCompetencias,
   type Competencia as TCompetencia, type CopiaNova, type EventoHistorico, type Fechamento, type Frente,
 } from '../store';
 import {
-  gerarArquivo, planilhaBpaAjuda, planilhaBpaDeslocamento, planilhaFaturamento, registrarNoLog, type Formato,
+  procedimentosBpa, resumoCompetencia, totaisObito, totaisReembolso, totalFaturamento, vistaDaCopia, vistaDaOrigem,
+  type Origem, type ResumoCompetencia, type Vista,
+} from '../resumo';
+import {
+  gerarArquivo, planilhaBpaAjuda, planilhaBpaDeslocamento, planilhaFaturamento, planilhaObito, planilhaReembolso, registrarNoLog, type Formato,
 } from '../exportar';
 import AdicionarLinhas from './AdicionarLinhas';
 import ErroLinhas from './ErroLinhas';
 import Tabela, { type Coluna } from './Tabela';
-import { colunasBpaAjuda, colunasBpaDeslocamento, colunasFaturamento, type OpcoesColunas } from './colunas';
+import { DrawerDespesasObito, DrawerReembolso } from './Registros';
+import { colunasBpaAjuda, colunasBpaDeslocamento, colunasFaturamento, colunasObito, colunasReembolso, type OpcoesColunas } from './colunas';
 
 const cartao: React.CSSProperties = { background: 'white', border: '1px solid var(--tfd-surface-border)', borderRadius: 8, boxShadow: 'var(--tfd-shadow-sm)' };
 const rotulo: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--tfd-text-muted)', marginBottom: 6 };
 const campo: React.CSSProperties = { height: 36, padding: '0 10px', border: '1px solid var(--tfd-300)', borderRadius: 6, background: 'white', fontSize: 14, color: 'var(--tfd-text-primary)' };
 const norm = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 export const nomeCompetencia = (c: Pick<TCompetencia, 'ano' | 'mes'>) => `${MES_LABEL[c.mes - 1].toLowerCase()} de ${c.ano}`;
-const nomeFrente = (f: Frente) => (f === 'faturamento' ? 'Faturamento' : 'BPA');
+const NOME_FRENTE: Record<Frente, string> = { faturamento: 'Faturamento', bpa: 'BPA', reembolso: 'Reembolso', obito: 'Óbito' };
+const nomeFrente = (f: Frente) => NOME_FRENTE[f];
+const ICONE_FRENTE: Record<Frente, React.ReactNode> = {
+  faturamento: <FileText size={16} />, bpa: <ClipboardList size={16} />, reembolso: <HandCoins size={16} />, obito: <ReceiptText size={16} />,
+};
 /** dd/mm/aaaa hh:mm */
 const dataHora = (iso: string) => {
   const d = new Date(iso);
   return `${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
 };
 
-/** Totais do Faturamento: "Total a pagar" é o valor bruto menos os reembolsos ao TFD. */
-function totaisFaturamento(linhas: LinhaFaturamento[]) {
-  const valorBruto = linhas.reduce((s, l) => s + l.valor, 0);
-  const reembolsos = linhas.filter((l) => l.valorReembolso > 0);
-  const totalReembolsos = reembolsos.reduce((s, l) => s + l.valorReembolso, 0);
-  return { valorBruto, reembolsos, totalReembolsos, totalPagar: valorBruto - totalReembolsos };
-}
-
-/** O que a aba mostra: com a aba aberta, a origem em tempo real; fechada, a cópia do fechamento. */
-interface Vista {
-  fat: LinhaFaturamento[];
-  bpa: LinhaBpa[];
-  sig: Record<string, number>;
-  lancados: Set<string>;
-  aposReabertura: Set<string>;
-  mesCompetencia: string;
-}
-
-const vistaDaCopia = (x: Fechamento): Vista => ({
-  fat: x.linhasFaturamento ?? [],
-  bpa: x.linhasBpa ?? [],
-  sig: x.sigtap ?? {},
-  lancados: new Set(x.lancados ?? []),
-  aposReabertura: new Set(x.aposReabertura),
-  mesCompetencia: x.mesCompetencia,
-});
+/** Linha aberta num drawer de registro (Reembolso ou Óbito). */
+type Registrando =
+  | { frente: 'reembolso'; linha: LinhaReembolso }
+  | { frente: 'obito'; linha: LinhaObito; modo: 'ler' | 'editar' };
 
 /**
- * Competência de um mês, com as frentes Faturamento e BPA em abas. Cada
- * frente começa vazia, recebe linhas escolhidas, é fechada (fica só leitura,
- * mostrando a cópia gravada no fechamento) e pode ser reaberta com motivo;
- * tudo fica no histórico da frente.
+ * Competência de um mês, com as frentes Faturamento, BPA, Reembolso e Óbito
+ * em abas. Cada frente começa vazia, recebe linhas escolhidas, é fechada
+ * (fica só leitura, mostrando a cópia gravada no fechamento) e pode ser
+ * reaberta com motivo; tudo fica no histórico da frente.
  */
 export default function Competencia({ id }: { id: string }) {
   const router = useRouter();
@@ -84,6 +73,7 @@ export default function Competencia({ id }: { id: string }) {
   const quem = user?.nome ?? 'Usuário';
   const { can } = usePermissions();
   const competencias = useCompetencias();
+  const obitosSinalizados = useObitos();
   const c = competencias.find((x) => x.id === id);
 
   const [frente, setFrente] = useState<Frente>('faturamento');
@@ -94,63 +84,84 @@ export default function Competencia({ id }: { id: string }) {
   const [bpa, setBpa] = useState<LinhaBpa[]>([]);
   const [sig, setSig] = useState<Record<string, number>>({});
   const [lancados, setLancados] = useState<Set<string>>(new Set());
+  const [reembolsos, setReembolsos] = useState<LinhaReembolso[]>([]);
+  const [dadosSol, setDadosSol] = useState<Map<string, DadosSolicitacao>>(new Map());
   const [adicionando, setAdicionando] = useState(false);
   const [dialogo, setDialogo] = useState<'fechar' | 'reabrir' | 'excluir' | null>(null);
   const [procedimento, setProcedimento] = useState<ProcedimentoBpa>('ajuda_custo');
   const [busca, setBusca] = useState('');
   const [consultando, setConsultando] = useState<Fechamento | null>(null);
+  const [registrando, setRegistrando] = useState<Registrando | null>(null);
+
+  // Ids sinalizados com óbito: quando mudam (sinalização feita em outra tela), busca de novo.
+  const idsObito = useMemo(() => Object.keys(obitosSinalizados).sort().join(','), [obitosSinalizados]);
 
   useEffect(() => {
     let ativo = true;
     (async () => {
       try {
-        const [f, b, l] = await Promise.all([carregarFaturamento(), carregarBpa(), carregarLancados()]);
+        const [f, b, l, r, d] = await Promise.all([
+          carregarFaturamento(), carregarBpa(), carregarLancados(), carregarReembolsos(),
+          carregarDadosSolicitacoes(idsObito ? idsObito.split(',') : []),
+        ]);
         const s = await carregarValoresSigtap(b);
         if (!ativo) return;
-        setFat(f); setBpa(b); setLancados(l); setSig(s); setErro(false);
+        setFat(f); setBpa(b); setLancados(l); setSig(s); setReembolsos(r); setDadosSol(d); setErro(false);
       } catch {
         if (!ativo) return;
-        setFat([]); setBpa([]); setLancados(new Set()); setSig({}); setErro(true);
+        setFat([]); setBpa([]); setLancados(new Set()); setSig({}); setReembolsos([]); setDadosSol(new Map()); setErro(true);
       } finally {
         if (ativo) setCarregando(false);
       }
     })();
     return () => { ativo = false; };
-  }, [tentativa]);
+  }, [tentativa, idsObito]);
 
   const tentarNovamente = () => { setCarregando(true); setErro(false); setTentativa((n) => n + 1); };
 
-  const usadasFat = useMemo(() => chavesUsadas(competencias, 'faturamento'), [competencias]);
-  const usadasBpa = useMemo(() => chavesUsadas(competencias, 'bpa'), [competencias]);
+  const linhasObito = useMemo(() => montarLinhasObito(obitosSinalizados, dadosSol), [obitosSinalizados, dadosSol]);
+  const origem: Origem = useMemo(
+    () => ({ fat, bpa, sig, lancados, reembolsos, obitos: linhasObito }),
+    [fat, bpa, sig, lancados, reembolsos, linhasObito],
+  );
+  const usadas = useMemo(
+    () => Object.fromEntries(FRENTES.map((fr) => [fr, chavesUsadas(competencias, fr)])) as Record<Frente, Map<string, TCompetencia>>,
+    [competencias],
+  );
   const mesCompetencia = c ? `${c.ano}-${String(c.mes).padStart(2, '0')}` : '';
 
   /** Cópia das linhas da frente como estão agora na origem (usada ao fechar). */
   const montarCopia = (fr: Frente): CopiaNova | null => {
     if (!c) return null;
     const fc = c.frentes[fr];
-    const chaves = new Set(fc.itens.map((i) => i.chave));
+    const v = vistaDaOrigem(c, fr, origem);
     const apos = fc.itens.filter((i) => i.aposReabertura).map((i) => i.chave);
     if (fr === 'faturamento') {
-      const linhas = fat.filter((l) => chaves.has(l.chave));
-      const t = totaisFaturamento(linhas);
-      return {
-        mesCompetencia, linhasFaturamento: linhas, aposReabertura: apos,
-        totais: { bilhetes: linhas.length, valorBruto: t.valorBruto, reembolsos: t.totalReembolsos, totalPagar: t.totalPagar },
-      };
+      const total = totalFaturamento(v.fat);
+      return { mesCompetencia, linhasFaturamento: v.fat, aposReabertura: apos, totais: { bilhetes: v.fat.length, valorBruto: total, totalPagar: total } };
     }
-    const linhas = bpa.filter((l) => chaves.has(l.chave));
-    const s = sigtapDasLinhas(linhas, sig);
-    const lanc = linhas.filter((l) => lancados.has(l.chave)).map((l) => l.chave);
+    if (fr === 'reembolso') {
+      const t = totaisReembolso(v.reembolsos, v.regReembolso);
+      const registros = Object.fromEntries(v.reembolsos.filter((l) => v.regReembolso[l.chave]).map((l) => [l.chave, v.regReembolso[l.chave]]));
+      return { mesCompetencia, linhasReembolso: v.reembolsos, registrosReembolso: registros, aposReabertura: apos, totais: { linhas: t.linhas, comValor: t.comValor, totalReceber: t.totalReceber } };
+    }
+    if (fr === 'obito') {
+      const t = totaisObito(v.obitos, v.regObito);
+      const registros = Object.fromEntries(v.obitos.filter((l) => v.regObito[l.chave]).map((l) => [l.chave, v.regObito[l.chave]]));
+      return { mesCompetencia, linhasObito: v.obitos, registrosObito: registros, aposReabertura: apos, totais: { linhas: t.linhas, comDespesa: t.comDespesa, totalDespesas: t.totalDespesas } };
+    }
+    const s = sigtapDasLinhas(v.bpa, sig);
+    const lanc = v.bpa.filter((l) => lancados.has(l.chave)).map((l) => l.chave);
     return {
-      mesCompetencia, linhasBpa: linhas, sigtap: s, lancados: lanc, aposReabertura: apos,
-      totais: { linhas: linhas.length, lancadas: lanc.length, valorSigtap: linhas.reduce((acc, l) => acc + valorBpa(l, s), 0) },
+      mesCompetencia, linhasBpa: v.bpa, sigtap: s, lancados: lanc, aposReabertura: apos,
+      totais: { linhas: v.bpa.length, lancadas: lanc.length, valorSigtap: v.bpa.reduce((acc, l) => acc + valorBpa(l, s), 0), procedimentos: procedimentosBpa(v.bpa) },
     };
   };
 
   // Frente fechada antes de existir a cópia: grava a cópia com os dados de agora, uma única vez.
   useEffect(() => {
     if (!c || carregando || erro) return;
-    for (const fr of ['faturamento', 'bpa'] as Frente[]) {
+    for (const fr of FRENTES) {
       if (c.frentes[fr].status === 'fechada' && !copiaAtual(c.frentes[fr])) {
         const copia = montarCopia(fr);
         if (copia) completarCopiaLegada(c.id, fr, copia);
@@ -158,7 +169,7 @@ export default function Competencia({ id }: { id: string }) {
     }
     // montarCopia lê o mesmo estado listado aqui.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [c, carregando, erro, fat, bpa, sig, lancados]);
+  }, [c, carregando, erro, origem]);
 
   if (!c) {
     return (
@@ -180,21 +191,13 @@ export default function Competencia({ id }: { id: string }) {
   const podeReabrir = can(`competencia.${frente}.reabrir`);
   const podeExportar = can(`competencia.${frente}.exportar`);
   const podeMarcar = frente === 'bpa' && can('competencia.bpa.marcar_lancada');
+  const podeRegistrarReembolso = can('competencia.reembolso.registrar_valor');
+  const podeRegistrarDespesa = can('competencia.obito.registrar_despesa');
   const podeExcluir = can('competencia.excluir');
   const editavel = aberta && podeLinhas;
 
   // Com a aba fechada, tudo vem da cópia; aberta, da origem.
-  const itens = new Set(f.itens.map((i) => i.chave));
-  const vista: Vista | null = aberta
-    ? {
-        fat: fat.filter((l) => itens.has(l.chave)),
-        bpa: bpa.filter((l) => itens.has(l.chave)),
-        sig,
-        lancados,
-        aposReabertura: new Set(f.itens.filter((i) => i.aposReabertura).map((i) => i.chave)),
-        mesCompetencia,
-      }
-    : copia ? vistaDaCopia(copia) : null;
+  const vista: Vista | null = aberta ? vistaDaOrigem(c, frente, origem) : copia ? vistaDaCopia(copia) : null;
   // Aberta depende da consulta à origem; fechada só da cópia.
   const aguardando = aberta ? carregando : !copia && carregando;
   const falhou = aberta ? erro : !copia && erro;
@@ -203,17 +206,27 @@ export default function Competencia({ id }: { id: string }) {
   const fatVisiveis = (vista?.fat ?? []).filter((l) => !t || norm(`${l.passageiro} ${l.processo}`).includes(t));
   const bpaDaAba = vista?.bpa ?? [];
   const bpaVisiveis = bpaDaAba.filter((l) => l.procedimento === procedimento).filter((l) => !t || norm(`${l.nome} ${l.processo}`).includes(t));
+  const reembVisiveis = (vista?.reembolsos ?? []).filter((l) => !t || norm(`${l.passageiro} ${l.processo}`).includes(t));
+  const obitoVisiveis = (vista?.obitos ?? []).filter((l) => !t || norm(`${l.paciente} ${l.processo} ${l.documento}`).includes(t));
 
-  // Regras de fechamento: Faturamento com pelo menos uma linha; BPA só com todas lançadas.
-  const linhasNaAba = frente === 'faturamento' ? (vista?.fat.length ?? 0) : bpaDaAba.length;
+  // Regras de fechamento: pelo menos uma linha; BPA só com todas lançadas;
+  // Reembolso só com valor em todas; Óbito só com despesas em todas.
+  const linhasNaAba = frente === 'faturamento' ? (vista?.fat.length ?? 0)
+    : frente === 'bpa' ? bpaDaAba.length
+    : frente === 'reembolso' ? (vista?.reembolsos.length ?? 0)
+    : (vista?.obitos.length ?? 0);
   const pendentesBpa = bpaDaAba.filter((l) => !lancados.has(l.chave)).length;
+  const pendentesReembolso = vista ? totaisReembolso(vista.reembolsos, vista.regReembolso).pendentes : 0;
+  const pendentesObito = vista ? totaisObito(vista.obitos, vista.regObito).pendentes : 0;
+  const falta = (n: number) => (n === 1 ? 'Falta 1 linha' : `Faltam ${n} linhas`);
   const dicaFechar = erro
     ? 'Não foi possível carregar as linhas. Tente novamente antes de fechar'
     : carregando ? 'Carregando as linhas'
     : linhasNaAba === 0 ? 'Inclua pelo menos uma linha antes de fechar'
-    : frente === 'bpa' && pendentesBpa > 0
-      ? `Marque "Lançada no BPA" em todas as linhas antes de fechar. ${pendentesBpa === 1 ? 'Falta 1 linha' : `Faltam ${pendentesBpa} linhas`}`
-      : undefined;
+    : frente === 'bpa' && pendentesBpa > 0 ? `Marque "Lançada no BPA" em todas as linhas antes de fechar. ${falta(pendentesBpa)}`
+    : frente === 'reembolso' && pendentesReembolso > 0 ? `Registre a data e o valor do reembolso em todas as linhas antes de fechar. ${falta(pendentesReembolso)}`
+    : frente === 'obito' && pendentesObito > 0 ? `Registre as despesas em todas as linhas antes de fechar. ${falta(pendentesObito)}`
+    : undefined;
 
   const avisarConflito = (r: { ok: boolean; conflito?: keyof typeof MENSAGEM_CONFLITO }) => {
     if (!r.ok && r.conflito) toast.error('Ação não concluída', MENSAGEM_CONFLITO[r.conflito]);
@@ -221,10 +234,15 @@ export default function Competencia({ id }: { id: string }) {
   };
 
   const onVer = (sid: string) => router.push(`/fluxo-v2/solicitacoes/${sid}`);
+  const detalheDaLinha = (chave: string) => {
+    if (frente === 'faturamento') { const l = fat.find((x) => x.chave === chave); return l ? `${l.processo} · ${l.passageiro}` : chave; }
+    if (frente === 'bpa') { const l = bpa.find((x) => x.chave === chave); return l ? `${l.processo} · ${l.nome}` : chave; }
+    if (frente === 'reembolso') { const l = reembolsos.find((x) => x.chave === chave); return l ? `${l.processo} · ${l.passageiro}` : chave; }
+    const l = linhasObito.find((x) => x.chave === chave);
+    return l ? `${l.processo} · ${l.paciente}` : chave;
+  };
   const remover = (chave: string) => {
-    const l = frente === 'faturamento' ? fat.find((x) => x.chave === chave) : bpa.find((x) => x.chave === chave);
-    const detalhe = l ? ('passageiro' in l ? `${l.processo} · ${l.passageiro}` : `${l.processo} · ${l.nome}`) : chave;
-    if (!avisarConflito(removerLinha(c.id, frente, chave, quem, detalhe))) return;
+    if (!avisarConflito(removerLinha(c.id, frente, chave, quem, detalheDaLinha(chave)))) return;
     toast.success('Linha removida da competência', 'Ela volta a ficar disponível para outras competências.');
   };
   const opcoes: OpcoesColunas = { mesCompetencia: vista?.mesCompetencia ?? mesCompetencia, onVer, onRemover: editavel ? remover : undefined };
@@ -268,12 +286,26 @@ export default function Competencia({ id }: { id: string }) {
     let planilha;
     let quantidade: number;
     if (frente === 'faturamento') {
-      const tt = totaisFaturamento(fatVisiveis);
+      const total = totalFaturamento(fatVisiveis);
       planilha = {
         ...planilhaFaturamento(fatVisiveis, vista.mesCompetencia, vista.aposReabertura),
-        resumo: [...base, { rotulo: 'Bilhetes emitidos', valor: String(fatVisiveis.length) }, { rotulo: 'Valor bruto', valor: fmtBRL(tt.valorBruto) }, { rotulo: 'Reembolsos ao TFD', valor: fmtBRL(tt.totalReembolsos) }, { rotulo: 'Total a pagar', valor: fmtBRL(tt.totalPagar) }],
+        resumo: [...base, { rotulo: 'Bilhetes emitidos', valor: String(fatVisiveis.length) }, { rotulo: 'Total a pagar', valor: fmtBRL(total) }],
       };
       quantidade = fatVisiveis.length;
+    } else if (frente === 'reembolso') {
+      const tt = totaisReembolso(reembVisiveis, vista.regReembolso);
+      planilha = {
+        ...planilhaReembolso(reembVisiveis, vista.regReembolso, vista.aposReabertura),
+        resumo: [...base, { rotulo: 'Linhas', valor: String(tt.linhas) }, { rotulo: 'Com valor registrado', valor: String(tt.comValor) }, { rotulo: 'Pendentes de valor', valor: String(tt.pendentes) }, { rotulo: 'Total a receber', valor: fmtBRL(tt.totalReceber) }],
+      };
+      quantidade = reembVisiveis.length;
+    } else if (frente === 'obito') {
+      const tt = totaisObito(obitoVisiveis, vista.regObito);
+      planilha = {
+        ...planilhaObito(obitoVisiveis, vista.regObito, vista.aposReabertura),
+        resumo: [...base, { rotulo: 'Óbitos na competência', valor: String(tt.linhas) }, { rotulo: 'Com despesa registrada', valor: String(tt.comDespesa) }, { rotulo: 'Total de despesas', valor: fmtBRL(tt.totalDespesas) }],
+      };
+      quantidade = obitoVisiveis.length;
     } else {
       const total = bpaVisiveis.reduce((s, l) => s + valorBpa(l, vista.sig), 0);
       const lanc = bpaVisiveis.filter((l) => vista.lancados.has(l.chave)).length;
@@ -282,7 +314,7 @@ export default function Competencia({ id }: { id: string }) {
         : planilhaBpaDeslocamento(bpaVisiveis, vista.sig, vista.lancados, vista.mesCompetencia);
       planilha = {
         ...tabela,
-        resumo: [...base, { rotulo: 'Total de linhas', valor: String(bpaVisiveis.length) }, { rotulo: 'Lançadas no BPA', valor: String(lanc) }, { rotulo: 'Pendentes', valor: String(bpaVisiveis.length - lanc) }, { rotulo: 'Valor total SIGTAP', valor: fmtBRL(total) }],
+        resumo: [...base, { rotulo: 'Total de linhas', valor: String(bpaVisiveis.length) }, { rotulo: 'Lançadas no BPA', valor: String(lanc) }, { rotulo: 'Pendentes', valor: String(bpaVisiveis.length - lanc) }, { rotulo: 'Procedimentos', valor: String(procedimentosBpa(bpaVisiveis)) }, { rotulo: 'Valor total SIGTAP', valor: fmtBRL(total) }],
       };
       quantidade = bpaVisiveis.length;
     }
@@ -294,15 +326,25 @@ export default function Competencia({ id }: { id: string }) {
     });
   };
 
-  const linhasExportaveis = frente === 'faturamento' ? fatVisiveis.length : bpaVisiveis.length;
+  const linhasExportaveis = frente === 'faturamento' ? fatVisiveis.length
+    : frente === 'bpa' ? bpaVisiveis.length
+    : frente === 'reembolso' ? reembVisiveis.length
+    : obitoVisiveis.length;
   const excluivel = podeExcluirCompetencia(c);
-  const dicaExcluir = excluivel ? undefined : 'Só é possível excluir uma competência que nunca teve o Faturamento nem o BPA fechado';
+  const dicaExcluir = excluivel ? undefined : 'Só é possível excluir uma competência que nunca teve nenhuma aba fechada';
+  const totalItens = FRENTES.reduce((s, fr) => s + c.frentes[fr].itens.length, 0);
+  const abertura = aberturaDaCompetencia(c);
+  // Resumo do cabeçalho: abas fechadas usam a cópia; abertas dependem da consulta à origem.
+  const resumoPronto = !carregando && !erro;
+  const resumo = resumoPronto ? resumoCompetencia(c, origem) : null;
+
+  const vazioPadrao = (texto: string) => (editavel ? <>{texto} Use <strong>Adicionar linhas</strong>.</> : 'Nenhuma linha nesta competência.');
 
   return (
     <div className="pb-10">
       <PageHeader
         title={`Competência de ${nome}`}
-        subtitle="Escolha as linhas de cada frente, feche quando o envio estiver concluído e reabra só com motivo."
+        subtitle={`Aberta por ${abertura.por} em ${new Date(abertura.em).toLocaleDateString('pt-BR')}.`}
         breadcrumbs={[{ label: 'Gestão' }, { label: 'Financeiro', href: '/financeiro' }]}
         actions={
           <span className="flex flex-wrap gap-2">
@@ -331,15 +373,17 @@ export default function Competencia({ id }: { id: string }) {
         }
       />
 
+      <PainelResumo resumo={resumo} carregando={carregando} erro={erro} onTentarNovamente={tentarNovamente} />
+
       {competenciaCompleta(c) && (
         <p className="mb-4 px-4 py-3" role="status" style={{ background: 'var(--tfd-success-bg)', border: '1px solid var(--tfd-status-success-border)', borderRadius: 8, fontSize: 14, color: 'var(--tfd-status-success-text)' }}>
-          <strong>Competência completa.</strong> Faturamento e BPA estão fechados. Se uma das frentes for reaberta, a competência deixa de ser completa.
+          <strong>Competência completa.</strong> Faturamento e BPA estão fechados. Se uma das duas frentes for reaberta, a competência deixa de ser completa.
         </p>
       )}
 
       {/* Abas por frente */}
-      <div role="tablist" aria-label="Frentes da competência" className="flex gap-2 mb-5" style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
-        {(['faturamento', 'bpa'] as Frente[]).map((fr) => {
+      <div role="tablist" aria-label="Frentes da competência" className="flex flex-wrap gap-2 mb-5" style={{ borderBottom: '1px solid var(--tfd-surface-border)' }}>
+        {FRENTES.map((fr) => {
           const atual = fr === frente;
           const st = c.frentes[fr].status;
           return (
@@ -349,7 +393,7 @@ export default function Competencia({ id }: { id: string }) {
               className="inline-flex items-center gap-2"
               style={{ padding: '1.1rem 1.1rem 1.25rem', fontSize: 14, fontWeight: 700, color: atual ? 'var(--tfd-blue-500)' : 'var(--tfd-text-secondary)', borderBottom: `2px solid ${atual ? 'var(--tfd-blue-500)' : 'transparent'}`, marginBottom: -1 }}
             >
-              {fr === 'faturamento' ? <FileText size={16} /> : <ClipboardList size={16} />}
+              {ICONE_FRENTE[fr]}
               {nomeFrente(fr)}
               <span className={atual ? 'tfd-badge tfd-badge--primary' : 'tfd-badge'} style={atual ? undefined : { background: 'var(--tfd-100)', color: 'var(--tfd-600)' }}>{quantidadeLinhas(c.frentes[fr])}</span>
               <StatusChip status={st} />
@@ -374,7 +418,7 @@ export default function Competencia({ id }: { id: string }) {
             <span style={rotulo}><Search size={12} /> Buscar</span>
             <span className="relative block">
               <Search size={16} className="absolute" style={{ left: 11, top: 10, color: 'var(--tfd-400)' }} />
-              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={frente === 'faturamento' ? 'Nome do passageiro ou nº do processo...' : 'Nome do beneficiário ou nº do processo...'} style={{ ...campo, width: '100%', paddingLeft: 35 }} />
+              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={frente === 'faturamento' || frente === 'reembolso' ? 'Nome do passageiro ou nº do processo...' : frente === 'obito' ? 'Nome do paciente, documento ou nº do processo...' : 'Nome do beneficiário ou nº do processo...'} style={{ ...campo, width: '100%', paddingLeft: 35 }} />
             </span>
           </label>
           <span className="flex flex-wrap gap-2 ml-auto">
@@ -403,10 +447,13 @@ export default function Competencia({ id }: { id: string }) {
           </span>
         </div>
         {aberta && frente === 'bpa' && podeFechar && !carregando && !erro && linhasNaAba > 0 && pendentesBpa > 0 && (
-          <div className="flex items-center gap-2" style={{ padding: '10px 1.25rem', borderTop: '1px dashed var(--tfd-surface-border)', fontSize: 13.5, color: 'var(--tfd-text-secondary)' }}>
-            <AlertTriangle size={14} style={{ color: 'var(--tfd-status-warning-text)' }} />
-            O BPA só pode ser fechado com todas as linhas marcadas como lançadas. {pendentesBpa === 1 ? 'Falta 1 linha' : `Faltam ${pendentesBpa} linhas`}, somando Ajuda de Custo e Deslocamentos.
-          </div>
+          <AvisoPendencia>O BPA só pode ser fechado com todas as linhas marcadas como lançadas. {falta(pendentesBpa)}, somando Ajuda de Custo e Deslocamentos.</AvisoPendencia>
+        )}
+        {aberta && frente === 'reembolso' && podeFechar && !carregando && !erro && pendentesReembolso > 0 && (
+          <AvisoPendencia>O Reembolso só pode ser fechado com data e valor registrados em todas as linhas. {falta(pendentesReembolso)}.</AvisoPendencia>
+        )}
+        {aberta && frente === 'obito' && podeFechar && !carregando && !erro && pendentesObito > 0 && (
+          <AvisoPendencia>O Óbito só pode ser fechado com as despesas registradas em todas as linhas. {falta(pendentesObito)}.</AvisoPendencia>
         )}
         {!aberta && (
           <div className="flex items-center gap-2" style={{ padding: '10px 1.25rem', borderTop: '1px dashed var(--tfd-surface-border)', fontSize: 13.5, color: 'var(--tfd-text-secondary)', background: 'var(--tfd-50)', borderRadius: '0 0 8px 8px' }}>
@@ -433,6 +480,23 @@ export default function Competencia({ id }: { id: string }) {
           aposReabertura={vista.aposReabertura}
           vazio={editavel ? <>Competência vazia. Use <strong>Adicionar linhas</strong> para escolher os itens de {nome}.</> : 'Nenhum item nesta competência.'}
         />
+      ) : frente === 'reembolso' ? (
+        <ConteudoReembolso
+          linhas={reembVisiveis}
+          opcoes={opcoes}
+          vista={vista}
+          onRegistrar={aberta && podeRegistrarReembolso ? (l) => setRegistrando({ frente: 'reembolso', linha: l }) : undefined}
+          vazio={vazioPadrao('Nenhuma passagem com status Reembolso nesta competência.')}
+        />
+      ) : frente === 'obito' ? (
+        <ConteudoObito
+          linhas={obitoVisiveis}
+          opcoes={opcoes}
+          vista={vista}
+          onDetalhar={(l) => setRegistrando({ frente: 'obito', linha: l, modo: 'ler' })}
+          onRegistrar={aberta && podeRegistrarDespesa ? (l) => setRegistrando({ frente: 'obito', linha: l, modo: 'editar' }) : undefined}
+          vazio={vazioPadrao('Nenhuma solicitação com óbito nesta competência.')}
+        />
       ) : (
         <ConteudoBpa
           linhas={bpaVisiveis}
@@ -457,8 +521,10 @@ export default function Competencia({ id }: { id: string }) {
         frente={frente}
         rotuloCompetencia={nome}
         mesCompetencia={mesCompetencia}
-        disponiveisFaturamento={fat.filter((l) => !usadasFat.has(l.chave))}
-        disponiveisBpa={bpa.filter((l) => !usadasBpa.has(l.chave))}
+        disponiveisFaturamento={fat.filter((l) => !usadas.faturamento.has(l.chave))}
+        disponiveisBpa={bpa.filter((l) => !usadas.bpa.has(l.chave))}
+        disponiveisReembolso={reembolsos.filter((l) => !usadas.reembolso.has(l.chave))}
+        disponiveisObito={linhasObito.filter((l) => !usadas.obito.has(l.chave))}
         sig={sig}
         carregando={carregando}
         erro={erro}
@@ -469,6 +535,37 @@ export default function Competencia({ id }: { id: string }) {
           if (r.ok) toast.success(`${chaves.length} ${chaves.length === 1 ? 'linha incluída' : 'linhas incluídas'}`, `Competência de ${nome}, ${nomeFrente(frente)}.`);
           return r;
         }}
+      />
+
+      <DrawerReembolso
+        linha={registrando?.frente === 'reembolso' ? registrando.linha : null}
+        registro={registrando?.frente === 'reembolso' ? vista?.regReembolso[registrando.linha.chave] : undefined}
+        onClose={() => setRegistrando(null)}
+        onSalvar={(dados) => {
+          if (registrando?.frente !== 'reembolso') return false;
+          const l = registrando.linha;
+          const detalhe = `${l.processo} · ${l.passageiro} · ${fmtBRL(dados.valor)} em ${fmtDataBR(dados.data)}`;
+          if (!avisarConflito(registrarReembolso(c.id, l.chave, dados, quem, detalhe))) return false;
+          toast.success('Reembolso registrado', `${fmtBRL(dados.valor)} a receber, ${l.passageiro}.`);
+          return true;
+        }}
+      />
+
+      <DrawerDespesasObito
+        linha={registrando?.frente === 'obito' ? registrando.linha : null}
+        registro={registrando?.frente === 'obito' ? vista?.regObito[registrando.linha.chave] : undefined}
+        modo={registrando?.frente === 'obito' ? registrando.modo : 'ler'}
+        onClose={() => setRegistrando(null)}
+        onVer={onVer}
+        onSalvar={aberta && podeRegistrarDespesa ? (dados) => {
+          if (registrando?.frente !== 'obito') return false;
+          const l = registrando.linha;
+          const total = dados.despesas.reduce((s, d) => s + d.valor, 0);
+          const detalhe = `${l.processo} · ${l.paciente} · ${dados.despesas.length} ${dados.despesas.length === 1 ? 'item' : 'itens'}, ${fmtBRL(total)}, pagamento em ${fmtDataBR(dados.dataPagamento)}`;
+          if (!avisarConflito(registrarDespesasObito(c.id, l.chave, dados, quem, detalhe))) return false;
+          toast.success('Despesas registradas', `${dados.despesas.length} ${dados.despesas.length === 1 ? 'item' : 'itens'}, total de ${fmtBRL(total)}.`);
+          return true;
+        } : undefined}
       />
 
       {((dialogo === 'fechar' && aberta && podeFechar && !dicaFechar) || (dialogo === 'reabrir' && !aberta && podeReabrir)) && (
@@ -496,12 +593,16 @@ export default function Competencia({ id }: { id: string }) {
         open={dialogo === 'excluir' && podeExcluir && excluivel}
         tone="delete"
         title={`Excluir a competência de ${nome}?`}
-        description={`O Faturamento e o BPA de ${nome} deixam de existir e as ${c.frentes.faturamento.itens.length + c.frentes.bpa.itens.length} linhas incluídas voltam a ficar disponíveis para outras competências. A exclusão fica registrada no log do sistema.`}
+        description={`As abas Faturamento, BPA, Reembolso e Óbito de ${nome} deixam de existir e as ${totalItens} linhas incluídas voltam a ficar disponíveis para outras competências. A exclusão fica registrada no log do sistema.`}
         confirmLabel="Excluir competência"
         confirmIcon={<Trash2 size={15} />}
         onClose={() => setDialogo(null)}
         onConfirm={() => {
-          const detalhes = { competencia: nome, linhas_faturamento: c.frentes.faturamento.itens.length, linhas_bpa: c.frentes.bpa.itens.length };
+          const detalhes = {
+            competencia: nome,
+            linhas_faturamento: c.frentes.faturamento.itens.length, linhas_bpa: c.frentes.bpa.itens.length,
+            linhas_reembolso: c.frentes.reembolso.itens.length, linhas_obito: c.frentes.obito.itens.length,
+          };
           setDialogo(null);
           if (!avisarConflito(excluirCompetencia(c.id))) return;
           void registrarNoLog(user ? { id: user.id, perfil: user.perfil } : null, 'COMPETENCIA_EXCLUIDA', c.id, detalhes);
@@ -515,19 +616,68 @@ export default function Competencia({ id }: { id: string }) {
   );
 }
 
+function AvisoPendencia({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2" style={{ padding: '10px 1.25rem', borderTop: '1px dashed var(--tfd-surface-border)', fontSize: 13.5, color: 'var(--tfd-text-secondary)' }}>
+      <AlertTriangle size={14} style={{ color: 'var(--tfd-status-warning-text)' }} />
+      <span>{children}</span>
+    </div>
+  );
+}
+
+/* ── Resumo da competência (cabeçalho) ───────────────────────────────────── */
+
+function PainelResumo({ resumo, carregando, erro, onTentarNovamente }: {
+  resumo: ResumoCompetencia | null; carregando: boolean; erro: boolean; onTentarNovamente: () => void;
+}) {
+  if (carregando) return <Skeleton className="h-24 w-full mb-5" />;
+  if (erro || !resumo) {
+    return (
+      <p className="mb-5 flex flex-wrap items-center gap-3" role="status" style={{ ...cartao, padding: '12px 16px', fontSize: 14, color: 'var(--tfd-text-secondary)' }}>
+        <AlertTriangle size={15} style={{ color: 'var(--tfd-status-warning-text)' }} />
+        Não foi possível montar o resumo da competência.
+        <button type="button" className="tfd-btn tfd-btn-ghost" onClick={onTentarNovamente}>Tentar novamente</button>
+      </p>
+    );
+  }
+  const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
+  const itens: { rotulo: string; valor: string; apoio: string; destaque?: boolean }[] = [
+    { rotulo: 'Faturamento', valor: fmtBRL(resumo.faturamento.total), apoio: plural(resumo.faturamento.bilhetes, 'bilhete', 'bilhetes') },
+    { rotulo: 'Reembolso a receber', valor: fmtBRL(resumo.reembolso.totalReceber), apoio: plural(resumo.reembolso.linhas, 'passagem', 'passagens') },
+    { rotulo: 'Total líquido', valor: fmtBRL(resumo.totalLiquido), apoio: 'Faturamento menos reembolso', destaque: true },
+    { rotulo: 'BPA (SIGTAP)', valor: fmtBRL(resumo.bpa.valorSigtap), apoio: plural(resumo.bpa.linhas, 'linha', 'linhas') },
+    { rotulo: 'Procedimentos BPA', valor: resumo.bpa.procedimentos.toLocaleString('pt-BR'), apoio: `${resumo.bpa.procedimentosAjudaCusto} ajuda de custo · ${resumo.bpa.procedimentosDeslocamento} deslocamento` },
+    { rotulo: 'Pacientes únicos', valor: resumo.bpa.pacientesUnicos.toLocaleString('pt-BR'), apoio: 'Nas linhas do BPA' },
+    { rotulo: 'Óbitos', valor: String(resumo.obito.linhas), apoio: `${fmtBRL(resumo.obito.totalDespesas)} em despesas` },
+  ];
+  return (
+    <section aria-label="Resumo da competência" className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-px overflow-hidden mb-5" style={{ ...cartao, background: 'var(--tfd-surface-border)' }}>
+      {itens.map((i) => (
+        <div key={i.rotulo} style={{ background: i.destaque ? 'var(--tfd-blue-50)' : 'white', padding: '0.9rem 1rem' }}>
+          <span style={{ display: 'block', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--tfd-text-muted)' }}>{i.rotulo}</span>
+          <p style={{ fontFamily: 'var(--tfd-mono)', fontSize: '1.125rem', fontWeight: 700, color: i.destaque ? 'var(--tfd-blue-700)' : 'var(--tfd-text-primary)', marginTop: 4, whiteSpace: 'nowrap' }}>{i.valor}</p>
+          <span style={{ display: 'block', fontSize: 12, color: 'var(--tfd-text-muted)', marginTop: 2 }}>{i.apoio}</span>
+        </div>
+      ))}
+      {/* Completa a última linha da grade em telas de 2 e 4 colunas. */}
+      <div className="xl:hidden" style={{ background: 'white' }} aria-hidden />
+    </section>
+  );
+}
+
+
 /* ── Conteúdo das abas (também usado na consulta de um fechamento) ───────── */
 
 function ConteudoFaturamento({ linhas, opcoes, aposReabertura, vazio }: {
   linhas: LinhaFaturamento[]; opcoes: OpcoesColunas; aposReabertura: Set<string>; vazio: React.ReactNode;
 }) {
-  const { valorBruto, reembolsos, totalReembolsos, totalPagar } = totaisFaturamento(linhas);
+  // O faturamento mostra o valor das passagens; o reembolso fica na aba Reembolso.
+  const totalPagar = totalFaturamento(linhas);
   return (
     <>
       <Indicadores itens={[
         { rotulo: 'Bilhetes emitidos', valor: String(linhas.length), icone: <Plane size={12} /> },
-        { rotulo: 'Valor bruto', valor: fmtBRL(valorBruto), icone: <Wallet size={12} /> },
-        { rotulo: 'Reembolsos ao TFD', valor: fmtBRL(totalReembolsos), icone: <Receipt size={12} /> },
-        { rotulo: 'Total a pagar', valor: fmtBRL(totalPagar) },
+        { rotulo: 'Total a pagar', valor: fmtBRL(totalPagar), icone: <Wallet size={12} /> },
       ]} />
       <Secao titulo="Itens faturados" quantidade={linhas.length}>
         <Tabela
@@ -536,22 +686,6 @@ function ConteudoFaturamento({ linhas, opcoes, aposReabertura, vazio }: {
           chave={(l) => l.chave}
           destaque={(l) => (aposReabertura.has(l.chave) ? { background: 'var(--tfd-status-caution-bg)' } : undefined)}
           vazio={vazio}
-        />
-      </Secao>
-      <Secao titulo="Reembolsos concedidos ao TFD" quantidade={reembolsos.length} subtitulo="Devoluções aplicadas pelo fornecedor nos itens desta competência">
-        <Tabela
-          colunas={[
-            { key: 'dv', header: 'Data viagem', render: (l: LinhaFaturamento) => fmtDataBR(l.dataViagem) },
-            { key: 'p', header: 'Passageiro', render: (l: LinhaFaturamento) => <span className="inline-flex items-center gap-1.5"><TipoBeneficiarioBadge tipo={l.beneficiario} />{l.passageiro}</span> },
-            { key: 't', header: 'Trecho', render: (l: LinhaFaturamento) => `${l.origem} ⇄ ${l.destino}` },
-            { key: 'pr', header: 'Processo', render: (l: LinhaFaturamento) => <span style={{ fontFamily: 'var(--tfd-mono)' }}>{l.processo}</span> },
-            { key: 'tm', header: 'Tipo movim.', render: () => 'Reembolso' },
-            { key: 'v', header: 'A reembolsar', align: 'right', render: (l: LinhaFaturamento) => <span style={{ fontFamily: 'var(--tfd-mono)' }}>{fmtBRL(l.valorReembolso)}</span> },
-          ]}
-          linhas={reembolsos}
-          chave={(l) => l.chave}
-          vazio="Nenhum reembolso registrado."
-          rotuloRegistros="reembolsos"
         />
       </Secao>
       <div className="flex flex-wrap items-center justify-between gap-4 mb-5" style={{ ...cartao, padding: '16px 20px', background: 'var(--tfd-success-bg)', borderColor: 'var(--tfd-status-success-border)' }}>
@@ -576,6 +710,8 @@ function ConteudoBpa({ linhas, procedimento, opcoes, vista, colunaLancado, vazio
         { rotulo: 'Total de linhas', valor: String(linhas.length), icone: <ClipboardList size={12} /> },
         { rotulo: 'Lançadas no BPA', valor: String(lancadas), cor: 'var(--tfd-status-success-text)' },
         { rotulo: 'Pendentes', valor: String(linhas.length - lancadas), cor: 'var(--tfd-status-warning-text)' },
+        // Um procedimento por diária (com e sem pernoite) na ajuda de custo; a quantidade no deslocamento.
+        { rotulo: 'Procedimentos', valor: procedimentosBpa(linhas).toLocaleString('pt-BR') },
         { rotulo: 'Valor total SIGTAP', valor: fmtBRL(total) },
       ]} />
       <Secao titulo="Itens para lançamento" quantidade={linhas.length} subtitulo={procedimento === 'ajuda_custo' ? 'Ajuda de Custo' : 'Deslocamentos'}>
@@ -591,18 +727,69 @@ function ConteudoBpa({ linhas, procedimento, opcoes, vista, colunaLancado, vazio
   );
 }
 
+function ConteudoReembolso({ linhas, opcoes, vista, onRegistrar, vazio }: {
+  linhas: LinhaReembolso[]; opcoes: OpcoesColunas; vista: Vista; onRegistrar?: (l: LinhaReembolso) => void; vazio: React.ReactNode;
+}) {
+  const t = totaisReembolso(linhas, vista.regReembolso);
+  return (
+    <>
+      <Indicadores itens={[
+        { rotulo: 'Linhas', valor: String(t.linhas), icone: <HandCoins size={12} /> },
+        { rotulo: 'Com valor registrado', valor: String(t.comValor), cor: 'var(--tfd-status-success-text)' },
+        { rotulo: 'Pendentes de valor', valor: String(t.pendentes), cor: 'var(--tfd-status-warning-text)' },
+        { rotulo: 'Total a receber', valor: fmtBRL(t.totalReceber) },
+      ]} />
+      <Secao titulo="Passagens com reembolso" quantidade={linhas.length} subtitulo="Valores que o TFD tem a receber de passagens não utilizadas">
+        <Tabela
+          colunas={colunasReembolso(opcoes, vista.regReembolso, onRegistrar)}
+          linhas={linhas}
+          chave={(l) => l.chave}
+          destaque={(l) => (vista.aposReabertura.has(l.chave) ? { background: 'var(--tfd-status-caution-bg)' } : undefined)}
+          vazio={vazio}
+        />
+      </Secao>
+    </>
+  );
+}
+
+function ConteudoObito({ linhas, opcoes, vista, onDetalhar, onRegistrar, vazio }: {
+  linhas: LinhaObito[]; opcoes: OpcoesColunas; vista: Vista;
+  onDetalhar: (l: LinhaObito) => void; onRegistrar?: (l: LinhaObito) => void; vazio: React.ReactNode;
+}) {
+  const t = totaisObito(linhas, vista.regObito);
+  return (
+    <>
+      <Indicadores itens={[
+        { rotulo: 'Óbitos na competência', valor: String(t.linhas), icone: <ReceiptText size={12} /> },
+        { rotulo: 'Com despesa registrada', valor: String(t.comDespesa), cor: 'var(--tfd-status-success-text)' },
+        { rotulo: 'Total de despesas', valor: fmtBRL(t.totalDespesas) },
+      ]} />
+      <Secao titulo="Despesas de óbito" quantidade={linhas.length} subtitulo="A data do falecimento vem da sinalização; a do pagamento, do registro das despesas">
+        <Tabela
+          colunas={colunasObito(opcoes, vista.regObito, { onDetalhar, onRegistrar })}
+          linhas={linhas}
+          chave={(l) => l.chave}
+          destaque={(l) => (vista.aposReabertura.has(l.chave) ? { background: 'var(--tfd-status-caution-bg)' } : undefined)}
+          vazio={vazio}
+        />
+      </Secao>
+    </>
+  );
+}
+
 /** Consulta do que foi enviado num fechamento anterior (ou no atual). */
 function ConsultaFechamento({ fechamento, frente, nome, onVer, onClose }: {
   fechamento: Fechamento | null; frente: Frente; nome: string; onVer: (sid: string) => void; onClose: () => void;
 }) {
   const [procedimento, setProcedimento] = useState<ProcedimentoBpa>('ajuda_custo');
+  const [detalhe, setDetalhe] = useState<LinhaObito | null>(null);
   const vista = fechamento ? vistaDaCopia(fechamento) : null;
   const opcoes: OpcoesColunas = { mesCompetencia: vista?.mesCompetencia, onVer };
   const colunaLancado: Coluna<LinhaBpa> = {
     key: 'lancado', header: <span title="Lançada no BPA">BPA</span>, align: 'center', width: '52px',
     render: (l) => <input type="checkbox" aria-label="Lançada no BPA" disabled checked={vista?.lancados.has(l.chave) ?? false} readOnly />,
   };
-  const quantidade = fechamento ? (fechamento.linhasFaturamento ?? fechamento.linhasBpa ?? []).length : 0;
+  const quantidade = fechamento ? linhasDaCopia(fechamento).length : 0;
   return (
     <Drawer
       open={!!fechamento}
@@ -620,6 +807,13 @@ function ConsultaFechamento({ fechamento, frente, nome, onVer, onClose }: {
       )}
       {vista && (frente === 'faturamento' ? (
         <ConteudoFaturamento linhas={vista.fat} opcoes={opcoes} aposReabertura={vista.aposReabertura} vazio="Nenhum item neste fechamento." />
+      ) : frente === 'reembolso' ? (
+        <ConteudoReembolso linhas={vista.reembolsos} opcoes={opcoes} vista={vista} vazio="Nenhuma linha neste fechamento." />
+      ) : frente === 'obito' ? (
+        <>
+          <ConteudoObito linhas={vista.obitos} opcoes={opcoes} vista={vista} onDetalhar={setDetalhe} vazio="Nenhuma linha neste fechamento." />
+          <DrawerDespesasObito linha={detalhe} registro={detalhe ? vista.regObito[detalhe.chave] : undefined} modo="ler" onClose={() => setDetalhe(null)} onVer={onVer} />
+        </>
       ) : (
         <>
           <label className="block mb-4" style={{ width: 'fit-content' }}>
@@ -707,9 +901,11 @@ function StatusChip({ status }: { status: 'aberta' | 'fechada' }) {
     : <span className="tfd-badge inline-flex items-center gap-1" style={{ background: 'var(--tfd-100)', color: 'var(--tfd-600)' }}><Lock size={10} /> Fechada</span>;
 }
 
+const COLUNAS_INDICADORES: Record<number, string> = { 2: 'grid-cols-2', 3: 'grid-cols-1 sm:grid-cols-3', 4: 'grid-cols-2 lg:grid-cols-4', 5: 'grid-cols-2 lg:grid-cols-5' };
+
 function Indicadores({ itens }: { itens: { rotulo: string; valor: string; icone?: React.ReactNode; cor?: string }[] }) {
   return (
-    <section className="grid grid-cols-2 lg:grid-cols-4 gap-px overflow-hidden mb-5" style={{ ...cartao, background: 'var(--tfd-surface-border)' }}>
+    <section className={`grid ${COLUNAS_INDICADORES[itens.length] ?? 'grid-cols-2 lg:grid-cols-4'} gap-px overflow-hidden mb-5`} style={{ ...cartao, background: 'var(--tfd-surface-border)' }}>
       {itens.map((i) => (
         <div key={i.rotulo} style={{ background: 'white', padding: '1.1rem 1.25rem' }}>
           <span className="inline-flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--tfd-text-muted)' }}>
@@ -741,7 +937,11 @@ const TEXTO_EVENTO: Record<EventoHistorico['tipo'], string> = {
   linha_removida: 'Linha removida',
   fechada: 'Competência fechada',
   reaberta: 'Competência reaberta',
+  reembolso_registrado: 'Reembolso registrado',
+  despesas_registradas: 'Despesas de óbito registradas',
 };
+
+const HISTORICO_DE: Record<Frente, string> = { faturamento: 'do Faturamento', bpa: 'do BPA', reembolso: 'do Reembolso', obito: 'do Óbito' };
 
 function Historico({ eventos, frente, fechamentos, onConsultar }: {
   eventos: EventoHistorico[]; frente: Frente; fechamentos: Fechamento[]; onConsultar: (fechamentoId: string) => void;
@@ -751,7 +951,7 @@ function Historico({ eventos, frente, fechamentos, onConsultar }: {
     <section className="overflow-hidden" style={cartao}>
       <header className="flex items-center gap-2.5" style={{ padding: '1.1rem 1.25rem 0.85rem' }}>
         <History size={16} style={{ color: 'var(--tfd-text-muted)' }} />
-        <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--tfd-text-primary)' }}>Histórico {frente === 'faturamento' ? 'do Faturamento' : 'do BPA'}</h3>
+        <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--tfd-text-primary)' }}>Histórico {HISTORICO_DE[frente]}</h3>
         <span style={{ fontSize: 13, color: 'var(--tfd-400)' }}>Registro de auditoria: quem fez, quando e o quê</span>
       </header>
       <ol style={{ borderTop: '1px solid var(--tfd-surface-border)' }}>
@@ -760,7 +960,7 @@ function Historico({ eventos, frente, fechamentos, onConsultar }: {
             <span style={{ fontFamily: 'var(--tfd-mono)', fontSize: 12.5, color: 'var(--tfd-text-muted)', minWidth: 120 }}>{dataHora(e.em)}</span>
             <span className="flex-1 min-w-[220px]">
               <strong style={{ fontWeight: 600, color: 'var(--tfd-text-primary)' }}>{TEXTO_EVENTO[e.tipo]}</strong>
-              {e.quantidade != null && e.tipo !== 'fechada' && <> · {e.quantidade} {e.quantidade === 1 ? 'linha' : 'linhas'}</>}
+              {e.quantidade != null && (e.tipo === 'linhas_incluidas' || e.tipo === 'linha_removida') && <> · {e.quantidade} {e.quantidade === 1 ? 'linha' : 'linhas'}</>}
               {e.tipo === 'fechada' && e.quantidade != null && <> com {e.quantidade} {e.quantidade === 1 ? 'linha' : 'linhas'}</>}
               {e.detalhe && <span className="block" style={{ fontSize: 12.5, color: 'var(--tfd-text-muted)' }}>{e.detalhe}</span>}
               {e.motivo && <span className="block" style={{ fontSize: 13, color: 'var(--tfd-status-caution-text)' }}>Motivo: {e.motivo}</span>}

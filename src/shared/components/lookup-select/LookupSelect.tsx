@@ -28,6 +28,9 @@ interface LookupSelectProps {
   valueField?: 'codigo' | 'nome' | 'id';
   /** Ordenar por: 'nome' ou 'ordem' */
   orderBy?: 'nome' | 'ordem';
+  /** Códigos que não aparecem como opção (o item continua no banco para
+   *  registros antigos). Ex.: 'OBITO' em motivo de encerramento. */
+  excluirCodigos?: string[];
 }
 
 export default function LookupSelect({
@@ -40,7 +43,10 @@ export default function LookupSelect({
   placeholder = 'Selecione...',
   valueField = 'codigo',
   orderBy = 'nome',
+  excluirCodigos,
 }: LookupSelectProps) {
+  // Chave estável: o array chega novo a cada render do pai.
+  const excluirChave = (excluirCodigos ?? []).map((c) => c.toUpperCase()).join('|');
   const [options, setOptions] = useState<LookupOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -49,7 +55,8 @@ export default function LookupSelect({
 
   const loadOptions = useCallback(() => {
     setLoading(true);
-    const selectFields = valueField === 'id' ? 'id, nome' : valueField === 'codigo' ? 'codigo, nome' : 'nome';
+    const excluir = new Set(excluirChave ? excluirChave.split('|') : []);
+    const selectFields = valueField === 'id' ? 'id, codigo, nome' : 'codigo, nome';
 
     createClient()
       .from('tabelas_auxiliares')
@@ -61,7 +68,8 @@ export default function LookupSelect({
         if (error || !data) {
           setOptions([]);
         } else {
-          const rows = data as Record<string, string>[];
+          const rows = (data as unknown as Record<string, string>[])
+            .filter((r) => !excluir.has(String(r.codigo ?? '').toUpperCase()));
           setOptions(
             rows.map((r) => ({
               value: valueField === 'id' ? r.id : valueField === 'codigo' ? r.codigo : r.nome,
@@ -71,7 +79,7 @@ export default function LookupSelect({
         }
         setLoading(false);
       });
-  }, [categoria, valueField, orderBy]);
+  }, [categoria, valueField, orderBy, excluirChave]);
 
   useEffect(() => {
     loadOptions();
@@ -107,7 +115,8 @@ export default function LookupSelect({
 
       // Recarrega opções e seleciona o novo item
       const supabase = createClient();
-      const selectFields = valueField === 'id' ? 'id, nome' : valueField === 'codigo' ? 'codigo, nome' : 'nome';
+      const selectFields = valueField === 'id' ? 'id, codigo, nome' : 'codigo, nome';
+      const excluir = new Set(excluirChave ? excluirChave.split('|') : []);
       const { data } = await supabase
         .from('tabelas_auxiliares')
         .select(selectFields)
@@ -116,7 +125,8 @@ export default function LookupSelect({
         .order(orderBy);
 
       if (data) {
-        const rows = data as Record<string, string>[];
+        const rows = (data as unknown as Record<string, string>[])
+          .filter((r) => !excluir.has(String(r.codigo ?? '').toUpperCase()));
         const mapped = rows.map((r) => ({
           value: valueField === 'id' ? r.id : valueField === 'codigo' ? r.codigo : r.nome,
           label: r.nome,

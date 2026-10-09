@@ -37,6 +37,7 @@ import type {
   ZonaRegional,
 } from '@/core/mocks/fluxo-v2-v3-seed';
 import { setorToStatusGlobal, type SetorDb } from './statusMapping';
+import { MARCADOR_REEMBOLSO } from './toSupabase';
 
 /** Remove os antigos códigos "N"/"AC" de números de solicitação legados
  *  (ex.: "TFD-N-2026/000010" ou "TFD-AC-2026/000010" → "TFD-2026/000010").
@@ -277,8 +278,12 @@ const TIPO_VIAGEM_FROM_DB: Record<string, TipoViagem> = {
   IDA_E_VOLTA: 'ida',
 };
 
-function statusViagemFromDb(situacao: string, embarcou: boolean): StatusViagem {
+function statusViagemFromDb(situacao: string, embarcou: boolean, motivoCancelamento?: string): StatusViagem {
   if (embarcou) return 'confirmada';
+  // Protótipo: reembolso é gravado como CANCELADA + marcador (ver
+  // MARCADOR_REEMBOLSO em toSupabase.ts). No sistema real o status
+  // REEMBOLSO entra no banco.
+  if (situacao === 'CANCELADA' && motivoCancelamento === MARCADOR_REEMBOLSO) return 'reembolso';
   switch (situacao) {
     case 'EMITIDA': return 'agendada';
     case 'REMARCADA': return 'remarcada';
@@ -297,7 +302,7 @@ function viagensFromRows(rows: Row[]): ViagemMock[] {
     data: str(r.data_embarque_real) || str(r.data_embarque_prevista),
     modal: MODAL_FROM_DB[str(r.modal)] ?? 'aereo',
     tipo: TIPO_VIAGEM_FROM_DB[str(r.tipo)] ?? 'ida',
-    status: statusViagemFromDb(str(r.situacao), Boolean(r.embarcou)),
+    status: statusViagemFromDb(str(r.situacao), Boolean(r.embarcou), str(r.motivo_cancelamento_texto)),
     valor: num(r.valor),
     dataCriacao: str(r.created_at),
     bilheteUrl: opt(r.numero_bilhete),

@@ -65,6 +65,20 @@ export function persistUpdate(
     });
 }
 
+/** Tira o marcador de reembolso da passagem (protótipo grava reembolso como
+ *  CANCELADA + `motivo_cancelamento_texto = 'REEMBOLSO'`). Só limpa quando o
+ *  texto é o marcador, para não apagar motivo real de cancelamento. */
+export function limparMarcadorReembolso(viagemId: string, marcador: string): void {
+  sb()
+    .from('viagens')
+    .update({ motivo_cancelamento_texto: null })
+    .eq('id', viagemId)
+    .eq('motivo_cancelamento_texto', marcador)
+    .then(({ error }) => {
+      if (error) console.warn('[FluxoV2] limpar marcador de reembolso falhou:', error.message);
+    });
+}
+
 /** Delete por id (fire-and-forget). */
 export function persistDelete(table: string, id: string): void {
   sb()

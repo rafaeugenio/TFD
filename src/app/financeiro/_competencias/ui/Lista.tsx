@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CalendarPlus, FileText, ClipboardList, Lock, CalendarDays } from 'lucide-react';
+import { CalendarPlus, FileText, ClipboardList, HandCoins, Lock, CalendarDays, ReceiptText } from 'lucide-react';
 import PageHeader from '@/shared/components/page-header/PageHeader';
 import ConfirmDialog from '@/shared/components/confirm-dialog/ConfirmDialog';
 import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
@@ -54,7 +54,7 @@ export default function Lista({ competencias, carregando }: { competencias: Comp
     <div className="pb-8">
       <PageHeader
         title="Financeiro"
-        subtitle="Competências mensais de Faturamento e BPA. Cada competência recebe as linhas escolhidas e é fechada depois do envio."
+        subtitle="Competências mensais de Faturamento, BPA, Reembolso e Óbito. Cada competência recebe as linhas escolhidas e é fechada depois do envio."
         breadcrumbs={[{ label: 'Gestão' }]}
         actions={podeCriar ? <button type="button" className="tfd-btn tfd-btn-primary" onClick={() => setAbrindo(true)}><CalendarPlus size={16} /> Abrir competência</button> : undefined}
       />
@@ -67,7 +67,7 @@ export default function Lista({ competencias, carregando }: { competencias: Comp
           <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--tfd-text-primary)', marginTop: 14 }}>Nenhuma competência aberta ainda</p>
           <p style={{ fontSize: 14, color: 'var(--tfd-400)', marginTop: 4, maxWidth: 460 }}>
             {podeCriar
-              ? 'Abra a competência do mês. Ela nasce vazia, com Faturamento e BPA separados, e você escolhe as linhas de cada um.'
+              ? 'Abra a competência do mês. Ela nasce vazia, com Faturamento, BPA, Reembolso e Óbito separados, e você escolhe as linhas de cada um.'
               : 'Quando uma competência for aberta, ela aparece aqui.'}
           </p>
           {podeCriar && <button type="button" className="tfd-btn tfd-btn-primary mt-5" onClick={() => setAbrindo(true)}><CalendarPlus size={16} /> Abrir competência</button>}
@@ -76,13 +76,15 @@ export default function Lista({ competencias, carregando }: { competencias: Comp
         <section className="overflow-hidden" style={cartao}>
           {/* Em tela estreita a tabela rola na horizontal em vez de cortar as colunas. */}
           <div className="overflow-x-auto">
-            <table className="w-full" style={{ borderCollapse: 'collapse', minWidth: 640 }}>
+            <table className="w-full" style={{ borderCollapse: 'collapse', minWidth: 960 }}>
               <thead>
                 <tr>
                   <th style={th}>Competência</th>
                   <th style={th}>Aberta em</th>
                   <th style={th}><span className="inline-flex items-center gap-1.5"><FileText size={12} /> Faturamento</span></th>
                   <th style={th}><span className="inline-flex items-center gap-1.5"><ClipboardList size={12} /> BPA</span></th>
+                  <th style={th}><span className="inline-flex items-center gap-1.5"><HandCoins size={12} /> Reembolso</span></th>
+                  <th style={th}><span className="inline-flex items-center gap-1.5"><ReceiptText size={12} /> Óbito</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -97,6 +99,8 @@ export default function Lista({ competencias, carregando }: { competencias: Comp
                     <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--tfd-text-secondary)' }}>{new Date(c.criadaEm).toLocaleDateString('pt-BR')}</td>
                     <td style={td}><Situacao c={c} frente="faturamento" /></td>
                     <td style={td}><Situacao c={c} frente="bpa" /></td>
+                    <td style={td}><Situacao c={c} frente="reembolso" /></td>
+                    <td style={td}><Situacao c={c} frente="obito" /></td>
                   </tr>
                 ))}
               </tbody>
@@ -113,7 +117,7 @@ export default function Lista({ competencias, carregando }: { competencias: Comp
         tone="create"
         icon={CalendarPlus}
         title="Abrir competência"
-        description="Cria o Faturamento e o BPA do mês, vazios e abertos."
+        description="Cria o Faturamento, o BPA, o Reembolso e o Óbito do mês, vazios e abertos."
         confirmLabel={jaExiste ? 'Ir para a competência' : 'Abrir competência'}
         onClose={() => setAbrindo(false)}
         onConfirm={abrir}

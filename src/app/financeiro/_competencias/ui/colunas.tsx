@@ -1,9 +1,11 @@
 'use client';
 
-import { ArrowRightLeft, Eye, Trash2 } from 'lucide-react';
+import { ArrowRightLeft, Eye, HandCoins, ReceiptText, Trash2 } from 'lucide-react';
 import { TipoBeneficiarioBadge, TipoPercursoBadge } from '@/app/relatorios/_shared/ReportTable';
 import { fmtBRL, fmtDataBR } from '@/app/relatorios/_shared/format';
-import { avisoPeriodo, valorBpa, type LinhaBpa, type LinhaFaturamento } from '../dados';
+import { avisoPeriodo, valorBpa, type LinhaBpa, type LinhaFaturamento, type LinhaObito, type LinhaReembolso } from '../dados';
+import type { RegistroDespesasObito, RegistroReembolso } from '../store';
+import { totalDespesas } from '../resumo';
 import type { Coluna } from './Tabela';
 
 const mono: React.CSSProperties = { fontFamily: 'var(--tfd-mono)' };
@@ -19,6 +21,13 @@ export interface OpcoesColunas {
   competenciaDe?: (chave: string) => string | undefined;
 }
 
+/** Ação extra da linha (registrar reembolso, registrar despesas). */
+interface AcaoExtra {
+  rotulo: string;
+  icone: React.ReactNode;
+  onClick: () => void;
+}
+
 /** Selo permanente de linha fora do mês da competência (ex.: lançamento atrasado). */
 function ForaDoPeriodo({ mesReferencia, mesCompetencia }: { mesReferencia: string; mesCompetencia?: string }) {
   const aviso = mesCompetencia ? avisoPeriodo(mesReferencia, mesCompetencia) : '';
@@ -30,11 +39,22 @@ function ForaDoPeriodo({ mesReferencia, mesCompetencia }: { mesReferencia: strin
   );
 }
 
-function Acoes({ solicitacaoId, chave, o }: { solicitacaoId: string; chave: string; o: OpcoesColunas }) {
+function Acoes({ solicitacaoId, chave, o, olho, extra }: {
+  solicitacaoId: string; chave: string; o: OpcoesColunas;
+  /** Substitui "Ver solicitação" (ex.: abrir as despesas em modo leitura). */
+  olho?: { rotulo: string; onClick: () => void };
+  extra?: AcaoExtra;
+}) {
   const botao: React.CSSProperties = { width: 32, height: 32, borderRadius: 6 };
+  const rotuloOlho = olho?.rotulo ?? 'Ver solicitação';
   return (
     <span className="inline-flex items-center justify-end gap-1">
-      <button type="button" title="Ver solicitação" aria-label="Ver solicitação" onClick={() => o.onVer(solicitacaoId)} className="inline-flex items-center justify-center hover:bg-[var(--tfd-100)]" style={{ ...botao, color: 'var(--tfd-text-muted)' }}>
+      {extra && (
+        <button type="button" title={extra.rotulo} aria-label={extra.rotulo} onClick={extra.onClick} className="inline-flex items-center justify-center hover:bg-[var(--tfd-blue-50)]" style={{ ...botao, color: 'var(--tfd-blue-500)' }}>
+          {extra.icone}
+        </button>
+      )}
+      <button type="button" title={rotuloOlho} aria-label={rotuloOlho} onClick={olho ? olho.onClick : () => o.onVer(solicitacaoId)} className="inline-flex items-center justify-center hover:bg-[var(--tfd-100)]" style={{ ...botao, color: 'var(--tfd-text-muted)' }}>
         <Eye size={16} />
       </button>
       {o.onRemover && (
@@ -148,5 +168,89 @@ export function colunasBpaDeslocamento(o: OpcoesColunas, sig: Record<string, num
     { key: 'valor', header: 'Valor SIGTAP', align: 'right', render: (l) => <span style={{ ...mono, whiteSpace: 'nowrap' }}>{fmtBRL(valorBpa(l, sig))}</span> },
     ...(o.competenciaDe ? [{ key: 'comp', header: 'Competência', render: (l: LinhaBpa) => <span style={apoio}>{o.competenciaDe!(l.chave) ?? 'Nenhuma'}</span> }] : []),
     { key: 'acoes', header: 'Ações', align: 'right', render: (l) => <Acoes solicitacaoId={l.solicitacaoId} chave={l.chave} o={o} /> },
+  ];
+}
+
+/** Linhas do Reembolso. Sem `reg`, é a tela de inclusão (sem colunas de registro). */
+export function colunasReembolso(
+  o: OpcoesColunas,
+  reg?: Record<string, RegistroReembolso>,
+  onRegistrar?: (l: LinhaReembolso) => void,
+): Coluna<LinhaReembolso>[] {
+  return [
+    { key: 'processo', header: 'Processo', render: (l) => <span style={{ ...mono, whiteSpace: 'nowrap' }}>{l.processo || 'Sem número'}</span> },
+    { key: 'passageiro', header: 'Passageiro', render: (l) => <span style={{ fontWeight: 500 }}>{l.passageiro}</span> },
+    { key: 'tipo', header: 'Tipo', render: (l) => <TipoPercursoBadge tipo={l.tipo} /> },
+    { key: 'viagem', header: 'Data viagem', render: (l) => <span style={{ whiteSpace: 'nowrap' }}>{fmtDataBR(l.dataViagem)}</span> },
+    {
+      key: 'trecho', header: 'Trecho',
+      render: (l) => <span className="inline-flex items-center gap-1" style={{ ...mono, fontSize: 12 }}>{l.origem}<ArrowRightLeft size={10} style={{ color: 'var(--tfd-400)' }} />{l.destino}</span>,
+    },
+    { key: 'passagem', header: 'Valor passagem', align: 'right', render: (l) => <span style={{ ...mono, whiteSpace: 'nowrap' }}>{fmtBRL(l.valorPassagem)}</span> },
+    ...(reg
+      ? [
+          {
+            key: 'data', header: 'Data reembolso',
+            render: (l: LinhaReembolso) => (reg[l.chave] ? <span style={{ whiteSpace: 'nowrap' }}>{fmtDataBR(reg[l.chave].data)}</span> : <span className="tfd-tag tfd-tag--warning" style={{ fontSize: 11, padding: '2px 8px', whiteSpace: 'nowrap' }}>Pendente</span>),
+          },
+          {
+            key: 'receber', header: 'A receber', align: 'right' as const,
+            render: (l: LinhaReembolso) => (reg[l.chave] ? <strong style={{ ...mono, whiteSpace: 'nowrap' }}>{fmtBRL(reg[l.chave].valor)}</strong> : <span style={apoio}>Sem valor</span>),
+          },
+        ]
+      : []),
+    {
+      key: 'acoes', header: 'Ações', align: 'right',
+      render: (l) => (
+        <Acoes
+          solicitacaoId={l.solicitacaoId} chave={l.chave} o={o}
+          extra={onRegistrar ? { rotulo: reg?.[l.chave] ? 'Corrigir reembolso' : 'Registrar reembolso', icone: <HandCoins size={16} />, onClick: () => onRegistrar(l) } : undefined}
+        />
+      ),
+    },
+  ];
+}
+
+/** Linhas do Óbito. Sem `reg`, é a tela de inclusão (sem colunas de despesas). */
+export function colunasObito(
+  o: OpcoesColunas,
+  reg?: Record<string, RegistroDespesasObito>,
+  acoes?: { onDetalhar: (l: LinhaObito) => void; onRegistrar?: (l: LinhaObito) => void },
+): Coluna<LinhaObito>[] {
+  return [
+    { key: 'processo', header: 'Processo', render: (l) => <span style={{ ...mono, whiteSpace: 'nowrap' }}>{l.processo || 'Sem número'}</span> },
+    {
+      key: 'paciente', header: 'Paciente',
+      render: (l) => (
+        <div style={{ minWidth: 180 }}>
+          <strong style={{ fontWeight: 600 }}>{l.paciente}</strong>
+          <span className="block" style={{ ...apoio, ...mono }}>{l.documento || 'Sem documento'}</span>
+        </div>
+      ),
+    },
+    { key: 'falecimento', header: 'Data falecimento', render: (l) => <span style={{ whiteSpace: 'nowrap' }}>{fmtDataBR(l.dataFalecimento)}</span> },
+    ...(reg
+      ? [
+          {
+            key: 'pagamento', header: 'Data pagamento',
+            render: (l: LinhaObito) => (reg[l.chave] ? <span style={{ whiteSpace: 'nowrap' }}>{fmtDataBR(reg[l.chave].dataPagamento)}</span> : <span className="tfd-tag tfd-tag--warning" style={{ fontSize: 11, padding: '2px 8px', whiteSpace: 'nowrap' }}>Pendente</span>),
+          },
+          { key: 'itens', header: 'Itens', align: 'right' as const, render: (l: LinhaObito) => <span style={mono}>{reg[l.chave]?.despesas.length ?? 0}</span> },
+          {
+            key: 'total', header: 'Valor total', align: 'right' as const,
+            render: (l: LinhaObito) => (reg[l.chave] ? <strong style={{ ...mono, whiteSpace: 'nowrap' }}>{fmtBRL(totalDespesas(reg[l.chave]))}</strong> : <span style={apoio}>Sem despesas</span>),
+          },
+        ]
+      : [{ key: 'sinalizado', header: 'Sinalizado por', render: (l: LinhaObito) => <span style={apoio}>{l.sinalizadoPor}</span> }]),
+    {
+      key: 'acoes', header: 'Ações', align: 'right',
+      render: (l) => (
+        <Acoes
+          solicitacaoId={l.solicitacaoId} chave={l.chave} o={o}
+          olho={acoes ? { rotulo: 'Ver despesas', onClick: () => acoes.onDetalhar(l) } : undefined}
+          extra={acoes?.onRegistrar ? { rotulo: 'Registrar despesas', icone: <ReceiptText size={16} />, onClick: () => acoes.onRegistrar!(l) } : undefined}
+        />
+      ),
+    },
   ];
 }

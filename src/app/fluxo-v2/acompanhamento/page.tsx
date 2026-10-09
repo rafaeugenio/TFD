@@ -516,6 +516,7 @@ export default function AcompanhamentoListPage() {
           value={motivo}
           onChange={setMotivo}
           required
+          excluirCodigos={['OBITO']}
         />
         <FormField label="Data do encerramento" required>
           <input

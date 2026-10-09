@@ -46,8 +46,6 @@ export interface LinhaFaturamento {
   origem: string;
   destino: string;
   valor: number;
-  valorReembolso: number;
-  dataReembolso: string | null;
 }
 
 export async function carregarFaturamento(): Promise<LinhaFaturamento[]> {
@@ -56,7 +54,7 @@ export async function carregarFaturamento(): Promise<LinhaFaturamento[]> {
     .from('viagens')
     .select(
       'id, tipo, solicitacao_id, data_embarque_prevista, created_at, emitido_em, ' +
-      'origem_cidade, origem_uf, destino_cidade, destino_uf, valor, valor_reembolso, data_reembolso, ativa, ' +
+      'origem_cidade, origem_uf, destino_cidade, destino_uf, valor, ativa, ' +
       'solicitacoes!inner(numero_processo, pacientes(nome_completo))',
     )
     .eq('ativa', true)
@@ -81,10 +79,142 @@ export async function carregarFaturamento(): Promise<LinhaFaturamento[]> {
       origem: [r.origem_cidade, r.origem_uf].filter(Boolean).join('/'),
       destino: [r.destino_cidade, r.destino_uf].filter(Boolean).join('/'),
       valor: Number(r.valor) || 0,
-      valorReembolso: Number(r.valor_reembolso) || 0,
-      dataReembolso: (r.data_reembolso as string) ?? null,
     };
   }).filter((l) => !!l.mesReferencia); // o relatório antigo nunca listava viagem sem data
+}
+
+/* ── Reembolso ───────────────────────────────────────────────────────────── */
+
+/**
+ * Marcador do status "Reembolso" da passagem no protótipo: o CHECK de
+ * `viagens.situacao` não tem REEMBOLSO, então a passagem fica CANCELADA com
+ * este texto em `motivo_cancelamento_texto`. No sistema real o status
+ * REEMBOLSO entra no banco e a consulta passa a filtrar por ele.
+ */
+export const MARCADOR_REEMBOLSO = 'REEMBOLSO';
+
+export interface LinhaReembolso {
+  chave: string;
+  id: string;
+  solicitacaoId: string;
+  processo: string;
+  passageiro: string;
+  tipo: LinhaFaturamento['tipo'];
+  dataViagem: string | null;
+  origem: string;
+  destino: string;
+  /** Valor da passagem (o que foi faturado). */
+  valorPassagem: number;
+  /** Data em que a passagem passou para Reembolso (ou, sem ela, a da viagem). */
+  dataStatus: string;
+  /** Mês de referência (AAAA-MM) da data acima, para o filtro de inclusão. */
+  mesReferencia: string;
+}
+
+const tipoPassagem = (t: string): LinhaFaturamento['tipo'] => (t === 'RETORNO' || t === 'VOLTA' ? 'VOLTA' : t === 'IDA_E_VOLTA' ? 'IDA_E_VOLTA' : 'IDA');
+
+/** Todas as passagens com status Reembolso (marcador acima), de qualquer mês. */
+export async function carregarReembolsos(): Promise<LinhaReembolso[]> {
+  const { data, error } = await createClient()
+    .from('viagens')
+    .select(
+      'id, tipo, solicitacao_id, data_embarque_prevista, data_cancelamento, created_at, ' +
+      'origem_cidade, origem_uf, destino_cidade, destino_uf, valor, ' +
+      'solicitacoes!inner(numero_processo, pacientes(nome_completo))',
+    )
+    .eq('situacao', 'CANCELADA')
+    .eq('motivo_cancelamento_texto', MARCADOR_REEMBOLSO)
+    .order('created_at', { ascending: false });
+  if (error || !data) throw new ErroCarregamento('reembolsos', error);
+  return (data as unknown as Array<Record<string, unknown>>).map((r): LinhaReembolso => {
+    const sol = r.solicitacoes as Record<string, unknown> | null;
+    const pac = sol?.pacientes as Record<string, unknown> | null;
+    const dataStatus = String((r.data_cancelamento as string) ?? (r.data_embarque_prevista as string) ?? (r.created_at as string) ?? '').slice(0, 10);
+    return {
+      chave: `r:${r.id}`,
+      id: String(r.id),
+      solicitacaoId: String(r.solicitacao_id),
+      processo: (sol?.numero_processo as string) ?? '',
+      passageiro: (pac?.nome_completo as string) ?? 'Paciente',
+      tipo: tipoPassagem(String(r.tipo ?? '')),
+      dataViagem: (r.data_embarque_prevista as string) ?? null,
+      origem: [r.origem_cidade, r.origem_uf].filter(Boolean).join('/'),
+      destino: [r.destino_cidade, r.destino_uf].filter(Boolean).join('/'),
+      valorPassagem: Number(r.valor) || 0,
+      dataStatus,
+      mesReferencia: dataStatus.slice(0, 7),
+    };
+  });
+}
+
+/* ── Óbito ───────────────────────────────────────────────────────────────── */
+
+export interface LinhaObito {
+  chave: string;
+  solicitacaoId: string;
+  processo: string;
+  paciente: string;
+  /** CNS ou CPF do paciente. */
+  documento: string;
+  /** Data do falecimento (AAAA-MM-DD), vinda da sinalização de óbito. */
+  dataFalecimento: string;
+  /** Mês do falecimento (AAAA-MM), para o filtro de inclusão. */
+  mesReferencia: string;
+  observacao?: string;
+  sinalizadoPor: string;
+}
+
+export interface DadosSolicitacao {
+  processo: string;
+  paciente: string;
+  documento: string;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Número do processo e paciente das solicitações sinalizadas com óbito. */
+export async function carregarDadosSolicitacoes(ids: string[]): Promise<Map<string, DadosSolicitacao>> {
+  const mapa = new Map<string, DadosSolicitacao>();
+  // Só ids do banco: solicitação de demonstração sem UUID fica sem processo.
+  const validos = [...new Set(ids)].filter((id) => UUID_RE.test(id));
+  if (validos.length === 0) return mapa;
+  const { data, error } = await createClient()
+    .from('solicitacoes')
+    .select('id, numero_processo, pacientes(nome_completo, cpf, cns)')
+    .in('id', validos);
+  if (error || !data) throw new ErroCarregamento('solicitações com óbito', error);
+  for (const r of data as unknown as Array<Record<string, unknown>>) {
+    const pac = r.pacientes as Record<string, unknown> | null;
+    mapa.set(String(r.id), {
+      processo: (r.numero_processo as string) ?? '',
+      paciente: (pac?.nome_completo as string) ?? 'Paciente',
+      documento: (pac?.cns as string) || (pac?.cpf as string) || '',
+    });
+  }
+  return mapa;
+}
+
+/** Linhas da aba Óbito: uma por solicitação sinalizada com óbito. */
+export function montarLinhasObito(
+  obitos: Record<string, { solicitacaoId: string; dataFalecimento: string; observacao?: string; registradoPor: string }>,
+  dados: Map<string, DadosSolicitacao>,
+): LinhaObito[] {
+  return Object.values(obitos)
+    .map((o): LinhaObito => {
+      const d = dados.get(o.solicitacaoId);
+      return {
+        chave: `o:${o.solicitacaoId}`,
+        solicitacaoId: o.solicitacaoId,
+        processo: d?.processo ?? '',
+        paciente: d?.paciente ?? 'Paciente não encontrado',
+        documento: d?.documento ?? '',
+        dataFalecimento: o.dataFalecimento,
+        mesReferencia: String(o.dataFalecimento ?? '').slice(0, 7),
+        observacao: o.observacao,
+        sinalizadoPor: o.registradoPor,
+      };
+    })
+    .sort((a, b) => b.dataFalecimento.localeCompare(a.dataFalecimento));
 }
 
 /* ── BPA ─────────────────────────────────────────────────────────────────── */

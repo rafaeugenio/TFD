@@ -21,6 +21,8 @@ import {
   Megaphone,
   FileCode2,
   Landmark,
+  Receipt,
+  Cross,
   type LucideIcon,
 } from 'lucide-react';
 import SigtapPanel from './SigtapPanel';
@@ -112,6 +114,13 @@ const SECOES: SecaoConfig[] = [
     icon: DollarSign,
     categorias: [
       { key: 'banco', label: 'Bancos', icon: Landmark, desc: 'Instituições financeiras aceitas no cadastro do paciente' },
+    ],
+  },
+  {
+    title: 'Financeiro',
+    icon: Receipt,
+    categorias: [
+      { key: 'despesa_funeraria', label: 'Despesas Funerárias', icon: Cross, desc: 'Itens pagos pelo município em caso de óbito (urna, translado, taxas), usados na aba Óbito da competência' },
     ],
   },
   {

@@ -2,9 +2,10 @@
 
 /* -------------------------------------------------------------------------- */
 /*  Competências do Financeiro. Cada competência é um mês (ex.: setembro de   */
-/*  2026) com duas frentes independentes, Faturamento e BPA. Cada frente      */
-/*  começa vazia, recebe linhas escolhidas pelo usuário, é fechada (fica só   */
-/*  leitura) e pode ser reaberta com motivo. Tudo fica no histórico.          */
+/*  2026) com quatro frentes independentes: Faturamento, BPA, Reembolso e     */
+/*  Óbito. Cada frente começa vazia, recebe linhas escolhidas pelo usuário,   */
+/*  é fechada (fica só leitura) e pode ser reaberta com motivo. Tudo fica no  */
+/*  histórico.                                                                */
 /*                                                                            */
 /*  Ao fechar, a frente guarda uma cópia de cada linha (dados, valores,       */
 /*  valor SIGTAP, quantidades e totais). Fechada, a tela mostra sempre essa   */
@@ -17,11 +18,14 @@
 /* -------------------------------------------------------------------------- */
 
 import { useSyncExternalStore } from 'react';
-import type { LinhaBpa, LinhaFaturamento } from './dados';
+import type { LinhaBpa, LinhaFaturamento, LinhaObito, LinhaReembolso } from './dados';
 
-export type Frente = 'faturamento' | 'bpa';
+export type Frente = 'faturamento' | 'bpa' | 'reembolso' | 'obito';
 
-export type TipoEvento = 'aberta' | 'linhas_incluidas' | 'linha_removida' | 'fechada' | 'reaberta';
+/** Ordem das abas da competência. */
+export const FRENTES: Frente[] = ['faturamento', 'bpa', 'reembolso', 'obito'];
+
+export type TipoEvento = 'aberta' | 'linhas_incluidas' | 'linha_removida' | 'fechada' | 'reaberta' | 'reembolso_registrado' | 'despesas_registradas';
 
 export interface EventoHistorico {
   id: string;
@@ -45,6 +49,37 @@ export interface ItemCompetencia {
   incluidoPor: string;
   /** Linha incluída depois de uma reabertura: fica destacada para auditoria. */
   aposReabertura?: boolean;
+  /** Aba Reembolso: data e valor a receber registrados na linha. */
+  reembolso?: RegistroReembolso;
+  /** Aba Óbito: despesas pagas e data do pagamento. */
+  obito?: RegistroDespesasObito;
+}
+
+export interface RegistroReembolso {
+  /** Data do reembolso (AAAA-MM-DD). */
+  data: string;
+  /** Valor a receber, maior que zero. */
+  valor: number;
+  por: string;
+  em: string;
+}
+
+export interface DespesaObito {
+  id: string;
+  /** Código do item na tabela auxiliar `despesa_funeraria`. */
+  codigo: string;
+  /** Nome do item, como estava na tabela auxiliar no registro. */
+  item: string;
+  descricao?: string;
+  valor: number;
+}
+
+export interface RegistroDespesasObito {
+  /** Data do pagamento das despesas (AAAA-MM-DD), diferente da do falecimento. */
+  dataPagamento: string;
+  despesas: DespesaObito[];
+  por: string;
+  em: string;
 }
 
 /** Cópia do que foi enviado num fechamento. */
@@ -56,6 +91,12 @@ export interface Fechamento {
   mesCompetencia: string;
   linhasFaturamento?: LinhaFaturamento[];
   linhasBpa?: LinhaBpa[];
+  linhasReembolso?: LinhaReembolso[];
+  linhasObito?: LinhaObito[];
+  /** Registros de reembolso das linhas, como estavam no fechamento. */
+  registrosReembolso?: Record<string, RegistroReembolso>;
+  /** Despesas de óbito das linhas, como estavam no fechamento. */
+  registrosObito?: Record<string, RegistroDespesasObito>;
   /** Valor unitário SIGTAP de cada código usado, como estava no fechamento. */
   sigtap?: Record<string, number>;
   /** Linhas marcadas como lançadas no BPA no fechamento. */
@@ -112,11 +153,25 @@ function migrarFrente(f: Partial<FrenteCompetencia> | undefined): FrenteCompeten
   };
 }
 
+/** Competência gravada antes das abas Reembolso e Óbito ganha as duas vazias e abertas. */
 function migrar(bruto: unknown): Competencia[] {
   if (!Array.isArray(bruto)) return [];
   return bruto
     .filter((c): c is Competencia => !!c && typeof c === 'object' && 'id' in c && 'ano' in c && 'mes' in c)
-    .map((c) => ({ ...c, frentes: { faturamento: migrarFrente(c.frentes?.faturamento), bpa: migrarFrente(c.frentes?.bpa) } }));
+    .map((c) => ({
+      ...c,
+      frentes: {
+        faturamento: migrarFrente(c.frentes?.faturamento),
+        bpa: migrarFrente(c.frentes?.bpa),
+        reembolso: migrarFrente(c.frentes?.reembolso),
+        obito: migrarFrente(c.frentes?.obito),
+      },
+    }));
+}
+
+/** Competências gravadas agora (fora de componente, ex.: indicadores do Painel). */
+export function competenciasAtuais(): Competencia[] {
+  return typeof window === 'undefined' ? VAZIO : lerArmazenamento();
 }
 
 function lerArmazenamento(): Competencia[] {
@@ -171,7 +226,7 @@ export function useCompetencias(): Competencia[] {
 
 const evento = (tipo: TipoEvento, por: string, extra: Partial<EventoHistorico> = {}): EventoHistorico => ({ id: uid('ev'), tipo, em: agora(), por, ...extra });
 
-export type Conflito = 'aba_fechada' | 'linha_em_outra' | 'nao_encontrada';
+export type Conflito = 'aba_fechada' | 'linha_em_outra' | 'nao_encontrada' | 'linha_fora';
 
 /** Resultado das ações que podem esbarrar em mudança feita por outra pessoa. */
 export type Resultado = { ok: true } | { ok: false; conflito: Conflito };
@@ -180,6 +235,7 @@ export const MENSAGEM_CONFLITO: Record<Conflito, string> = {
   aba_fechada: 'Esta aba foi fechada por outra pessoa. Atualize a tela.',
   linha_em_outra: 'Esta linha já foi incluída em outra competência. Atualize a tela para ver a lista atual.',
   nao_encontrada: 'Esta competência foi excluída por outra pessoa. Atualize a tela.',
+  linha_fora: 'Esta linha foi removida da competência por outra pessoa. Atualize a tela.',
 };
 
 /**
@@ -226,7 +282,10 @@ export function abrirCompetencia(ano: number, mes: number, por: string): Compete
     return existente;
   }
   const frenteNova = (): FrenteCompetencia => ({ status: 'aberta', itens: [], historico: [evento('aberta', por)], reaberturas: 0, fechamentos: [] });
-  const nova: Competencia = { id: uuid(), ano, mes, criadaEm: agora(), frentes: { faturamento: frenteNova(), bpa: frenteNova() } };
+  const nova: Competencia = {
+    id: uuid(), ano, mes, criadaEm: agora(),
+    frentes: { faturamento: frenteNova(), bpa: frenteNova(), reembolso: frenteNova(), obito: frenteNova() },
+  };
   gravar([nova, ...lista].sort((a, b) => b.ano - a.ano || b.mes - a.mes));
   return nova;
 }
@@ -235,7 +294,7 @@ export function abrirCompetencia(ano: number, mes: number, por: string): Compete
 export const frenteJaFechada = (f: FrenteCompetencia) => f.fechamentos.length > 0 || f.historico.some((e) => e.tipo === 'fechada');
 
 /** Só dá para excluir a competência se nenhuma das abas foi fechada alguma vez. */
-export const podeExcluirCompetencia = (c: Competencia) => !frenteJaFechada(c.frentes.faturamento) && !frenteJaFechada(c.frentes.bpa);
+export const podeExcluirCompetencia = (c: Competencia) => FRENTES.every((fr) => !frenteJaFechada(c.frentes[fr]));
 
 /** Exclui a competência; as linhas dela voltam a ficar disponíveis. */
 export function excluirCompetencia(id: string): Resultado {
@@ -277,7 +336,8 @@ export function removerLinha(id: string, frente: Frente, chave: string, por: str
   );
 }
 
-/** Completa quando Faturamento e BPA estão fechados; reabrir qualquer frente desfaz. */
+/** Completa quando Faturamento e BPA estão fechados; reabrir qualquer um dos dois desfaz.
+ *  Reembolso e Óbito ficam de fora: há meses sem nenhuma linha nessas abas. */
 export function competenciaCompleta(c: Competencia): boolean {
   return c.frentes.faturamento.status === 'fechada' && c.frentes.bpa.status === 'fechada';
 }
@@ -287,7 +347,8 @@ export function copiaAtual(f: FrenteCompetencia): Fechamento | undefined {
   return f.status === 'fechada' ? f.fechamentos[f.fechamentos.length - 1] : undefined;
 }
 
-export const linhasDaCopia = (x: Fechamento) => x.linhasFaturamento ?? x.linhasBpa ?? [];
+export const linhasDaCopia = (x: Fechamento): Array<{ chave: string }> =>
+  x.linhasFaturamento ?? x.linhasBpa ?? x.linhasReembolso ?? x.linhasObito ?? [];
 
 /** Quantidade de linhas da frente: a da cópia se fechada, a atual se aberta. */
 export function quantidadeLinhas(f: FrenteCompetencia): number {
@@ -356,3 +417,40 @@ export function chavesUsadas(lista: Competencia[], frente: Frente, excetoId?: st
   }
   return mapa;
 }
+
+/**
+ * Muda uma linha da frente aberta (registro de reembolso ou de despesas de
+ * óbito), conferindo no estado gravado agora que a linha continua lá.
+ */
+function mudarItem(id: string, frente: Frente, chave: string, por: string, tipo: TipoEvento, detalhe: string, fn: (i: ItemCompetencia) => ItemCompetencia): Resultado {
+  return mudarFrente(id, frente, (f) => {
+    if (f.status === 'fechada') return { ok: false, conflito: 'aba_fechada' };
+    if (!f.itens.some((i) => i.chave === chave)) return { ok: false, conflito: 'linha_fora' };
+    return {
+      ...f,
+      itens: f.itens.map((i) => (i.chave === chave ? fn(i) : i)),
+      historico: [...f.historico, evento(tipo, por, { quantidade: 1, detalhe })],
+    };
+  });
+}
+
+/** Registra (ou corrige) a data e o valor a receber de uma linha do Reembolso. */
+export function registrarReembolso(id: string, chave: string, dados: { data: string; valor: number }, por: string, detalhe: string): Resultado {
+  return mudarItem(id, 'reembolso', chave, por, 'reembolso_registrado', detalhe, (i) => ({ ...i, reembolso: { ...dados, por, em: agora() } }));
+}
+
+/** Registra (ou substitui) as despesas e a data do pagamento de uma linha do Óbito. */
+export function registrarDespesasObito(
+  id: string, chave: string, dados: { dataPagamento: string; despesas: DespesaObito[] }, por: string, detalhe: string,
+): Resultado {
+  return mudarItem(id, 'obito', chave, por, 'despesas_registradas', detalhe, (i) => ({ ...i, obito: { ...dados, por, em: agora() } }));
+}
+
+/** Primeiro evento do histórico da competência (quem abriu e quando). */
+export function aberturaDaCompetencia(c: Competencia): { por: string; em: string } {
+  const primeiro = FRENTES.flatMap((fr) => c.frentes[fr].historico).sort((a, b) => a.em.localeCompare(b.em))[0];
+  return primeiro ? { por: primeiro.por, em: primeiro.em } : { por: 'Não registrado', em: c.criadaEm };
+}
+
+/** Id curto para uma despesa nova. */
+export const idDespesa = () => uid('desp');
