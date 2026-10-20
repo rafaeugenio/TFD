@@ -57,7 +57,7 @@ function CasasApoioPage() {
   );
 
   /* ---- Table controls (client-side search, sort, filter, pagination) ---- */
-  const table = useTableControls({ data: linhas, searchFields: ['nome', 'responsavel', 'cidade'] });
+  const table = useTableControls({ data: linhas, searchFields: ['nome', 'responsavel', 'cidade', 'descricao'] });
   const items = table.paginated as unknown as (CasaApoioMock & { unidade: string; cidade: string })[];
   const cidadeFilterOptions = table.getFilterOptions('cidade');
 
@@ -119,7 +119,7 @@ function CasasApoioPage() {
           <Search size={14} style={{ color: '#9CA3AF' }} />
           <input
             type="text"
-            placeholder="Buscar por nome, responsável ou cidade..."
+            placeholder="Buscar por nome, responsável, cidade ou descrição..."
             value={table.search}
             onChange={(e) => table.setSearch(e.target.value)}
             className="flex-1 bg-transparent outline-none text-[13px]"

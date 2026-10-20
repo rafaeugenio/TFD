@@ -1,10 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   HeartHandshake, Plus, FileText, Lock, Eye, Download,
-  CheckCircle2, XCircle, PlayCircle, RotateCcw, Home, Info,
+  CheckCircle2, XCircle, PlayCircle, RotateCcw, Home, Info, Paperclip, Trash2,
 } from 'lucide-react';
+import { useToast } from '@/shared/components/toast/Toast';
+import { baixarPdfInstrumento, pendenciasDoConteudo, tituloDoInstrumento } from '../_utils/pdfInstrumento';
+import { TIPOS_ANEXO_ASSINADO, montarAnexoAssinado, tamanhoLegivel } from '../_utils/anexoInstrumento';
 import Drawer from '@/shared/components/drawer/Drawer';
 import StatusDot, { type StatusDotTone } from './StatusDot';
 import OrdinalBadge from './OrdinalBadge';
@@ -18,6 +21,8 @@ import {
   instrumentosDaSolicitacao,
   contarInstrumentos,
   casaPorId,
+  anexarAssinado,
+  removerAssinado,
   concluirDemanda,
   cancelarDemanda,
   reabrirDemanda,
@@ -67,6 +72,10 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
   const [instrumentoOpen, setInstrumentoOpen] = useState(false);
   /** Demanda pré-selecionada ao abrir o drawer de instrumento. Vazio = avulso. */
   const [demandaParaInstrumento, setDemandaParaInstrumento] = useState<string | null>(null);
+  const toast = useToast();
+  const inputAssinado = useRef<HTMLInputElement>(null);
+  const alvoAssinado = useRef<string | null>(null);
+  const [gerandoPdf, setGerandoPdf] = useState<string | null>(null);
   const [visualizando, setVisualizando] = useState<InstrumentoSocialMock | null>(null);
 
   /** PBI 16406, RN09: "Criar instrumento" e as ações da equipe (Assumir,
@@ -89,6 +98,37 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
   );
 
   const usuario = user?.nome_completo ?? 'Você';
+
+  async function baixarPdf(i: InstrumentoSocialMock) {
+    const pendentes = pendenciasDoConteudo(i.conteudo);
+    setGerandoPdf(i.id);
+    try {
+      await baixarPdfInstrumento(i, casaPorId(i.casaApoioId));
+      if (pendentes.length > 0) {
+        toast.warning('PDF gerado com campos em branco', `Ainda há ${pendentes.length} trecho(s) entre colchetes sem preencher.`);
+      } else {
+        toast.success('PDF gerado', 'O arquivo foi baixado.');
+      }
+    } catch {
+      toast.error('Não foi possível gerar o PDF', 'Tente de novo em instantes.');
+    } finally {
+      setGerandoPdf(null);
+    }
+  }
+
+  function escolherAssinado(id: string) {
+    alvoAssinado.current = id;
+    inputAssinado.current?.click();
+  }
+
+  function aoEscolherAssinado(arquivo: File | undefined) {
+    const id = alvoAssinado.current;
+    if (!arquivo || !id) return;
+    const r = montarAnexoAssinado(arquivo, usuario);
+    if (!r.ok) { toast.error('Arquivo não aceito', r.erro); return; }
+    anexarAssinado(id, r.anexo);
+    toast.success('Documento assinado anexado', r.anexo.nome);
+  }
 
   return (
     <div className="min-w-0">
@@ -206,7 +246,20 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
                       <td className="px-3 py-2"><OrdinalBadge n={instrumentos.length - idx} /></td>
                       <td className="px-3 py-2" style={{ color: '#1A1D2B' }}>
                         <div className="leading-tight">
-                          <div style={{ fontWeight: 500 }}>{TIPO_INSTRUMENTO_LABEL[i.tipo]}</div>
+                          <div style={{ fontWeight: 500 }}>{tituloDoInstrumento(i)}</div>
+                          {i.tipo === 'outros' && <div style={{ color: '#94A3B8' }}>{TIPO_INSTRUMENTO_LABEL[i.tipo]}</div>}
+                          {i.anexoAssinado && !bloqueado && (
+                            <a
+                              href={i.anexoAssinado.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 hover:underline"
+                              style={{ color: '#15803D' }}
+                              title={`Anexado por ${i.anexoAssinado.enviadoPor} em ${dataHoraBR(i.anexoAssinado.enviadoEm)} · ${tamanhoLegivel(i.anexoAssinado.tamanho)}`}
+                            >
+                              <Paperclip size={10} /> Assinado: {i.anexoAssinado.nome}
+                            </a>
+                          )}
                           {casa ? (
                             <div className="inline-flex items-center gap-1" style={{ color: '#94A3B8' }}>
                               <Home size={10} /> {casa.nome}
@@ -251,7 +304,13 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
                         ) : (
                           <span className="inline-flex items-center gap-0.5">
                             <IconButton icon={Eye} label="Visualizar" onClick={() => setVisualizando(i)} color="var(--tfd-blue-700, #1D4ED8)" hoverBg="#EBF0FF" />
-                            <IconButton icon={Download} label="Baixar (no protótipo não gera arquivo)" onClick={() => setVisualizando(i)} color="#0E7490" hoverBg="#ECFEFF" />
+                            <IconButton icon={Download} label={gerandoPdf === i.id ? 'Gerando PDF...' : 'Baixar PDF'} onClick={() => baixarPdf(i)} color="#0E7490" hoverBg="#ECFEFF" />
+                            {podeCriarInstrumento && (
+                              <IconButton icon={Paperclip} label={i.anexoAssinado ? 'Trocar documento assinado' : 'Anexar documento assinado'} onClick={() => escolherAssinado(i.id)} color="#475569" hoverBg="#F1F5F9" />
+                            )}
+                            {podeCriarInstrumento && i.anexoAssinado && (
+                              <IconButton icon={Trash2} label="Remover documento assinado" onClick={() => { removerAssinado(i.id); toast.success('Documento assinado removido', 'O instrumento continua salvo.'); }} color="#B91C1C" hoverBg="#FEF2F2" />
+                            )}
                           </span>
                         )}
                       </td>
@@ -267,6 +326,15 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
           </p>
         )}
       </Section>
+
+      <input
+        ref={inputAssinado}
+        type="file"
+        accept={TIPOS_ANEXO_ASSINADO}
+        className="sr-only"
+        aria-label="Documento assinado"
+        onChange={(e) => { aoEscolherAssinado(e.target.files?.[0]); e.target.value = ''; }}
+      />
 
       {/* ── Drawers ────────────────────────────────────────── */}
       <NovaDemandaSocialDrawer
@@ -289,13 +357,18 @@ export default function ServicoSocialTab({ s }: { s: SolicitacaoMock }) {
         <Drawer
           open={!!visualizando}
           onClose={() => setVisualizando(null)}
-          title={TIPO_INSTRUMENTO_LABEL[visualizando.tipo]}
+          title={tituloDoInstrumento(visualizando)}
           subtitle={`${visualizando.autora} · ${dataHoraBR(visualizando.dataCriacao)}`}
           width="min(760px, 96vw)"
           footer={
-            <button type="button" className="tfd-btn tfd-btn-ghost" onClick={() => setVisualizando(null)}>
-              Fechar
-            </button>
+            <>
+              <button type="button" className="tfd-btn tfd-btn-ghost" onClick={() => setVisualizando(null)}>
+                Fechar
+              </button>
+              <button type="button" className="tfd-btn tfd-btn-primary" disabled={gerandoPdf === visualizando.id} onClick={() => baixarPdf(visualizando)}>
+                <Download size={14} /> Baixar PDF
+              </button>
+            </>
           }
         >
           <pre

@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import Landing from './_construtor/ui/Landing';
 import Detalhe from './_construtor/ui/Detalhe';
 import { montarBase } from './_construtor/dataset';
+import { useBaseServicoSocial } from '@/app/fluxo-v2/_state/servicoSocialStore';
 import { secoesNovoRelatorio } from './_construtor/motor';
 import { doUsuario, useRelatoriosSalvos } from './_construtor/salvos';
 import type { ConfigRelatorio } from './_construtor/tipos';
@@ -47,7 +48,8 @@ function RelatoriosApp() {
   // navegador a lista ainda está vazia, então nada decide antes disso.
   const todos = useRelatoriosSalvos();
   const montado = useSyncExternalStore(semAssinatura, () => true, () => false);
-  const base = useMemo(() => montarBase(solicitacoes), [solicitacoes]);
+  const social = useBaseServicoSocial();
+  const base = useMemo(() => montarBase(solicitacoes, social), [solicitacoes, social]);
   // Cada pessoa vê os seus. Os salvos antes desta regra (sem dono) continuam visíveis.
   const salvos = useMemo(() => doUsuario(todos, user?.id), [todos, user?.id]);
   const [rascunho] = useState<ConfigRelatorio[]>(secoesNovoRelatorio);

@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { FileText, Home, Lock, HeartHandshake } from 'lucide-react';
+import { FileText, Home, Lock, HeartHandshake, Paperclip, X } from 'lucide-react';
+import { useToast } from '@/shared/components/toast/Toast';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormSection from '@/shared/components/drawer/FormSection';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
@@ -18,7 +19,9 @@ import {
   type DemandaSocialMock,
   type TipoInstrumento,
 } from '@/core/mocks/servico-social-seed';
+import type { AnexoInstrumentoMock } from '@/core/mocks/servico-social-seed';
 import type { SolicitacaoMock } from '@/core/mocks/fluxo-v2-v3-seed';
+import { TIPOS_ANEXO_ASSINADO, montarAnexoAssinado, tamanhoLegivel } from '../../_utils/anexoInstrumento';
 
 interface Props {
   open: boolean;
@@ -44,6 +47,7 @@ interface Props {
 export default function NewInstrumentoDrawer({ open, onClose, s, demandas, demandaInicialId }: Props) {
   const { user } = usePermissions();
   const casas = useCasasApoio();
+  const toast = useToast();
 
   const [demandaId, setDemandaId] = useState(demandaInicialId);
   const [tipo, setTipo] = useState<TipoInstrumento | ''>('');
@@ -51,6 +55,10 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demandas, deman
   const [conteudo, setConteudo] = useState('');
   const [sigiloso, setSigiloso] = useState(false);
   const [tocado, setTocado] = useState(false);
+  const [titulo, setTitulo] = useState('');
+  const [anexo, setAnexo] = useState<AnexoInstrumentoMock | null>(null);
+  const casaEscolhida = casas.find((c) => c.id === casaId);
+  const ehOutros = tipo === 'outros';
 
   const profissional = user?.nome_completo ?? 'Assistente Social';
 
@@ -76,13 +84,24 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demandas, deman
     );
   }, [tipo, casaId, casas, s, profissional, tocado]);
 
-  function reset() {
+  function reset(revogarAnexo = true) {
     setDemandaId(demandaInicialId);
     setTipo('');
     setCasaId('');
     setConteudo('');
     setSigiloso(false);
     setTocado(false);
+    setTitulo('');
+    if (anexo && revogarAnexo) URL.revokeObjectURL(anexo.url);
+    setAnexo(null);
+  }
+
+  function escolherArquivo(arquivo: File | undefined) {
+    if (!arquivo) return;
+    const r = montarAnexoAssinado(arquivo, profissional);
+    if (!r.ok) { toast.error('Arquivo não aceito', r.erro); return; }
+    if (anexo) URL.revokeObjectURL(anexo.url);
+    setAnexo(r.anexo);
   }
 
   function fechar() {
@@ -91,8 +110,10 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demandas, deman
   }
 
   function salvar() {
-    if (!tipo || !conteudo.trim()) return;
+    if (!tipo || !conteudo.trim() || (ehOutros && !titulo.trim())) return;
     criarInstrumento({
+      titulo: ehOutros ? titulo : undefined,
+      anexoAssinado: anexo ?? undefined,
       demandaId: demandaId || undefined,
       solicitacaoId: s.id,
       tipo,
@@ -105,7 +126,8 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demandas, deman
       pacienteNome: s.paciente.nome,
       pacienteCpf: s.paciente.cpf,
     });
-    reset();
+    // O arquivo passa a pertencer ao instrumento: não revoga a URL ao limpar.
+    reset(false);
     onClose();
   }
 
@@ -124,7 +146,7 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demandas, deman
           <button
             type="button"
             className="tfd-btn tfd-btn-primary"
-            disabled={!tipo || !conteudo.trim()}
+            disabled={!tipo || !conteudo.trim() || (ehOutros && !titulo.trim())}
             onClick={salvar}
           >
             Salvar instrumento
@@ -214,6 +236,24 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demandas, deman
               </option>
             ))}
           </select>
+          {casaEscolhida?.descricao && (
+            <p className="text-[12.5px] mt-2 px-3 py-2 whitespace-pre-wrap" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 6, color: '#475569' }}>
+              <span className="font-semibold" style={{ color: '#1E293B' }}>Sobre a casa: </span>{casaEscolhida.descricao}
+            </p>
+          )}
+        </FormSection>
+      )}
+
+      {ehOutros && (
+        <FormSection title="Título do documento" icon={<FileText size={12} />} hint="Obrigatório. Aparece na lista e no cabeçalho do PDF.">
+          <input
+            type="text"
+            value={titulo}
+            maxLength={120}
+            onChange={(e) => setTitulo(e.target.value)}
+            placeholder="Ex.: Relatório de visita domiciliar"
+            className="tfd-input"
+          />
         </FormSection>
       )}
 
@@ -222,7 +262,7 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demandas, deman
           <FormSection
             title="Conteúdo"
             icon={<FileText size={12} />}
-            hint="O que estiver entre colchetes e em caixa alta precisa ser preenchido por você."
+            hint={ehOutros ? 'Escreva o documento do jeito que precisar. O texto sai igual no PDF.' : 'O que estiver entre colchetes e em caixa alta precisa ser preenchido por você.'}
           >
             <textarea
               value={conteudo}
@@ -231,6 +271,7 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demandas, deman
                 setTocado(true);
               }}
               rows={22}
+              placeholder={ehOutros ? 'Digite aqui o conteúdo do documento.' : undefined}
               className="w-full text-[12.5px] px-3 py-2.5 outline-none resize-y font-mono leading-relaxed"
               style={{
                 background: 'white',
@@ -243,6 +284,27 @@ export default function NewInstrumentoDrawer({ open, onClose, s, demandas, deman
               As linhas de assinatura são referência visual do documento. O protótipo
               não faz assinatura eletrônica nem envio ao SEI.
             </p>
+          </FormSection>
+
+          <FormSection title="Documento assinado" icon={<Paperclip size={12} />} hint="Opcional. Pode ser anexado depois, na lista de instrumentos.">
+            {anexo ? (
+              <div className="flex items-center justify-between gap-2 px-3 py-2 text-[13px]" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 6 }}>
+                <span className="inline-flex items-center gap-2 min-w-0">
+                  <Paperclip size={13} style={{ color: '#94A3B8' }} />
+                  <span className="truncate" style={{ color: '#1A1D2B' }}>{anexo.nome}</span>
+                  <span style={{ color: '#94A3B8' }}>{tamanhoLegivel(anexo.tamanho)}</span>
+                </span>
+                <button type="button" aria-label="Remover arquivo" className="tfd-btn tfd-btn-ghost tfd-btn--sm" onClick={() => { URL.revokeObjectURL(anexo.url); setAnexo(null); }}>
+                  <X size={13} />
+                </button>
+              </div>
+            ) : (
+              <label className="tfd-btn tfd-btn-secondary tfd-btn--sm inline-flex cursor-pointer">
+                <Paperclip size={13} /> Escolher arquivo
+                <input type="file" accept={TIPOS_ANEXO_ASSINADO} className="sr-only" onChange={(e) => { escolherArquivo(e.target.files?.[0]); e.target.value = ''; }} />
+              </label>
+            )}
+            <p className="text-[12px] mt-2" style={{ color: '#94A3B8' }}>PDF, PNG ou JPG, até 10 MB.</p>
           </FormSection>
 
           <FormSection

@@ -34,7 +34,15 @@ import {
 import { regionalDoMunicipio, nomeCidade } from '@/app/fluxo-v2/_utils/derivarRegional';
 import { saldoDoPaciente } from '@/app/fluxo-v2/_state/saldoAjudaCustoStore';
 import { calcularQuantidadePassagem, resolveSigtapPassagem } from '../_shared/sigtap-mapper';
+import { TIPO_INSTRUMENTO_LABEL, SETOR_ORIGEM_LABEL, SITUACAO_DEMANDA_LABEL, type CasaApoioMock, type DemandaSocialMock, type InstrumentoSocialMock } from '@/core/mocks/servico-social-seed';
 import type { Linha } from './tipos';
+
+/** Dados do módulo Serviço Social (vivem na store do módulo, não nas solicitações). */
+export interface DadosServicoSocial {
+  demandas: DemandaSocialMock[];
+  instrumentos: InstrumentoSocialMock[];
+  casas: CasaApoioMock[];
+}
 
 /* ── Aleatoriedade determinística ────────────────────────────────────────── */
 
@@ -173,6 +181,8 @@ export interface BaseRelatorios {
   agendamentos: Linha[];
   tramitacao: Linha[];
   obitos: Linha[];
+  servico_social: Linha[];
+  casas_apoio: Linha[];
   /** Registros de demonstração somados aos do protótipo. */
   totalDemonstracao: number;
   totalProtocolo: number;
@@ -545,7 +555,7 @@ function gerarDemonstracao(qtd: number): SolicitacaoMock[] {
 
 const QTD_DEMONSTRACAO = 180;
 
-export function montarBase(solicitacoesProtocolo: SolicitacaoMock[]): BaseRelatorios {
+export function montarBase(solicitacoesProtocolo: SolicitacaoMock[], social?: DadosServicoSocial): BaseRelatorios {
   const demo = gerarDemonstracao(QTD_DEMONSTRACAO);
   const todas: Array<{ s: SolicitacaoMock; demo: boolean }> = [
     ...solicitacoesProtocolo.map((s) => ({ s, demo: false })),
@@ -553,10 +563,16 @@ export function montarBase(solicitacoesProtocolo: SolicitacaoMock[]): BaseRelato
   ];
 
   const base: BaseRelatorios = {
-    passagens: [], ajudas: [], solicitacoes: [], regulacao: [], agendamentos: [], tramitacao: [], obitos: [],
+    passagens: [], ajudas: [], solicitacoes: [], regulacao: [], agendamentos: [], tramitacao: [], obitos: [], servico_social: [], casas_apoio: [],
     totalDemonstracao: demo.length,
     totalProtocolo: solicitacoesProtocolo.length,
   };
+
+  const demandasPor = new Map<string, DemandaSocialMock[]>();
+  const instrumentosPor = new Map<string, InstrumentoSocialMock[]>();
+  for (const d of social?.demandas ?? []) demandasPor.set(d.solicitacaoId, [...(demandasPor.get(d.solicitacaoId) ?? []), d]);
+  for (const i of social?.instrumentos ?? []) instrumentosPor.set(i.solicitacaoId, [...(instrumentosPor.get(i.solicitacaoId) ?? []), i]);
+  const casaPorId = new Map((social?.casas ?? []).map((c) => [c.id, c]));
 
   for (const { s, demo: ehDemo } of todas) {
     const dim = dimensoes(s, ehDemo);
@@ -581,6 +597,41 @@ export function montarBase(solicitacoesProtocolo: SolicitacaoMock[]): BaseRelato
     base.regulacao.push(...montarRegulacao(s, dim));
     base.agendamentos.push(...montarAgendamentos(s, dim));
     base.tramitacao.push(...montarTramitacao(s, dim));
+
+    for (const d of demandasPor.get(s.id) ?? []) {
+      const instr = (instrumentosPor.get(s.id) ?? []).filter((i) => i.demandaId === d.id);
+      const fim = d.dataConclusao ?? null;
+      const dias = fim ? Math.max(0, Math.round((new Date(fim).getTime() - new Date(d.dataEncaminhamento).getTime()) / 86_400_000)) : null;
+      base.servico_social.push({
+        ...dim,
+        id: d.id,
+        setorOrigem: SETOR_ORIGEM_LABEL[d.setorOrigem],
+        situacao: SITUACAO_DEMANDA_LABEL[d.situacao],
+        encaminhadoPor: d.encaminhadoPor || 'Não informado',
+        profissional: d.profissionalResponsavel ?? 'Não assumida',
+        dataEncaminhamento: d.dataEncaminhamento.slice(0, 10),
+        dataConclusao: fim ? fim.slice(0, 10) : null,
+        diasAtendimento: dias,
+        qtdInstrumentos: instr.length,
+        instrumentosAssinados: instr.filter((i) => i.anexoAssinado).length,
+        demandas: 1,
+      });
+    }
+    for (const i of (instrumentosPor.get(s.id) ?? []).filter((x) => x.casaApoioId)) {
+      const casa = casaPorId.get(i.casaApoioId as string);
+      base.casas_apoio.push({
+        ...dim,
+        id: i.id,
+        casa: casa?.nome ?? 'Casa excluída do cadastro',
+        cidadeCasa: casa?.cidadeUf ?? 'Não informada',
+        dataEncaminhamento: i.dataCriacao.slice(0, 10),
+        elaboradoPor: i.autora,
+        vinculo: i.demandaId ? 'Responde a uma demanda' : 'Avulso',
+        sigiloso: i.sigiloso ? 'Sim' : 'Não',
+        assinado: i.anexoAssinado ? 'Sim' : 'Não',
+        encaminhamentos: 1,
+      });
+    }
 
     if (s.encerramento && ehObito(s.encerramento.motivo)) {
       base.obitos.push({

@@ -18,6 +18,7 @@ import {
   seedCasasApoio,
   PROFISSIONAIS_SERVICO_SOCIAL_DEMO,
   demandaEstaAberta,
+  type AnexoInstrumentoMock,
   type CasaApoioMock,
   type DemandaSocialMock,
   type InstrumentoSocialMock,
@@ -254,6 +255,8 @@ export interface NovoInstrumentoInput {
   solicitacaoNumero?: string;
   pacienteNome?: string;
   pacienteCpf?: string;
+  titulo?: string;
+  anexoAssinado?: AnexoInstrumentoMock;
 }
 
 export function criarInstrumento(input: NovoInstrumentoInput): InstrumentoSocialMock {
@@ -270,11 +273,28 @@ export function criarInstrumento(input: NovoInstrumentoInput): InstrumentoSocial
     solicitacaoNumero: input.solicitacaoNumero,
     pacienteNome: input.pacienteNome,
     pacienteCpf: input.pacienteCpf,
+    titulo: input.titulo?.trim() || undefined,
+    anexoAssinado: input.anexoAssinado,
     dataCriacao: nowIso(),
   };
   state = { ...state, instrumentos: [...state.instrumentos, novo] };
   emit();
   return novo;
+}
+
+/** Anexa (ou troca) a cópia assinada de um instrumento. */
+export function anexarAssinado(instrumentoId: string, anexo: AnexoInstrumentoMock): void {
+  const antigo = state.instrumentos.find((i) => i.id === instrumentoId)?.anexoAssinado;
+  if (antigo && antigo.url !== anexo.url) URL.revokeObjectURL(antigo.url);
+  state = { ...state, instrumentos: state.instrumentos.map((i) => (i.id === instrumentoId ? { ...i, anexoAssinado: anexo } : i)) };
+  emit();
+}
+
+export function removerAssinado(instrumentoId: string): void {
+  const antigo = state.instrumentos.find((i) => i.id === instrumentoId)?.anexoAssinado;
+  if (antigo) URL.revokeObjectURL(antigo.url);
+  state = { ...state, instrumentos: state.instrumentos.map((i) => (i.id === instrumentoId ? { ...i, anexoAssinado: undefined } : i)) };
+  emit();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -463,6 +483,11 @@ export function useFlagServicoSocial(solicitacaoId: string): {
 export function useDemandasAbertasDaSolicitacao(solicitacaoId: string): DemandaSocialMock[] {
   useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   return demandasAbertasDaSolicitacao(solicitacaoId);
+}
+
+/** Demandas, instrumentos e casas para o construtor de relatórios, reativo. */
+export function useBaseServicoSocial(): SnapshotServicoSocial {
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
 export function useCasasApoio(): CasaApoioMock[] {

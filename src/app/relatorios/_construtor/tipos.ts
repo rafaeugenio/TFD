@@ -78,6 +78,8 @@ export type AssuntoId =
   | 'agendamentos'
   | 'tramitacao'
   | 'obitos'
+  | 'servico_social'
+  | 'casas_apoio'
   | 'financeiro';
 
 export interface Assunto {

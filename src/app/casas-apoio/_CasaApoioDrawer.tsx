@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Home, MapPin, Phone, Building2 } from 'lucide-react';
+import { Home, MapPin, Phone, Building2, FileText } from 'lucide-react';
 import Drawer from '@/shared/components/drawer/Drawer';
 import FormField from '@/shared/components/drawer/FormField';
 import FormSection from '@/shared/components/drawer/FormSection';
@@ -19,7 +19,8 @@ interface Props {
   onSaved?: (id: string) => void;
 }
 
-const VAZIO = { nome: '', endereco: '', cidadeUf: '', contato: '', responsavel: '', unidadeVinculadaId: '' };
+const VAZIO = { nome: '', endereco: '', cidadeUf: '', contato: '', responsavel: '', unidadeVinculadaId: '', descricao: '' };
+const LIMITE_DESCRICAO = 1000;
 
 /**
  * Cadastro e edição de casa de apoio, no mesmo fluxo das Unidades de Saúde e
@@ -43,6 +44,7 @@ export default function CasaApoioDrawer({ open, casa, onClose, onSaved }: Props)
             contato: casa.contato,
             responsavel: casa.responsavel,
             unidadeVinculadaId: casa.unidadeVinculadaId ?? '',
+            descricao: casa.descricao ?? '',
           }
         : { ...VAZIO },
     );
@@ -65,6 +67,7 @@ export default function CasaApoioDrawer({ open, casa, onClose, onSaved }: Props)
       contato: form.contato.trim(),
       responsavel: form.responsavel.trim(),
       unidade: nomeUnidade(form.unidadeVinculadaId),
+      descricao: form.descricao.trim(),
     };
     const campos = [
       { key: 'nome', label: 'Nome' },
@@ -73,6 +76,7 @@ export default function CasaApoioDrawer({ open, casa, onClose, onSaved }: Props)
       { key: 'contato', label: 'Contato' },
       { key: 'responsavel', label: 'Responsável' },
       { key: 'unidade', label: 'Unidade de saúde vinculada' },
+      { key: 'descricao', label: 'Descrição' },
     ] as const;
 
     if (casa) {
@@ -83,6 +87,7 @@ export default function CasaApoioDrawer({ open, casa, onClose, onSaved }: Props)
         contato: casa.contato,
         responsavel: casa.responsavel,
         unidade: casa.unidadeVinculadaNome ?? '',
+        descricao: casa.descricao ?? '',
       };
       setSaveConfirm({ tone: 'edit', diff: buildDiff(before, after, [...campos]) });
     } else {
@@ -100,6 +105,7 @@ export default function CasaApoioDrawer({ open, casa, onClose, onSaved }: Props)
       responsavel: form.responsavel.trim(),
       unidadeVinculadaId: form.unidadeVinculadaId || undefined,
       unidadeVinculadaNome: nomeUnidade(form.unidadeVinculadaId) || undefined,
+      descricao: form.descricao.trim() || undefined,
     };
     let id = casa?.id;
     if (casa) editarCasaApoio(casa.id, payload);
@@ -160,6 +166,21 @@ export default function CasaApoioDrawer({ open, casa, onClose, onSaved }: Props)
         <FormSection title="Contato" icon={<Phone size={12} />} tone="info">
           <FormField label="Contato" required>
             <input type="text" className="tfd-input" value={form.contato} onChange={(e) => set('contato', e.target.value)} placeholder="Telefone ou e-mail" />
+          </FormField>
+        </FormSection>
+
+        <FormSection title="Descrição" icon={<FileText size={12} />} tone="warning" hint="Opcional. Texto livre para a equipe saber o que a casa aceita.">
+          <FormField label="Sobre a casa">
+            <textarea
+              className="tfd-input"
+              rows={5}
+              maxLength={LIMITE_DESCRICAO}
+              value={form.descricao}
+              onChange={(e) => set('descricao', e.target.value)}
+              placeholder="Ex.: Acolhe só adultos. Não recebe crianças desacompanhadas. Atende pacientes do Maranhão em tratamento oncológico."
+              style={{ resize: 'vertical', minHeight: 110 }}
+            />
+            <p className="text-[12px] mt-1 text-right" style={{ color: '#94A3B8' }}>{form.descricao.length}/{LIMITE_DESCRICAO}</p>
           </FormField>
         </FormSection>
 

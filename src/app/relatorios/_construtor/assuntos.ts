@@ -8,7 +8,7 @@
 /* -------------------------------------------------------------------------- */
 
 import {
-  Plane, Wallet, FileText, Users, Stethoscope, CalendarCheck, ArrowRightLeft, HeartCrack, Landmark,
+  Plane, Wallet, FileText, Users, Stethoscope, CalendarCheck, ArrowRightLeft, HeartCrack, Landmark, HeartHandshake, Home,
 } from 'lucide-react';
 import type { Assunto, AssuntoId, Campo, GrupoCampos, Linha, Totalizador } from './tipos';
 
@@ -390,6 +390,86 @@ export const ASSUNTOS: Assunto[] = [
     ],
   },
   {
+    id: 'servico_social',
+    label: 'Serviço Social',
+    pergunta: 'Quantas demandas sociais foram atendidas no mês, por quem e quantos documentos geraram?',
+    cadaLinha: 'uma demanda social aberta para o Serviço Social.',
+    contagem: ['demanda encontrada', 'demandas encontradas'],
+    icone: HeartHandshake,
+    aviso: 'Os instrumentos avulsos, sem demanda, não entram aqui. Eles aparecem nas Casas de apoio quando citam uma casa.',
+    datas: [
+      { id: 'dataEncaminhamento', label: 'Data em que a demanda foi aberta', ajuda: 'Dia em que o setor encaminhou o pedido ao Serviço Social.', modo: 'dia', campoInicio: 'dataEncaminhamento' },
+      { id: 'dataConclusao', label: 'Data de conclusão ou cancelamento', ajuda: 'Dia em que a demanda foi concluída ou cancelada. Demandas abertas não têm essa data.', modo: 'dia', campoInicio: 'dataConclusao' },
+    ],
+    grupos: [
+      {
+        id: 'demanda',
+        label: 'Demanda social',
+        campos: [
+          c({ id: 'setorOrigem', label: 'Setor que pediu', tipo: 'categoria', filtravel: true, agrupavel: true }),
+          c({ id: 'situacao', label: 'Situação da demanda', tipo: 'categoria', filtravel: true, agrupavel: true }),
+          c({ id: 'encaminhadoPor', label: 'Quem abriu a demanda', tipo: 'categoria', filtravel: true, agrupavel: true }),
+          c({ id: 'profissional', label: 'Profissional responsável', tipo: 'categoria', filtravel: true, agrupavel: true, ajuda: 'Quem assumiu a demanda. "Não assumida" quando ninguém pegou ainda.' }),
+          c({ id: 'dataEncaminhamento', label: 'Data em que a demanda foi aberta', tipo: 'data', agrupavel: true }),
+          c({ id: 'dataConclusao', label: 'Data de conclusão ou cancelamento', tipo: 'data', agrupavel: true }),
+          c({ id: 'diasAtendimento', label: 'Dias até concluir', tipo: 'numero', ajuda: 'Dias entre abrir e concluir. Fica vazio enquanto a demanda está aberta.' }),
+        ],
+      },
+      {
+        id: 'documentos',
+        label: 'Documentos gerados',
+        campos: [
+          c({ id: 'qtdInstrumentos', label: 'Instrumentos da demanda', tipo: 'numero', somavel: true, filtravel: true, ajuda: 'Parecer social, encaminhamento, declaração e outros documentos vinculados à demanda.' }),
+          c({ id: 'instrumentosAssinados', label: 'Instrumentos com documento assinado anexado', tipo: 'numero', somavel: true }),
+        ],
+      },
+      ...transversais,
+    ],
+    colunasPadrao: ['numero', 'paciente', 'setorOrigem', 'situacao', 'profissional', 'dataEncaminhamento', 'qtdInstrumentos'],
+    totais: [
+      registros('Demandas', 'Demandas sociais encontradas.'),
+      { id: 'abertas', label: 'Em aberto', ajuda: 'Pendentes ou em atendimento.', formato: 'numero', calcular: contar((l) => l.situacao === 'Pendente' || l.situacao === 'Em atendimento') },
+      { id: 'concluidas', label: 'Concluídas', ajuda: 'Demandas com a orientação final registrada.', formato: 'numero', calcular: contar((l) => l.situacao === 'Concluída') },
+      { id: 'instrumentos', label: 'Instrumentos gerados', ajuda: 'Soma dos documentos vinculados às demandas.', formato: 'numero', calcular: soma('qtdInstrumentos') },
+      pacientesUnicos,
+    ],
+  },
+  {
+    id: 'casas_apoio',
+    label: 'Casas de apoio',
+    pergunta: 'Para quais casas de apoio os pacientes foram encaminhados no mês?',
+    cadaLinha: 'um encaminhamento do Serviço Social para uma casa de apoio.',
+    contagem: ['encaminhamento', 'encaminhamentos'],
+    icone: Home,
+    aviso: 'Só entram encaminhamentos em que a casa foi escolhida. Casas sem nenhum encaminhamento no período não aparecem.',
+    datas: [
+      { id: 'dataEncaminhamento', label: 'Data do encaminhamento', ajuda: 'Dia em que o instrumento foi elaborado pelo Serviço Social.', modo: 'dia', campoInicio: 'dataEncaminhamento' },
+    ],
+    grupos: [
+      {
+        id: 'encaminhamento',
+        label: 'Encaminhamento',
+        campos: [
+          c({ id: 'casa', label: 'Casa de apoio', tipo: 'categoria', filtravel: true, agrupavel: true }),
+          c({ id: 'cidadeCasa', label: 'Cidade da casa', tipo: 'categoria', filtravel: true, agrupavel: true }),
+          c({ id: 'dataEncaminhamento', label: 'Data do encaminhamento', tipo: 'data', agrupavel: true }),
+          c({ id: 'elaboradoPor', label: 'Profissional que elaborou', tipo: 'categoria', filtravel: true, agrupavel: true }),
+          c({ id: 'vinculo', label: 'Demanda ou avulso', tipo: 'categoria', filtravel: true, agrupavel: true }),
+          c({ id: 'sigiloso', label: 'Sigiloso', tipo: 'categoria', filtravel: true, agrupavel: true }),
+          c({ id: 'assinado', label: 'Documento assinado anexado', tipo: 'categoria', filtravel: true, agrupavel: true }),
+        ],
+      },
+      ...transversais,
+    ],
+    colunasPadrao: ['casa', 'cidadeCasa', 'numero', 'paciente', 'dataEncaminhamento', 'elaboradoPor', 'assinado'],
+    totais: [
+      registros('Encaminhamentos', 'Encaminhamentos encontrados.'),
+      { id: 'casas', label: 'Casas utilizadas', ajuda: 'Casas diferentes que receberam encaminhamento.', formato: 'numero', calcular: distintos('casa') },
+      { id: 'assinados', label: 'Com documento assinado', ajuda: 'Encaminhamentos com a cópia assinada anexada.', formato: 'numero', calcular: contar((l) => l.assinado === 'Sim') },
+      pacientesUnicos,
+    ],
+  },
+  {
     id: 'financeiro',
     label: 'Indicadores financeiros',
     pergunta: 'Qual o resumo financeiro do período, mês a mês?',
@@ -484,5 +564,5 @@ export function filtrosDoAssunto(a: Assunto): Campo[] {
 }
 
 export const ASSUNTOS_ORDEM: AssuntoId[] = [
-  'passagens', 'ajudas', 'solicitacoes', 'pacientes', 'regulacao', 'agendamentos', 'tramitacao', 'obitos', 'financeiro',
+  'passagens', 'ajudas', 'solicitacoes', 'pacientes', 'regulacao', 'agendamentos', 'tramitacao', 'obitos', 'servico_social', 'casas_apoio', 'financeiro',
 ];

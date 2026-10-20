@@ -82,19 +82,34 @@ export interface DemandaSocialMock {
 export type TipoInstrumento =
   | 'parecer_social'
   | 'encaminhamento_casa_apoio'
-  | 'declaracao_tfd_ma';
+  | 'declaracao_tfd_ma'
+  | 'outros';
 
 export const TIPO_INSTRUMENTO_LABEL: Record<TipoInstrumento, string> = {
   parecer_social: 'Parecer Social',
   encaminhamento_casa_apoio: 'Encaminhamento para Casa de Apoio',
   declaracao_tfd_ma: 'Declaração TFD-MA',
+  outros: 'Outros',
 };
 
 export const TIPOS_INSTRUMENTO: TipoInstrumento[] = [
   'parecer_social',
   'encaminhamento_casa_apoio',
   'declaracao_tfd_ma',
+  'outros',
 ];
+
+/** Documento assinado anexado ao instrumento. No protótipo o arquivo fica
+ *  só no navegador (URL temporária); no sistema real vai para o armazenamento
+ *  de anexos, como os demais anexos da solicitação. */
+export interface AnexoInstrumentoMock {
+  nome: string;
+  tamanho: number;
+  mime: string;
+  url: string;
+  enviadoPor: string;
+  enviadoEm: string; // ISO datetime
+}
 
 export interface InstrumentoSocialMock {
   id: string;
@@ -119,6 +134,11 @@ export interface InstrumentoSocialMock {
   solicitacaoNumero?: string;
   pacienteNome?: string;
   pacienteCpf?: string;
+  /** Título do documento. Obrigatório no tipo "Outros"; nos demais o título
+   *  é o nome do tipo. */
+  titulo?: string;
+  /** Cópia assinada do documento, quando existir. */
+  anexoAssinado?: AnexoInstrumentoMock;
 }
 
 /* ── Casa de apoio ───────────────────────────────────────────────────────── */
@@ -134,6 +154,10 @@ export interface CasaApoioMock {
   unidadeVinculadaNome?: string;
   /** Cidade/UF em texto livre, usada na listagem. */
   cidadeUf?: string;
+  /** Texto livre sobre a casa: quem ela acolhe (só crianças, só adultos,
+   *  moradores de um estado), regras e o que mais a equipe precisar saber.
+   *  Preenchido à mão, porque as variáveis são muitas demais para virar campos. */
+  descricao?: string;
 }
 
 export const seedCasasApoio: CasaApoioMock[] = [
@@ -144,6 +168,7 @@ export const seedCasasApoio: CasaApoioMock[] = [
     cidadeUf: 'São Paulo - SP',
     contato: '(11) 3456-7890',
     responsavel: 'Irmã Terezinha Alves',
+    descricao: 'Acolhe adultos e idosos em tratamento oncológico, com um acompanhante. Não recebe menores de idade desacompanhados. Café da manhã e jantar inclusos; levar documento com foto e o encaminhamento do TFD.',
   },
   {
     id: 'casa-2',
@@ -152,6 +177,7 @@ export const seedCasasApoio: CasaApoioMock[] = [
     cidadeUf: 'Brasília - DF',
     contato: '(61) 3244-1180',
     responsavel: 'Marcos Vinícius Pereira',
+    descricao: 'Recebe pacientes e acompanhantes do Maranhão em tratamento em Brasília, de qualquer idade. Reserva por telefone com 48 horas de antecedência. Não aceita pacientes em isolamento.',
   },
   {
     id: 'casa-3',
@@ -160,6 +186,7 @@ export const seedCasasApoio: CasaApoioMock[] = [
     cidadeUf: 'Fortaleza - CE',
     contato: '(85) 3222-4477',
     responsavel: 'Luciana Sampaio',
+    descricao: 'Atende somente crianças e adolescentes de até 17 anos, com um responsável adulto. Sem restrição de estado de origem.',
   },
   {
     id: 'casa-4',
@@ -168,6 +195,7 @@ export const seedCasasApoio: CasaApoioMock[] = [
     cidadeUf: 'São Luís - MA',
     contato: '(98) 3232-7788',
     responsavel: 'Antônio Carlos Ribeiro',
+    descricao: 'Casa de passagem em São Luís para pacientes do interior do Maranhão que aguardam transporte ou consulta. Até 3 diárias por solicitação.',
   },
   // Casas fictícias da massa de teste dos últimos 3 meses (scripts/seed-demo).
   {

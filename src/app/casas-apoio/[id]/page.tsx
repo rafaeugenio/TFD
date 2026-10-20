@@ -99,6 +99,17 @@ export default function CasaApoioDetalhePage({ params }: { params: Promise<{ id:
         </div>
       </div>
 
+      {/* ============ Descrição ============ */}
+      {casa.descricao && (
+        <div className="tfd-card tfd-card--flat mb-6">
+          <div className="flex items-center gap-2 mb-2">
+            <span style={{ color: 'var(--tfd-primary-500)' }}><FileText size={18} /></span>
+            <h2 className="text-base font-semibold" style={{ color: 'var(--tfd-text-primary)' }}>Sobre a casa</h2>
+          </div>
+          <p className="text-[14px] whitespace-pre-wrap" style={{ color: '#475569', lineHeight: 1.6 }}>{casa.descricao}</p>
+        </div>
+      )}
+
       {/* ============ KPIs ============ */}
       <div className="mb-6 grid grid-cols-1 sm:grid-cols-3 overflow-hidden" style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 10 }}>
         {[
