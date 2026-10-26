@@ -229,7 +229,7 @@ export default function Competencia({ id }: { id: string }) {
     : carregando ? 'Carregando as linhas'
     : linhasNaAba === 0 ? 'Inclua pelo menos uma linha antes de fechar'
     : frente === 'bpa' && pendentesBpa > 0 ? `Marque "Lançada no BPA" em todas as linhas antes de fechar. ${falta(pendentesBpa)}`
-    : frente === 'reembolso' && pendentesReembolso > 0 ? `Registre a data e o valor do reembolso em todas as linhas antes de fechar. ${falta(pendentesReembolso)}`
+    : frente === 'reembolso' && pendentesReembolso > 0 ? `Registre o valor do reembolso em todas as linhas antes de fechar. ${falta(pendentesReembolso)}`
     : frente === 'obito' && pendentesObito > 0 ? `Registre as despesas em todas as linhas antes de fechar. ${falta(pendentesObito)}`
     : undefined;
 

@@ -590,7 +590,7 @@ export default function NewPassagemDrawer({ open, onClose, solicitacaoId, snapsh
       <fieldset disabled={somenteStatus} style={{ display: 'contents' }}>
       {status === 'reembolso' && (
         <p className="mt-3 text-[11px]" style={{ color: '#94A3B8' }}>
-          A passagem fica com status Reembolso. A data e o valor a receber são registrados na competência, na aba Reembolso.
+          A passagem fica com status Reembolso. O valor a receber é registrado na competência, na aba Reembolso.
         </p>
       )}
       </fieldset>
