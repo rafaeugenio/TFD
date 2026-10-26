@@ -43,48 +43,43 @@ function DadosPassagem({ l }: { l: LinhaReembolso }) {
 }
 
 /**
- * Registrar o reembolso de uma passagem: data e valor a receber, os dois
- * obrigatórios. Gravado na linha da competência, com evento no histórico.
+ * Registrar o reembolso de uma passagem: só o valor a receber, obrigatório.
+ * Gravado na linha da competência, com evento no histórico.
  */
 export function DrawerReembolso({ linha, registro, onClose, onSalvar }: {
   linha: LinhaReembolso | null;
   registro?: RegistroReembolso;
   onClose: () => void;
   /** Devolve false quando a gravação foi recusada (conflito). */
-  onSalvar: (dados: { data: string; valor: number }) => boolean;
+  onSalvar: (dados: { valor: number }) => boolean;
 }) {
   return (
-    <Drawer open={!!linha} onClose={onClose} title={registro ? 'Corrigir reembolso' : 'Registrar reembolso'} subtitle="Informe quando o reembolso foi concedido e quanto o TFD tem a receber.">
+    <Drawer open={!!linha} onClose={onClose} title={registro ? 'Corrigir reembolso' : 'Registrar reembolso'} subtitle="Informe quanto o TFD tem a receber. O valor vale para o mês desta competência.">
       {linha && <FormReembolso key={linha.chave} linha={linha} registro={registro} onClose={onClose} onSalvar={onSalvar} />}
     </Drawer>
   );
 }
 
 function FormReembolso({ linha, registro, onClose, onSalvar }: {
-  linha: LinhaReembolso; registro?: RegistroReembolso; onClose: () => void; onSalvar: (d: { data: string; valor: number }) => boolean;
+  linha: LinhaReembolso; registro?: RegistroReembolso; onClose: () => void; onSalvar: (d: { valor: number }) => boolean;
 }) {
-  const [data, setData] = useState(registro?.data ?? '');
   const [valor, setValor] = useState(registro ? valorTexto(registro.valor) : '');
   const [tentou, setTentou] = useState(false);
   const v = lerValor(valor);
-  const erroData = !data ? 'Informe a data do reembolso.' : undefined;
   const erroValor = valor.trim() === '' ? 'Informe o valor a receber.' : !(v > 0) ? 'O valor precisa ser maior que zero.' : undefined;
 
   const salvar = (e: React.FormEvent) => {
     e.preventDefault();
     setTentou(true);
-    if (erroData || erroValor) return;
-    if (onSalvar({ data, valor: Math.round(v * 100) / 100 })) onClose();
+    if (erroValor) return;
+    if (onSalvar({ valor: Math.round(v * 100) / 100 })) onClose();
   };
 
   return (
     <form onSubmit={salvar} noValidate>
       <DadosPassagem l={linha} />
-      <FormField label="Data do reembolso" required error={tentou ? erroData : undefined}>
-        <input type="date" aria-label="Data do reembolso" className="tfd-input" value={data} onChange={(e) => setData(e.target.value)} required aria-invalid={tentou && !!erroData} autoFocus />
-      </FormField>
       <FormField label="Valor a receber (R$)" required error={tentou ? erroValor : undefined}>
-        <input type="text" aria-label="Valor a receber" inputMode="decimal" className="tfd-input" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0,00" required aria-invalid={tentou && !!erroValor} style={mono} />
+        <input type="text" aria-label="Valor a receber" autoFocus inputMode="decimal" className="tfd-input" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0,00" required aria-invalid={tentou && !!erroValor} style={mono} />
       </FormField>
       {registro && <p style={apoio}>Último registro por {registro.por} em {fmtDataBR(registro.em)}.</p>}
       <div className="flex justify-end gap-2 mt-6">
@@ -130,7 +125,7 @@ export function DrawerDespesasObito({ linha, registro, modo, onClose, onVer, onS
   onClose: () => void;
   onVer: (solicitacaoId: string) => void;
   /** Devolve false quando a gravação foi recusada (conflito). */
-  onSalvar?: (dados: { dataPagamento: string; despesas: DespesaObito[] }) => boolean;
+  onSalvar?: (dados: { despesas: DespesaObito[] }) => boolean;
 }) {
   const editar = modo === 'editar' && !!onSalvar;
   return (
@@ -139,7 +134,7 @@ export function DrawerDespesasObito({ linha, registro, modo, onClose, onVer, onS
       onClose={onClose}
       width="min(720px, 96vw)"
       title={editar ? 'Registrar despesas de óbito' : 'Despesas de óbito'}
-      subtitle={editar ? 'Inclua cada item pago e a data do pagamento. A data do pagamento pode ser de um mês diferente do falecimento.' : undefined}
+      subtitle={editar ? 'Inclua cada item pago e o valor. O pagamento vale para o mês desta competência.' : undefined}
     >
       {linha && (editar
         ? <FormDespesas key={linha.chave} linha={linha} registro={registro} onClose={onClose} onSalvar={onSalvar!} />
@@ -159,7 +154,7 @@ function LeituraDespesas({ linha, registro, onVer }: { linha: LinhaObito; regist
       ) : (
         <>
           <p className="mb-3" style={{ fontSize: 13.5, color: 'var(--tfd-text-secondary)' }}>
-            Pagamento em <strong style={{ color: 'var(--tfd-text-primary)' }}>{fmtDataBR(registro.dataPagamento)}</strong>. Registrado por {registro.por} em {fmtDataBR(registro.em)}.
+            Registrado por {registro.por} em {fmtDataBR(registro.em)}.
           </p>
           <div style={{ border: '1px solid var(--tfd-surface-border)', borderRadius: 8, overflow: 'hidden' }}>
             <table className="w-full" style={{ borderCollapse: 'collapse' }}>
@@ -192,10 +187,9 @@ function LeituraDespesas({ linha, registro, onVer }: { linha: LinhaObito; regist
 
 function FormDespesas({ linha, registro, onClose, onSalvar }: {
   linha: LinhaObito; registro?: RegistroDespesasObito; onClose: () => void;
-  onSalvar: (d: { dataPagamento: string; despesas: DespesaObito[] }) => boolean;
+  onSalvar: (d: { despesas: DespesaObito[] }) => boolean;
 }) {
   const { options, loading } = useLookup('despesa_funeraria');
-  const [dataPagamento, setDataPagamento] = useState(registro?.dataPagamento ?? '');
   const [linhas, setLinhas] = useState<DespesaRascunho[]>(
     registro?.despesas.length
       ? registro.despesas.map((d) => ({ id: d.id, codigo: d.codigo, descricao: d.descricao ?? '', valor: valorTexto(d.valor) }))
@@ -205,9 +199,8 @@ function FormDespesas({ linha, registro, onClose, onSalvar }: {
 
   const mudar = (id: string, campo: keyof DespesaRascunho, v: string) => setLinhas((ls) => ls.map((l) => (l.id === id ? { ...l, [campo]: v } : l)));
   const erroLinha = (l: DespesaRascunho) => (!l.codigo ? 'Escolha o item.' : !(lerValor(l.valor) > 0) ? 'Informe um valor maior que zero.' : undefined);
-  const erroData = !dataPagamento ? 'Informe a data do pagamento.' : undefined;
   const erroLista = linhas.length === 0 ? 'Inclua pelo menos uma despesa.' : undefined;
-  const invalido = !!erroData || !!erroLista || linhas.some((l) => erroLinha(l));
+  const invalido = !!erroLista || linhas.some((l) => erroLinha(l));
   const total = linhas.reduce((s, l) => s + (lerValor(l.valor) > 0 ? lerValor(l.valor) : 0), 0);
   // Item que saiu da tabela auxiliar continua com o nome gravado.
   const nomeItem = (codigo: string) => options.find((o) => o.value === codigo)?.label ?? registro?.despesas.find((d) => d.codigo === codigo)?.item ?? codigo;
@@ -219,18 +212,12 @@ function FormDespesas({ linha, registro, onClose, onSalvar }: {
     const despesas: DespesaObito[] = linhas.map((l) => ({
       id: l.id, codigo: l.codigo, item: nomeItem(l.codigo), descricao: l.descricao.trim() || undefined, valor: Math.round(lerValor(l.valor) * 100) / 100,
     }));
-    if (onSalvar({ dataPagamento, despesas })) onClose();
+    if (onSalvar({ despesas })) onClose();
   };
 
   return (
     <form onSubmit={salvar} noValidate>
       <DadosObito l={linha} />
-      <div style={{ maxWidth: 240 }}>
-        <FormField label="Data do pagamento" required error={tentou ? erroData : undefined}>
-          <input type="date" aria-label="Data do pagamento" className="tfd-input" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} required aria-invalid={tentou && !!erroData} autoFocus />
-        </FormField>
-      </div>
-
       <fieldset>
         <legend className="tfd-label mb-2">Despesas <span style={{ color: 'var(--tfd-status-danger)' }}>*</span></legend>
         {tentou && erroLista && <Erro texto={erroLista} />}

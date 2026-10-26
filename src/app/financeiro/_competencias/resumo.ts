@@ -9,7 +9,7 @@
 
 import { obitosAtuais } from '@/app/fluxo-v2/_state/obitoStore';
 import {
-  carregarBpa, carregarDadosSolicitacoes, carregarFaturamento, carregarReembolsos, carregarValoresSigtap, montarLinhasObito, valorBpa,
+  adicionaisDaLinha, totalDaLinha, carregarBpa, carregarDadosSolicitacoes, carregarFaturamento, carregarReembolsos, carregarValoresSigtap, montarLinhasObito, valorBpa,
   type LinhaBpa, type LinhaFaturamento, type LinhaObito, type LinhaReembolso,
 } from './dados';
 import {
@@ -90,7 +90,12 @@ export function vistaDaFrente(c: Competencia, frente: Frente, o: Origem): Vista 
 /* ── Cálculos por aba ────────────────────────────────────────────────────── */
 
 /** Total do Faturamento: soma do valor das passagens (reembolso fica na aba Reembolso). */
-export const totalFaturamento = (linhas: LinhaFaturamento[]) => linhas.reduce((s, l) => s + l.valor, 0);
+/** Valor dos bilhetes (só as passagens). */
+export const totalBilhetes = (linhas: LinhaFaturamento[]) => linhas.reduce((s, l) => s + l.valor, 0);
+/** Valor dos adicionais ligados às passagens. */
+export const totalAdicionais = (linhas: LinhaFaturamento[]) => linhas.reduce((s, l) => s + adicionaisDaLinha(l), 0);
+/** Valor total do faturamento: bilhetes mais adicionais. O reembolso é descontado à parte, no total geral. */
+export const totalFaturamento = (linhas: LinhaFaturamento[]) => linhas.reduce((s, l) => s + totalDaLinha(l), 0);
 
 /** Procedimentos de uma linha do BPA: na ajuda de custo, diárias com pernoite
  *  mais diárias sem pernoite; no deslocamento, a quantidade. */

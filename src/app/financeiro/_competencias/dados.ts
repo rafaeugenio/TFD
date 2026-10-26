@@ -45,8 +45,17 @@ export interface LinhaFaturamento {
   dataVolta: string | null;
   origem: string;
   destino: string;
+  /** Valor da passagem (bilhete). */
   valor: number;
+  /** Adicionais da solicitação (bagagem, passagem extra, transfer...), aprovados ou pagos, lançados uma vez na primeira passagem dela.
+   *  Competências fechadas antes desta regra não têm o campo: vale zero. */
+  valorAdicionais?: number;
 }
+
+/** Soma dos adicionais de uma linha de faturamento. */
+export const adicionaisDaLinha = (l: Pick<LinhaFaturamento, 'valorAdicionais'>) => l.valorAdicionais ?? 0;
+/** Bilhete mais adicionais: o que a linha custa no faturamento. */
+export const totalDaLinha = (l: Pick<LinhaFaturamento, 'valor' | 'valorAdicionais'>) => l.valor + adicionaisDaLinha(l);
 
 export async function carregarFaturamento(): Promise<LinhaFaturamento[]> {
   const sb = createClient();
@@ -60,6 +69,29 @@ export async function carregarFaturamento(): Promise<LinhaFaturamento[]> {
     .eq('ativa', true)
     .order('created_at', { ascending: false });
   if (error || !data) throw new ErroCarregamento('faturamento', error);
+  // Adicionais aprovados ou pagos. No banco o adicional pertence à solicitação, não a uma passagem
+  // (a coluna viagem_id ainda não existe), então cada solicitação soma os seus e entra uma única vez,
+  // na primeira passagem dela. Assim a soma da competência não conta o adicional em dobro.
+  const adicionaisPorSolicitacao = new Map<string, number>();
+  for (let de = 0; ; de += 1000) {
+    const { data: ad, error: errAd } = await sb
+      .from('adicionais')
+      .select('solicitacao_id, valor')
+      .in('status', ['APROVADO', 'PAGO'])
+      .order('id')
+      .range(de, de + 999);
+    if (errAd || !ad) break; // sem adicionais legíveis, o faturamento segue só com os bilhetes
+    for (const a of ad as unknown as Array<{ solicitacao_id: string; valor: number | string }>) {
+      adicionaisPorSolicitacao.set(a.solicitacao_id, (adicionaisPorSolicitacao.get(a.solicitacao_id) ?? 0) + (Number(a.valor) || 0));
+    }
+    if (ad.length < 1000) break;
+  }
+  // Primeira passagem de cada solicitação: a mais antiga (data de emissão ou, sem ela, cadastro; empate pelo id).
+  const primeiraDaSolicitacao = new Map<string, string>();
+  const ordenadas = [...(data as unknown as Array<Record<string, unknown>>)].sort((a, b) =>
+    String((a.emitido_em as string) ?? (a.created_at as string) ?? '').localeCompare(String((b.emitido_em as string) ?? (b.created_at as string) ?? ''))
+    || String(a.id).localeCompare(String(b.id)));
+  for (const r of ordenadas) if (!primeiraDaSolicitacao.has(String(r.solicitacao_id))) primeiraDaSolicitacao.set(String(r.solicitacao_id), String(r.id));
   const tipoDe = (t: string): LinhaFaturamento['tipo'] => (t === 'RETORNO' || t === 'VOLTA' ? 'VOLTA' : t === 'IDA_E_VOLTA' ? 'IDA_E_VOLTA' : 'IDA');
   return (data as unknown as Array<Record<string, unknown>>).map((r): LinhaFaturamento => {
     const sol = r.solicitacoes as Record<string, unknown> | null;
@@ -79,6 +111,8 @@ export async function carregarFaturamento(): Promise<LinhaFaturamento[]> {
       origem: [r.origem_cidade, r.origem_uf].filter(Boolean).join('/'),
       destino: [r.destino_cidade, r.destino_uf].filter(Boolean).join('/'),
       valor: Number(r.valor) || 0,
+      valorAdicionais: primeiraDaSolicitacao.get(String(r.solicitacao_id)) === String(r.id)
+        ? Math.round((adicionaisPorSolicitacao.get(String(r.solicitacao_id)) ?? 0) * 100) / 100 : 0,
     };
   }).filter((l) => !!l.mesReferencia); // o relatório antigo nunca listava viagem sem data
 }

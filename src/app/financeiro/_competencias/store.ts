@@ -49,15 +49,15 @@ export interface ItemCompetencia {
   incluidoPor: string;
   /** Linha incluída depois de uma reabertura: fica destacada para auditoria. */
   aposReabertura?: boolean;
-  /** Aba Reembolso: data e valor a receber registrados na linha. */
+  /** Aba Reembolso: valor a receber registrado na linha. */
   reembolso?: RegistroReembolso;
-  /** Aba Óbito: despesas pagas e data do pagamento. */
+  /** Aba Óbito: despesas pagas da linha. */
   obito?: RegistroDespesasObito;
 }
 
 export interface RegistroReembolso {
-  /** Data do reembolso (AAAA-MM-DD). */
-  data: string;
+  /** Só existe em registros antigos: a data deixou de ser pedida, vale o mês da competência. */
+  data?: string;
   /** Valor a receber, maior que zero. */
   valor: number;
   por: string;
@@ -75,8 +75,8 @@ export interface DespesaObito {
 }
 
 export interface RegistroDespesasObito {
-  /** Data do pagamento das despesas (AAAA-MM-DD), diferente da do falecimento. */
-  dataPagamento: string;
+  /** Só existe em registros antigos: a data do pagamento deixou de ser pedida, vale o mês da competência. */
+  dataPagamento?: string;
   despesas: DespesaObito[];
   por: string;
   em: string;
@@ -434,14 +434,14 @@ function mudarItem(id: string, frente: Frente, chave: string, por: string, tipo:
   });
 }
 
-/** Registra (ou corrige) a data e o valor a receber de uma linha do Reembolso. */
-export function registrarReembolso(id: string, chave: string, dados: { data: string; valor: number }, por: string, detalhe: string): Resultado {
+/** Registra (ou corrige) o valor a receber de uma linha do Reembolso. */
+export function registrarReembolso(id: string, chave: string, dados: { valor: number }, por: string, detalhe: string): Resultado {
   return mudarItem(id, 'reembolso', chave, por, 'reembolso_registrado', detalhe, (i) => ({ ...i, reembolso: { ...dados, por, em: agora() } }));
 }
 
-/** Registra (ou substitui) as despesas e a data do pagamento de uma linha do Óbito. */
+/** Registra (ou substitui) as despesas de uma linha do Óbito. */
 export function registrarDespesasObito(
-  id: string, chave: string, dados: { dataPagamento: string; despesas: DespesaObito[] }, por: string, detalhe: string,
+  id: string, chave: string, dados: { despesas: DespesaObito[] }, por: string, detalhe: string,
 ): Resultado {
   return mudarItem(id, 'obito', chave, por, 'despesas_registradas', detalhe, (i) => ({ ...i, obito: { ...dados, por, em: agora() } }));
 }

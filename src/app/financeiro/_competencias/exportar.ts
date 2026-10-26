@@ -147,12 +147,12 @@ export function planilhaFaturamento(linhas: LinhaFaturamento[], mesCompetencia: 
     colunas: [
       { rotulo: 'Processo' }, { rotulo: 'Data emissão' }, { rotulo: 'Aviso de período' }, { rotulo: 'Passageiro' }, { rotulo: 'Beneficiário' },
       { rotulo: 'Tipo' }, { rotulo: 'Data viagem' }, { rotulo: 'Origem' }, { rotulo: 'Destino' },
-      { rotulo: 'Valor', tipo: 'moeda' as const }, { rotulo: 'Incluída após reabertura' },
+      { rotulo: 'Bilhete', tipo: 'moeda' as const }, { rotulo: 'Adicionais', tipo: 'moeda' as const }, { rotulo: 'Total', tipo: 'moeda' as const }, { rotulo: 'Incluída após reabertura' },
     ],
     linhas: linhas.map((l): Celula[] => [
       l.processo, fmtDataBR(l.dataEmissao), avisoPeriodo(l.mesReferencia, mesCompetencia), l.passageiro, beneficiario(l.beneficiario),
       tipoPercurso(l.tipo), l.dataViagem ? fmtDataBR(l.dataViagem) : '', l.origem, l.destino,
-      l.valor, aposReabertura.has(l.chave) ? 'Sim' : 'Não',
+      l.valor, l.valorAdicionais ?? 0, l.valor + (l.valorAdicionais ?? 0), aposReabertura.has(l.chave) ? 'Sim' : 'Não',
     ]),
   };
 }
@@ -203,14 +203,14 @@ export function planilhaReembolso(linhas: LinhaReembolso[], reg: Record<string, 
   return {
     colunas: [
       { rotulo: 'Processo' }, { rotulo: 'Passageiro' }, { rotulo: 'Tipo' }, { rotulo: 'Data viagem' }, { rotulo: 'Origem' }, { rotulo: 'Destino' },
-      { rotulo: 'Valor da passagem', tipo: 'moeda' as const }, { rotulo: 'Data do reembolso' }, { rotulo: 'Valor a receber', tipo: 'moeda' as const },
+      { rotulo: 'Valor da passagem', tipo: 'moeda' as const }, { rotulo: 'Valor a receber', tipo: 'moeda' as const },
       { rotulo: 'Registrado por' }, { rotulo: 'Incluída após reabertura' },
     ],
     linhas: linhas.map((l): Celula[] => {
       const r = reg[l.chave];
       return [
         l.processo, l.passageiro, tipoPercurso(l.tipo), l.dataViagem ? fmtDataBR(l.dataViagem) : '', l.origem, l.destino,
-        l.valorPassagem, r ? fmtDataBR(r.data) : 'Pendente', r ? r.valor : null, r?.por ?? '', aposReabertura.has(l.chave) ? 'Sim' : 'Não',
+        l.valorPassagem, r ? r.valor : null, r?.por ?? '', aposReabertura.has(l.chave) ? 'Sim' : 'Não',
       ];
     }),
   };
@@ -219,7 +219,7 @@ export function planilhaReembolso(linhas: LinhaReembolso[], reg: Record<string, 
 export function planilhaObito(linhas: LinhaObito[], reg: Record<string, RegistroDespesasObito>, aposReabertura: Set<string>) {
   return {
     colunas: [
-      { rotulo: 'Processo' }, { rotulo: 'Paciente' }, { rotulo: 'CNS/CPF' }, { rotulo: 'Data do falecimento' }, { rotulo: 'Data do pagamento' },
+      { rotulo: 'Processo' }, { rotulo: 'Paciente' }, { rotulo: 'CNS/CPF' }, { rotulo: 'Data do falecimento' },
       { rotulo: 'Itens', tipo: 'numero' as const }, { rotulo: 'Despesas' }, { rotulo: 'Valor total', tipo: 'moeda' as const },
       { rotulo: 'Registrado por' }, { rotulo: 'Incluída após reabertura' },
     ],
@@ -227,7 +227,7 @@ export function planilhaObito(linhas: LinhaObito[], reg: Record<string, Registro
       const r = reg[l.chave];
       const despesas = r?.despesas.map((d) => `${d.item}${d.descricao ? ` (${d.descricao})` : ''}: ${fmtBRL(d.valor)}`).join('; ') ?? '';
       return [
-        l.processo, l.paciente, l.documento, fmtDataBR(l.dataFalecimento), r ? fmtDataBR(r.dataPagamento) : 'Pendente',
+        l.processo, l.paciente, l.documento, fmtDataBR(l.dataFalecimento),
         r?.despesas.length ?? 0, despesas, r ? r.despesas.reduce((s, d) => s + d.valor, 0) : null, r?.por ?? '', aposReabertura.has(l.chave) ? 'Sim' : 'Não',
       ];
     }),

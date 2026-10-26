@@ -3,7 +3,7 @@
 import { ArrowRightLeft, Eye, HandCoins, ReceiptText, Trash2 } from 'lucide-react';
 import { TipoBeneficiarioBadge, TipoPercursoBadge } from '@/app/relatorios/_shared/ReportTable';
 import { fmtBRL, fmtDataBR } from '@/app/relatorios/_shared/format';
-import { avisoPeriodo, valorBpa, type LinhaBpa, type LinhaFaturamento, type LinhaObito, type LinhaReembolso } from '../dados';
+import { adicionaisDaLinha, avisoPeriodo, totalDaLinha, valorBpa, type LinhaBpa, type LinhaFaturamento, type LinhaObito, type LinhaReembolso } from '../dados';
 import type { RegistroDespesasObito, RegistroReembolso } from '../store';
 import { totalDespesas } from '../resumo';
 import type { Coluna } from './Tabela';
@@ -121,8 +121,9 @@ export function colunasFaturamento(o: OpcoesColunas): Coluna<LinhaFaturamento>[]
       key: 'trecho', header: 'Trecho',
       render: (l) => <span className="inline-flex items-center gap-1" style={{ ...mono, fontSize: 12 }}>{l.origem}<ArrowRightLeft size={10} style={{ color: 'var(--tfd-400)' }} />{l.destino}</span>,
     },
-    { key: 'valor', header: 'Valor', align: 'right', render: (l) => <span style={{ ...mono, whiteSpace: 'nowrap' }}>{fmtBRL(l.valor)}</span> },
-    { key: 'total', header: 'Total', align: 'right', render: (l) => <strong style={{ ...mono, whiteSpace: 'nowrap' }}>{fmtBRL(l.valor)}</strong> },
+    { key: 'valor', header: 'Bilhete', align: 'right', render: (l) => <span style={{ ...mono, whiteSpace: 'nowrap' }}>{fmtBRL(l.valor)}</span> },
+    { key: 'adicionais', header: 'Adicionais', align: 'right', render: (l) => <span style={{ ...mono, whiteSpace: 'nowrap', color: adicionaisDaLinha(l) ? undefined : 'var(--tfd-text-muted)' }}>{fmtBRL(adicionaisDaLinha(l))}</span> },
+    { key: 'total', header: 'Total', align: 'right', render: (l) => <strong style={{ ...mono, whiteSpace: 'nowrap' }}>{fmtBRL(totalDaLinha(l))}</strong> },
     ...(o.competenciaDe ? [{ key: 'comp', header: 'Competência', render: (l: LinhaFaturamento) => <span style={apoio}>{o.competenciaDe!(l.chave) ?? 'Nenhuma'}</span> }] : []),
     { key: 'acoes', header: 'Ações', align: 'right', render: (l) => <Acoes solicitacaoId={l.solicitacaoId} chave={l.chave} o={o} /> },
   ];
@@ -190,10 +191,6 @@ export function colunasReembolso(
     ...(reg
       ? [
           {
-            key: 'data', header: 'Data reembolso',
-            render: (l: LinhaReembolso) => (reg[l.chave] ? <span style={{ whiteSpace: 'nowrap' }}>{fmtDataBR(reg[l.chave].data)}</span> : <span className="tfd-tag tfd-tag--warning" style={{ fontSize: 11, padding: '2px 8px', whiteSpace: 'nowrap' }}>Pendente</span>),
-          },
-          {
             key: 'receber', header: 'A receber', align: 'right' as const,
             render: (l: LinhaReembolso) => (reg[l.chave] ? <strong style={{ ...mono, whiteSpace: 'nowrap' }}>{fmtBRL(reg[l.chave].valor)}</strong> : <span style={apoio}>Sem valor</span>),
           },
@@ -231,10 +228,6 @@ export function colunasObito(
     { key: 'falecimento', header: 'Data falecimento', render: (l) => <span style={{ whiteSpace: 'nowrap' }}>{fmtDataBR(l.dataFalecimento)}</span> },
     ...(reg
       ? [
-          {
-            key: 'pagamento', header: 'Data pagamento',
-            render: (l: LinhaObito) => (reg[l.chave] ? <span style={{ whiteSpace: 'nowrap' }}>{fmtDataBR(reg[l.chave].dataPagamento)}</span> : <span className="tfd-tag tfd-tag--warning" style={{ fontSize: 11, padding: '2px 8px', whiteSpace: 'nowrap' }}>Pendente</span>),
-          },
           { key: 'itens', header: 'Itens', align: 'right' as const, render: (l: LinhaObito) => <span style={mono}>{reg[l.chave]?.despesas.length ?? 0}</span> },
           {
             key: 'total', header: 'Valor total', align: 'right' as const,

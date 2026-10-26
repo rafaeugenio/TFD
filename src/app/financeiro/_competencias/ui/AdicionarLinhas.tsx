@@ -69,8 +69,8 @@ const SUBTITULO: Record<Frente, string> = {
 const RODAPE: Record<Frente, React.ReactNode> = {
   faturamento: <>Aparecem as mesmas linhas que o relatório de Faturamento listava, inclusive as de valor zero (R$ 0,00). Linhas de outro mês podem entrar nesta competência (por exemplo, um lançamento atrasado) e ficam com o selo &ldquo;Fora do período&rdquo;.</>,
   bpa: <>Aparecem as mesmas linhas que o relatório de BPA listava, inclusive as de valor zero (R$ 0,00). Linhas de outro mês podem entrar nesta competência (por exemplo, um lançamento atrasado) e ficam com o selo &ldquo;Fora do período&rdquo;.</>,
-  reembolso: <>A data e o valor a receber são registrados depois, na linha da competência.</>,
-  obito: <>A data do falecimento vem da sinalização de óbito na solicitação. As despesas e a data do pagamento são registradas depois, na linha da competência.</>,
+  reembolso: <>O valor a receber é registrado depois, na linha da competência.</>,
+  obito: <>A data do falecimento vem da sinalização de óbito na solicitação. As despesas são registradas depois, na linha da competência.</>,
 };
 
 /**

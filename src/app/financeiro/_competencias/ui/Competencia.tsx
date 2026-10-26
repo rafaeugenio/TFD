@@ -14,7 +14,7 @@ import { useCurrentUser } from '@/shared/hooks/useCurrentUser';
 import { usePermissions } from '@/shared/auth/PermissionsProvider';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useObitos } from '@/app/fluxo-v2/_state/obitoStore';
-import { MES_LABEL, fmtBRL, fmtDataBR, valorPorExtenso } from '@/app/relatorios/_shared/format';
+import { MES_LABEL, fmtBRL, fmtDataBR } from '@/app/relatorios/_shared/format';
 import {
   carregarBpa, carregarDadosSolicitacoes, carregarFaturamento, carregarLancados, carregarReembolsos, carregarValoresSigtap, marcarLancado,
   montarLinhasObito, sigtapDasLinhas, valorBpa,
@@ -27,7 +27,7 @@ import {
   type Competencia as TCompetencia, type CopiaNova, type EventoHistorico, type Fechamento, type Frente,
 } from '../store';
 import {
-  procedimentosBpa, resumoCompetencia, totaisObito, totaisReembolso, totalFaturamento, vistaDaCopia, vistaDaOrigem,
+  procedimentosBpa, resumoCompetencia, totaisObito, totaisReembolso, totalAdicionais, totalBilhetes, totalFaturamento, vistaDaCopia, vistaDaOrigem,
   type Origem, type ResumoCompetencia, type Vista,
 } from '../resumo';
 import {
@@ -137,8 +137,13 @@ export default function Competencia({ id }: { id: string }) {
     const v = vistaDaOrigem(c, fr, origem);
     const apos = fc.itens.filter((i) => i.aposReabertura).map((i) => i.chave);
     if (fr === 'faturamento') {
+      const vr = vistaDaOrigem(c, 'reembolso', origem);
+      const reembolso = totaisReembolso(vr.reembolsos, vr.regReembolso).totalReceber;
       const total = totalFaturamento(v.fat);
-      return { mesCompetencia, linhasFaturamento: v.fat, aposReabertura: apos, totais: { bilhetes: v.fat.length, valorBruto: total, totalPagar: total } };
+      return {
+        mesCompetencia, linhasFaturamento: v.fat, aposReabertura: apos,
+        totais: { bilhetes: v.fat.length, valorBilhetes: totalBilhetes(v.fat), valorAdicionais: totalAdicionais(v.fat), valorTotal: total, reembolso, totalGeral: total - reembolso },
+      };
     }
     if (fr === 'reembolso') {
       const t = totaisReembolso(v.reembolsos, v.regReembolso);
@@ -287,9 +292,18 @@ export default function Competencia({ id }: { id: string }) {
     let quantidade: number;
     if (frente === 'faturamento') {
       const total = totalFaturamento(fatVisiveis);
+      const reembolsoExport = resumo?.reembolso.totalReceber ?? 0;
       planilha = {
         ...planilhaFaturamento(fatVisiveis, vista.mesCompetencia, vista.aposReabertura),
-        resumo: [...base, { rotulo: 'Bilhetes emitidos', valor: String(fatVisiveis.length) }, { rotulo: 'Total a pagar', valor: fmtBRL(total) }],
+        resumo: [
+          ...base,
+          { rotulo: 'Bilhetes emitidos', valor: String(fatVisiveis.length) },
+          { rotulo: 'Valor dos bilhetes', valor: fmtBRL(totalBilhetes(fatVisiveis)) },
+          { rotulo: 'Valor dos adicionais', valor: fmtBRL(totalAdicionais(fatVisiveis)) },
+          { rotulo: 'Valor total do faturamento', valor: fmtBRL(total) },
+          { rotulo: 'Valor do reembolso', valor: fmtBRL(reembolsoExport) },
+          { rotulo: 'Total geral', valor: fmtBRL(total - reembolsoExport) },
+        ],
       };
       quantidade = fatVisiveis.length;
     } else if (frente === 'reembolso') {
@@ -450,7 +464,7 @@ export default function Competencia({ id }: { id: string }) {
           <AvisoPendencia>O BPA só pode ser fechado com todas as linhas marcadas como lançadas. {falta(pendentesBpa)}, somando Ajuda de Custo e Deslocamentos.</AvisoPendencia>
         )}
         {aberta && frente === 'reembolso' && podeFechar && !carregando && !erro && pendentesReembolso > 0 && (
-          <AvisoPendencia>O Reembolso só pode ser fechado com data e valor registrados em todas as linhas. {falta(pendentesReembolso)}.</AvisoPendencia>
+          <AvisoPendencia>O Reembolso só pode ser fechado com o valor registrado em todas as linhas. {falta(pendentesReembolso)}.</AvisoPendencia>
         )}
         {aberta && frente === 'obito' && podeFechar && !carregando && !erro && pendentesObito > 0 && (
           <AvisoPendencia>O Óbito só pode ser fechado com as despesas registradas em todas as linhas. {falta(pendentesObito)}.</AvisoPendencia>
@@ -476,6 +490,7 @@ export default function Competencia({ id }: { id: string }) {
       ) : frente === 'faturamento' ? (
         <ConteudoFaturamento
           linhas={fatVisiveis}
+          reembolso={resumo ? resumo.reembolso.totalReceber : null}
           opcoes={opcoes}
           aposReabertura={vista.aposReabertura}
           vazio={editavel ? <>Competência vazia. Use <strong>Adicionar linhas</strong> para escolher os itens de {nome}.</> : 'Nenhum item nesta competência.'}
@@ -545,7 +560,7 @@ export default function Competencia({ id }: { id: string }) {
         onSalvar={(dados) => {
           if (registrando?.frente !== 'reembolso') return false;
           const l = registrando.linha;
-          const detalhe = `${l.processo} · ${l.passageiro} · ${fmtBRL(dados.valor)} em ${fmtDataBR(dados.data)}`;
+          const detalhe = `${l.processo} · ${l.passageiro} · ${fmtBRL(dados.valor)}`;
           if (!avisarConflito(registrarReembolso(c.id, l.chave, dados, quem, detalhe))) return false;
           toast.success('Reembolso registrado', `${fmtBRL(dados.valor)} a receber, ${l.passageiro}.`);
           return true;
@@ -562,7 +577,7 @@ export default function Competencia({ id }: { id: string }) {
           if (registrando?.frente !== 'obito') return false;
           const l = registrando.linha;
           const total = dados.despesas.reduce((s, d) => s + d.valor, 0);
-          const detalhe = `${l.processo} · ${l.paciente} · ${dados.despesas.length} ${dados.despesas.length === 1 ? 'item' : 'itens'}, ${fmtBRL(total)}, pagamento em ${fmtDataBR(dados.dataPagamento)}`;
+          const detalhe = `${l.processo} · ${l.paciente} · ${dados.despesas.length} ${dados.despesas.length === 1 ? 'item' : 'itens'}, ${fmtBRL(total)}`;
           if (!avisarConflito(registrarDespesasObito(c.id, l.chave, dados, quem, detalhe))) return false;
           toast.success('Despesas registradas', `${dados.despesas.length} ${dados.despesas.length === 1 ? 'item' : 'itens'}, total de ${fmtBRL(total)}.`);
           return true;
@@ -669,16 +684,23 @@ function PainelResumo({ resumo, carregando, erro, onTentarNovamente }: {
 
 /* ── Conteúdo das abas (também usado na consulta de um fechamento) ───────── */
 
-function ConteudoFaturamento({ linhas, opcoes, aposReabertura, vazio }: {
-  linhas: LinhaFaturamento[]; opcoes: OpcoesColunas; aposReabertura: Set<string>; vazio: React.ReactNode;
+function ConteudoFaturamento({ linhas, reembolso, opcoes, aposReabertura, vazio }: {
+  linhas: LinhaFaturamento[]; reembolso: number | null; opcoes: OpcoesColunas; aposReabertura: Set<string>; vazio: React.ReactNode;
 }) {
-  // O faturamento mostra o valor das passagens; o reembolso fica na aba Reembolso.
-  const totalPagar = totalFaturamento(linhas);
+  // Total geral = bilhetes + adicionais - reembolso. O reembolso é lançado na aba Reembolso e só entra aqui como desconto.
+  const bilhetes = totalBilhetes(linhas);
+  const adicionais = totalAdicionais(linhas);
+  const total = bilhetes + adicionais;
+  const totalGeral = reembolso === null ? null : total - reembolso;
   return (
     <>
       <Indicadores itens={[
         { rotulo: 'Bilhetes emitidos', valor: String(linhas.length), icone: <Plane size={12} /> },
-        { rotulo: 'Total a pagar', valor: fmtBRL(totalPagar), icone: <Wallet size={12} /> },
+        { rotulo: 'Valor dos bilhetes', valor: fmtBRL(bilhetes) },
+        { rotulo: 'Valor dos adicionais', valor: fmtBRL(adicionais) },
+        { rotulo: 'Valor total do faturamento', valor: fmtBRL(total), apoio: 'Bilhetes mais adicionais', icone: <Wallet size={12} /> },
+        { rotulo: 'Valor do reembolso', valor: reembolso === null ? '...' : fmtBRL(reembolso), apoio: 'Descontado do total, da aba Reembolso', cor: 'var(--tfd-status-warning-text)' },
+        { rotulo: 'Total geral', valor: totalGeral === null ? '...' : fmtBRL(totalGeral), apoio: 'Faturamento menos reembolso', destaque: true },
       ]} />
       <Secao titulo="Itens faturados" quantidade={linhas.length}>
         <Tabela
@@ -689,13 +711,6 @@ function ConteudoFaturamento({ linhas, opcoes, aposReabertura, vazio }: {
           vazio={vazio}
         />
       </Secao>
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-5" style={{ ...cartao, padding: '16px 20px', background: 'var(--tfd-success-bg)', borderColor: 'var(--tfd-status-success-border)' }}>
-        <div>
-          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--tfd-status-success-text)' }}>Total do faturamento</p>
-          <p style={{ fontSize: 12.5, fontStyle: 'italic', color: 'var(--tfd-text-secondary)' }}>{valorPorExtenso(totalPagar)}.</p>
-        </div>
-        <p style={{ fontFamily: 'var(--tfd-mono)', fontSize: 26, fontWeight: 700, color: 'var(--tfd-status-success-text)' }}>{fmtBRL(totalPagar)}</p>
-      </div>
     </>
   );
 }
@@ -765,7 +780,7 @@ function ConteudoObito({ linhas, opcoes, vista, onDetalhar, onRegistrar, vazio }
         { rotulo: 'Com despesa registrada', valor: String(t.comDespesa), cor: 'var(--tfd-status-success-text)' },
         { rotulo: 'Total de despesas', valor: fmtBRL(t.totalDespesas) },
       ]} />
-      <Secao titulo="Despesas de óbito" quantidade={linhas.length} subtitulo="A data do falecimento vem da sinalização; a do pagamento, do registro das despesas">
+      <Secao titulo="Despesas de óbito" quantidade={linhas.length} subtitulo="A data do falecimento vem da sinalização de óbito">
         <Tabela
           colunas={colunasObito(opcoes, vista.regObito, { onDetalhar, onRegistrar })}
           linhas={linhas}
@@ -807,7 +822,7 @@ function ConsultaFechamento({ fechamento, frente, nome, onVer, onClose }: {
         </p>
       )}
       {vista && (frente === 'faturamento' ? (
-        <ConteudoFaturamento linhas={vista.fat} opcoes={opcoes} aposReabertura={vista.aposReabertura} vazio="Nenhum item neste fechamento." />
+        <ConteudoFaturamento linhas={vista.fat} reembolso={fechamento?.totais.reembolso ?? null} opcoes={opcoes} aposReabertura={vista.aposReabertura} vazio="Nenhum item neste fechamento." />
       ) : frente === 'reembolso' ? (
         <ConteudoReembolso linhas={vista.reembolsos} opcoes={opcoes} vista={vista} vazio="Nenhuma linha neste fechamento." />
       ) : frente === 'obito' ? (
@@ -902,17 +917,18 @@ function StatusChip({ status }: { status: 'aberta' | 'fechada' }) {
     : <span className="tfd-badge inline-flex items-center gap-1" style={{ background: 'var(--tfd-100)', color: 'var(--tfd-600)' }}><Lock size={10} /> Fechada</span>;
 }
 
-const COLUNAS_INDICADORES: Record<number, string> = { 2: 'grid-cols-2', 3: 'grid-cols-1 sm:grid-cols-3', 4: 'grid-cols-2 lg:grid-cols-4', 5: 'grid-cols-2 lg:grid-cols-5' };
+const COLUNAS_INDICADORES: Record<number, string> = { 2: 'grid-cols-2', 3: 'grid-cols-1 sm:grid-cols-3', 4: 'grid-cols-2 lg:grid-cols-4', 5: 'grid-cols-2 lg:grid-cols-5', 6: 'grid-cols-2 lg:grid-cols-3 xl:grid-cols-6' };
 
-function Indicadores({ itens }: { itens: { rotulo: string; valor: string; icone?: React.ReactNode; cor?: string }[] }) {
+function Indicadores({ itens }: { itens: { rotulo: string; valor: string; icone?: React.ReactNode; cor?: string; apoio?: string; destaque?: boolean }[] }) {
   return (
     <section className={`grid ${COLUNAS_INDICADORES[itens.length] ?? 'grid-cols-2 lg:grid-cols-4'} gap-px overflow-hidden mb-5`} style={{ ...cartao, background: 'var(--tfd-surface-border)' }}>
       {itens.map((i) => (
-        <div key={i.rotulo} style={{ background: 'white', padding: '1.1rem 1.25rem' }}>
+        <div key={i.rotulo} style={{ background: i.destaque ? 'var(--tfd-primary-50)' : 'white', padding: '1.1rem 1.25rem' }}>
           <span className="inline-flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--tfd-text-muted)' }}>
             {i.icone && <span style={{ color: 'var(--tfd-400)', display: 'inline-flex' }}>{i.icone}</span>}{i.rotulo}
           </span>
           <p style={{ fontFamily: 'var(--tfd-mono)', fontSize: '1.5rem', fontWeight: 700, color: i.cor ?? 'var(--tfd-text-primary)', marginTop: 6, whiteSpace: 'nowrap' }}>{i.valor}</p>
+          {i.apoio && <p style={{ fontSize: 11.5, color: 'var(--tfd-text-muted)', marginTop: 2 }}>{i.apoio}</p>}
         </div>
       ))}
     </section>
